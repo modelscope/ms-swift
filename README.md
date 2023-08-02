@@ -1,10 +1,10 @@
-
 <p align="center">
     <br>
     <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
     <br>
+    <h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
 <p>
-SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)
+
 
 # Introduction
 
@@ -179,17 +179,14 @@ model.save_pretrained('./output')
 
 In the output dir, you will have a dir structure like this:
 
+```text
 output
-
-​	 |-- default
-
-​				|-- adapter_config.json
-
-​				|-- adapter_model.bin
-
-​     |-- adapter_config.json
-
-​     |-- adapter_model.bin
+    |-- default
+        |-- adapter_config.json
+        |-- adapter_model.bin
+    |-- adapter_config.json
+    |-- adapter_model.bin
+```
 
 The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from Peft, which stores the weights and config of the `default` tuner.
 
