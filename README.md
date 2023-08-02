@@ -2,28 +2,27 @@
     <br>
     <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
     <br>
-    <h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
+    <h2>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h2>
 <p>
 
 
 # Introduction
 
-SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible lightweight tool designed for model fine-tuning. Its core focus lies in implementing various efficient fine-tuning methods, including parameter-efficient, memory-efficient, and time-efficient approaches. SWIFT is capable of supporting efficient fine-tuning of models from diverse domains within the ModelScope community, with primary emphasis on vision-based task models and large language models in NLP. Additionally, SWIFT is fully compatible with [Peft](https://github.com/huggingface/peft), enabling users to directly utilize Peft’s interface for fine-tuning models stored in the ModelScope hub.
+SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various modles, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [Peft](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
 
-Supported methods:
+Currently supported approches (and counting):
 
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
 3. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
+4. All tuners offered on [Peft](https://github.com/huggingface/peft).
 
-4. All the tuners supported by [Peft](https://github.com/huggingface/peft) can be used here.
+Key features:
 
-Supported features:
+1. By integrating the ModelScope library, models can be readily obatined via a model-id.
+2. Tuners provided by SWIFT be combined together to allow exploration of multiple tuners on a model for best result.
 
-1. All the model-id passed into SWIFT will be downloaded from the model hub of ModelScope to increase the speed.
-2. Tuners provided by SWIFT can be used together, which means you can use multiple tuners at a time.
-
-Check the usable LLM examples here: [SFT and Inference examples](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
+Check out the LLM examples here: [SFT and Inference examples](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
 
   ```bash
   git clone https://github.com/modelscope/swift.git
@@ -40,21 +39,21 @@ Check the usable LLM examples here: [SFT and Inference examples](https://github.
 
   - Supported sft methods: lora, full, ...
 
-  - Continuously updated...
+  - and more ...
 
-# Getting started
+# Getting Started
 
-SWIFT supports multiple tuners, and also tuners provided by [Peft](https://github.com/huggingface/peft). To use the these tuners, please call:
+SWIFT supports multiple tuners, as well as tuners provided by [Peft](https://github.com/huggingface/peft). To use the these tuners, simply call:
 
 ```python
 from swift import Swift
 model = Swift.prepare_model(model, config, extra_state_keys=['...'])
 ```
 
-The code above gives you a model with a randomly initialized tuner. The input model is an instance of `torch.nn.Module`, config is a subclass instance of `SwiftConfig` or `PeftConfig`. extra_state_keys is
+The code snippet above initialized the tuner randomly. The input model is an instance of `torch.nn.Module`, config is a subclass instance of `SwiftConfig` or `PeftConfig`. extra_state_keys is
 the extra module weights(like the linear head) to be trained and stored in the output dir.
 
-If you want to use multiple tuners simultaneously,  please call:
+You may combine multiple tuners by:
 
 ```python
 from swift import Swift, LoRAConfig, PromptConfig
