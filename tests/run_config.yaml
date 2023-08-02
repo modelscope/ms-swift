@@ -1,0 +1,8 @@
+# isolate cases in env, we can install different dependencies in each env.
+isolated:  # test cases that may require excessive anmount of GPU memory or run long time, which will be executed in dedicagted process.
+
+envs:
+  default: # default env, case not in other env will in default, pytorch.
+    dependencies: # requirement packages，pip install before test case run.
+      - numpy>=1.20,<=1.22.0
+      - protobuf<4,>=3.20.2

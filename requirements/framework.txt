@@ -1,0 +1,11 @@
+accelerate
+datasets
+diffusers>=0.18.0
+numpy
+pandas
+peft
+requests
+safetensors
+tensorboard
+tqdm
+transformers>=4.12.0
