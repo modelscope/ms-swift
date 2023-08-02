@@ -1,0 +1,29 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-publish
+  cancel-in-progress: true
+
+jobs:
+  build-n-publish:
+    runs-on: ubuntu-20.04
+    #if: startsWith(github.event.ref, 'refs/tags')
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - name: Install wheel
+        run: pip install wheel && pip install -r requirements/framework.txt
+      - name: Build ModelScope
+        run: python setup.py sdist bdist_wheel
+      - name: Publish package to PyPI
+        run: |
+          pip install twine
+          twine upload package/dist/* --skip-existing -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
