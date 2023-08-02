@@ -4,7 +4,6 @@
     <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
     <br>
 <p>
-<div align="center">
 SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)
 
 # Introduction

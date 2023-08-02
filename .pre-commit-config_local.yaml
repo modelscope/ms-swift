@@ -1,0 +1,51 @@
+repos:
+  - repo: /home/admin/pre-commit/flake8
+    rev: 4.0.0
+    hooks:
+      - id: flake8
+        exclude: |
+            (?x)^(
+                thirdparty/|
+                examples/|
+                tests/run.py
+            )$
+  - repo: /home/admin/pre-commit/isort
+    rev: 4.3.21
+    hooks:
+      - id: isort
+        exclude: |
+            (?x)^(
+                examples/|
+                tests/run.py
+            )$
+  - repo: /home/admin/pre-commit/mirrors-yapf
+    rev: v0.30.0
+    hooks:
+      - id: yapf
+        exclude: |
+            (?x)^(
+                thirdparty/|
+                examples/|
+                tests/run.py
+            )$
+  - repo: /home/admin/pre-commit/pre-commit-hooks
+    rev: v3.1.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: thirdparty/|tests/run.py
+      - id: check-yaml
+        exclude: thirdparty/|tests/run.py
+      - id: end-of-file-fixer
+        exclude: thirdparty/
+      - id: requirements-txt-fixer
+        exclude: thirdparty/|tests/run.py
+      - id: double-quote-string-fixer
+        exclude: thirdparty/|tests/run.py
+      - id: check-merge-conflict
+        exclude: thirdparty/|tests/run.py
+      - id: fix-encoding-pragma
+        exclude: thirdparty/|tests/run.py
+        args: ["--remove"]
+      - id: mixed-line-ending
+        exclude: thirdparty/|tests/run.py
+        args: ["--fix=lf"]
