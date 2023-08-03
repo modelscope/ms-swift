@@ -1,5 +1,12 @@
 # ### Setting up experimental environment.
 """
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
+pip install sentencepiece charset_normalizer cpm_kernels tiktoken -U
+pip install matplotlib scikit-learn -U
+pip install transformers datasets -U
+pip install tqdm tensorboard torchmetrics -U
+pip install accelerate transformers_stream_generator -U
+
 # Install the latest version of swift from source
 git clone https://github.com/modelscope/swift.git
 cd swift
@@ -8,16 +15,10 @@ pip install .
 # Install the latest version of modelscope from source
 git clone https://github.com/modelscope/modelscope.git
 cd modelscope
+pip install -r requirements.txt
 pip install .
-
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-pip install numpy pandas -U  # Resolve torchmetrics dependencies and update numpy
-pip install matplotlib scikit-learn -U
-pip install transformers datasets -U
-pip install tqdm tensorboard torchmetrics -U
-pip install sentencepiece charset_normalizer cpm_kernels -U
-pip install accelerate transformers_stream_generator -U
 """
+
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 from dataclasses import dataclass, field
@@ -44,8 +45,7 @@ logger = get_logger()
 @dataclass
 class SftArguments:
     model_type: str = field(
-        default='baichuan-7b',
-        metadata={'choices': list(MODEL_MAPPING.keys())})
+        default='qwen-7b', metadata={'choices': list(MODEL_MAPPING.keys())})
     # baichuan-7b: 'lora': 16G; 'full': 80G
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
@@ -61,7 +61,7 @@ class SftArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: Optional[int] = None
+    dataset_sample: Optional[int] = 20000
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
     max_length: Optional[int] = 2048

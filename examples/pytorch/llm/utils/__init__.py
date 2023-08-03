@@ -60,7 +60,7 @@ def plot_images(images_dir: str,
             values_s = tensorboard_smoothing(values, smooth_val)
             ax.plot(steps, values_s, color=TB_COLOR_SMOOTH)
         else:
-            ax.plot(steps, values, color=TB_COLOR)
+            ax.plot(steps, values, color=TB_COLOR_SMOOTH)
         fpath = os.path.join(images_dir, k.replace('/', '_'))
         plt.savefig(fpath, dpi=dpi, bbox_inches='tight')
 

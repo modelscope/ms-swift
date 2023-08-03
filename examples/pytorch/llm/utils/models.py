@@ -5,6 +5,7 @@ import torch
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
                         get_logger, read_config, snapshot_download)
 from modelscope.models.nlp.chatglm2 import ChatGLM2Config, ChatGLM2Tokenizer
+from modelscope.models.nlp.qwen import QWenConfig, QWenTokenizer
 from torch import dtype as Dtype
 
 logger = get_logger()
@@ -61,11 +62,32 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     return model, tokenizer
 
 
+def get_model_tokenizer_qwen(model_dir: str,
+                             torch_dtype: Dtype,
+                             load_model: bool = True):
+    config = read_config(model_dir)
+    logger.info(config)
+    model_config = QWenConfig.from_pretrained(model_dir)
+    model_config.torch_dtype = torch_dtype
+    logger.info(model_config)
+    tokenizer = QWenTokenizer.from_pretrained(model_dir)
+    model = None
+    if load_model:
+        model = Model.from_pretrained(
+            model_dir,
+            cfg_dict=config,
+            config=model_config,
+            device_map='auto',
+            torch_dtype=torch_dtype)
+    return model, tokenizer
+
+
 class LoRATM(NamedTuple):
     # default lora target modules
     baichuan = ['W_pack']
     chatglm2 = ['query_key_value']
     llama2 = ['q_proj', 'k_proj', 'v_proj']
+    qwen = ['c_attn']
 
 
 # Reference: 'https://modelscope.cn/models/{model_id}/summary'
@@ -105,6 +127,13 @@ MODEL_MAPPING = {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'lora_TM': LoRATM.llama2,
         'revision': 'v1.0.0',
+    },
+    'qwen-7b': {
+        'model_id': 'qwen/Qwen-7B',
+        'revision': 'v1.0.0',
+        'get_function': get_model_tokenizer_qwen,
+        'torch_dtype': torch.bfloat16,
+        'lora_TM': LoRATM.qwen,
     }
 }
 
