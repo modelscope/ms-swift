@@ -28,9 +28,9 @@ Check out the LLM examples here: [SFT and Inference examples](https://github.com
   git clone https://github.com/modelscope/swift.git
   cd swift/examples/pytorch/llm
   # sft
-  bash run_sft.sh
+  PYTHONPATH=../../.. bash run_sft.sh
   # inference
-  bash run_infer.sh
+  PYTHONPATH=../../.. bash run_infer.sh
   ```
 
   - Supported models: baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, openbuddy-llama2-13b, ...
