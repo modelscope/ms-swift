@@ -21,8 +21,7 @@ logger = get_logger()
 @dataclass
 class InferArguments:
     model_type: str = field(
-        default='baichuan-7b',
-        metadata={'choices': list(MODEL_MAPPING.keys())})
+        default='qwen-7b', metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
@@ -37,7 +36,7 @@ class InferArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: Optional[int] = None
+    dataset_sample: Optional[int] = 20000
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
     max_length: Optional[int] = 2048

@@ -38,6 +38,12 @@ def get_alpaca_zh_dataset() -> HfDataset:
     return _processing_alpaca(dataset_zh)
 
 
+def get_finance_en_dataset() -> HfDataset:
+    finance_en: HfDataset = MsDataset.load(
+        'wyj123456/finance_en', split='train').to_hf_dataset()
+    return _processing_alpaca(finance_en)
+
+
 def process_dataset(dataset: HfDataset, dataset_test_size: float,
                     dataset_sample: Optional[int],
                     dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
@@ -53,6 +59,7 @@ def process_dataset(dataset: HfDataset, dataset_test_size: float,
 DATASET_MAPPING = {
     'alpaca-en': get_alpaca_en_dataset,
     'alpaca-zh': get_alpaca_zh_dataset,
+    'finance-en': get_finance_en_dataset,
 }
 
 
