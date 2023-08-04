@@ -13,7 +13,7 @@ from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING, get_dataset,
 
 from swift import Swift, get_logger
 from swift.utils import parse_args, seed_everything
-from swift.utils.llm_utils import data_collate_fn, tokenize_function
+from swift.utils.llm_utils import tokenize_function
 
 logger = get_logger()
 
@@ -36,12 +36,13 @@ class InferArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: Optional[int] = 20000
+    dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
     max_length: Optional[int] = 2048
 
-    max_new_tokens: int = 512
+    max_new_tokens: int = 1024
+    do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 50
     top_p: float = 0.9
@@ -81,7 +82,7 @@ def llm_infer(args: InferArguments) -> None:
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
-        do_sample=True,
+        do_sample=args.do_sample,
         pad_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
 
