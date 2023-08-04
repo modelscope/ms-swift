@@ -7,16 +7,16 @@ pip install transformers datasets -U
 pip install tqdm tensorboard torchmetrics -U
 pip install accelerate transformers_stream_generator -U
 
-# Install the latest version of swift from source
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install .
+pip install ms-swift modelscope -U
 
-# Install the latest version of modelscope from source
-git clone https://github.com/modelscope/modelscope.git
-cd modelscope
-pip install -r requirements.txt
-pip install .
+If you need to extend or customize the model,
+    you can modify the `MODEL_MAPPING` in `utils/models.py`.
+    model_id can be specified as a local path.
+    In this case, 'revision' doesn't work.
+If you need to extend or customize the dataset,
+    you can modify the `DATASET_MAPPING` in `utils/dataset.py`.
+    You need to customize the `get_*_dataset` function,
+    which returns a dataset with two columns: `instruction`, `output`.
 """
 
 import os
@@ -46,10 +46,10 @@ logger = get_logger()
 class SftArguments:
     model_type: str = field(
         default='qwen-7b', metadata={'choices': list(MODEL_MAPPING.keys())})
-    # baichuan-7b: 'lora': 16G; 'full': 80G
+    # qwen-7b: 'lora': 22G; 'full': 95G
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
-    output_dir: Optional[str] = None
+    output_dir: str = 'runs'
 
     seed: int = 42
     resume_from_ckpt: Optional[str] = None
@@ -61,7 +61,7 @@ class SftArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: Optional[int] = 20000
+    dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
     max_length: Optional[int] = 2048
@@ -110,8 +110,6 @@ class SftArguments:
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
-        if self.output_dir is None:
-            self.output_dir = 'runs'
         self.output_dir = os.path.join(self.output_dir, self.model_type)
 
         if self.lora_target_modules is None:

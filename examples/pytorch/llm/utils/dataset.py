@@ -26,29 +26,28 @@ def _processing_alpaca(dataset: HfDataset) -> HfDataset:
 
 
 def get_alpaca_en_dataset() -> HfDataset:
-    dataset_en: HfDataset = MsDataset.load(
+    dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
-    dataset_en = dataset_en.remove_columns(['text'])
-    return _processing_alpaca(dataset_en)
+    return _processing_alpaca(dataset)
 
 
 def get_alpaca_zh_dataset() -> HfDataset:
-    dataset_zh: HfDataset = MsDataset.load(
+    dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-zh', split='train').to_hf_dataset()
-    return _processing_alpaca(dataset_zh)
+    return _processing_alpaca(dataset)
 
 
 def get_finance_en_dataset() -> HfDataset:
-    finance_en: HfDataset = MsDataset.load(
+    dataset: HfDataset = MsDataset.load(
         'wyj123456/finance_en', split='train').to_hf_dataset()
-    return _processing_alpaca(finance_en)
+    return _processing_alpaca(dataset)
 
 
 def process_dataset(dataset: HfDataset, dataset_test_size: float,
-                    dataset_sample: Optional[int],
+                    dataset_sample: int,
                     dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
     random_state = np.random.RandomState(dataset_seed)
-    if dataset_sample is not None:
+    if dataset_sample >= 0:
         index = random_state.permutation(len(dataset))[:dataset_sample]
         dataset = dataset.select(index)
     dataset = dataset.train_test_split(
