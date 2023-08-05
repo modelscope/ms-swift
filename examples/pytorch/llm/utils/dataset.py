@@ -25,13 +25,13 @@ def _processing_alpaca(dataset: HfDataset) -> HfDataset:
     return dataset
 
 
-def get_alpaca_en_dataset() -> HfDataset:
+def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
     return _processing_alpaca(dataset)
 
 
-def get_alpaca_zh_dataset() -> HfDataset:
+def get_alpaca_gpt4_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-zh', split='train').to_hf_dataset()
     return _processing_alpaca(dataset)
@@ -56,8 +56,8 @@ def process_dataset(dataset: HfDataset, dataset_test_size: float,
 
 
 DATASET_MAPPING = {
-    'alpaca-en': get_alpaca_en_dataset,
-    'alpaca-zh': get_alpaca_zh_dataset,
+    'alpaca-en': get_alpaca_gpt4_en_dataset,
+    'alpaca-zh': get_alpaca_gpt4_zh_dataset,
     'finance-en': get_finance_en_dataset,
 }
 

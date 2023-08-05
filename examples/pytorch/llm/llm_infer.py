@@ -1,18 +1,18 @@
 # ### Setting up experimental environment.
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Optional
 
 import torch
-from transformers import GenerationConfig, TextStreamer
+from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
 from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING, get_dataset,
-                   get_model_tokenizer, inference, process_dataset,
-                   select_dtype)
+                   get_model_tokenizer, inference, process_dataset, select_bnb,
+                   select_dtype, show_layers)
 
 from swift import Swift, get_logger
-from swift.utils import parse_args, seed_everything
+from swift.utils import parse_args, print_model_info, seed_everything
 from swift.utils.llm_utils import tokenize_function
 
 logger = get_logger()
@@ -28,8 +28,8 @@ class InferArguments:
     eval_human: bool = False  # False: eval test_dataset
 
     seed: int = 42
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': {'bf16', 'fp16', 'fp32'}})
+    dtype: str = field(
+        default='fp16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
@@ -41,6 +41,14 @@ class InferArguments:
     prompt: str = DEFAULT_PROMPT
     max_length: Optional[int] = 2048
 
+    quantization_bit: Optional[int] = field(
+        default=None, metadata={'choices': {4, 8}})
+    bnb_4bit_comp_dtype: str = field(
+        default='fp16', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+    bnb_4bit_quant_type: str = field(
+        default='nf4', metadata={'choices': {'fp4', 'nf4'}})
+    bnb_4bit_use_double_quant: bool = True
+
     max_new_tokens: int = 1024
     do_sample: bool = True
     temperature: float = 0.9
@@ -50,15 +58,28 @@ class InferArguments:
     def __post_init__(self):
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
-        self.torch_dtype, _, _ = select_dtype(self.dtype, self.model_type)
+        self.torch_dtype, _, _ = select_dtype(self.dtype)
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
+            self.quantization_bit, self.bnb_4bit_comp_dtype)
 
 
 def llm_infer(args: InferArguments) -> None:
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
+
     # ### Loading Model and Tokenizer
+    model_kwargs = {'device_map': 'auto'}
+    if args.load_in_8bit or args.load_in_4bit:
+        quantization_config = BitsAndBytesConfig(
+            args.load_in_8bit,
+            args.load_in_4bit,
+            bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
+            bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+            bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
+        logger.info(f'quantization_config: {quantization_config.__dict__}')
+        model_kwargs['quantization_config'] = quantization_config
     model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype)
+        args.model_type, torch_dtype=args.torch_dtype, **model_kwargs)
 
     # ### Preparing lora
     if args.sft_type == 'lora':
@@ -68,6 +89,9 @@ def llm_infer(args: InferArguments) -> None:
         model.load_state_dict(state_dict)
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
+
+    show_layers(model)
+    print_model_info(model)
 
     # ### Inference
     tokenize_func = partial(
