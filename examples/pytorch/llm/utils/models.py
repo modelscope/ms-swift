@@ -153,6 +153,12 @@ MODEL_MAPPING = {
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2
     },
+    'llama2-70b': {
+        'model_id': 'modelscope/Llama-2-70b-ms',
+        'revision': 'v1.0.0',
+        'ignore_file_pattern': [r'.+\.bin$'],
+        'lora_TM': LoRATM.llama2
+    },
     'openbuddy-llama2-13b': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
