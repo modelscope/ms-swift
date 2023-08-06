@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 import matplotlib.pyplot as plt
 import torch
 from torch import dtype as Dtype
+from torch.nn import Module
 from transformers import GenerationConfig, TextStreamer
 
 from swift import get_logger
@@ -29,6 +30,17 @@ DTYPE_MAPPING = {
     'bf16': torch.bfloat16,
     'fp32': torch.float32
 }
+
+
+def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
+    named_p = list(model.named_parameters())
+    for i, (n, p) in enumerate(named_p):
+        if max_lines is not None and i >= max_lines:
+            logger.info('...')
+            break
+        logger.info(
+            f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}'
+        )
 
 
 def plot_images(images_dir: str,
@@ -83,15 +95,11 @@ def inference(input_ids: List[int],
     return output_text
 
 
-def select_dtype(dtype: str, model_type: str) -> Tuple[Dtype, bool, bool]:
+def select_dtype(dtype: str) -> Tuple[Dtype, bool, bool]:
     """
     dtype: Literal['fp16', 'bf16', 'fp32']
     """
-    if dtype is None:
-        torch_dtype = MODEL_MAPPING[model_type].get('torch_dtype',
-                                                    torch.float16)
-    else:
-        torch_dtype = DTYPE_MAPPING[dtype]
+    torch_dtype = DTYPE_MAPPING[dtype]
 
     assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
     if torch_dtype == torch.float16:
@@ -104,3 +112,19 @@ def select_dtype(dtype: str, model_type: str) -> Tuple[Dtype, bool, bool]:
     else:
         fp16, bf16 = False, False
     return torch_dtype, fp16, bf16
+
+
+def select_bnb(quantization_bit: Optional[int],
+               bnb_4bit_compute_dtype: str) -> Tuple[Dtype, bool, bool]:
+    bnb_4bit_compute_dtype = DTYPE_MAPPING[bnb_4bit_compute_dtype]
+    assert bnb_4bit_compute_dtype in {
+        torch.float16, torch.bfloat16, torch.float32
+    }
+    if quantization_bit == 4:
+        load_in_4bit, load_in_8bit = True, False
+    elif quantization_bit == 8:
+        load_in_4bit, load_in_8bit = False, True
+    else:
+        load_in_4bit, load_in_8bit = False, False
+
+    return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit

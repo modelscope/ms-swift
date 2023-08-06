@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_type qwen-7b \
     --sft_type lora \
@@ -6,6 +6,7 @@ python llm_sft.py \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample 20000 \
     --max_length 1024 \
+    --quantization_bit 4 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.1 \
