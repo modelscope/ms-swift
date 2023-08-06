@@ -52,11 +52,6 @@ def _get_model_tokenizer_from_sdk(config_class,
                                   load_model: bool = True,
                                   **model_kwargs):
     """load from ms library"""
-    if 'quantization_config' in model_kwargs:
-        logger.warning('Model.from_pretrained does not support quantization. '
-                       'The `quantization_config` is ignored')
-        model_kwargs.pop('quantization_config')
-
     config = read_config(model_dir)
     logger.info(config)
     model_config = config_class.from_pretrained(model_dir)
@@ -91,6 +86,10 @@ def get_model_tokenizer_chatglm2(model_dir: str,
                                  torch_dtype: Dtype,
                                  load_model: bool = True,
                                  **model_kwargs):
+    if 'quantization_config' in model_kwargs:
+        model_kwargs['quantization_config'].llm_int8_skip_modules = [
+            'output_layer'
+        ]
     return _get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
                                          model_dir, torch_dtype, load_model,
                                          **model_kwargs)

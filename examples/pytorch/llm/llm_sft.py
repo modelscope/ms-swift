@@ -1,24 +1,3 @@
-# ### Setting up experimental environment.
-"""
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
-pip install sentencepiece charset_normalizer cpm_kernels tiktoken -U
-pip install matplotlib scikit-learn -U
-pip install transformers datasets -U
-pip install tqdm tensorboard torchmetrics -U
-pip install accelerate transformers_stream_generator -U
-
-pip install ms-swift modelscope -U
-
-If you need to extend or customize the model,
-    you can modify the `MODEL_MAPPING` in `utils/models.py`.
-    model_id can be specified as a local path.
-    In this case, 'revision' doesn't work.
-If you need to extend or customize the dataset,
-    you can modify the `DATASET_MAPPING` in `utils/dataset.py`.
-    You need to customize the `get_*_dataset` function,
-    which returns a dataset with two columns: `instruction`, `output`.
-"""
-
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
