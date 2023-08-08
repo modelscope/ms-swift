@@ -47,7 +47,7 @@ class SftArguments:
     dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
-    max_length: Optional[int] = 2048
+    max_length: Optional[int] = 1024
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`

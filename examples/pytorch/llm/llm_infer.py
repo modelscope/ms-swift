@@ -38,7 +38,7 @@ class InferArguments:
     dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
-    max_length: Optional[int] = 2048
+    max_length: Optional[int] = 1024
 
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})

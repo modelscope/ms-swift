@@ -96,4 +96,5 @@ def print_example(example: Dict[str, Any], tokenizer) -> None:
     logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
     n_mask = _count_startswith(labels, -100)
     logger.info(f'[LABLES_IDS] {labels}')
-    logger.info(f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
+    logger.info(
+        f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
