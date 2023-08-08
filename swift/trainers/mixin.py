@@ -229,7 +229,14 @@ class SwiftMixin:
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
-        if not isinstance(self.model, Model):
+        if isinstance(self.model, Model):
+            model_dir = getattr(self.model, 'model_dir', None)
+            if model_dir is not None:
+                src_path = os.path.join(model_dir, 'configuration.json')
+                dst_path = os.path.join(output_dir, 'configuration.json')
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
+        else:
             self._create_configuration_file(self.model, output_dir)
 
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
@@ -257,11 +264,6 @@ class SwiftMixin:
                     torch.save(state_dict,
                                os.path.join(output_dir, 'pytorch_model.bin'))
         elif isinstance(self.model, Model):
-            model_dir = self.model.model_dir
-            src_path = os.path.join(model_dir, 'configuration.json')
-            dst_path = os.path.join(output_dir, 'configuration.json')
-            if os.path.exists(src_path):
-                shutil.copy(src_path, dst_path)
             PreTrainedModel.save_pretrained(
                 self.model,
                 output_dir,
