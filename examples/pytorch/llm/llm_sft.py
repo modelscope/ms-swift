@@ -134,11 +134,11 @@ def llm_sft(args: SftArguments) -> None:
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True}
+    kwargs = {'low_cpu_mem_usage': True}
     if is_dist():
-        model_kwargs['device_map'] = {'': local_rank}
+        kwargs['device_map'] = {'': local_rank}
     else:
-        model_kwargs['device_map'] = 'auto'
+        kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -147,10 +147,10 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
+        kwargs['quantization_config'] = quantization_config
 
     model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, **model_kwargs)
+        args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     # ### Preparing lora
     if args.sft_type == 'lora':

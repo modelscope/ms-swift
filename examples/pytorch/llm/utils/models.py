@@ -108,8 +108,13 @@ def get_model_tokenizer_qwen(model_dir: str,
         torch.bfloat16: 'bf16',
         torch.float32: 'fp32'
     }
-    k = mapper[torch_dtype]
-    setattr(model_config, k, True)
+    k_true = mapper[torch_dtype]
+    for k in mapper.values():
+        v = False
+        if k == k_true:
+            v = True
+        setattr(model_config, k, v)
+
     device_name = torch.cuda.get_device_name()
     if 'A100' not in device_name and 'H100' not in device_name:
         model_config.use_flash_attn = False
@@ -184,7 +189,7 @@ MODEL_MAPPING = {
 def get_model_tokenizer(model_type: str,
                         torch_dtype: Optional[Dtype] = None,
                         load_model: bool = True,
-                        **model_kwargs):
+                        **kwargs):
     data = MODEL_MAPPING.get(model_type)
     if data is None:
         raise ValueError(f'model_type: {model_type}')
@@ -196,13 +201,15 @@ def get_model_tokenizer(model_type: str,
     if torch_dtype is None:
         torch_dtype = data.get('torch_dtype', torch.float16)
 
-    model_dir = model_id
-    if not os.path.exists(model_id):
-        revision = data.get('revision', 'master')
-        model_dir = snapshot_download(
-            model_id, revision, ignore_file_pattern=ignore_file_pattern)
+    model_dir = kwargs.pop('model_dir', None)
+    if model_dir is None:
+        model_dir = model_id
+        if not os.path.exists(model_id):
+            revision = data.get('revision', 'master')
+            model_dir = snapshot_download(
+                model_id, revision, ignore_file_pattern=ignore_file_pattern)
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
-                                    **model_kwargs)
+                                    **kwargs)
     _add_special_token(tokenizer, special_token_mapper)
     return model, tokenizer
