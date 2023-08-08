@@ -83,11 +83,6 @@ def llm_infer(args: InferArguments) -> None:
     # ### Preparing lora
     if args.sft_type == 'lora':
         model = Swift.from_pretrained(model, args.ckpt_dir)
-    elif args.sft_type == 'full':
-        state_dict = torch.load(args.ckpt_dir, map_location='cpu')
-        model.load_state_dict(state_dict)
-    else:
-        raise ValueError(f'args.sft_type: {args.sft_type}')
 
     show_layers(model)
     print_model_info(model)

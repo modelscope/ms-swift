@@ -3,18 +3,19 @@
 import os
 import shutil
 from types import MethodType
-from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import safetensors
 import torch
 from datasets import Dataset as HfDataset
+from modelscope import Model
 from peft import PeftModel
 from requests.exceptions import HTTPError
 from torch.nn import Module
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
-from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.modeling_utils import unwrap_model
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction, HubStrategy
 from transformers.training_args import TrainingArguments
@@ -254,6 +255,12 @@ class SwiftMixin:
                 else:
                     torch.save(state_dict,
                                os.path.join(output_dir, 'pytorch_model.bin'))
+        elif isinstance(self.model, Model):
+            PreTrainedModel.save_pretrained(
+                self.model,
+                output_dir,
+                state_dict=state_dict,
+                safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(
                 output_dir,

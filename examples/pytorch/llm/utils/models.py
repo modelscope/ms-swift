@@ -4,10 +4,12 @@ from typing import Any, Dict, NamedTuple, Optional
 
 import torch
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
-                        get_logger, read_config, snapshot_download)
+                        read_config, snapshot_download)
 from modelscope.models.nlp.chatglm2 import ChatGLM2Config, ChatGLM2Tokenizer
 from modelscope.models.nlp.qwen import QWenConfig, QWenTokenizer
 from torch import dtype as Dtype
+
+from swift import get_logger
 
 logger = get_logger()
 
@@ -45,12 +47,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
-def _get_model_tokenizer_from_sdk(config_class,
-                                  tokenizer_class,
-                                  model_dir: str,
-                                  torch_dtype: Dtype,
-                                  load_model: bool = True,
-                                  **model_kwargs):
+def get_model_tokenizer_from_sdk(config_class,
+                                 tokenizer_class,
+                                 model_dir: str,
+                                 torch_dtype: Dtype,
+                                 load_model: bool = True,
+                                 **model_kwargs):
     """load from ms library"""
     config = read_config(model_dir)
     logger.info(config)
@@ -90,9 +92,9 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return _get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
-                                         model_dir, torch_dtype, load_model,
-                                         **model_kwargs)
+    return get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
+                                        model_dir, torch_dtype, load_model,
+                                        **model_kwargs)
 
 
 def get_model_tokenizer_qwen(model_dir: str,
@@ -108,6 +110,10 @@ def get_model_tokenizer_qwen(model_dir: str,
     }
     k = mapper[torch_dtype]
     setattr(model_config, k, True)
+    device_name = torch.cuda.get_device_name()
+    if 'A100' not in device_name and 'H100' not in device_name:
+        model_config.use_flash_attn = False
+        logger.warning('Setting model_config.use_flash_attn: False')
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
                                          model_config, **model_kwargs)
 
