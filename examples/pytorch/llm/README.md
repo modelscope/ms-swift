@@ -30,15 +30,15 @@ git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
 # sft qlora
-bash run_sft_qlora.sh
+bash script/run_sft_qlora.sh
 # sft qlora ddp
-bash run_sft_qlora_ddp.sh
+bash script/run_sft_qlora_ddp.sh
 # sft full
-bash run_sft_full.sh
+bash script/run_sft_full.sh
 # inference qlora
-bash run_infer_qlora.sh
+bash script/run_infer_qlora.sh
 # inference full
-bash run_infer_full.sh
+bash script/run_infer_full.sh
 ```
 
 ## Extend models and datasets
