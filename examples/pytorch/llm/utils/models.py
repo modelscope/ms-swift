@@ -100,7 +100,7 @@ def get_model_tokenizer_chatglm2(model_dir: str,
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              load_model: bool = True,
-                             **model_kwargs):
+                             **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     mapper = {
@@ -115,12 +115,10 @@ def get_model_tokenizer_qwen(model_dir: str,
             v = True
         setattr(model_config, k, v)
 
-    device_name = torch.cuda.get_device_name()
-    if 'A100' not in device_name and 'H100' not in device_name:
-        model_config.use_flash_attn = False
-        logger.warning('Setting model_config.use_flash_attn: False')
+    use_flash_attn = kwargs.pop('use_flash_attn', 'auto')
+    model_config.use_flash_attn = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
-                                         model_config, **model_kwargs)
+                                         model_config, **kwargs)
 
 
 class LoRATM(NamedTuple):

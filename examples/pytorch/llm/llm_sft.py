@@ -89,6 +89,13 @@ class SftArguments:
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = None
 
+    # other
+    use_flash_attn: Optional[bool] = field(
+        default=None,
+        metadata={
+            'help': "This parameter is used only when model_type='qwen-7b'"
+        })
+
     def __post_init__(self):
         if is_dist():
             rank, _, _ = get_dist_setting()
@@ -125,6 +132,8 @@ class SftArguments:
 
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-sft'
+        if self.use_flash_attn is None:
+            self.use_flash_attn = 'auto'
 
 
 def llm_sft(args: SftArguments) -> None:
@@ -149,7 +158,8 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
-
+    if args.model_type == 'qwen-7b':
+        kwargs['use_flash_attn'] = args.use_flash_attn
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
