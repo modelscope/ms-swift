@@ -5,15 +5,17 @@ from functools import partial
 from typing import List, Optional
 
 import torch
+import torch.distributed as dist
 from transformers import BitsAndBytesConfig
-from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING, get_dataset,
-                   get_model_tokenizer, plot_images, process_dataset,
+from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING,
+                   broadcast_string, get_dataset, get_dist_setting,
+                   get_model_tokenizer, is_dist, plot_images, process_dataset,
                    select_bnb, select_dtype, show_layers)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
-from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
-                         seed_everything)
+from swift.utils import (add_version_to_work_dir, is_master, parse_args,
+                         print_model_info, seed_everything)
 from swift.utils.llm_utils import (data_collate_fn, print_example,
                                    stat_dataset, tokenize_function)
 
@@ -28,6 +30,9 @@ class SftArguments:
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     output_dir: str = 'runs'
+    # currently, DDP+MP is not supported
+    ddp_backend: Optional[str] = field(
+        default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
     seed: int = 42
     resume_from_ckpt: Optional[str] = None
@@ -42,7 +47,7 @@ class SftArguments:
     dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
-    max_length: Optional[int] = 2048
+    max_length: Optional[int] = 1024
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -84,7 +89,22 @@ class SftArguments:
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = None
 
+    # other
+    use_flash_attn: Optional[bool] = field(
+        default=None,
+        metadata={
+            'help': "This parameter is used only when model_type='qwen-7b'"
+        })
+
     def __post_init__(self):
+        if is_dist():
+            rank, _, _ = get_dist_setting()
+            self.seed += rank  # Avoid the same dropout
+            if self.ddp_backend is None:
+                self.ddp_backend = 'nccl'
+            # Initialize in advance
+            dist.init_process_group(backend=self.ddp_backend)
+
         if self.sft_type == 'lora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
@@ -92,6 +112,7 @@ class SftArguments:
                 self.save_steps = self.eval_steps
         elif self.sft_type == 'full':
             assert self.quantization_bit is None, 'not supported'
+            assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
             if self.save_steps is None:
@@ -111,14 +132,23 @@ class SftArguments:
 
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-sft'
+        if self.use_flash_attn is None:
+            self.use_flash_attn = 'auto'
 
 
 def llm_sft(args: SftArguments) -> None:
     logger.info(f'device_count: {torch.cuda.device_count()}')
+    rank, local_rank, world_size = get_dist_setting()
+    logger.info(
+        f'rank: {rank}, local_rank: {local_rank}, world_size: {world_size}')
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    model_kwargs = {'device_map': 'auto'}
+    kwargs = {'low_cpu_mem_usage': True}
+    if is_dist():
+        kwargs['device_map'] = {'': local_rank}
+    else:
+        kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -127,14 +157,11 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
-
+        kwargs['quantization_config'] = quantization_config
+    if args.model_type == 'qwen-7b':
+        kwargs['use_flash_attn'] = args.use_flash_attn
     model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, **model_kwargs)
-
-    if args.gradient_checkpoint:
-        model.gradient_checkpointing_enable()
-        model.enable_input_require_grads()
+        args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     # ### Preparing lora
     if args.sft_type == 'lora':
@@ -175,7 +202,11 @@ def llm_sft(args: SftArguments) -> None:
     print_example(train_dataset[0], tokenizer)
 
     # ### Setting trainer_args
-    output_dir = add_version_to_work_dir(args.output_dir)
+    output_dir = None
+    if is_master():
+        output_dir = add_version_to_work_dir(args.output_dir)
+    if is_dist():
+        output_dir = broadcast_string(output_dir)
     trainer_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         do_train=True,
@@ -208,7 +239,18 @@ def llm_sft(args: SftArguments) -> None:
         hub_strategy=args.hub_strategy,
         hub_token=args.hub_token,
         push_to_hub=args.push_to_hub,
-        resume_from_checkpoint=args.resume_from_ckpt)
+        resume_from_checkpoint=args.resume_from_ckpt,
+        ddp_backend=args.ddp_backend,
+        gradient_checkpointing=args.gradient_checkpoint,
+        local_rank=local_rank)
+
+    if args.gradient_checkpoint:
+        # fix: gradients will be None
+        model.enable_input_require_grads()
+        if is_dist():
+            trainer_args.ddp_find_unused_parameters = False
+            trainer_args.ddp_broadcast_buffers = False
+    logger.info(f'trainer_args: {trainer_args}')
 
     trainer = Seq2SeqTrainer(
         model=model,
@@ -219,17 +261,18 @@ def llm_sft(args: SftArguments) -> None:
         tokenizer=tokenizer,
     )
 
-    trainer.train()
+    trainer.train(trainer_args.resume_from_checkpoint)
 
     # ### Visualization
-    images_dir = os.path.join(output_dir, 'images')
-    tb_dir = os.path.join(output_dir, 'runs')
-    folder_name = os.listdir(tb_dir)[0]
-    tb_dir = os.path.join(tb_dir, folder_name)
-    plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
-    if args.push_to_hub:
-        trainer._add_patterns_to_gitignores(['images/'])
-        trainer.push_to_hub()
+    if is_master():
+        images_dir = os.path.join(output_dir, 'images')
+        tb_dir = os.path.join(output_dir, 'runs')
+        folder_name = os.listdir(tb_dir)[0]
+        tb_dir = os.path.join(tb_dir, folder_name)
+        plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
+        if args.push_to_hub:
+            trainer._add_patterns_to_gitignores(['images/'])
+            trainer.push_to_hub()
 
 
 if __name__ == '__main__':

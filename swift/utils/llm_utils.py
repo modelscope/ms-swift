@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 from datasets import Dataset as HfDataset
-from numpy.random import RandomState
 from torch.nn.utils.rnn import pad_sequence
 
 from .logger import get_logger
@@ -92,9 +91,9 @@ def _count_startswith(arr: List[int], val: int, lo: int = 0) -> int:
 
 def print_example(example: Dict[str, Any], tokenizer) -> None:
     input_ids, labels = example['input_ids'], example['labels']
-    print(f'[INPUT_IDS] {input_ids}')
-    print(f'[INPUT] {tokenizer.decode(input_ids)}')
-    print()
+    logger.info(f'[INPUT_IDS] {input_ids}')
+    logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
     n_mask = _count_startswith(labels, -100)
-    print(f'[LABLES_IDS] {labels}')
-    print(f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
+    logger.info(f'[LABLES_IDS] {labels}')
+    logger.info(
+        f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')

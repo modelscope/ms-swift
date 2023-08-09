@@ -38,7 +38,7 @@ class InferArguments:
     dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     prompt: str = DEFAULT_PROMPT
-    max_length: Optional[int] = 2048
+    max_length: Optional[int] = 1024
 
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})
@@ -67,7 +67,7 @@ def llm_infer(args: InferArguments) -> None:
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    model_kwargs = {'device_map': 'auto'}
+    kwargs = {'device_map': 'auto'}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -76,18 +76,16 @@ def llm_infer(args: InferArguments) -> None:
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
+        kwargs['quantization_config'] = quantization_config
+
+    if args.sft_type == 'full':
+        kwargs['model_dir'] = args.ckpt_dir
     model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, **model_kwargs)
+        args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     # ### Preparing lora
     if args.sft_type == 'lora':
         model = Swift.from_pretrained(model, args.ckpt_dir)
-    elif args.sft_type == 'full':
-        state_dict = torch.load(args.ckpt_dir, map_location='cpu')
-        model.load_state_dict(state_dict)
-    else:
-        raise ValueError(f'args.sft_type: {args.sft_type}')
 
     show_layers(model)
     print_model_info(model)

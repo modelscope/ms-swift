@@ -4,10 +4,12 @@ from typing import Any, Dict, NamedTuple, Optional
 
 import torch
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
-                        get_logger, read_config, snapshot_download)
+                        read_config, snapshot_download)
 from modelscope.models.nlp.chatglm2 import ChatGLM2Config, ChatGLM2Tokenizer
 from modelscope.models.nlp.qwen import QWenConfig, QWenTokenizer
 from torch import dtype as Dtype
+
+from swift import get_logger
 
 logger = get_logger()
 
@@ -45,12 +47,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
-def _get_model_tokenizer_from_sdk(config_class,
-                                  tokenizer_class,
-                                  model_dir: str,
-                                  torch_dtype: Dtype,
-                                  load_model: bool = True,
-                                  **model_kwargs):
+def get_model_tokenizer_from_sdk(config_class,
+                                 tokenizer_class,
+                                 model_dir: str,
+                                 torch_dtype: Dtype,
+                                 load_model: bool = True,
+                                 **model_kwargs):
     """load from ms library"""
     config = read_config(model_dir)
     logger.info(config)
@@ -90,15 +92,15 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return _get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
-                                         model_dir, torch_dtype, load_model,
-                                         **model_kwargs)
+    return get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
+                                        model_dir, torch_dtype, load_model,
+                                        **model_kwargs)
 
 
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              load_model: bool = True,
-                             **model_kwargs):
+                             **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     mapper = {
@@ -106,10 +108,17 @@ def get_model_tokenizer_qwen(model_dir: str,
         torch.bfloat16: 'bf16',
         torch.float32: 'fp32'
     }
-    k = mapper[torch_dtype]
-    setattr(model_config, k, True)
+    k_true = mapper[torch_dtype]
+    for k in mapper.values():
+        v = False
+        if k == k_true:
+            v = True
+        setattr(model_config, k, v)
+
+    use_flash_attn = kwargs.pop('use_flash_attn', 'auto')
+    model_config.use_flash_attn = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
-                                         model_config, **model_kwargs)
+                                         model_config, **kwargs)
 
 
 class LoRATM(NamedTuple):
@@ -165,7 +174,7 @@ MODEL_MAPPING = {
     },
     'qwen-7b': {
         'model_id': 'qwen/Qwen-7B',
-        'revision': 'v1.0.3',
+        'revision': 'v.1.0.4',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
         'special_token_mapper': {
@@ -178,7 +187,7 @@ MODEL_MAPPING = {
 def get_model_tokenizer(model_type: str,
                         torch_dtype: Optional[Dtype] = None,
                         load_model: bool = True,
-                        **model_kwargs):
+                        **kwargs):
     data = MODEL_MAPPING.get(model_type)
     if data is None:
         raise ValueError(f'model_type: {model_type}')
@@ -190,13 +199,15 @@ def get_model_tokenizer(model_type: str,
     if torch_dtype is None:
         torch_dtype = data.get('torch_dtype', torch.float16)
 
-    model_dir = model_id
-    if not os.path.exists(model_id):
-        revision = data.get('revision', 'master')
-        model_dir = snapshot_download(
-            model_id, revision, ignore_file_pattern=ignore_file_pattern)
+    model_dir = kwargs.pop('model_dir', None)
+    if model_dir is None:
+        model_dir = model_id
+        if not os.path.exists(model_id):
+            revision = data.get('revision', 'master')
+            model_dir = snapshot_download(
+                model_id, revision, ignore_file_pattern=ignore_file_pattern)
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
-                                    **model_kwargs)
+                                    **kwargs)
     _add_special_token(tokenizer, special_token_mapper)
     return model, tokenizer

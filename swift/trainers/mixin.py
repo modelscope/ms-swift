@@ -3,7 +3,7 @@
 import os
 import shutil
 from types import MethodType
-from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import safetensors
@@ -12,9 +12,9 @@ from datasets import Dataset as HfDataset
 from peft import PeftModel
 from requests.exceptions import HTTPError
 from torch.nn import Module
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
-from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.modeling_utils import unwrap_model
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction, HubStrategy
 from transformers.training_args import TrainingArguments
@@ -25,7 +25,8 @@ from swift.hub.constants import ModelVisibility
 from swift.tuners import SwiftModel
 from swift.utils.constants import Invoke
 from swift.utils.logger import get_logger
-from .utils import can_return_loss, find_labels, get_function
+from .utils import (can_return_loss, find_labels, get_function,
+                    is_instance_of_ms_Model)
 
 logger = get_logger()
 
@@ -228,7 +229,15 @@ class SwiftMixin:
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
-        self._create_configuration_file(self.model, output_dir)
+        if is_instance_of_ms_Model(self.model):
+            model_dir = getattr(self.model, 'model_dir', None)
+            if model_dir is not None:
+                src_path = os.path.join(model_dir, 'configuration.json')
+                dst_path = os.path.join(output_dir, 'configuration.json')
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
+        else:
+            self._create_configuration_file(self.model, output_dir)
 
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         # save model, tokenizer, args
@@ -254,6 +263,12 @@ class SwiftMixin:
                 else:
                     torch.save(state_dict,
                                os.path.join(output_dir, 'pytorch_model.bin'))
+        elif is_instance_of_ms_Model(self.model):
+            PreTrainedModel.save_pretrained(
+                self.model,
+                output_dir,
+                state_dict=state_dict,
+                safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(
                 output_dir,

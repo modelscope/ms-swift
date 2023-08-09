@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 import importlib
 import logging
+import os
 from typing import Optional
 
 init_loggers = {}
@@ -10,10 +10,9 @@ formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
-def is_master(group=None):
-    from torch import distributed as dist
-    return dist.get_rank(
-        group) == 0 if dist.is_available() and dist.is_initialized() else True
+def is_master():
+    rank = int(os.getenv('RANK', -1))
+    return rank in {-1, 0}
 
 
 def get_logger(log_file: Optional[str] = None,

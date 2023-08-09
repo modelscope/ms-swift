@@ -1,6 +1,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
     --model_type qwen-7b \
+    --sft_type full \
     --ckpt_dir "runs/qwen-7b/vx_xxx/checkpoint-xxx" \
     --eval_human true \
     --dataset_sample 20000 \
