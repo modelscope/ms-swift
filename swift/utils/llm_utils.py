@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 from datasets import Dataset as HfDataset
-from numpy.random import RandomState
 from torch.nn.utils.rnn import pad_sequence
 
 from .logger import get_logger

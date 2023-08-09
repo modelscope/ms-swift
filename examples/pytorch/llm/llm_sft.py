@@ -105,6 +105,7 @@ class SftArguments:
                 self.save_steps = self.eval_steps
         elif self.sft_type == 'full':
             assert self.quantization_bit is None, 'not supported'
+            assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
             if self.save_steps is None:

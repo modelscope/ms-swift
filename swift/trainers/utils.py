@@ -35,3 +35,13 @@ def get_function(
     if isinstance(method_or_function, MethodType):
         method_or_function = method_or_function.__func__
     return method_or_function
+
+
+def is_instance_of_ms_Model(model: Module) -> bool:
+    """avoid import modelscope: circular dependency problem"""
+    for m_cls in model.__class__.__mro__:
+        cls_name = m_cls.__name__
+        cls_module = m_cls.__module__
+        if cls_name == 'Model' and cls_module.startswith('modelscope'):
+            return True
+    return False
