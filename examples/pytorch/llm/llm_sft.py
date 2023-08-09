@@ -249,7 +249,6 @@ def llm_sft(args: SftArguments) -> None:
         model.enable_input_require_grads()
         if is_dist():
             trainer_args.ddp_find_unused_parameters = False
-            trainer_args.ddp_broadcast_buffers = False
 
     trainer = Seq2SeqTrainer(
         model=model,
