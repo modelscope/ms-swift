@@ -250,6 +250,7 @@ def llm_sft(args: SftArguments) -> None:
         if is_dist():
             trainer_args.ddp_find_unused_parameters = False
             trainer_args.ddp_broadcast_buffers = False
+    logger.info(f'trainer_args: {trainer_args}')
 
     trainer = Seq2SeqTrainer(
         model=model,
