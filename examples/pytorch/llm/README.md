@@ -11,7 +11,7 @@
 <p align="center">
 <a href="https://modelscope.cn/home">Modelscope Hub</a>
 <br>
-        <a href="examples/pytorch/llm/README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
+        <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
 </p>
 
 ## Features

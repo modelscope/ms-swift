@@ -11,7 +11,7 @@
 <p align="center">
 <a href="https://modelscope.cn/home">魔搭社区</a>
 <br>
-        中文&nbsp ｜ &nbsp<a href="examples/pytorch/llm/README.md">English</a>
+        中文&nbsp ｜ &nbsp<a href="README.md">English</a>
 </p>
 
 
