@@ -102,6 +102,9 @@ class SftArguments:
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
+            if self.ddp_backend == 'gloo' and self.quantization_bit is not None:
+                raise ValueError('not supported, please use `nccl`')
+
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 

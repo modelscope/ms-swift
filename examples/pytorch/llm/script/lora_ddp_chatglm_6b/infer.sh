@@ -1,11 +1,10 @@
-# 10G
+# 14G
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --model_type qwen-7b \
+    --model_type chatglm2-6b \
     --sft_type lora \
-    --ckpt_dir "runs/qwen-7b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "runs/chatglm2-6b/vx_xxx/checkpoint-xxx" \
     --eval_human true \
-    --quantization_bit 4 \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \
