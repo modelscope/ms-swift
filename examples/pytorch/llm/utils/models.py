@@ -6,7 +6,7 @@ import torch
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
                         read_config, snapshot_download)
 from modelscope.models.nlp.chatglm2 import ChatGLM2Config, ChatGLM2Tokenizer
-from modelscope.models.nlp.qwen import QWenConfig, QWenTokenizer
+from modelscope.models.nlp.llama2 import Llama2Config, Llama2Tokenizer
 from torch import dtype as Dtype
 
 from swift import get_logger
@@ -47,16 +47,18 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
-def get_model_tokenizer_from_sdk(config_class,
-                                 tokenizer_class,
+def get_model_tokenizer_from_sdk(config_class: type,
+                                 tokenizer_class: type,
                                  model_dir: str,
                                  torch_dtype: Dtype,
                                  load_model: bool = True,
+                                 model_config=None,
                                  **model_kwargs):
     """load from ms library"""
     config = read_config(model_dir)
     logger.info(config)
-    model_config = config_class.from_pretrained(model_dir)
+    if model_config is None:
+        model_config = config_class.from_pretrained(model_dir)
     model_config.torch_dtype = torch_dtype
     logger.info(model_config)
     tokenizer = tokenizer_class.from_pretrained(model_dir)
@@ -95,6 +97,18 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     return get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
                                         model_dir, torch_dtype, load_model,
                                         **model_kwargs)
+
+
+def get_model_tokenizer_llama2(model_dir: str,
+                               torch_dtype: Dtype,
+                               load_model: bool = True,
+                               **model_kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    return get_model_tokenizer_from_sdk(Llama2Config, Llama2Tokenizer,
+                                        model_dir, torch_dtype, load_model,
+                                        model_config, **model_kwargs)
 
 
 def get_model_tokenizer_qwen(model_dir: str,
@@ -141,6 +155,7 @@ MODEL_MAPPING = {
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
         'revision': 'v1.0.3',
+        'get_function': get_model_tokenizer_baichuan13b,
         'lora_TM': LoRATM.baichuan
     },
     'chatglm2-6b': {
@@ -152,18 +167,21 @@ MODEL_MAPPING = {
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_llama2,
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2
     },
     'llama2-13b': {
         'model_id': 'modelscope/Llama-2-13b-ms',
         'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_llama2,
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2
     },
     'llama2-70b': {
         'model_id': 'modelscope/Llama-2-70b-ms',
         'revision': 'v1.0.0',
+        'get_function': get_model_tokenizer_llama2,
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2
     },

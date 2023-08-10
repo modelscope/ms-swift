@@ -1,9 +1,9 @@
 # LLM Example
-1. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, warmup, lr_scheduler, push to modelscope hub, easy to extend models and datasets, tensorboard(and plot tb-like images after training), notebook compatibility, resume from ckpt, custom prompt, ...
-2. supported models: baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, **llama2-70b**(when quantization_bit=4, only 44GB of memory is required), openbuddy-llama2-13b, **qwen-7b**, ...
-3. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, ...
-4. supported sft method: lora, qlora, full, ...
-5. todo: DDP+MP, metrics(ROUGE, BELU), multi-round, RLHF, more models and datasets, ...
+1. supported sft method: lora, qlora, full, ...
+2. supported models: **qwen-7b**, baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, ...
+3. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, push to modelscope hub, custom datasets, notebook compatibility, tensorboard, warmup, lr_scheduler, easy to extend models, resume from ckpt, custom prompt, ...
+4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, ...
+5. todo: metrics(ROUGE, BELU), multi-round, RLHF, more models and datasets, ...
 
 ## Prepare the environment
 ```bash
@@ -29,16 +29,17 @@ pip install ms-swift modelscope -U
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# sft qlora
-bash script/run_sft_qlora.sh
-# sft qlora ddp
-bash script/run_sft_qlora_ddp.sh
-# sft full
-bash script/run_sft_full.sh
-# inference qlora
-bash script/run_infer_qlora.sh
-# inference full
-bash script/run_infer_full.sh
+# sft(qlora) and infer qwen-7b
+bash script/qlora_qwen_7b//sft.sh
+bash script/qlora_qwen_7b//infer.sh
+
+# sft(qlora+ddp) and infer qwen-7b
+bash script/qlora_ddp_qwen_7b//sft.sh
+bash script/qlora_ddp_qwen_7b//infer.sh
+
+# sft(full) and infer qwen-7b
+bash script/full_qwen_7b/sft.sh
+bash script/full_qwen_7b/infer.sh
 ```
 
 ## Extend models and datasets
