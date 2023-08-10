@@ -1,4 +1,13 @@
-# 大模型微调的例子
+
+<h1 align="center">大模型微调的例子</h1>
+
+<p align="center">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
+<img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
+<img src="https://img.shields.io/badge/modelscope-%E2%89%A51.8.1-5D91D4.svg">
+<img src="https://img.shields.io/badge/ms--swift-%E2%89%A51.0.0-6FEBB9.svg">
+</p>
+
 <p align="center">
 <a href="https://modelscope.cn/home">魔搭社区</a>
 <br>
