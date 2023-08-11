@@ -28,7 +28,7 @@ class InferArguments:
 
     seed: int = 42
     dtype: str = field(
-        default='fp16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
+        default='bf16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
@@ -43,7 +43,7 @@ class InferArguments:
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})
     bnb_4bit_comp_dtype: str = field(
-        default='fp16', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+        default='fp32', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
