@@ -1,6 +1,6 @@
 # 95G
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
-python llm_sft.py \
+python src/llm_sft.py \
     --model_type qwen-7b \
     --sft_type full \
     --dtype bf16 \

@@ -1,6 +1,6 @@
 # 14G
 CUDA_VISIBLE_DEVICES=0 \
-python llm_infer.py \
+python src/llm_infer.py \
     --model_type chatglm2-6b \
     --sft_type lora \
     --ckpt_dir "runs/chatglm2-6b/vx_xxx/checkpoint-xxx" \

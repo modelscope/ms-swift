@@ -48,16 +48,18 @@ git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
 # 微调(qlora)+推理 qwen-7b
-bash script/qlora_qwen_7b/sft.sh
-bash script/qlora_qwen_7b/infer.sh
+bash scripts/qlora_qwen_7b/sft.sh
+bash scripts/qlora_qwen_7b/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b
-bash script/qlora_ddp_qwen_7b/sft.sh
-bash script/qlora_ddp_qwen_7b/infer.sh
+bash scripts/qlora_ddp_qwen_7b/sft.sh
+bash scripts/qlora_ddp_qwen_7b/infer.sh
 
 # 微调(full)+推理 qwen-7b
-bash script/full_qwen_7b/sft.sh
-bash script/full_qwen_7b/infer.sh
+bash scripts/full_qwen_7b/sft.sh
+bash scripts/full_qwen_7b/infer.sh
+
+# 更多的scripts脚本, 可以看`scripts`文件夹
 ```
 
 ## 拓展数据集

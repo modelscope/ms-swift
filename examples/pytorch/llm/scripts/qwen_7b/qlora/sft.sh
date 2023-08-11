@@ -1,8 +1,7 @@
-# 44G
-# not good at Chinese
-CUDA_VISIBLE_DEVICES=0,1 \
-python llm_sft.py \
-    --model_type llama2-70b \
+# 10G
+CUDA_VISIBLE_DEVICES=0 \
+python src/llm_sft.py \
+    --model_type qwen-7b \
     --sft_type lora \
     --output_dir runs \
     --dataset alpaca-en,alpaca-zh \
@@ -19,3 +18,4 @@ python llm_sft.py \
     --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 10 \
+    --use_flash_attn false \

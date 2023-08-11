@@ -46,16 +46,18 @@ git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
 # sft(qlora) and infer qwen-7b
-bash script/qlora_qwen_7b/sft.sh
-bash script/qlora_qwen_7b/infer.sh
+bash scripts/qwen_7b/qlora/sft.sh
+bash scripts/qwen_7b/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b
-bash script/qlora_ddp_qwen_7b/sft.sh
-bash script/qlora_ddp_qwen_7b/infer.sh
+bash scripts/qwen_7b/qlora_ddp/sft.sh
+bash scripts/qwen_7b/qlora_ddp/infer.sh
 
 # sft(full) and infer qwen-7b
-bash script/full_qwen_7b/sft.sh
-bash script/full_qwen_7b/infer.sh
+bash scripts/qwen_7b/full/sft.sh
+bash scripts/qwen_7b/full/infer.sh
+
+# For more scripts, please see `scripts/` folder
 ```
 
 ## Extend Datasets
