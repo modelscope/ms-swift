@@ -95,15 +95,18 @@ def get_code_alpaca_en_dataset() -> HfDataset:
         'wyj123456/code_alpaca_en', split='train').to_hf_dataset()
     return _processing_alpaca(dataset)
 
+
 def get_instinwild_zh_dataset():
     dataset: HfDataset = MsDataset.load(
-        'wyj123456/instinwild', subset_name='default', split='train').to_hf_dataset()
+        'wyj123456/instinwild', subset_name='default',
+        split='train').to_hf_dataset()
     return _processing_alpaca(dataset)
 
 
 def get_instinwild_en_dataset():
     dataset: HfDataset = MsDataset.load(
-        'wyj123456/instinwild', subset_name='subset', split='train').to_hf_dataset()
+        'wyj123456/instinwild', subset_name='subset',
+        split='train').to_hf_dataset()
     return _processing_alpaca(dataset)
 
 
