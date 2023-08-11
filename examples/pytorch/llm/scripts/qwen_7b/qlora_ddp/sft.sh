@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
-    llm_sft.py \
+    src/llm_sft.py \
     --model_type qwen-7b \
     --sft_type lora \
     --output_dir runs \

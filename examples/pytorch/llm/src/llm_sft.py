@@ -30,7 +30,7 @@ class SftArguments:
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     output_dir: str = 'runs'
-    # currently, DDP+MP is not supported
+    # DDP + MP(device_map) is not supported
     ddp_backend: Optional[str] = field(
         default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
@@ -98,10 +98,13 @@ class SftArguments:
 
     def __post_init__(self):
         if is_dist():
-            rank, _, _ = get_dist_setting()
+            rank = get_dist_setting()[0]
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
+            if self.ddp_backend == 'gloo' and self.quantization_bit is not None:
+                raise ValueError('not supported, please use `nccl`')
+
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
@@ -137,10 +140,10 @@ class SftArguments:
 
 
 def llm_sft(args: SftArguments) -> None:
-    logger.info(f'device_count: {torch.cuda.device_count()}')
-    rank, local_rank, world_size = get_dist_setting()
-    logger.info(
-        f'rank: {rank}, local_rank: {local_rank}, world_size: {world_size}')
+    print(f'device_count: {torch.cuda.device_count()}')
+    rank, local_rank, world_size, local_world_size = get_dist_setting()
+    print(f'rank: {rank}, local_rank: {local_rank}, '
+          f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
@@ -160,6 +163,7 @@ def llm_sft(args: SftArguments) -> None:
         kwargs['quantization_config'] = quantization_config
     if args.model_type == 'qwen-7b':
         kwargs['use_flash_attn'] = args.use_flash_attn
+
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
@@ -206,6 +210,7 @@ def llm_sft(args: SftArguments) -> None:
     if is_master():
         output_dir = add_version_to_work_dir(args.output_dir)
     if is_dist():
+        # Make sure to set the same output_dir when using DDP.
         output_dir = broadcast_string(output_dir)
     trainer_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
@@ -266,6 +271,7 @@ def llm_sft(args: SftArguments) -> None:
     # ### Visualization
     if is_master():
         images_dir = os.path.join(output_dir, 'images')
+        logger.info(f'images_dir: {images_dir}')
         tb_dir = os.path.join(output_dir, 'runs')
         folder_name = os.listdir(tb_dir)[0]
         tb_dir = os.path.join(tb_dir, folder_name)

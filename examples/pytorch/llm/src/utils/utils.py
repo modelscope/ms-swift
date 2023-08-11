@@ -31,12 +31,13 @@ DTYPE_MAPPING = {
 }
 
 
-def get_dist_setting() -> Tuple[int, int, int]:
+def get_dist_setting() -> Tuple[int, int, int, int]:
     """return rank, local_rank, world_size"""
     rank = int(os.getenv('RANK', -1))
     local_rank = int(os.getenv('LOCAL_RANK', -1))
     world_size = int(os.getenv('WORLD_SIZE', 1))
-    return rank, local_rank, world_size
+    local_world_size = int(os.getenv('LOCAL_WORLD_SIZE', 1))
+    return rank, local_rank, world_size, local_world_size
 
 
 def is_dist():
@@ -149,7 +150,7 @@ def broadcast_string(string: Optional[str], buffer_size: int = 100) -> str:
     return: all rank: str
     """
     assert dist.is_initialized()
-    rank, local_rank, _ = get_dist_setting()
+    rank, local_rank, _, _ = get_dist_setting()
     assert rank >= 0
     if rank == 0:
         assert string is not None
