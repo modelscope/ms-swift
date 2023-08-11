@@ -67,7 +67,7 @@ def llm_infer(args: InferArguments) -> None:
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    kwargs = {'device_map': 'auto'}
+    kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,

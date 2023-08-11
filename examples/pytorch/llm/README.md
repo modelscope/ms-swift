@@ -45,15 +45,15 @@ pip install ms-swift modelscope -U
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# sft(qlora) and infer qwen-7b
+# sft(qlora) and infer qwen-7b, Requires 10GB VRAM.
 bash scripts/qwen_7b/qlora/sft.sh
 bash scripts/qwen_7b/qlora/infer.sh
 
-# sft(qlora+ddp) and infer qwen-7b
+# sft(qlora+ddp) and infer qwen-7b, Requires 4*10GB VRAM.
 bash scripts/qwen_7b/qlora_ddp/sft.sh
 bash scripts/qwen_7b/qlora_ddp/infer.sh
 
-# sft(full) and infer qwen-7b
+# sft(full) and infer qwen-7b, Requires 95GB VRAM.
 bash scripts/qwen_7b/full/sft.sh
 bash scripts/qwen_7b/full/infer.sh
 

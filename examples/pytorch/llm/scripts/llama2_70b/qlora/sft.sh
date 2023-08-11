@@ -1,5 +1,5 @@
 # 44G
-# not good at Chinese
+# llama2 is not good at Chinese
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type llama2-70b \

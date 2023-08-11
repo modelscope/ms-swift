@@ -147,6 +147,15 @@ class LoRATM(NamedTuple):
 # keys: 'model_id', 'revision', 'get_function',
 #   'ignore_file_pattern', 'special_token_mapper', 'lora_TM'
 MODEL_MAPPING = {
+    'qwen-7b': {
+        'model_id': 'qwen/Qwen-7B',
+        'revision': 'v.1.0.4',
+        'get_function': get_model_tokenizer_qwen,
+        'lora_TM': LoRATM.qwen,
+        'special_token_mapper': {
+            'eos_token': '<|endoftext|>'
+        }
+    },
     'baichuan-7b': {
         'model_id': 'baichuan-inc/baichuan-7B',  # model id or model dir
         'revision': 'v1.0.7',
@@ -190,15 +199,11 @@ MODEL_MAPPING = {
         'revision': 'v1.0.0',
         'lora_TM': LoRATM.llama2,
     },
-    'qwen-7b': {
-        'model_id': 'qwen/Qwen-7B',
-        'revision': 'v.1.0.4',
-        'get_function': get_model_tokenizer_qwen,
-        'lora_TM': LoRATM.qwen,
-        'special_token_mapper': {
-            'eos_token': '<|endoftext|>'
-        }
-    }
+    'openbuddy-llama-65b': {
+        'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.llama2,
+    },
 }
 
 
