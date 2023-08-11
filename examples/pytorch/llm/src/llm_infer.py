@@ -28,7 +28,7 @@ class InferArguments:
 
     seed: int = 42
     dtype: str = field(
-        default='fp16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
+        default='bf16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
@@ -43,7 +43,7 @@ class InferArguments:
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})
     bnb_4bit_comp_dtype: str = field(
-        default='fp16', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+        default='fp32', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
@@ -67,7 +67,7 @@ def llm_infer(args: InferArguments) -> None:
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    kwargs = {'device_map': 'auto'}
+    kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -104,7 +104,8 @@ def llm_infer(args: InferArguments) -> None:
         top_k=args.top_k,
         top_p=args.top_p,
         do_sample=args.do_sample,
-        pad_token_id=tokenizer.eos_token_id)
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
 
     if args.eval_human:

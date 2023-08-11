@@ -1,5 +1,5 @@
-# 15G * 4
-
+# 4 * 15G
+# ddp_backend gloo: support windows
 nproc_per_node=4
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
@@ -23,4 +23,3 @@ torchrun \
     --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \

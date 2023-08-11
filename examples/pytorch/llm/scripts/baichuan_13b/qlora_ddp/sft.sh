@@ -1,11 +1,11 @@
-# 4 * 10G
+# 4 * 17G
 nproc_per_node=4
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     src/llm_sft.py \
-    --model_type qwen-7b \
+    --model_type baichuan-13b \
     --sft_type lora \
     --output_dir runs \
     --ddp_backend nccl \
@@ -23,4 +23,3 @@ torchrun \
     --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \

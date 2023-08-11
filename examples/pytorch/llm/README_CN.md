@@ -17,7 +17,7 @@
 
 ## 特性
 1. 支持的sft方法: lora, qlora, 全参数微调, ...
-2. 支持的模型: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, ...
+2. 支持的模型: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpoint, 梯度累加, 支持推送modelscope hub, 支持自定义数据集, 兼容notebook, tensorboard, warmup, lr scheduler, 断点续训, ...
 4. 支持的数据集: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, multi-alpaca-ar, multi-alpaca-de, multi-alpaca-es, multi-alpaca-fr, multi-alpaca-id, multi-alpaca-ja, multi-alpaca-ko, multi-alpaca-pt, multi-alpaca-ru, multi-alpaca-th, multi-alpaca-vi, code-en, instinwild-en, instinwild-zh, ...
 
@@ -47,17 +47,17 @@ pip install ms-swift modelscope -U
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# 微调(qlora)+推理 qwen-7b
-bash scripts/qlora_qwen_7b/sft.sh
-bash scripts/qlora_qwen_7b/infer.sh
+# 微调(qlora)+推理 qwen-7b, 需要10G显存.
+bash scripts/qwen_7b/qlora/sft.sh
+bash scripts/qwen_7b/qlora/infer.sh
 
-# 微调(qlora+ddp)+推理 qwen-7b
-bash scripts/qlora_ddp_qwen_7b/sft.sh
-bash scripts/qlora_ddp_qwen_7b/infer.sh
+# 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*10G显存.
+bash scripts/qwen_7b/qlora_ddp/sft.sh
+bash scripts/qwen_7b/qlora_ddp/infer.sh
 
-# 微调(full)+推理 qwen-7b
-bash scripts/full_qwen_7b/sft.sh
-bash scripts/full_qwen_7b/infer.sh
+# 微调(full)+推理 qwen-7b, 需要95G显存.
+bash scripts/qwen_7b/full/sft.sh
+bash scripts/qwen_7b/full/infer.sh
 
 # 更多的scripts脚本, 可以看`scripts`文件夹
 ```

@@ -99,6 +99,7 @@ def inference(input_ids: List[int],
     print(f'{tag}{tokenizer.decode(input_ids)}', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
+    model.eval()
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
