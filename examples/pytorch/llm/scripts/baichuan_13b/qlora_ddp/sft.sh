@@ -1,18 +1,18 @@
-# 4 * 15G
-# ddp_backend gloo: support windows
+# 4 * 17G
 nproc_per_node=4
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     src/llm_sft.py \
-    --model_type chatglm2-6b \
+    --model_type baichuan-13b \
     --sft_type lora \
     --output_dir runs \
-    --ddp_backend gloo \
+    --ddp_backend nccl \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample 20000 \
     --max_length 1024 \
+    --quantization_bit 4 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.1 \

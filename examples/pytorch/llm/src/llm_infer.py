@@ -104,7 +104,8 @@ def llm_infer(args: InferArguments) -> None:
         top_k=args.top_k,
         top_p=args.top_p,
         do_sample=args.do_sample,
-        pad_token_id=tokenizer.eos_token_id)
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
 
     if args.eval_human:

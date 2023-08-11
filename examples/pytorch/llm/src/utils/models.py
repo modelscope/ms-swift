@@ -1,4 +1,5 @@
 import os
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from types import MethodType
 from typing import Any, Dict, NamedTuple, Optional
 
@@ -27,6 +28,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Dtype,
                                   load_model: bool = True,
                                   model_config=None,
+                                  tokenizer=None,
                                   **model_kwargs):
     """load from an independent repository"""
     if model_config is None:
@@ -34,8 +36,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
             model_dir, trust_remote_code=True)
     model_config.torch_dtype = torch_dtype
     logger.info(f'model_config: {model_config}')
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_dir, trust_remote_code=True)
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_dir, trust_remote_code=True)
     model = None
     if load_model:
         model = AutoModelForCausalLM.from_pretrained(
@@ -111,6 +114,20 @@ def get_model_tokenizer_llama2(model_dir: str,
                                         model_config, **model_kwargs)
 
 
+def get_model_tokenizer_polylm(model_dir: str,
+                               torch_dtype: Dtype,
+                               load_model: bool = True,
+                               **model_kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True, use_fast=False)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        load_model,
+        tokenizer=tokenizer,
+        **model_kwargs)
+
+
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              load_model: bool = True,
@@ -141,9 +158,10 @@ class LoRATM(NamedTuple):
     chatglm2 = ['query_key_value']
     llama2 = ['q_proj', 'k_proj', 'v_proj']
     qwen = ['c_attn']
+    polylm = ['c_attn']
 
 
-# Reference: 'https://modelscope.cn/models/{model_id}/summary'
+# Model Home: 'https://modelscope.cn/models/{model_id}/summary'
 # keys: 'model_id', 'revision', 'get_function',
 #   'ignore_file_pattern', 'special_token_mapper', 'lora_TM'
 MODEL_MAPPING = {
@@ -163,7 +181,7 @@ MODEL_MAPPING = {
     },
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
-        'revision': 'v1.0.3',
+        'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_baichuan13b,
         'lora_TM': LoRATM.baichuan
     },
@@ -204,6 +222,12 @@ MODEL_MAPPING = {
         'revision': 'v1.0.0',
         'lora_TM': LoRATM.llama2,
     },
+    'polylm-13b': {
+        'model_id': 'damo/nlp_polylm_13b_text_generation',
+        'revision': 'v1.0.3',
+        'get_function': get_model_tokenizer_polylm,
+        'lora_TM': LoRATM.polylm,
+    },
 }
 
 
@@ -221,6 +245,8 @@ def get_model_tokenizer(model_type: str,
     special_token_mapper = data.get('special_token_mapper', {})
     if torch_dtype is None:
         torch_dtype = data.get('torch_dtype', torch.float16)
+    if 'device_map' not in kwargs:
+        kwargs['device_map'] = 'auto'
 
     model_dir = kwargs.pop('model_dir', None)
     if model_dir is None:

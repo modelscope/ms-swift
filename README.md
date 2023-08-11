@@ -22,24 +22,31 @@ Key features:
 1. By integrating the ModelScope library, models can be readily obatined via a model-id.
 2. Tuners provided by SWIFT be combined together to allow exploration of multiple tuners on a model for best result.
 
-Check out the LLM examples here: [SFT and Inference examples](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
+## LLM SFT Example
+[code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
 
-  ```bash
-  git clone https://github.com/modelscope/swift.git
-  cd swift/examples/pytorch/llm
-  # sft
-  PYTHONPATH=../../.. bash run_sft.sh
-  # inference
-  PYTHONPATH=../../.. bash run_infer.sh
-  ```
+1. supported sft method: lora, qlora, full, ...
+2. supported models: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
+3. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, push to modelscope hub, custom datasets, notebook compatibility, ...
+4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, ...
 
-  - Supported models: baichuan-7b, baichuan-13b, chatglm2-6b, llama2-7b, llama2-13b, openbuddy-llama2-13b, ...
 
-  - Supported datasets: alpaca-en, alpaca-zh, ...
+```bash
+git clone https://github.com/modelscope/swift.git
+cd swift/examples/pytorch/llm
 
-  - Supported sft methods: lora, full, ...
+# sft(qlora) and infer qwen-7b, Requires 10GB VRAM.
+bash scripts/qwen_7b/qlora/sft.sh
+bash scripts/qwen_7b/qlora/infer.sh
 
-  - and more ...
+# sft(qlora+ddp) and infer qwen-7b, Requires 4*10GB VRAM.
+bash scripts/qwen_7b/qlora_ddp/sft.sh
+bash scripts/qwen_7b/qlora_ddp/infer.sh
+
+# sft(full) and infer qwen-7b, Requires 95GB VRAM.
+bash scripts/qwen_7b/full/sft.sh
+bash scripts/qwen_7b/full/infer.sh
+```
 
 # Getting Started
 
