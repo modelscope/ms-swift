@@ -1,6 +1,5 @@
 # 40G
-# llama2 is not good at Chinese
-CUDA_VISIBLE_DEVICES=6,7 \
+CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type openbuddy-llama-65b \
     --sft_type lora \

@@ -191,6 +191,11 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_chatglm2,
         'lora_TM': LoRATM.chatglm2
     },
+    'chatglm2-6b-32k': {
+        'model_id': 'ZhipuAI/chatglm2-6b-32k',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.chatglm2
+    },
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',

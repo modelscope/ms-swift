@@ -8,12 +8,13 @@ import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig
 from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING,
-                   broadcast_string, get_dataset, get_dist_setting,
-                   get_model_tokenizer, is_dist, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers)
+                   broadcast_string, find_all_linear_for_lora, get_dataset,
+                   get_dist_setting, get_model_tokenizer, is_dist, plot_images,
+                   process_dataset, select_bnb, select_dtype, show_layers)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
+from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, is_master, parse_args,
                          print_model_info, seed_everything)
 from swift.utils.llm_utils import (data_collate_fn, print_example,
@@ -87,13 +88,18 @@ class SftArguments:
     hub_private_repo: bool = True
     hub_strategy: HubStrategy = HubStrategy.EVERY_SAVE
     # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = None
+    hub_token: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
+        })
 
     # other
     use_flash_attn: Optional[bool] = field(
         default=None,
         metadata={
-            'help': "This parameter is used only when model_type='qwen-7b'"
+            'help': "This parameter is used only when model_type == 'qwen-7b'"
         })
 
     def __post_init__(self):
@@ -135,8 +141,19 @@ class SftArguments:
 
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-sft'
+            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
+        if self.push_to_hub:
+            api = HubApi()
+            if self.hub_token is None:
+                self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+            if self.hub_token is not None:
+                api.login(self.hub_token)
+            else:
+                assert ModelScopeConfig.get_token(
+                ) is not None, 'Please enter hub_token'
+            logger.info('hub login successful!!!')
 
 
 def llm_sft(args: SftArguments) -> None:
@@ -169,6 +186,11 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Preparing lora
     if args.sft_type == 'lora':
+        if 'ALL' in args.lora_target_modules:
+            assert len(args.lora_target_modules) == 1
+            args.lora_target_modules = find_all_linear_for_lora(
+                args.quantization_bit, model)
+            logger.info(f'lora_target_modules: {args.lora_target_modules}')
         if args.resume_from_ckpt is None:
             lora_config = LoraConfig(
                 r=args.lora_rank,

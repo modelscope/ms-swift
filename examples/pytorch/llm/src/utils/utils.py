@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.distributed as dist
 from torch import dtype as Dtype
-from torch.nn import Module
+from torch.nn import Linear, Module
 from transformers import GenerationConfig, TextStreamer
 
 from swift import get_logger
@@ -15,6 +15,8 @@ from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 logger = get_logger()
 
+# The `output` section will be concatenated at the end
+# `prompt` part does not calculate the loss, `output` part calculates the loss
 DEFAULT_PROMPT = """Here's a conversation between a human and an AI assistant. \
 The AI assistant provides detailed, friendly answers for the human.
 
@@ -41,8 +43,9 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
 
 
 def is_dist():
-    rank = int(os.getenv('RANK', -1))
-    return rank >= 0
+    """Determine if the training is distributed"""
+    rank, local_rank, _, _ = get_dist_setting()
+    return rank >= 0 and local_rank >= 0
 
 
 def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
@@ -62,6 +65,7 @@ def plot_images(images_dir: str,
                 smooth_val: float = 0.9,
                 figsize: Tuple[int, int] = (8, 5),
                 dpi: int = 100) -> None:
+    """Using tensorboard's data content to plot images"""
     os.makedirs(images_dir, exist_ok=True)
     fname = [
         fname for fname in os.listdir(tb_dir)
@@ -145,7 +149,7 @@ def select_bnb(quantization_bit: Optional[int],
 
 
 def broadcast_string(string: Optional[str], buffer_size: int = 100) -> str:
-    """
+    """String broadcasting in case of DDP
     string: main rank: str
         other rank: None
     return: all rank: str
@@ -165,3 +169,23 @@ def broadcast_string(string: Optional[str], buffer_size: int = 100) -> str:
     first_zero = (tensor == 0).nonzero()[0].item()
     res = tensor.tolist()[:first_zero]
     return ''.join([chr(x) for x in res])
+
+
+def find_all_linear_for_lora(quantization_bit: Optional[int],
+                             model: Module) -> List[str]:
+    """ref: https://github.com/artidoro/qlora"""
+    if quantization_bit == 4:
+        from bitsandbytes.nn import Linear4bit
+        linear_cls = Linear4bit
+    elif quantization_bit == 8:
+        from bitsandbytes.nn import Linear8bitLt
+        linear_cls = Linear8bitLt
+    else:
+        linear_cls = Linear
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if isinstance(module, linear_cls):
+            module_name = name.split('.')[-1]
+            if 'lm_head' not in module_name:
+                lora_module_names.add(module_name)
+    return list(lora_module_names)

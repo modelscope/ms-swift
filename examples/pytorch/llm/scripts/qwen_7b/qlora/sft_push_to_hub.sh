@@ -1,4 +1,4 @@
-# 16GB VRAM
+# 4 * 16GB VRAM
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-7b \
@@ -25,3 +25,7 @@ python src/llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
+    --push_to_hub true \
+    --hub_model_id qwen-7b-sft \
+    --hub_private_repo true \
+    --hub_token 'xxx' \
