@@ -190,7 +190,7 @@ def llm_sft(args: SftArguments) -> None:
             assert len(args.lora_target_modules) == 1
             args.lora_target_modules = find_all_linear_for_lora(
                 args.quantization_bit, model)
-            logger.info(f'lora_target_modules: {args.lora_target_modules}')
+            logger.info(f'Setting lora_target_modules: {args.lora_target_modules}')
         if args.resume_from_ckpt is None:
             lora_config = LoraConfig(
                 r=args.lora_rank,
