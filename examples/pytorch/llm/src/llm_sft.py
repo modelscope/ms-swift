@@ -75,7 +75,7 @@ class SftArguments:
     gradient_accumulation_steps: int = 16
     max_grad_norm: float = 1.
     lr_scheduler_type: str = 'cosine'
-    warmup_ratio: float = 0.1
+    warmup_ratio: float = 0.05
 
     eval_steps: int = 50
     save_steps: Optional[int] = None

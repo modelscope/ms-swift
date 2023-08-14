@@ -7,6 +7,7 @@ python src/llm_sft.py \
     --output_dir runs \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample 20000 \
+    --num_train_epochs 1 \
     --max_length 1024 \
     --quantization_bit 4 \
     --lora_rank 8 \
