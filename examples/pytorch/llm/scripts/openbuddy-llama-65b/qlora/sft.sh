@@ -1,12 +1,12 @@
 # 40G
-# llama2 is not good at Chinese
-CUDA_VISIBLE_DEVICES=6,7 \
+CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type openbuddy-llama-65b \
     --sft_type lora \
     --output_dir runs \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample 20000 \
+    --num_train_epochs 1 \
     --max_length 1024 \
     --quantization_bit 4 \
     --lora_rank 8 \
