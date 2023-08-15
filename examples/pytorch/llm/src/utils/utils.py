@@ -171,9 +171,13 @@ def broadcast_string(string: Optional[str], buffer_size: int = 100) -> str:
     return ''.join([chr(x) for x in res])
 
 
-def find_all_linear_for_lora(quantization_bit: Optional[int],
-                             model: Module) -> List[str]:
+def find_all_linear_for_lora(model: Module,
+                             quantization_bit: Optional[int],
+                             model_type: Optional[str] = None) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
+    head_module_name = 'lm_head'
+    if model_type.startswith('chatglm2-6b'):
+        head_module_name = 'output_layer'
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
         linear_cls = Linear4bit
@@ -186,6 +190,6 @@ def find_all_linear_for_lora(quantization_bit: Optional[int],
     for name, module in model.named_modules():
         if isinstance(module, linear_cls):
             module_name = name.split('.')[-1]
-            if 'lm_head' not in module_name:
+            if head_module_name not in module_name:
                 lora_module_names.add(module_name)
     return list(lora_module_names)
