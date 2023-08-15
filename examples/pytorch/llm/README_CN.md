@@ -60,9 +60,8 @@ cd swift/examples/pytorch/llm
 
 # 微调(qlora)+推理 qwen-7b, 需要16GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes`
+# 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`
 bash scripts/qwen_7b/qlora/sft.sh
-# 如果你想在训练时, 将权重push到modelscope hub中.
-bash scripts/qwen_7b/qlora/sft_push_to_hub.sh
 bash scripts/qwen_7b/qlora/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*16GB显存.

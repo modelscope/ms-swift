@@ -57,9 +57,8 @@ cd swift/examples/pytorch/llm
 
 # sft(qlora) and infer qwen-7b, Requires 16GB VRAM.
 # If you want to use quantification, you need to `pip install bitsandbytes`
+# If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'
 bash scripts/qwen_7b/qlora/sft.sh
-# If you want to push the model to modelscope hub during training
-bash scripts/qwen_7b/qlora/sft_push_to_hub.sh
 bash scripts/qwen_7b/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b, Requires 4*16GB VRAM.

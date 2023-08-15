@@ -28,3 +28,7 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
+    --push_to_hub false \
+    --hub_model_id qwen-7b-lora \
+    --hub_private_repo true \
+    --hub_token 'your-sdk-token' \

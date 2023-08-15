@@ -140,7 +140,7 @@ class SftArguments:
             self.quantization_bit, self.bnb_4bit_comp_dtype)
 
         if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-sft'
+            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
             logger.info(f'Setting hub_model_id: {self.hub_model_id}')
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
