@@ -6,8 +6,6 @@ from typing import Any, Dict, NamedTuple, Optional
 import torch
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
                         read_config, snapshot_download)
-from modelscope.models.nlp.chatglm2 import ChatGLM2Config, ChatGLM2Tokenizer
-from modelscope.models.nlp.llama2 import Llama2Config, Llama2Tokenizer
 from torch import dtype as Dtype
 
 from swift import get_logger
@@ -97,9 +95,8 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return get_model_tokenizer_from_sdk(ChatGLM2Config, ChatGLM2Tokenizer,
-                                        model_dir, torch_dtype, load_model,
-                                        **model_kwargs)
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
+                                         **model_kwargs)
 
 
 def get_model_tokenizer_llama2(model_dir: str,
@@ -109,9 +106,8 @@ def get_model_tokenizer_llama2(model_dir: str,
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     model_config.pretraining_tp = 1
-    return get_model_tokenizer_from_sdk(Llama2Config, Llama2Tokenizer,
-                                        model_dir, torch_dtype, load_model,
-                                        model_config, **model_kwargs)
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
+                                         model_config, **model_kwargs)
 
 
 def get_model_tokenizer_polylm(model_dir: str,
@@ -166,65 +162,79 @@ class LoRATM(NamedTuple):
 #   'ignore_file_pattern', 'special_token_mapper', 'lora_TM'
 MODEL_MAPPING = {
     'qwen-7b': {
-        'model_id': 'qwen/Qwen-7B',
+        'model_id': 'qwen/Qwen-7B',  # model id or model dir
         'revision': 'v.1.0.4',
         'get_function': get_model_tokenizer_qwen,
+        'template': 'chatml',
         'lora_TM': LoRATM.qwen,
-        'special_token_mapper': {
-            'eos_token': '<|endoftext|>'
-        }
+    },
+    'qwen-7b-chat': {
+        'model_id': 'qwen/Qwen-7B-Chat',
+        'revision': 'v1.0.5',
+        'get_function': get_model_tokenizer_qwen,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
     },
     'baichuan-7b': {
-        'model_id': 'baichuan-inc/baichuan-7B',  # model id or model dir
+        'model_id': 'baichuan-inc/baichuan-7B',
         'revision': 'v1.0.7',
-        'lora_TM': LoRATM.baichuan
+        'template': 'baichuan',
+        'lora_TM': LoRATM.baichuan,
     },
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
         'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_baichuan13b,
-        'lora_TM': LoRATM.baichuan
+        'template': 'baichuan',
+        'lora_TM': LoRATM.baichuan,
     },
     'chatglm2-6b': {
         'model_id': 'ZhipuAI/chatglm2-6b',
-        'revision': 'v1.0.7',
+        'revision': 'v1.0.8',
         'get_function': get_model_tokenizer_chatglm2,
-        'lora_TM': LoRATM.chatglm2
+        'template': 'chatglm2',
+        'lora_TM': LoRATM.chatglm2,
     },
     'chatglm2-6b-32k': {
         'model_id': 'ZhipuAI/chatglm2-6b-32k',
         'revision': 'v1.0.0',
-        'lora_TM': LoRATM.chatglm2
+        'template': 'chatglm2',
+        'lora_TM': LoRATM.chatglm2,
     },
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_llama2,
+        'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
-        'lora_TM': LoRATM.llama2
+        'lora_TM': LoRATM.llama2,
     },
     'llama2-13b': {
         'model_id': 'modelscope/Llama-2-13b-ms',
         'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_llama2,
+        'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
-        'lora_TM': LoRATM.llama2
+        'lora_TM': LoRATM.llama2,
     },
     'llama2-70b': {
         'model_id': 'modelscope/Llama-2-70b-ms',
         'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_llama2,
+        'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
-        'lora_TM': LoRATM.llama2
+        'lora_TM': LoRATM.llama2,
     },
     'openbuddy-llama2-13b': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
+        'template': 'openbuddy_llama',
         'lora_TM': LoRATM.llama2,
     },
     'openbuddy-llama-65b': {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
         'revision': 'v1.0.0',
+        'template': 'openbuddy_llama',
         'lora_TM': LoRATM.llama2,
     },
     'polylm-13b': {

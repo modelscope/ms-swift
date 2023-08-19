@@ -1,18 +1,16 @@
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
-from functools import partial
 from typing import Optional
 
 import torch
 from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
-from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING, get_dataset,
-                   get_model_tokenizer, inference, process_dataset, select_bnb,
-                   select_dtype, show_layers)
+from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
+                   get_dataset, get_model_tokenizer, get_preprocess, inference,
+                   process_dataset, select_bnb, select_dtype, show_layers)
 
 from swift import Swift, get_logger
 from swift.utils import parse_args, print_model_info, seed_everything
-from swift.utils.llm_utils import tokenize_function
 
 logger = get_logger()
 
@@ -23,6 +21,8 @@ class InferArguments:
         default='qwen-7b', metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
+    template_type: str = field(
+        default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
     eval_human: bool = False  # False: eval test_dataset
 
@@ -37,13 +37,13 @@ class InferArguments:
     dataset_seed: int = 42
     dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
-    prompt: str = DEFAULT_PROMPT
+    system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 1024
 
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})
     bnb_4bit_comp_dtype: str = field(
-        default='fp32', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+        default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
@@ -57,7 +57,14 @@ class InferArguments:
     def __post_init__(self):
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
+        if self.template_type is None:
+            self.template_type = MODEL_MAPPING[self.model_type].get(
+                'template', 'default')
+            logger.info(f'Setting template_type: {self.template_type}')
+
         self.torch_dtype, _, _ = select_dtype(self.dtype)
+        if self.bnb_4bit_comp_dtype is None:
+            self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self.quantization_bit, self.bnb_4bit_comp_dtype)
 
@@ -91,11 +98,9 @@ def llm_infer(args: InferArguments) -> None:
     print_model_info(model)
 
     # ### Inference
-    tokenize_func = partial(
-        tokenize_function,
-        tokenizer=tokenizer,
-        prompt=args.prompt,
-        max_length=args.max_length)
+    template_type = MODEL_MAPPING[args.model_type]['template']
+    preprocess_func = get_preprocess(template_type, tokenizer, args.system,
+                                     args.max_length)
     streamer = TextStreamer(
         tokenizer, skip_prompt=True, skip_special_tokens=True)
     generation_config = GenerationConfig(
@@ -112,7 +117,7 @@ def llm_infer(args: InferArguments) -> None:
         while True:
             instruction = input('<<< ')
             data = {'instruction': instruction}
-            input_ids = tokenize_func(data)['input_ids']
+            input_ids = preprocess_func(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer, generation_config)
             print('-' * 80)
     else:
@@ -125,7 +130,7 @@ def llm_infer(args: InferArguments) -> None:
         for data in mini_test_dataset:
             output = data['output']
             data['output'] = None
-            input_ids = tokenize_func(data)['input_ids']
+            input_ids = preprocess_func(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer, generation_config)
             print()
             print(f'[LABELS]{output}')

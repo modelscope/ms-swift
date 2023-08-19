@@ -19,6 +19,7 @@
 2. supported models: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
 3. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, push to modelscope hub, custom datasets, ...
 4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, ...
+5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default, ...
 
 ## Prepare the Environment
 Experimental environment: A10, 3090, A100, ... (V100 does not support bf16, quantization)
@@ -65,6 +66,10 @@ bash scripts/qwen_7b/qlora/infer.sh
 bash scripts/qwen_7b/qlora_ddp/sft.sh
 bash scripts/qwen_7b/qlora_ddp/infer.sh
 
+# sft(lora+ddp) and infer qwen-7b, Requires 4*22GB VRAM.
+bash scripts/qwen_7b/lora_ddp/sft.sh
+bash scripts/qwen_7b/lora_ddp/infer.sh
+
 # sft(full) and infer qwen-7b, Requires 95GB VRAM.
 bash scripts/qwen_7b/full/sft.sh
 bash scripts/qwen_7b/full/infer.sh
@@ -72,6 +77,7 @@ bash scripts/qwen_7b/full/infer.sh
 # For more scripts, please see `scripts/` folder
 ```
 
-## Extend Datasets
-1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/models.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
-2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/datasets.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `instruction`, `output`.
+## Extend Models and Datasets
+1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/model.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
+2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/dataset.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `instruction`, `output`.
+3. If you need to extend the template, you can modify the `TEMPLATE_MAPPING` in `utils/preprocess.py`.

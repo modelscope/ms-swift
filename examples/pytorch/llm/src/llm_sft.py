@@ -7,18 +7,18 @@ from typing import List, Optional
 import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig
-from utils import (DATASET_MAPPING, DEFAULT_PROMPT, MODEL_MAPPING,
+from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, find_all_linear_for_lora, get_dataset,
-                   get_dist_setting, get_model_tokenizer, is_dist, plot_images,
-                   process_dataset, select_bnb, select_dtype, show_layers)
+                   get_dist_setting, get_model_tokenizer, get_preprocess,
+                   is_dist, plot_images, process_dataset, select_bnb,
+                   select_dtype, show_layers)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, is_master, parse_args,
                          print_model_info, seed_everything)
-from swift.utils.llm_utils import (data_collate_fn, print_example,
-                                   stat_dataset, tokenize_function)
+from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
 
 logger = get_logger()
 
@@ -26,10 +26,13 @@ logger = get_logger()
 @dataclass
 class SftArguments:
     model_type: str = field(
-        default='qwen-7b', metadata={'choices': list(MODEL_MAPPING.keys())})
+        default='qwen-7b-chat',
+        metadata={'choices': list(MODEL_MAPPING.keys())})
     # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
+    template_type: str = field(
+        default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
     # DDP + MP(device_map) is not supported
     ddp_backend: Optional[str] = field(
@@ -47,7 +50,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
-    prompt: str = DEFAULT_PROMPT
+    system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 1024
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
@@ -56,7 +59,7 @@ class SftArguments:
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})
     bnb_4bit_comp_dtype: str = field(
-        default='fp32', metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+        default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
@@ -99,7 +102,8 @@ class SftArguments:
     use_flash_attn: Optional[bool] = field(
         default=None,
         metadata={
-            'help': "This parameter is used only when model_type == 'qwen-7b'"
+            'help':
+            "This parameter is used only when model_type.startswith('qwen-7b')"
         })
 
     def __post_init__(self):
@@ -129,6 +133,10 @@ class SftArguments:
                 self.save_steps = self.eval_steps * 4
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
+        if self.template_type is None:
+            self.template_type = MODEL_MAPPING[self.model_type].get(
+                'template', 'default')
+            logger.info(f'Setting template_type: {self.template_type}')
 
         self.output_dir = os.path.join(self.output_dir, self.model_type)
 
@@ -136,6 +144,8 @@ class SftArguments:
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_TM']
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self.dtype)
+        if self.bnb_4bit_comp_dtype is None:
+            self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self.quantization_bit, self.bnb_4bit_comp_dtype)
 
@@ -178,7 +188,7 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
-    if args.model_type == 'qwen-7b':
+    if args.model_type.startswith('qwen-7b'):
         kwargs['use_flash_attn'] = args.use_flash_attn
 
     model, tokenizer = get_model_tokenizer(
@@ -214,13 +224,10 @@ def llm_sft(args: SftArguments) -> None:
                                                  args.dataset_test_size,
                                                  args.dataset_sample,
                                                  args.dataset_seed)
-    tokenize_func = partial(
-        tokenize_function,
-        tokenizer=tokenizer,
-        prompt=args.prompt,
-        max_length=args.max_length)
-    train_dataset = train_dataset.map(tokenize_func)
-    val_dataset = val_dataset.map(tokenize_func)
+    preprocess_func = get_preprocess(args.template_type, tokenizer,
+                                     args.system, args.max_length)
+    train_dataset = train_dataset.map(preprocess_func)
+    val_dataset = val_dataset.map(preprocess_func)
     del dataset
     # Data analysis
     stat_dataset(train_dataset)
