@@ -1,7 +1,7 @@
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from types import MethodType
-from typing import Any, Dict, NamedTuple, Optional
+from typing import NamedTuple, Optional
 
 import torch
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
@@ -11,15 +11,6 @@ from torch import dtype as Dtype
 from swift import get_logger
 
 logger = get_logger()
-
-
-def _add_special_token(tokenizer, special_token_mapper: Dict[str,
-                                                             Any]) -> None:
-    for k, v in special_token_mapper.items():
-        setattr(tokenizer, k, v)
-    assert tokenizer.eos_token is not None
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
 
 def get_model_tokenizer_from_repo(model_dir: str,
@@ -144,8 +135,11 @@ def get_model_tokenizer_qwen(model_dir: str,
 
     use_flash_attn = kwargs.pop('use_flash_attn', 'auto')
     model_config.use_flash_attn = use_flash_attn
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
-                                         model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     load_model, model_config,
+                                                     **kwargs)
+    tokenizer.eos_token_id = tokenizer.eod_id
+    return model, tokenizer
 
 
 class LoRATM(NamedTuple):
@@ -158,8 +152,8 @@ class LoRATM(NamedTuple):
 
 
 # Model Home: 'https://modelscope.cn/models/{model_id}/summary'
-# keys: 'model_id', 'revision', 'get_function',
-#   'ignore_file_pattern', 'special_token_mapper', 'lora_TM'
+# keys: 'model_id', 'revision', 'get_function', 'template',
+#   'ignore_file_pattern', 'lora_TM'
 MODEL_MAPPING = {
     'qwen-7b': {
         'model_id': 'qwen/Qwen-7B',  # model id or model dir
@@ -257,7 +251,6 @@ def get_model_tokenizer(model_type: str,
     model_id = data['model_id']
     get_function = data.get('get_function', get_model_tokenizer_from_repo)
     ignore_file_pattern = data.get('ignore_file_pattern', [])
-    special_token_mapper = data.get('special_token_mapper', {})
     if torch_dtype is None:
         torch_dtype = data.get('torch_dtype', torch.float16)
     if 'device_map' not in kwargs:
@@ -273,5 +266,7 @@ def get_model_tokenizer(model_type: str,
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)
-    _add_special_token(tokenizer, special_token_mapper)
+    assert tokenizer.eos_token is not None
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     return model, tokenizer

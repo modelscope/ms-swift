@@ -53,6 +53,7 @@ class InferArguments:
     temperature: float = 0.9
     top_k: int = 50
     top_p: float = 0.9
+    skip_prompt: Optional[bool] = None
 
     def __post_init__(self):
         if not os.path.isdir(self.ckpt_dir):
@@ -67,6 +68,8 @@ class InferArguments:
             self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self.quantization_bit, self.bnb_4bit_comp_dtype)
+        if self.skip_prompt is None:
+            self.skip_prompt = self.eval_human
 
 
 def llm_infer(args: InferArguments) -> None:
@@ -115,11 +118,11 @@ def llm_infer(args: InferArguments) -> None:
 
     if args.eval_human:
         while True:
-            instruction = input('<<< ')
-            data = {'instruction': instruction}
+            query = input('<<< ')
+            data = {'query': query}
             input_ids = preprocess_func(data)['input_ids']
-            inference(input_ids, model, tokenizer, streamer, generation_config)
-            print('-' * 80)
+            inference(input_ids, model, tokenizer, streamer, generation_config,
+                      args.skip_prompt)
     else:
         dataset = get_dataset(args.dataset.split(','))
         _, test_dataset = process_dataset(dataset, args.dataset_test_size,
@@ -131,7 +134,8 @@ def llm_infer(args: InferArguments) -> None:
             output = data['output']
             data['output'] = None
             input_ids = preprocess_func(data)['input_ids']
-            inference(input_ids, model, tokenizer, streamer, generation_config)
+            inference(input_ids, model, tokenizer, streamer, generation_config,
+                      args.skip_prompt)
             print()
             print(f'[LABELS]{output}')
             print('-' * 80)
