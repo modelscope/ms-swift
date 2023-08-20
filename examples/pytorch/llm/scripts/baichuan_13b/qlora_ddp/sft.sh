@@ -5,7 +5,7 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     src/llm_sft.py \
-    --model_type baichuan-13b \
+    --model_type baichuan-13b-chat \
     --sft_type lora \
     --output_dir runs \
     --ddp_backend nccl \

@@ -73,8 +73,10 @@ def get_model_tokenizer_baichuan13b(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model,
                                                      **model_kwargs)
-    model.get_input_embeddings = MethodType(
-        lambda self: self.model.embed_tokens, model)
+
+    if not hasattr(model, 'get_input_embeddings'):
+        model.get_input_embeddings = MethodType(
+            lambda self: self.model.embed_tokens, model)
     return model, tokenizer
 
 
@@ -143,7 +145,7 @@ def get_model_tokenizer_qwen(model_dir: str,
 
 
 class LoRATM(NamedTuple):
-    # default lora target modules
+    # default lora target modules. qkv
     baichuan = ['W_pack']
     chatglm2 = ['query_key_value']
     llama2 = ['q_proj', 'k_proj', 'v_proj']
@@ -182,6 +184,12 @@ MODEL_MAPPING = {
         'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
+    'baichuan-13b-chat': {
+        'model_id': 'baichuan-inc/Baichuan-13B-Chat',
+        'revision': 'v1.0.8',
+        'template': 'baichuan',
+        'lora_TM': LoRATM.baichuan,
+    },
     'chatglm2-6b': {
         'model_id': 'ZhipuAI/chatglm2-6b',
         'revision': 'v1.0.8',
@@ -198,7 +206,6 @@ MODEL_MAPPING = {
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',
-        'get_function': get_model_tokenizer_llama2,
         'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2,
@@ -214,6 +221,28 @@ MODEL_MAPPING = {
     'llama2-70b': {
         'model_id': 'modelscope/Llama-2-70b-ms',
         'revision': 'v1.0.0',
+        'template': 'llama',
+        'ignore_file_pattern': [r'.+\.bin$'],
+        'lora_TM': LoRATM.llama2,
+    },
+    'llama2-7b-chat': {
+        'model_id': 'modelscope/Llama-2-7b-chat-ms',
+        'revision': 'v1.0.2',
+        'template': 'llama',
+        'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
+        'lora_TM': LoRATM.llama2,
+    },
+    'llama2-13b-chat': {
+        'model_id': 'modelscope/Llama-2-13b-chat-ms',
+        'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_llama2,
+        'template': 'llama',
+        'ignore_file_pattern': [r'.+\.bin$'],
+        'lora_TM': LoRATM.llama2,
+    },
+    'llama2-70b-chat': {
+        'model_id': 'modelscope/Llama-2-70b-chat-ms',
+        'revision': 'v1.0.1',
         'get_function': get_model_tokenizer_llama2,
         'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
