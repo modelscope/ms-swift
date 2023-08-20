@@ -2,7 +2,7 @@
 # Experimental environment: 8 * 3090
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 python src/llm_sft.py \
-    --model_type qwen-7b \
+    --model_type qwen-7b-chat \
     --sft_type full \
     --dtype bf16 \
     --output_dir runs \
@@ -22,6 +22,6 @@ python src/llm_sft.py \
     --logging_steps 10 \
     --use_flash_attn false \
     --push_to_hub false \
-    --hub_model_id qwen-7b-full \
+    --hub_model_id qwen-7b-chat-full \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
