@@ -59,25 +59,25 @@ cd swift/examples/pytorch/llm
 # sft(qlora) and infer qwen-7b, Requires 16GB VRAM.
 # If you want to use quantification, you need to `pip install bitsandbytes`
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'
-bash scripts/qwen_7b/qlora/sft.sh
-bash scripts/qwen_7b/qlora/infer.sh
+bash scripts/qwen_7b_chat/qlora/sft.sh
+bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b, Requires 4*16GB VRAM.
-bash scripts/qwen_7b/qlora_ddp/sft.sh
-bash scripts/qwen_7b/qlora_ddp/infer.sh
+bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
+bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
 # sft(lora+ddp) and infer qwen-7b, Requires 4*22GB VRAM.
-bash scripts/qwen_7b/lora_ddp/sft.sh
-bash scripts/qwen_7b/lora_ddp/infer.sh
+bash scripts/qwen_7b_chat/lora_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # sft(full) and infer qwen-7b, Requires 95GB VRAM.
-bash scripts/qwen_7b/full/sft.sh
-bash scripts/qwen_7b/full/infer.sh
+bash scripts/qwen_7b_chat/full/sft.sh
+bash scripts/qwen_7b_chat/full/infer.sh
 
 # For more scripts, please see `scripts/` folder
 ```
 
-## Extend Models and Datasets
+## Extend Datasets
 1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/model.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
-2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/dataset.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `instruction`, `output`.
+2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/dataset.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `query`, `response`.
 3. If you need to extend the template, you can modify the `TEMPLATE_MAPPING` in `utils/preprocess.py`.

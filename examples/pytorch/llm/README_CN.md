@@ -61,25 +61,25 @@ cd swift/examples/pytorch/llm
 # 微调(qlora)+推理 qwen-7b, 需要16GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes`
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`
-bash scripts/qwen_7b/qlora/sft.sh
-bash scripts/qwen_7b/qlora/infer.sh
+bash scripts/qwen_7b_chat/qlora/sft.sh
+bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*16GB显存.
-bash scripts/qwen_7b/qlora_ddp/sft.sh
-bash scripts/qwen_7b/qlora_ddp/infer.sh
+bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
+bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
 # 微调(lora+ddp)+推理 qwen-7b, 需要4卡*22GB显存.
-bash scripts/qwen_7b/lora_ddp/sft.sh
-bash scripts/qwen_7b/lora_ddp/infer.sh
+bash scripts/qwen_7b_chat/lora_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # 微调(full)+推理 qwen-7b, 需要95G显存.
-bash scripts/qwen_7b/full/sft.sh
-bash scripts/qwen_7b/full/infer.sh
+bash scripts/qwen_7b_chat/full/sft.sh
+bash scripts/qwen_7b_chat/full/infer.sh
 
 # 更多的scripts脚本, 可以看`scripts`文件夹
 ```
 
-## 拓展模型和数据集
+## 拓展数据集
 1. 如果你想要拓展模型, 你可以修改`utils/model.py`文件中的`MODEL_MAPPING`. `model_id`可以指定为本地路径, 这种情况下, `revision`参数不起作用.
-2. 如果你想要拓展或使用自定义数据集, 你可以修改`utils/dataset.py`文件中的`DATASET_MAPPING`. 你需要自定义`get_*_dataset`函数, 并返回包含`instruction`, `output`两列的数据集.
+2. 如果你想要拓展或使用自定义数据集, 你可以修改`utils/dataset.py`文件中的`DATASET_MAPPING`. 你需要自定义`get_*_dataset`函数, 并返回包含`query`, `response`两列的数据集.
 3. 如果你想要拓展template, 你可以修改`utils/preprocess.py`文件中的`TEMPLATE_MAPPING`.
