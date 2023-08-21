@@ -18,7 +18,7 @@ logger = get_logger()
 @dataclass
 class InferArguments:
     model_type: str = field(
-        default='qwen-7b', metadata={'choices': list(MODEL_MAPPING.keys())})
+        default='qwen-7b-chat', metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     template_type: str = field(
