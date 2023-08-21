@@ -4,6 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
     --sft_type full \
+    --template_type chatml \
     --dtype bf16 \
     --output_dir runs \
     --dataset alpaca-en,alpaca-zh \

@@ -3,6 +3,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
     --sft_type lora \
+    --template_type chatml \
     --dtype bf16 \
     --output_dir runs \
     --dataset alpaca-en,alpaca-zh \
@@ -10,6 +11,7 @@ python src/llm_sft.py \
     --num_train_epochs 1 \
     --max_length 1024 \
     --quantization_bit 4 \
+    --bnb_4bit_comp_dtype bf16 \
     --lora_rank 64 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
