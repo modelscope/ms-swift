@@ -16,9 +16,10 @@
 
 ## Features
 1. supported sft method: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine tuning), ...
-2. supported models: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
+2. supported models: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), qwen-7b-chat, baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
 3. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, push to modelscope hub, custom datasets, ...
 4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, ...
+5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default, ...
 
 ## Prepare the Environment
 Experimental environment: A10, 3090, A100, ... (V100 does not support bf16, quantization)
@@ -58,20 +59,25 @@ cd swift/examples/pytorch/llm
 # sft(qlora) and infer qwen-7b, Requires 16GB VRAM.
 # If you want to use quantification, you need to `pip install bitsandbytes`
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'
-bash scripts/qwen_7b/qlora/sft.sh
-bash scripts/qwen_7b/qlora/infer.sh
+bash scripts/qwen_7b_chat/qlora/sft.sh
+bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b, Requires 4*16GB VRAM.
-bash scripts/qwen_7b/qlora_ddp/sft.sh
-bash scripts/qwen_7b/qlora_ddp/infer.sh
+bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
+bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
+
+# sft(lora+ddp) and infer qwen-7b, Requires 4*22GB VRAM.
+bash scripts/qwen_7b_chat/lora_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # sft(full) and infer qwen-7b, Requires 95GB VRAM.
-bash scripts/qwen_7b/full/sft.sh
-bash scripts/qwen_7b/full/infer.sh
+bash scripts/qwen_7b_chat/full/sft.sh
+bash scripts/qwen_7b_chat/full/infer.sh
 
 # For more scripts, please see `scripts/` folder
 ```
 
 ## Extend Datasets
-1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/models.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
-2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/datasets.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `instruction`, `output`.
+1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/model.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
+2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/dataset.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `query`, `response`.
+3. If you need to extend the template, you can modify the `TEMPLATE_MAPPING` in `utils/preprocess.py`.

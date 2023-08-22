@@ -27,38 +27,6 @@ def stat_dataset(dataset: HfDataset) -> None:
     )
 
 
-def tokenize_function(example: Dict[str,
-                                    Optional[str]], tokenizer, prompt: str,
-                      max_length: Optional[int]) -> Dict[str, Any]:
-    instruction: str = example['instruction']
-    output = example.get('output')
-    src_text = prompt.format(instruction=instruction)
-    src_input_ids: List[int] = tokenizer(
-        src_text, return_attention_mask=False,
-        add_special_tokens=True)['input_ids']
-    if src_input_ids[-1] == tokenizer.eos_token_id:
-        src_input_ids.pop()
-
-    tgt_input_ids = []
-    if output is not None:
-        assert tokenizer.eos_token_id is not None
-        tgt_input_ids += tokenizer(
-            output, return_attention_mask=False,
-            add_special_tokens=False)['input_ids']
-        tgt_input_ids += [tokenizer.eos_token_id]
-        labels = [-100] * len(src_input_ids) + tgt_input_ids
-    else:
-        labels = None
-    input_ids = src_input_ids + tgt_input_ids
-
-    if max_length is not None:
-        input_ids = input_ids[-max_length:]
-        if labels is not None:
-            labels = labels[-max_length:]
-
-    return {'input_ids': input_ids, 'labels': labels}
-
-
 def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]

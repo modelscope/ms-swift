@@ -23,8 +23,8 @@ def _processing_alpaca(
         inst = f'{inst}\n{inp}'
         new_instruction.append(inst)
     dataset = HfDataset.from_dict({
-        'instruction': new_instruction,
-        'output': dataset['output']
+        'query': new_instruction,
+        'response': dataset['output']
     })
     return dataset
 

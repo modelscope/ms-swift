@@ -15,17 +15,6 @@ from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 logger = get_logger()
 
-# The `output` section will be concatenated at the end
-# `prompt` part does not calculate the loss, `output` part calculates the loss
-DEFAULT_PROMPT = """Here's a conversation between a human and an AI assistant. \
-The AI assistant provides detailed, friendly answers for the human.
-
-### Human:
-{instruction}
-
-### AI:
-"""
-
 DTYPE_MAPPING = {
     'fp16': torch.float16,
     'bf16': torch.bfloat16,
@@ -99,8 +88,9 @@ def inference(input_ids: List[int],
               tokenizer,
               streamer: Optional[TextStreamer] = None,
               generation_config: Optional[GenerationConfig] = None,
-              tag: str = '[INFERENCE]') -> str:
-    print(f'{tag}{tokenizer.decode(input_ids)}', end='')
+              skip_prompt: bool = True) -> str:
+    if not skip_prompt:
+        print(f'[INFERENCE]{tokenizer.decode(input_ids)}', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()

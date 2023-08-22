@@ -17,10 +17,10 @@
 
 ## 特性
 1. [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调, ...
-2. 支持的模型: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
+2. 支持的模型: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), qwen-7b-chat, baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpoint, 梯度累加, 支持推送modelscope hub, 支持自定义数据集, ...
 4. 支持的数据集: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, ...
-
+5. 支持的template: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default, ...
 
 ## 准备实验环境
 实验环境: A10, 3090, A100均可. (V100不支持bf16, 量化)
@@ -61,20 +61,25 @@ cd swift/examples/pytorch/llm
 # 微调(qlora)+推理 qwen-7b, 需要16GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes`
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`
-bash scripts/qwen_7b/qlora/sft.sh
-bash scripts/qwen_7b/qlora/infer.sh
+bash scripts/qwen_7b_chat/qlora/sft.sh
+bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*16GB显存.
-bash scripts/qwen_7b/qlora_ddp/sft.sh
-bash scripts/qwen_7b/qlora_ddp/infer.sh
+bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
+bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
+
+# 微调(lora+ddp)+推理 qwen-7b, 需要4卡*22GB显存.
+bash scripts/qwen_7b_chat/lora_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # 微调(full)+推理 qwen-7b, 需要95G显存.
-bash scripts/qwen_7b/full/sft.sh
-bash scripts/qwen_7b/full/infer.sh
+bash scripts/qwen_7b_chat/full/sft.sh
+bash scripts/qwen_7b_chat/full/infer.sh
 
 # 更多的scripts脚本, 可以看`scripts`文件夹
 ```
 
 ## 拓展数据集
-1. 如果你想要拓展模型, 你可以修改`utils/models.py`文件中的`MODEL_MAPPING`. `model_id`可以指定为本地路径, 这种情况下, `revision`参数不起作用.
-2. 如果你想要拓展或使用自定义数据集, 你可以修改`utils/datasets.py`文件中的`DATASET_MAPPING`. 你需要自定义`get_*_dataset`函数, 并返回包含`instruction`, `output`两列的数据集.
+1. 如果你想要拓展模型, 你可以修改`utils/model.py`文件中的`MODEL_MAPPING`. `model_id`可以指定为本地路径, 这种情况下, `revision`参数不起作用.
+2. 如果你想要拓展或使用自定义数据集, 你可以修改`utils/dataset.py`文件中的`DATASET_MAPPING`. 你需要自定义`get_*_dataset`函数, 并返回包含`query`, `response`两列的数据集.
+3. 如果你想要拓展template, 你可以修改`utils/preprocess.py`文件中的`TEMPLATE_MAPPING`.
