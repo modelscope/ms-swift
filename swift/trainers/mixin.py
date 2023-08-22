@@ -96,7 +96,7 @@ class PushToMsHubMixin:
 
         hub_model_id = self.args.hub_model_id
         assert hub_model_id is not None, 'Please enter a valid hub_model_id'
-        if '/' not in self.args.hub_model_id:
+        if '/' not in hub_model_id:
             user_name = ModelScopeConfig.get_user_info()[0]
             assert isinstance(user_name, str)
             hub_model_id = f'{user_name}/{hub_model_id}'
