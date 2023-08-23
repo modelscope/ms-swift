@@ -97,15 +97,6 @@ def print_model_info(model: Module, name: Optional[str] = None) -> None:
     logger.info(''.join(s))
 
 
-def show_freeze_layers(model: Module, max_lines: Optional[int] = 20) -> None:
-    named_p = list(model.named_parameters())
-    for i, (n, p) in enumerate(named_p):
-        if max_lines is not None and i >= max_lines:
-            logger.info('...')
-            break
-        logger.info(f'{n}: requires_grad={p.requires_grad}')
-
-
 def get_seed(random_state: RandomState) -> int:
     seed_max = np.iinfo(np.int32).max
     seed = random_state.randint(0, seed_max)
