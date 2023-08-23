@@ -41,7 +41,8 @@ class ProgressCallbackNew(ProgressCallback):
                logs=None,
                **kwargs):
         logs['global_step'] = state.global_step
-        logs['learning_rate'] = round(logs['learning_rate'], 8)
+        if 'learning_rate' in logs:
+            logs['learning_rate'] = round(logs['learning_rate'], 8)
         if state.is_local_process_zero and self.training_bar is not None:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             with open(jsonl_path, 'a') as f:
