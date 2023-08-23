@@ -1,19 +1,39 @@
+import logging
 import os
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import torch
 import torch.distributed as dist
+from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import dtype as Dtype
 from torch.nn import Linear, Module
-from transformers import GenerationConfig, TextStreamer
+from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
+from swift.utils import is_master
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
+from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
+
+# monkey patch
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+
+logger = get_logger()
+ms_logger = get_ms_logger()
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
-logger = get_logger()
+logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
+
+logger.handlers[0].setFormatter(logger_format)
+ms_logger.handlers[0].setFormatter(logger_format)
+if is_master():
+    logger.setLevel(logging.INFO)
+    ms_logger.setLevel(logging.INFO)
+else:
+    logger.setLevel(logging.ERROR)
+    ms_logger.setLevel(logging.ERROR)
 
 DTYPE_MAPPING = {
     'fp16': torch.float16,
