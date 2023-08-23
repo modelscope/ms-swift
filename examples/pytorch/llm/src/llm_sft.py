@@ -84,6 +84,7 @@ class SftArguments:
     save_steps: Optional[int] = None
     save_total_limit: int = 2
     logging_steps: int = 5
+    dataloader_num_workers: int = 1
 
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -263,7 +264,7 @@ def llm_sft(args: SftArguments) -> None:
         bf16=args.bf16,
         fp16=args.fp16,
         eval_steps=args.eval_steps,
-        dataloader_num_workers=1,
+        dataloader_num_workers=args.dataloader_num_workers,
         load_best_model_at_end=True,
         metric_for_best_model='loss',
         greater_is_better=False,
