@@ -110,6 +110,18 @@ def get_instinwild_en_dataset():
     return _processing_alpaca(dataset)
 
 
+def get_cot_en_dataset() -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'YorickHe/CoT', split='train').to_hf_dataset()
+    return _processing_alpaca(dataset)
+
+
+def get_cot_zh_dataset() -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'YorickHe/CoT_zh', split='train').to_hf_dataset()
+    return _processing_alpaca(dataset)
+
+
 DATASET_MAPPING = {
     'alpaca-en': get_alpaca_gpt4_en_dataset,
     'alpaca-zh': get_alpaca_gpt4_zh_dataset,
@@ -120,8 +132,10 @@ DATASET_MAPPING = {
         for k in _multi_alpaca_language_list
     },
     'code-en': get_code_alpaca_en_dataset,
-    'instinwild-zh': get_instinwild_zh_dataset,
     'instinwild-en': get_instinwild_en_dataset,
+    'instinwild-zh': get_instinwild_zh_dataset,
+    'cot-en': get_cot_en_dataset,
+    'cot-zh': get_cot_zh_dataset,
 }
 
 
