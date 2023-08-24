@@ -1,16 +1,10 @@
 from functools import partial
-from typing import Callable, List, Optional, Tuple, Dict, Any
-import os
-import requests
-import re
-import torch.distributed as dist
-from tqdm import tqdm
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
-from modelscope.utils.config_ds import MS_DATASETS_CACHE
 
 from swift.utils import get_seed, is_master
 
@@ -127,30 +121,31 @@ def get_cot_zh_dataset() -> HfDataset:
         'YorickHe/CoT_zh', split='train').to_hf_dataset()
     return _processing_alpaca(dataset)
 
-def _processing_captions(dataset: HfDataset, 
-                         get_image_path: Callable[[Dict[str, Any]], str], response_key: str) -> HfDataset:
+
+def _processing_captions(dataset: HfDataset,
+                         get_image_path: Callable[[Dict[str, Any]], str],
+                         response_key: str) -> HfDataset:
     query_format = '<img>{image_path}</img>Please describe the image.'
-    query = [query_format.format(image_path=get_image_path(d)) for d in dataset]
+    query = [
+        query_format.format(image_path=get_image_path(d)) for d in dataset
+    ]
     dataset = HfDataset.from_dict({
         'query': query,
         'response': dataset[response_key]
     })
     return dataset
 
-def get_coco_mini_en_dataset() -> HfDataset:
-    dataset_dict = MsDataset.load('modelscope/coco_captions_small_slice')
-    dataset: HfDataset = concatenate_datasets([dataset_dict['train'].to_hf_dataset(), 
-                                    dataset_dict['test'].to_hf_dataset()])
-    return _processing_captions(dataset, lambda d: d['image:FILE'], 'answer:Value')
-
 
 def get_coco_en_dataset() -> HfDataset:
     dataset_id = 'modelscope/coco_2014_caption'
     dataset_dict = MsDataset.load(dataset_id)
-    dataset: HfDataset = concatenate_datasets([dataset_dict['train'].to_hf_dataset(), 
-                                    dataset_dict['validation'].to_hf_dataset()])
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset()
+    ])
     dataset._info.features._column_requires_decoding['image'] = False
-    return _processing_captions(dataset, lambda d: d['image']['path'], 'caption')
+    return _processing_captions(dataset, lambda d: d['image']['path'],
+                                'caption')
 
 
 DATASET_MAPPING = {
@@ -169,7 +164,6 @@ DATASET_MAPPING = {
     'cot-en': get_cot_en_dataset,
     'cot-zh': get_cot_zh_dataset,
     # multi-modal
-    'coco-mini-en': get_coco_mini_en_dataset,
     'coco-en': get_coco_en_dataset,
 }
 

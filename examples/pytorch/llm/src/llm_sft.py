@@ -73,7 +73,7 @@ class SftArguments:
     batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
-    max_steps: int = -1  
+    max_steps: int = -1
     optim: str = 'adamw_torch'
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
@@ -227,8 +227,12 @@ def llm_sft(args: SftArguments) -> None:
                                                  args.dataset_test_size,
                                                  args.dataset_sample,
                                                  args.dataset_seed)
-    preprocess_func = get_preprocess(args.template_type, tokenizer,
-                                     args.system, args.max_length, batched=True)
+    preprocess_func = get_preprocess(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        batched=True)
     train_dataset = train_dataset.map(preprocess_func, batched=True)
     val_dataset = val_dataset.map(preprocess_func, batched=True)
     del dataset

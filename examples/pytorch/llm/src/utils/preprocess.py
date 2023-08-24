@@ -79,9 +79,9 @@ def concat_context_list(
 ) -> None:
     for context in context_list:
         if isinstance(context, str):
-            for old_str, new_str in zip(
-                ['{{system}}', '{{query}}', '{{round}}'],
-                [system, query, round]):
+            for (old_str,
+                 new_str) in zip(['{{system}}', '{{query}}', '{{round}}'],
+                                 [system, query, round]):
                 if new_str is not None and old_str in context:
                     placeholder_list.append(new_str)
         new_context_list.append(context)
@@ -166,16 +166,15 @@ def _preprocess(
 
 
 def get_preprocess(
-    template_type: str,
-    tokenizer: PreTrainedTokenizer,
-    system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    batched: bool = False
+        template_type: str,
+        tokenizer: PreTrainedTokenizer,
+        system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        batched: bool = False
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
-        history: Optional[List[Tuple[str,
-                                     str]]] = example.get('history', None)
+        history: Optional[List[Tuple[str, str]]] = example.get('history', None)
         query: str = example['query']
         response: str = example.get('response', None)
         return _preprocess(template_type, tokenizer, query, response, history,
@@ -183,7 +182,9 @@ def get_preprocess(
 
     if batched:
         # Avoid tqdm printing too much logs when dataset.map(...)
-        def batched_preprocess(batched_examples: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
+        def batched_preprocess(
+                batched_examples: Dict[str,
+                                       List[Any]]) -> Dict[str, List[Any]]:
             n = len(batched_examples['query'])
             res: List[Dict[str, Any]] = []
             for i in range(n):
@@ -194,5 +195,6 @@ def get_preprocess(
             for k in res[0].keys():
                 batched_res[k] = [r[k] for r in res]
             return batched_res
+
         return batched_preprocess
     return preprocess
