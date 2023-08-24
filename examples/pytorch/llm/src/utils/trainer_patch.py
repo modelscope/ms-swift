@@ -25,7 +25,6 @@ class ProgressCallbackNew(ProgressCallback):
                            **kwargs):
         if state.is_local_process_zero and has_length(eval_dataloader):
             if self.prediction_bar is None:
-                self.training_bar.refresh()
                 self.training_bar.fp.write('\n')
                 self.prediction_bar = tqdm(
                     total=len(eval_dataloader),

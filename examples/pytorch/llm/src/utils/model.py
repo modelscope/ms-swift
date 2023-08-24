@@ -176,6 +176,20 @@ MODEL_MAPPING = {
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
+    'qwen-vl': {
+        'model_id': 'qwen/Qwen-VL',
+        'revision': 'v1.0.1',
+        'get_function': get_model_tokenizer_qwen,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+    },
+    'qwen-vl-chat': {
+        'model_id': 'qwen/Qwen-VL-Chat',
+        'revision': 'v1.0.1',
+        'get_function': get_model_tokenizer_qwen,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+    },
     'baichuan-7b': {
         'model_id': 'baichuan-inc/baichuan-7B',
         'revision': 'v1.0.7',
