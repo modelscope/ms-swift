@@ -51,8 +51,8 @@ Context = Union[str, List[int]]
 
 
 def simplify_context_list(context_list: List[Context]) -> List[Context]:
-    res = []
-    temp = []
+    res: List[Context] = []
+    temp: List[str] = []
     for c in context_list:
         if isinstance(c, str):
             temp.append(c)
@@ -89,7 +89,7 @@ def concat_context_list(
 
 def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
             placeholder_list: List[str]) -> List[int]:
-    input_ids = []
+    input_ids: List[int] = []
     placeholder_it = iter(placeholder_list)
     for context in context_list:
         if isinstance(context, list):
@@ -126,8 +126,8 @@ def _preprocess(
     template_config = TEMPLATE_MAPPING[template_type]
     if system is None:
         system = DEFAULT_SYSTEM
-    total_context_list = []
-    placeholder_list = []
+    total_context_list: List[Context] = []
+    placeholder_list: List[str] = []
     concat_context_list(
         template_config['prefix'],
         total_context_list,

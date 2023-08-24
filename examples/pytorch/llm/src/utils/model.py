@@ -4,8 +4,8 @@ from types import MethodType
 from typing import NamedTuple, Optional
 
 import torch
-from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Model,
-                        read_config, snapshot_download)
+from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
+                        AutoTokenizer, Model, read_config, snapshot_download)
 from torch import dtype as Dtype
 
 from swift import get_logger
@@ -18,6 +18,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
                                   load_model: bool = True,
                                   model_config=None,
                                   tokenizer=None,
+                                  automodel_class=AutoModelForCausalLM,
                                   **model_kwargs):
     """load from an independent repository"""
     if model_config is None:
@@ -30,7 +31,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
             model_dir, trust_remote_code=True)
     model = None
     if load_model:
-        model = AutoModelForCausalLM.from_pretrained(
+        model = automodel_class.from_pretrained(
             model_dir,
             config=model_config,
             torch_dtype=torch_dtype,
@@ -88,8 +89,12 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
-                                         **model_kwargs)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        load_model,
+        automodel_class=AutoModel,
+        **model_kwargs)
 
 
 def get_model_tokenizer_llama2(model_dir: str,

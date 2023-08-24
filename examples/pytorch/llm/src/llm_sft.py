@@ -69,7 +69,7 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.1
 
-    gradient_checkpoint: bool = True
+    gradient_checkpointing: bool = True
     batch_size: int = 1
     num_train_epochs: int = 1
     optim: str = 'adamw_torch'
@@ -84,6 +84,7 @@ class SftArguments:
     save_steps: Optional[int] = None
     save_total_limit: int = 2
     logging_steps: int = 5
+    dataloader_num_workers: int = 1
 
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -263,7 +264,7 @@ def llm_sft(args: SftArguments) -> None:
         bf16=args.bf16,
         fp16=args.fp16,
         eval_steps=args.eval_steps,
-        dataloader_num_workers=1,
+        dataloader_num_workers=args.dataloader_num_workers,
         load_best_model_at_end=True,
         metric_for_best_model='loss',
         greater_is_better=False,
@@ -276,11 +277,12 @@ def llm_sft(args: SftArguments) -> None:
         push_to_hub=args.push_to_hub,
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
-        gradient_checkpointing=args.gradient_checkpoint,
+        gradient_checkpointing=args.gradient_checkpointing,
         local_rank=local_rank)
 
-    if args.gradient_checkpoint:
+    if args.gradient_checkpointing:
         # fix: gradients will be None
+        model.config.use_cache = False
         model.enable_input_require_grads()
         if is_dist():
             trainer_args.ddp_find_unused_parameters = False
