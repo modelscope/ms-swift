@@ -18,7 +18,7 @@ torchrun \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 64 \
-    --lora_alpha 32 \
+    --lora_alpha 16 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
     --batch_size 1 \
