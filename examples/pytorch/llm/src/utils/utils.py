@@ -15,10 +15,6 @@ from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
 
-# monkey patch
-trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
-trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
-
 logger = get_logger()
 ms_logger = get_ms_logger()
 
@@ -211,3 +207,7 @@ if is_master():
 else:
     logger.setLevel(logging.ERROR)
     ms_logger.setLevel(logging.ERROR)
+
+# monkey patch
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
