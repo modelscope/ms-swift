@@ -1,12 +1,12 @@
 from functools import partial
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
 
-from swift.utils import get_seed
+from swift.utils import get_seed, is_master
 
 
 def _processing_alpaca(
@@ -122,7 +122,34 @@ def get_cot_zh_dataset() -> HfDataset:
     return _processing_alpaca(dataset)
 
 
+def _processing_captions(dataset: HfDataset,
+                         get_image_path: Callable[[Dict[str, Any]], str],
+                         response_key: str) -> HfDataset:
+    query_format = '<img>{image_path}</img>Please describe the image.'
+    query = [
+        query_format.format(image_path=get_image_path(d)) for d in dataset
+    ]
+    dataset = HfDataset.from_dict({
+        'query': query,
+        'response': dataset[response_key]
+    })
+    return dataset
+
+
+def get_coco_en_dataset() -> HfDataset:
+    dataset_id = 'modelscope/coco_2014_caption'
+    dataset_dict = MsDataset.load(dataset_id)
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset()
+    ])
+    dataset._info.features._column_requires_decoding['image'] = False
+    return _processing_captions(dataset, lambda d: d['image']['path'],
+                                'caption')
+
+
 DATASET_MAPPING = {
+    # nlp
     'alpaca-en': get_alpaca_gpt4_en_dataset,
     'alpaca-zh': get_alpaca_gpt4_zh_dataset,
     'finance-en': get_finance_en_dataset,
@@ -136,6 +163,8 @@ DATASET_MAPPING = {
     'instinwild-zh': get_instinwild_zh_dataset,
     'cot-en': get_cot_en_dataset,
     'cot-zh': get_cot_zh_dataset,
+    # multi-modal
+    'coco-en': get_coco_en_dataset,
 }
 
 

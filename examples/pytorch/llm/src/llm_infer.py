@@ -36,7 +36,7 @@ class InferArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: int = 20000  # -1: all dataset
+    dataset_sample: int = -1  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 1024
@@ -103,8 +103,8 @@ def llm_infer(args: InferArguments) -> None:
 
     # ### Inference
     template_type = MODEL_MAPPING[args.model_type]['template']
-    preprocess_func = get_preprocess(template_type, tokenizer, args.system,
-                                     args.max_length)
+    preprocess_func = get_preprocess(
+        template_type, tokenizer, args.system, args.max_length, batched=False)
     streamer = TextStreamer(
         tokenizer, skip_prompt=True, skip_special_tokens=True)
     generation_config = GenerationConfig(
@@ -132,13 +132,13 @@ def llm_infer(args: InferArguments) -> None:
         mini_test_dataset = test_dataset.select(range(10))
         del dataset
         for data in mini_test_dataset:
-            output = data['output']
-            data['output'] = None
+            response = data['response']
+            data['response'] = None
             input_ids = preprocess_func(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer, generation_config,
                       args.skip_prompt)
             print()
-            print(f'[LABELS]{output}')
+            print(f'[LABELS]{response}')
             print('-' * 80)
             # input('next[ENTER]')
 

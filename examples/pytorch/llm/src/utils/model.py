@@ -9,6 +9,7 @@ from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
 from torch import dtype as Dtype
 
 from swift import get_logger
+from .utils import broadcast_string, is_dist, is_master
 
 logger = get_logger()
 
@@ -149,6 +150,19 @@ def get_model_tokenizer_qwen(model_dir: str,
     return model, tokenizer
 
 
+def get_model_tokenizer_qwen_vl(model_dir: str,
+                                torch_dtype: Dtype,
+                                load_model: bool = True,
+                                **kwargs):
+    if 'quantization_config' in kwargs:
+        # https://github.com/pytorch/pytorch/issues/58969
+        kwargs['quantization_config'].llm_int8_skip_modules = [
+            'lm_head', 'attn_pool.attn'
+        ]
+    return get_model_tokenizer_qwen(model_dir, torch_dtype, load_model,
+                                    **kwargs)
+
+
 class LoRATM(NamedTuple):
     # default lora target modules. qkv
     baichuan = ['W_pack']
@@ -173,6 +187,20 @@ MODEL_MAPPING = {
         'model_id': 'qwen/Qwen-7B-Chat',
         'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_qwen,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+    },
+    'qwen-vl': {
+        'model_id': 'qwen/Qwen-VL',
+        'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_qwen_vl,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+    },
+    'qwen-vl-chat': {
+        'model_id': 'qwen/Qwen-VL-Chat',
+        'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_qwen_vl,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
@@ -292,11 +320,16 @@ def get_model_tokenizer(model_type: str,
 
     model_dir = kwargs.pop('model_dir', None)
     if model_dir is None:
-        model_dir = model_id
-        if not os.path.exists(model_id):
-            revision = data.get('revision', 'master')
-            model_dir = snapshot_download(
-                model_id, revision, ignore_file_pattern=ignore_file_pattern)
+        if is_master():
+            model_dir = model_id
+            if not os.path.exists(model_id):
+                revision = data.get('revision', 'master')
+                model_dir = snapshot_download(
+                    model_id,
+                    revision,
+                    ignore_file_pattern=ignore_file_pattern)
+        if is_dist():
+            model_dir = broadcast_string(model_dir)
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)

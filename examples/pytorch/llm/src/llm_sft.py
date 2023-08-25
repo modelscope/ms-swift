@@ -48,7 +48,7 @@ class SftArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: int = 20000  # -1: all dataset
+    dataset_sample: int = -1  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 1024
@@ -72,6 +72,8 @@ class SftArguments:
     gradient_checkpointing: bool = True
     batch_size: int = 1
     num_train_epochs: int = 1
+    # if max_steps >= 0, override num_train_epochs
+    max_steps: int = -1
     optim: str = 'adamw_torch'
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
@@ -218,6 +220,7 @@ def llm_sft(args: SftArguments) -> None:
 
     show_layers(model)
     print_model_info(model)
+    logger.info(str(model))
 
     # ### Loading Dataset
     dataset = get_dataset(args.dataset.split(','))
@@ -225,10 +228,14 @@ def llm_sft(args: SftArguments) -> None:
                                                  args.dataset_test_size,
                                                  args.dataset_sample,
                                                  args.dataset_seed)
-    preprocess_func = get_preprocess(args.template_type, tokenizer,
-                                     args.system, args.max_length)
-    train_dataset = train_dataset.map(preprocess_func)
-    val_dataset = val_dataset.map(preprocess_func)
+    preprocess_func = get_preprocess(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        batched=True)
+    train_dataset = train_dataset.map(preprocess_func, batched=True)
+    val_dataset = val_dataset.map(preprocess_func, batched=True)
     del dataset
     # Data analysis
     stat_dataset(train_dataset)
@@ -255,6 +262,7 @@ def llm_sft(args: SftArguments) -> None:
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
         num_train_epochs=args.num_train_epochs,
+        max_steps=args.max_steps,
         lr_scheduler_type=args.lr_scheduler_type,
         warmup_ratio=args.warmup_ratio,
         logging_steps=args.logging_steps,
