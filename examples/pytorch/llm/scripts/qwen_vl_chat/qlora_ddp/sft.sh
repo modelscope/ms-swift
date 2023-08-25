@@ -1,4 +1,4 @@
-# 4 * 16GB VRAM
+# 4 * 19GB VRAM
 nproc_per_node=4
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \

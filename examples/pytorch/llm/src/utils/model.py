@@ -9,6 +9,7 @@ from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
 from torch import dtype as Dtype
 
 from swift import get_logger
+from .utils import broadcast_string, is_dist, is_master
 
 logger = get_logger()
 
@@ -319,11 +320,16 @@ def get_model_tokenizer(model_type: str,
 
     model_dir = kwargs.pop('model_dir', None)
     if model_dir is None:
-        model_dir = model_id
-        if not os.path.exists(model_id):
-            revision = data.get('revision', 'master')
-            model_dir = snapshot_download(
-                model_id, revision, ignore_file_pattern=ignore_file_pattern)
+        if is_master():
+            model_dir = model_id
+            if not os.path.exists(model_id):
+                revision = data.get('revision', 'master')
+                model_dir = snapshot_download(
+                    model_id,
+                    revision,
+                    ignore_file_pattern=ignore_file_pattern)
+        if is_dist():
+            model_dir = broadcast_string(model_dir)
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)

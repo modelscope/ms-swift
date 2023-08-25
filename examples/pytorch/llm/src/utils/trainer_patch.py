@@ -47,7 +47,8 @@ class ProgressCallbackNew(ProgressCallback):
             with open(jsonl_path, 'a') as f:
                 f.write(json.dumps(logs) + '\n')
         super().on_log(args, state, control, logs, **kwargs)
-        self.training_bar.refresh()
+        if state.is_local_process_zero:
+            self.training_bar.refresh()
 
 
 class DefaultFlowCallbackNew(DefaultFlowCallback):

@@ -1,4 +1,4 @@
-# 16GB VRAM
+# 19GB VRAM
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-vl-chat \
