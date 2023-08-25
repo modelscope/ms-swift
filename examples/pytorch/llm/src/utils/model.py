@@ -148,6 +148,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
+
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 load_model: bool = True,
@@ -157,8 +158,9 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
-    return get_model_tokenizer_qwen(model_dir, torch_dtype,
-                                    load_model, **kwargs)
+    return get_model_tokenizer_qwen(model_dir, torch_dtype, load_model,
+                                    **kwargs)
+
 
 class LoRATM(NamedTuple):
     # default lora target modules. qkv

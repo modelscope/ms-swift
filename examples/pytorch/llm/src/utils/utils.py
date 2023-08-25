@@ -188,6 +188,8 @@ def find_all_linear_for_lora(model: Module,
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm2-6b'):
         head_module_name = 'output_layer'
+    if model_type.startswith('qwen-vl'):
+        return ['c_attn', 'attn.c_proj', 'w1', 'w2']
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
         linear_cls = Linear4bit
