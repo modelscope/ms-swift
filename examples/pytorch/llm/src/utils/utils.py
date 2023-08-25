@@ -11,7 +11,6 @@ from torch.nn import Linear, Module
 from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
-from swift.utils import is_master
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
@@ -24,16 +23,6 @@ logger = get_logger()
 ms_logger = get_ms_logger()
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
-logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
-
-logger.handlers[0].setFormatter(logger_format)
-ms_logger.handlers[0].setFormatter(logger_format)
-if is_master():
-    logger.setLevel(logging.INFO)
-    ms_logger.setLevel(logging.INFO)
-else:
-    logger.setLevel(logging.ERROR)
-    ms_logger.setLevel(logging.ERROR)
 
 DTYPE_MAPPING = {
     'fp16': torch.float16,
@@ -49,6 +38,11 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
     world_size = int(os.getenv('WORLD_SIZE', 1))
     local_world_size = int(os.getenv('LOCAL_WORLD_SIZE', 1))
     return rank, local_rank, world_size, local_world_size
+
+
+def is_master():
+    rank = get_dist_setting()[0]
+    return rank in {-1, 0}
 
 
 def is_dist():
@@ -205,3 +199,15 @@ def find_all_linear_for_lora(model: Module,
             if head_module_name not in module_name:
                 lora_module_names.add(module_name)
     return list(lora_module_names)
+
+
+logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
+
+logger.handlers[0].setFormatter(logger_format)
+ms_logger.handlers[0].setFormatter(logger_format)
+if is_master():
+    logger.setLevel(logging.INFO)
+    ms_logger.setLevel(logging.INFO)
+else:
+    logger.setLevel(logging.ERROR)
+    ms_logger.setLevel(logging.ERROR)
