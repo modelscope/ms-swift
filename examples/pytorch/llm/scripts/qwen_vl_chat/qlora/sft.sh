@@ -19,7 +19,7 @@ python src/llm_sft.py \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
-    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
+    --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 50 \
