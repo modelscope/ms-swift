@@ -6,7 +6,7 @@ from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
 
-from swift.utils import get_seed, is_master
+from swift.utils import get_seed
 
 
 def _processing_alpaca(

@@ -9,7 +9,8 @@ from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
 from torch import dtype as Dtype
 
 from swift import get_logger
-from .utils import broadcast_string, is_dist, is_master
+from swift.utils import is_master
+from .utils import broadcast_string, is_dist
 
 logger = get_logger()
 
