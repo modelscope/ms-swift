@@ -220,6 +220,7 @@ def llm_sft(args: SftArguments) -> None:
 
     show_layers(model)
     print_model_info(model)
+    logger.info(str(model))
 
     # ### Loading Dataset
     dataset = get_dataset(args.dataset.split(','))
