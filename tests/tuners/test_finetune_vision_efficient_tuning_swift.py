@@ -4,11 +4,11 @@ import shutil
 import tempfile
 import unittest
 
-from swift import AdapterConfig, LoRAConfig, PromptConfig
-
 from modelscope.metainfo import Trainers
 from modelscope.msdatasets import MsDataset
 from modelscope.trainers import build_trainer
+
+from swift import AdapterConfig, LoRAConfig, PromptConfig
 
 
 class TestVisionEfficientTuningSwiftTrainer(unittest.TestCase):
