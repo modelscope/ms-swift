@@ -5,6 +5,11 @@
     <h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
 <p>
 
+<p align="center">
+<a href="https://modelscope.cn/home">Modelscope Hub</a>
+<br>
+        <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
+</p>
 
 # Introduction
 
@@ -31,6 +36,35 @@ Key features:
 4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, coco-en
 5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default
 
+# Installation
+
+SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
+
+Please install SWIFT by the `pip` command:
+
+```shell
+pip install ms-swift -U
+```
+
+If you want to install SWIFT by source code, please run:
+
+```shell
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .
+```
+
+If you are using source code, please remember install requirements by:
+```shell
+pip install -r requirements/framework.txt
+```
+
+SWIFT requires torch>=1.13.
+
+We also recommend to use SWIFT in our docker image:
+```shell
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
+```
 
 # Getting Started
 
@@ -179,36 +213,6 @@ output
 ```
 
 The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from Peft, which stores the weights and config of the `default` tuner.
-
-# Installation
-
-SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
-
-Please install SWIFT by the `pip` command:
-
-```shell
-pip install swift -U
-```
-
-If you want to install SWIFT by source code, please run:
-
-```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .
-```
-
-If you are using source code, please remember install requirements by:
-```shell
-pip install -r requirements/framework.txt
-```
-
-SWIFT requires torch>=1.13.
-
-We also recommend to use SWIFT in our docker image:
-```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
-```
 
 
 # Learn More

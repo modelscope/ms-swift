@@ -5,6 +5,11 @@
     <h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
 <p>
 
+<p align="center">
+<a href="https://modelscope.cn/home">魔搭社区</a>
+<br>
+        中文&nbsp ｜ &nbsp<a href="README.md">English</a>
+</p>
 
 # 简介
 SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的框架，旨在促进轻量级模型的微调。它集成了各种高效的微调方法的实现，采用了参数高效、内存高效和时间高效的方法。SWIFT可以无缝地集成到ModelScope生态系统中，并提供微调各种模型的能力，主要侧重于LLMs和视觉模型。此外，SWIFT与[Peft](https://github.com/huggingface/peft)完全兼容，使用户能够利用熟悉的Peft接口对ModelScope模型进行微调。
@@ -28,6 +33,36 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpoint, 梯度累加, 支持推送modelscope hub, 支持自定义数据集, ...
 4. 支持的数据集: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, coco-en
 5. 支持的template: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default
+
+# 安装
+
+SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
+
+请使用pip命令安装SWIFT：
+
+```shell
+pip install ms-swift -U
+```
+
+如果您想通过源代码安装SWIFT，请运行以下命令：
+
+```shell
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .
+```
+
+如果您在使用源代码，请记得通过以下方式安装所需的依赖项：
+```shell
+pip install -r requirements/framework.txt
+```
+
+SWIFT requires torch>=1.13.
+
+我们还建议在我们的Docker镜像中使用SWIFT
+```shell
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
+```
 
 # 快速开始
 SWIFT支持多个tuners，包括由[Peft](https://github.com/huggingface/peft)提供的调谐器。要使用这些调谐器，只需调用:
@@ -171,35 +206,6 @@ output
 
 存储在输出目录中的config/weights是extra_state_keys的配置和权重。这与Peft不同，Peft存储了default调谐器的权重和配置。
 
-# 安装
-
-SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
-
-请使用pip命令安装SWIFT：
-
-```shell
-pip install swift -U
-```
-
-如果您想通过源代码安装SWIFT，请运行以下命令：
-
-```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .
-```
-
-如果您在使用源代码，请记得通过以下方式安装所需的依赖项：
-```shell
-pip install -r requirements/framework.txt
-```
-
-SWIFT requires torch>=1.13.
-
-我们还建议在我们的Docker镜像中使用SWIFT
-```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
-```
 
 # Learn More
 
