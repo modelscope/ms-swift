@@ -1,8 +1,9 @@
+<h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
+
 <p align="center">
     <br>
     <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
     <br>
-    <h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
 <p>
 
 <p align="center">
