@@ -1,10 +1,16 @@
+<h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
+
 <p align="center">
     <br>
     <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
     <br>
-    <h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
 <p>
 
+<p align="center">
+<a href="https://modelscope.cn/home">Modelscope Hub</a>
+<br>
+        <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
+</p>
 
 # Introduction
 
@@ -25,11 +31,41 @@ Key features:
 ## LLM SFT Example
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
 
-1. supported sft method: lora, qlora, full, ...
-2. supported models: [**qwen-7b**](https://github.com/QwenLM/Qwen-7B), baichuan-7b, baichuan-13b, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-13b, llama2-70b, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b, ...
+1. supported sft method: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine tuning), ...
+2. supported models: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B), qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL), baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b
 3. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, push to modelscope hub, custom datasets, ...
-4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, ...
+4. supported datasets: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, coco-en
+5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default
 
+# Installation
+
+SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
+
+Please install SWIFT by the `pip` command:
+
+```shell
+pip install ms-swift -U
+```
+
+If you want to install SWIFT by source code, please run:
+
+```shell
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .
+```
+
+If you are using source code, please remember install requirements by:
+```shell
+pip install -r requirements/framework.txt
+```
+
+SWIFT requires torch>=1.13.
+
+We also recommend to use SWIFT in our docker image:
+```shell
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
+```
 
 # Getting Started
 
@@ -104,26 +140,26 @@ model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16
 
 # init lora tuner config
 lora_config = LoRAConfig(
-    r=10,	# the rank of the LoRA module
-    target_modules=['query', 'key', 'value'],	# the modules to be replaced with the end of the module name
-    merge_weights=False	# whether to merge weights
+    r=10,  # the rank of the LoRA module
+    target_modules=['query', 'key', 'value'],  # the modules to be replaced with the end of the module name
+    merge_weights=False  # whether to merge weights
 )
 
 # init adapter tuner config
 adapter_config = AdapterConfig(
-    dim=768,	# the dimension of the hidden states
-    hidden_pos=0,	# the position of the hidden state to passed into the adapter
-    target_modules=r'.*attention.output.dense$',	# the modules to be replaced with regular expression
-    adapter_length=10	# the length of the adapter length
+    dim=768,  # the dimension of the hidden states
+    hidden_pos=0,  # the position of the hidden state to passed into the adapter
+    target_modules=r'.*attention.output.dense$',  # the modules to be replaced with regular expression
+    adapter_length=10  # the length of the adapter length
 )
 
 # init prompt tuner config
 prompt_config = PromptConfig(
-    dim=768,	# the dimension of the hidden states
-    target_modules=r'.*layer\.\d+$',	# the modules to be replaced with regular expression
-    embedding_pos=0,	# the position of the embedding tensor
-    prompt_length=10,	# the length of the prompt tokens
-    attach_front=False	# Whether prompt is attached in front of the embedding
+    dim=768,  # the dimension of the hidden states
+    target_modules=r'.*layer\.\d+$',  # the modules to be replaced with regular expression
+    embedding_pos=0,    # the position of the embedding tensor
+    prompt_length=10,   # the length of the prompt tokens
+    attach_front=False  # Whether prompt is attached in front of the embedding
 )
 
 # create model with swift. In practice, you can use any of these tuners or a combination of them.
@@ -178,36 +214,6 @@ output
 ```
 
 The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from Peft, which stores the weights and config of the `default` tuner.
-
-# Installation
-
-SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
-
-Please install SWIFT by the `pip` command:
-
-```shell
-pip install swift -U
-```
-
-If you want to install SWIFT by source code, please run:
-
-```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .
-```
-
-If you are using source code, please remember install requirements by:
-```shell
-pip install -r requirements/framework.txt
-```
-
-SWIFT requires torch>=1.13.
-
-We also recommend to use SWIFT in our docker image:
-```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
-```
 
 
 # Learn More

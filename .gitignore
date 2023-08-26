@@ -124,6 +124,8 @@ replace.sh
 result.png
 result.jpg
 result.mp4
+runs/
+*.out
 
 # Pytorch
 *.pth
@@ -131,5 +133,3 @@ result.mp4
 
 # ast template
 ast_index_file.py
-
-runs/

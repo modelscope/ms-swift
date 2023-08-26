@@ -10,14 +10,14 @@ from transformers import BitsAndBytesConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, find_all_linear_for_lora, get_dataset,
                    get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_dist, plot_images, process_dataset, select_bnb,
-                   select_dtype, show_layers)
+                   is_dist, is_master, plot_images, process_dataset,
+                   select_bnb, select_dtype, show_layers)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
-from swift.utils import (add_version_to_work_dir, is_master, parse_args,
-                         print_model_info, seed_everything)
+from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
+                         seed_everything)
 from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
 
 logger = get_logger()
