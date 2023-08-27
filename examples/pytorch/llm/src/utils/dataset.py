@@ -1,12 +1,16 @@
+import os
+import re
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import json
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
 
 from swift.utils import get_seed
+from .utils import download_dataset
 
 
 def _processing_alpaca(
@@ -148,6 +152,62 @@ def get_coco_en_dataset() -> HfDataset:
                                 'caption')
 
 
+def _filter_agent_dataset(
+        dataset: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    res = []
+    for d in dataset:
+        system = d['conversations'][0]['value']
+        find_list = re.findall(r'{"plugin_name": "(.+?)"', system)
+        if len(set(find_list)) <= 1:
+            continue
+        res.append(d)
+    return res
+
+
+def _process_agent_dataset(dataset: List[Dict[str, Any]]) -> HfDataset:
+    system = []
+    query = []
+    response = []
+    history = []
+    for d in dataset:
+        conversations = d['conversations']
+        assert len(conversations) >= 3
+        assert conversations[0]['from'] == 'system'
+        system.append(conversations[0]['value'])
+        query.append(conversations[-2]['value'])
+        response.append(conversations[-1]['value'])
+        h = None
+        if len(conversations) > 3:
+            assert len(conversations) % 2 == 1
+            conversations_h = conversations[1:-2]
+            h = [(q['value'], r['value'])
+                 for q, r in zip(conversations_h[::2], conversations_h[1::2])]
+        history.append(h)
+    dataset = HfDataset.from_dict({
+        'system': system,
+        'query': query,
+        'response': response,
+        'history': history
+    })
+    return dataset
+
+
+def get_agent_zh_dataset():
+    model_id = 'damo/MSAgent-Bench'
+    files = ['train.jsonl', 'dev.jsonl']
+    dataset_dir = download_dataset(model_id, files)
+    dataset = []
+    for file in files:
+        fpath = os.path.join(dataset_dir, file)
+        with open(fpath, 'r') as f:
+            text = f.read()
+        text = text.replace('}{', '},{')
+        text = f'[{text}]'
+        dataset += json.loads(text)
+    dataset = _filter_agent_dataset(dataset)
+    return _process_agent_dataset(dataset)
+
+
 DATASET_MAPPING = {
     # nlp
     'alpaca-en': get_alpaca_gpt4_en_dataset,
@@ -165,6 +225,7 @@ DATASET_MAPPING = {
     'cot-zh': get_cot_zh_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
+    'agent-zh': get_agent_zh_dataset
 }
 
 

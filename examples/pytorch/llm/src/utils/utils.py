@@ -1,16 +1,22 @@
 import logging
 import os
+import shutil
+from tempfile import TemporaryDirectory
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
+import requests
 import torch
 import torch.distributed as dist
+from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import dtype as Dtype
 from torch.nn import Linear, Module
+from tqdm.auto import tqdm
 from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
+from swift.hub import ModelScopeConfig
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
@@ -195,6 +201,32 @@ def find_all_linear_for_lora(model: Module,
             if head_module_name not in module_name:
                 lora_module_names.add(module_name)
     return list(lora_module_names)
+
+
+def download_dataset(model_id: str,
+                     files: List[str],
+                     force_download: bool = False) -> str:
+    url = f'http://www.modelscope.cn/api/v1/datasets/{model_id}/repo?Revision=master&FilePath={{fpath}}'
+    cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', model_id, 'master')
+    local_dir = os.path.join(cache_dir, 'raw')
+    tmp_dir = os.path.join(cache_dir, 'tmp')
+    os.makedirs(local_dir, exist_ok=True)
+    os.makedirs(tmp_dir, exist_ok=True)
+    cookies = ModelScopeConfig.get_cookies()
+    with TemporaryDirectory(dir=tmp_dir) as temp_dir:
+        for remote_fpath in files:
+            url = url.format(fpath=remote_fpath)
+            temp_fpath = os.path.join(temp_dir, remote_fpath)
+            local_fpath = os.path.join(local_dir, remote_fpath)
+            if not force_download and os.path.exists(local_fpath):
+                continue
+            resp = requests.get(url, cookies=cookies, stream=True)
+            with open(temp_fpath, 'wb') as f:
+                for data in tqdm(resp.iter_lines()):
+                    f.write(data)
+            shutil.copy2(temp_fpath, local_fpath)
+
+    return local_dir
 
 
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
