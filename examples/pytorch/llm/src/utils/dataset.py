@@ -192,7 +192,7 @@ def _process_agent_dataset(dataset: List[Dict[str, Any]]) -> HfDataset:
     return dataset
 
 
-def get_agent_zh_dataset():
+def get_damo_agent_zh_dataset():
     model_id = 'damo/MSAgent-Bench'
     files = ['train.jsonl', 'dev.jsonl']
     dataset_dir = download_dataset(model_id, files)
@@ -223,7 +223,7 @@ DATASET_MAPPING = {
     'instinwild-zh': get_instinwild_zh_dataset,
     'cot-en': get_cot_en_dataset,
     'cot-zh': get_cot_zh_dataset,
-    'agent-zh': get_agent_zh_dataset,
+    'damo-agent-zh': get_damo_agent_zh_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
 }

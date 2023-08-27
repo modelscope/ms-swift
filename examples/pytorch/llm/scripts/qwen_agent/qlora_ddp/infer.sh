@@ -7,7 +7,7 @@ python src/llm_infer.py \
     --dtype bf16 \
     --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
-    --dataset agent-zh \
+    --dataset damo-agent-zh \
     --dataset_sample -1 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
