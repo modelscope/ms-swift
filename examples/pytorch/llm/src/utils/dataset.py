@@ -1,3 +1,4 @@
+import ast
 import os
 import re
 from functools import partial
@@ -8,6 +9,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
+from tqdm.auto import tqdm
 
 from swift.utils import get_seed
 from .utils import download_dataset
@@ -154,13 +156,23 @@ def get_coco_en_dataset() -> HfDataset:
                                 'caption')
 
 
-def _filter_agent_dataset(
-        dataset: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _filter_agent_dataset(dataset: List[Dict[str, Any]],
+                          use_mini: bool) -> List[Dict[str, Any]]:
+    if use_mini:
+        pattern = r'\d\. {"plugin_name": "(.+?)"'
+    else:
+        pattern = r'\d\. {"(?:plugin_)?name": "(.+?)"'
     res = []
-    for d in dataset:
-        system = d['conversations'][0]['value']
-        find_list = re.findall(r'{"plugin_name": "(.+?)"', system)
+    for d in tqdm(dataset):
+        idx = d['conversations'].find(r"'from': 'user")
+        if idx == -1:
+            continue
+        find_list = re.findall(pattern, d['conversations'][:idx])
+        # remove dirty data
         if len(set(find_list)) <= 1:
+            continue
+        d['conversations'] = ast.literal_eval(d['conversations'])
+        if len(d['conversations']) == 1:
             continue
         res.append(d)
     return res
@@ -171,7 +183,7 @@ def _process_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
     query = []
     response = []
     history = []
-    for d in dataset:
+    for d in tqdm(dataset):
         conversations = d['conversations']
         assert len(conversations) >= 3
         assert conversations[0]['from'] == 'system'
@@ -194,19 +206,13 @@ def _process_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
     return dataset
 
 
-def get_damo_agent_zh_dataset():
-    model_id = 'damo/MSAgent-Bench'
-    files = ['train.jsonl', 'dev.jsonl']
-    dataset_dir = download_dataset(model_id, files)
-    dataset = []
-    for file in files:
-        fpath = os.path.join(dataset_dir, file)
-        with open(fpath, 'r') as f:
-            text = f.read()
-        text = text.replace('}{', '},{')
-        text = f'[{text}]'
-        dataset += json.loads(text)
-    dataset = _filter_agent_dataset(dataset)
+def get_damo_agent_zh_dataset(use_mini: bool = False) -> HfDataset:
+    dataset_dict = MsDataset.load('damo/MSAgent-Bench')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset()
+    ])
+    dataset = _filter_agent_dataset(dataset, use_mini)
     return _process_agent_dataset(dataset)
 
 
@@ -276,7 +282,8 @@ DATASET_MAPPING = {
     'instinwild-zh': get_instinwild_zh_dataset,
     'cot-en': get_cot_en_dataset,
     'cot-zh': get_cot_zh_dataset,
-    'damo-agent-zh': get_damo_agent_zh_dataset,
+    'damo-agent-mini-zh': partial(get_damo_agent_zh_dataset, use_mini=True),
+    'damo-agent-zh': get_damo_agent_zh_dataset,  # containing normal chat
     'firefly-all-zh': get_firefly_all_zh_dataset,
     'poetry-zh': get_poetry_zh_dataset,
     # multi-modal

@@ -220,13 +220,17 @@ def download_dataset(model_id: str,
             local_fpath = os.path.join(local_dir, remote_fpath)
             if not force_download and os.path.exists(local_fpath):
                 continue
-            resp = requests.get(url, cookies=cookies, stream=True)
-            with open(temp_fpath, 'wb') as f:
-                for data in tqdm(resp.iter_lines()):
-                    f.write(data)
+            download_files(url, temp_fpath, cookies)
             shutil.copy2(temp_fpath, local_fpath)
 
     return local_dir
+
+
+def download_files(url: str, local_path: str, cookies) -> None:
+    resp = requests.get(url, cookies=cookies, stream=True)
+    with open(local_path, 'wb') as f:
+        for data in tqdm(resp.iter_lines()):
+            f.write(data)
 
 
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
