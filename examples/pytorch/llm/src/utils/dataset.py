@@ -223,9 +223,9 @@ DATASET_MAPPING = {
     'instinwild-zh': get_instinwild_zh_dataset,
     'cot-en': get_cot_en_dataset,
     'cot-zh': get_cot_zh_dataset,
+    'agent-zh': get_agent_zh_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
-    'agent-zh': get_agent_zh_dataset
 }
 
 

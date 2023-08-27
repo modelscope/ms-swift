@@ -178,14 +178,14 @@ class LoRATM(NamedTuple):
 MODEL_MAPPING = {
     'qwen-7b': {
         'model_id': 'qwen/Qwen-7B',  # model id or model dir
-        'revision': 'v.1.0.4',
+        'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
     'qwen-7b-chat': {
         'model_id': 'qwen/Qwen-7B-Chat',
-        'revision': 'v1.0.5',
+        'revision': 'v1.0.6',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
