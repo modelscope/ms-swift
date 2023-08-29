@@ -293,8 +293,10 @@ def llm_sft(args: SftArguments) -> None:
         model.config.use_cache = False
         model.enable_input_require_grads()
         if is_dist():
+            trainer_args._frozen = False  # Compatible with transformers==4.32.0
             trainer_args.ddp_find_unused_parameters = False
             trainer_args.ddp_broadcast_buffers = False
+            trainer_args._frozen = True
     logger.info(f'trainer_args: {trainer_args}')
 
     trainer = Seq2SeqTrainer(

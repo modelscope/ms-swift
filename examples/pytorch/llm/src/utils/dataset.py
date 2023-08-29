@@ -1,15 +1,21 @@
+import ast
+import os
+import re
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import json
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
+from tqdm.auto import tqdm
 
 from swift.utils import get_seed
+from .utils import download_dataset
 
 
-def _processing_alpaca(
+def _process_alpaca(
         dataset: HfDataset,
         preprocess_input: Optional[Callable[[str], str]] = None) -> HfDataset:
     instruction = dataset['instruction']
@@ -32,7 +38,7 @@ def _processing_alpaca(
 def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
 def get_alpaca_gpt4_zh_dataset() -> HfDataset:
@@ -44,13 +50,13 @@ def get_alpaca_gpt4_zh_dataset() -> HfDataset:
             inp = inp[3:]
         return inp
 
-    return _processing_alpaca(dataset, _preprocess_input)
+    return _process_alpaca(dataset, _preprocess_input)
 
 
 def get_finance_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/finance_en', split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
 _multi_alpaca_language_list = [
@@ -58,9 +64,16 @@ _multi_alpaca_language_list = [
 ]
 
 
-def get_multi_alpaca(subset_name: str) -> HfDataset:
-    """
-    subset_name:
+def _get_multi_alpaca(subset_name: str) -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'damo/nlp_polylm_multialpaca_sft',
+        subset_name=subset_name,
+        split='train').to_hf_dataset()
+    return _process_alpaca(dataset)
+
+
+def get_multi_alpaca(language_list: List[str]) -> HfDataset:
+    """language_list:
         Language-key	Language	# examples
         ar	Arabic	14,671
         de	German	9,515
@@ -74,60 +87,56 @@ def get_multi_alpaca(subset_name: str) -> HfDataset:
         th	Thai	11,496
         vi	Vietnamese	13,908
     """
-    dataset: HfDataset = MsDataset.load(
-        'damo/nlp_polylm_multialpaca_sft',
-        subset_name=subset_name,
-        split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
-
-
-def get_multi_alpaca_all() -> HfDataset:
     dataset_list = []
-    for subset_name in _multi_alpaca_language_list:
-        dataset = get_multi_alpaca(subset_name)
+    for subset_name in language_list:
+        dataset = _get_multi_alpaca(subset_name)
         dataset_list.append(dataset)
     dataset = concatenate_datasets(dataset_list)
     return dataset
 
 
+def get_multi_alpaca_all() -> HfDataset:
+    return get_multi_alpaca(_multi_alpaca_language_list)
+
+
 def get_code_alpaca_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/code_alpaca_en', split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
-def get_instinwild_zh_dataset():
+def get_instinwild_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='default',
         split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
-def get_instinwild_en_dataset():
+def get_instinwild_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='subset',
         split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
 def get_cot_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT', split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
 def get_cot_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT_zh', split='train').to_hf_dataset()
-    return _processing_alpaca(dataset)
+    return _process_alpaca(dataset)
 
 
-def _processing_captions(dataset: HfDataset,
-                         get_image_path: Callable[[Dict[str, Any]], str],
-                         response_key: str) -> HfDataset:
-    query_format = '<img>{image_path}</img>Please describe the image.'
+def _process_mutimodal_dataset(dataset: HfDataset, prompt: str, image_key: str,
+                               response_key: str) -> HfDataset:
+    dataset._info.features._column_requires_decoding['image'] = False
+    query_format = f'<img>{{image_path}}</img>{prompt}'
     query = [
-        query_format.format(image_path=get_image_path(d)) for d in dataset
+        query_format.format(image_path=d[image_key]['path']) for d in dataset
     ]
     dataset = HfDataset.from_dict({
         'query': query,
@@ -137,15 +146,128 @@ def _processing_captions(dataset: HfDataset,
 
 
 def get_coco_en_dataset() -> HfDataset:
-    dataset_id = 'modelscope/coco_2014_caption'
-    dataset_dict = MsDataset.load(dataset_id)
+    dataset_dict = MsDataset.load('modelscope/coco_2014_caption')
     dataset: HfDataset = concatenate_datasets([
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['validation'].to_hf_dataset()
     ])
-    dataset._info.features._column_requires_decoding['image'] = False
-    return _processing_captions(dataset, lambda d: d['image']['path'],
-                                'caption')
+    return _process_mutimodal_dataset(dataset, 'please describe the image',
+                                      'image', 'caption')
+
+
+def _filter_agent_dataset(dataset: List[Dict[str, Any]],
+                          use_mini: bool) -> List[Dict[str, Any]]:
+    if use_mini:
+        pattern = r'\d\. {"plugin_name": "(.+?)"'
+    else:
+        pattern = r'\d\. {"(?:plugin_)?name": "(.+?)"'
+    res = []
+    for d in tqdm(dataset):
+        idx = d['conversations'].find(r"'from': 'user")
+        if idx == -1:
+            continue
+        find_list = re.findall(pattern, d['conversations'][:idx])
+        # remove dirty data
+        if len(set(find_list)) <= 1:
+            continue
+        d['conversations'] = ast.literal_eval(d['conversations'])
+        if len(d['conversations']) == 1:
+            continue
+        res.append(d)
+    return res
+
+
+def _process_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
+    system = []
+    query = []
+    response = []
+    history = []
+    for d in tqdm(dataset):
+        conversations = d['conversations']
+        assert len(conversations) >= 3
+        assert conversations[0]['from'] == 'system'
+        system.append(conversations[0]['value'])
+        query.append(conversations[-2]['value'])
+        response.append(conversations[-1]['value'])
+        h = None
+        if len(conversations) > 3:
+            assert len(conversations) % 2 == 1
+            conversations_h = conversations[1:-2]
+            h = [(q['value'], r['value'])
+                 for q, r in zip(conversations_h[::2], conversations_h[1::2])]
+        history.append(h)
+    dataset = HfDataset.from_dict({
+        'system': system,
+        'query': query,
+        'response': response,
+        'history': history
+    })
+    return dataset
+
+
+def get_damo_agent_zh_dataset(use_mini: bool = False) -> HfDataset:
+    dataset_dict = MsDataset.load('damo/MSAgent-Bench')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset()
+    ])
+    dataset = _filter_agent_dataset(dataset, use_mini)
+    return _process_agent_dataset(dataset)
+
+
+_firefly_kind_list = [
+    'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection',
+    'ClassicalChinese', 'BELLE', 'StoryGeneration', 'Couplet', 'Cot',
+    'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA',
+    'AncientPoem', 'TextMatching', 'NLI', 'Summary', 'KeywordRecognition',
+    'ProductDesc', 'LyricGeneration', 'Composition', 'MusicComment', 'NER'
+]
+
+
+def _process_firefly(dataset: List[Dict[str, str]],
+                     kind_list: List[str]) -> HfDataset:
+    kind_set = set(kind_list)
+    query = []
+    response = []
+    for d in dataset:
+        if d['kind'] not in kind_set:
+            continue
+        query.append(d['input'])
+        response.append(d['target'])
+
+    return HfDataset.from_dict({
+        'query': query,
+        'response': response,
+    })
+
+
+def get_firefly_zh_dataset(kind_list: List[str]) -> HfDataset:
+    model_id = 'wyj123456/firefly'
+    file = 'firefly-train-1.1M.jsonl'
+    dataset_dir = download_dataset(model_id, [file])
+    fpath = os.path.join(dataset_dir, file)
+    with open(fpath, 'r') as f:
+        text = f.read()
+        text = text.replace('}{', '},{')
+        text = f'[{text}]'
+        dataset = json.loads(text)
+    return _process_firefly(dataset, kind_list)
+
+
+def get_firefly_all_zh_dataset() -> HfDataset:
+    return get_firefly_zh_dataset(_firefly_kind_list)
+
+
+def get_poetry_zh_dataset() -> HfDataset:
+    dataset_dict = MsDataset.load('modelscope/chinese-poetry-collection')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['test'].to_hf_dataset()
+    ])
+    return HfDataset.from_dict({
+        'query': ['写诗'] * len(dataset),
+        'response': dataset['text1']
+    })
 
 
 DATASET_MAPPING = {
@@ -154,15 +276,15 @@ DATASET_MAPPING = {
     'alpaca-zh': get_alpaca_gpt4_zh_dataset,
     'finance-en': get_finance_en_dataset,
     'multi-alpaca-all': get_multi_alpaca_all,
-    **{
-        f'multi-alpaca-{k}': partial(get_multi_alpaca, k)
-        for k in _multi_alpaca_language_list
-    },
     'code-en': get_code_alpaca_en_dataset,
     'instinwild-en': get_instinwild_en_dataset,
     'instinwild-zh': get_instinwild_zh_dataset,
     'cot-en': get_cot_en_dataset,
     'cot-zh': get_cot_zh_dataset,
+    'damo-agent-mini-zh': partial(get_damo_agent_zh_dataset, use_mini=True),
+    'damo-agent-zh': get_damo_agent_zh_dataset,  # containing normal chat
+    'firefly-all-zh': get_firefly_all_zh_dataset,
+    'poetry-zh': get_poetry_zh_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
 }

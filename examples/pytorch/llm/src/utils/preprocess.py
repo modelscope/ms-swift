@@ -177,8 +177,9 @@ def get_preprocess(
         history: Optional[List[Tuple[str, str]]] = example.get('history', None)
         query: str = example['query']
         response: str = example.get('response', None)
+        custom_system = example.get('system', system)
         return _preprocess(template_type, tokenizer, query, response, history,
-                           system, max_length)
+                           custom_system, max_length)
 
     if batched:
         # Avoid tqdm printing too much logs when dataset.map(...)
