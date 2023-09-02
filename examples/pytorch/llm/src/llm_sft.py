@@ -70,7 +70,8 @@ class SftArguments:
     lora_dropout_p: float = 0.1
 
     gradient_checkpointing: bool = True
-    enable_deepspeed: bool = False  # stage_2
+    enable_deepspeed: bool = False
+    deepspeed_config_path: str = 'ds_config.json'
     batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
@@ -146,7 +147,7 @@ class SftArguments:
 
         self.deepspeed = None
         if self.enable_deepspeed:
-            with open('ds_config.json', 'r') as f:
+            with open(self.deepspeed_config_path, 'r') as f:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.lora_target_modules is None:
