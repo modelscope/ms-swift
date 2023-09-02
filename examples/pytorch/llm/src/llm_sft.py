@@ -64,14 +64,13 @@ class SftArguments:
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
 
-    enable_deepspeed: bool = False  # stage_2
-
     lora_target_modules: Optional[List[str]] = None
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.1
 
     gradient_checkpointing: bool = True
+    enable_deepspeed: bool = False  # stage_2
     batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
@@ -146,7 +145,7 @@ class SftArguments:
         self.output_dir = os.path.join(self.output_dir, self.model_type)
 
         self.deepspeed = None
-        if self.enable_deepspeed is not None:
+        if self.enable_deepspeed:
             with open('ds_config.json', 'r') as f:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
