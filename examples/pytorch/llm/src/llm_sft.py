@@ -64,7 +64,7 @@ class SftArguments:
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
 
-    enable_deepspeed: bool = True  # stage_2
+    enable_deepspeed: bool = False  # stage_2
 
     lora_target_modules: Optional[List[str]] = None
     lora_rank: int = 8

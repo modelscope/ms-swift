@@ -62,7 +62,8 @@ git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
 # 微调(qlora)+推理 qwen-7b, 需要16GB显存.
-# 如果你想要使用量化, 你需要`pip install bitsandbytes`
+# 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
+# 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh

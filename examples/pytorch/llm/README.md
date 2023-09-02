@@ -60,7 +60,8 @@ git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
 # sft(qlora) and infer qwen-7b, Requires 16GB GPU memory.
-# If you want to use quantification, you need to `pip install bitsandbytes`
+# If you want to use quantification, you need to `pip install bitsandbytes -U`
+# If you want to use deepspeed, you need to `pip install deepspeed -U`
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
