@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from functools import partial
 from typing import List, Optional
-
+import json
 import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig
@@ -63,6 +63,8 @@ class SftArguments:
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': {'fp4', 'nf4'}})
     bnb_4bit_use_double_quant: bool = True
+
+    enable_deepspeed: bool = True  # stage_2
 
     lora_target_modules: Optional[List[str]] = None
     lora_rank: int = 8
@@ -143,6 +145,11 @@ class SftArguments:
 
         self.output_dir = os.path.join(self.output_dir, self.model_type)
 
+        self.deepspeed = None
+        if self.enable_deepspeed is not None:
+            with open('ds_config.json', 'r') as f:
+                self.deepspeed = json.load(f)
+            logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.lora_target_modules is None:
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_TM']
@@ -286,7 +293,8 @@ def llm_sft(args: SftArguments) -> None:
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
-        local_rank=local_rank)
+        local_rank=local_rank,
+        deepspeed=args.deepspeed)
 
     if args.gradient_checkpointing:
         # fix: gradients will be None

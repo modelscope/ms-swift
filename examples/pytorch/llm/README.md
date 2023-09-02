@@ -59,21 +59,21 @@ pip install .
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# sft(qlora) and infer qwen-7b, Requires 16GB VRAM.
+# sft(qlora) and infer qwen-7b, Requires 16GB GPU memory.
 # If you want to use quantification, you need to `pip install bitsandbytes`
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# sft(qlora+ddp) and infer qwen-7b, Requires 4*16GB VRAM.
+# sft(qlora+ddp) and infer qwen-7b, Requires 4*16GB GPU memory.
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
-# sft(lora+ddp) and infer qwen-7b, Requires 4*22GB VRAM.
+# sft(lora+ddp) and infer qwen-7b, Requires 4*22GB GPU memory.
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
-# sft(full) and infer qwen-7b, Requires 95GB VRAM.
+# sft(full) and infer qwen-7b, Requires 95GB GPU memory.
 bash scripts/qwen_7b_chat/full/sft.sh
 bash scripts/qwen_7b_chat/full/infer.sh
 

@@ -12,6 +12,7 @@ python src/llm_sft.py \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.1 \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \

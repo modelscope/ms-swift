@@ -1,4 +1,4 @@
-# 95GB VRAM
+# 95GB GPU memory
 # Experimental environment: 8 * 3090
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
 python src/llm_sft.py \
@@ -11,6 +11,7 @@ python src/llm_sft.py \
     --dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-5 \

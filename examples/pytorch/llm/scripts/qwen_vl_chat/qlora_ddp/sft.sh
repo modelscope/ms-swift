@@ -1,4 +1,4 @@
-# 4 * 19GB VRAM
+# 4 * 19GB GPU memory
 nproc_per_node=4
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
@@ -21,6 +21,7 @@ torchrun \
     --lora_alpha 16 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
