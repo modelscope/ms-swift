@@ -109,25 +109,14 @@ class SftArguments:
             "This parameter is used only when model_type.startswith('qwen-7b')"
         })
 
-    def _is_quant(self) -> bool:
-        return self.quantization_bit is not None or self.model_type.endswith(
-            'int4')
-
     def __post_init__(self):
-        if self.model_type.endswith(
-                'int4') and self.quantization_bit is not None:
-            logger.warning(
-                'The imported model has been quantized, '
-                'ignoring the quantization_bit parameter and setting it to None.'
-            )
-            self.quantization_bit = None
-
         if is_dist():
-            rank = get_dist_setting()[0]
+            rank, local_rank, _, _ = get_dist_setting()
+            torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
-            if self.ddp_backend == 'gloo' and self._is_quant():
+            if self.ddp_backend == 'gloo' and self.quantization_bit is not None:
                 raise ValueError('not supported, please use `nccl`')
 
             # Initialize in advance
@@ -139,7 +128,7 @@ class SftArguments:
             if self.save_steps is None:
                 self.save_steps = self.eval_steps
         elif self.sft_type == 'full':
-            assert self._is_quant(), 'not supported'
+            assert self.quantization_bit is not None, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 1e-5

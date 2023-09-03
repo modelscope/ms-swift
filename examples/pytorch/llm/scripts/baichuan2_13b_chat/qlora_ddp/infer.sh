@@ -1,4 +1,4 @@
-# 10G
+# 12G
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type baichuan2-13b-chat \
