@@ -12,8 +12,8 @@ from modelscope import MsDataset
 from tqdm.auto import tqdm
 
 from swift.utils import get_seed
-from .utils import download_dataset
 from .preprocess import History
+from .utils import download_dataset
 
 
 def _process_alpaca_dataset(

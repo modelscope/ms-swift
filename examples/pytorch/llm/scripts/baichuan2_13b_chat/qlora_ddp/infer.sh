@@ -1,11 +1,14 @@
-# 12G
+# 10G
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type baichuan-13b-chat \
+    --model_type baichuan2-13b-chat \
     --sft_type lora \
-    --ckpt_dir "runs/baichuan-13b-chat/vx_xxx/checkpoint-xxx" \
+    --template_type baichuan \
+    --dtype bf16 \
+    --ckpt_dir "runs/baichuan2-13b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human true \
     --quantization_bit 4 \
+    --bnb_4bit_comp_dtype bf16 \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \

@@ -301,22 +301,27 @@ MODEL_MAPPING = {
     },
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
+        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
+        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-7b-chat-int4': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat-int4',
+        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
+        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
+        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
 }
