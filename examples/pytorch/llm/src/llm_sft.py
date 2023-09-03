@@ -111,7 +111,8 @@ class SftArguments:
 
     def __post_init__(self):
         if is_dist():
-            rank = get_dist_setting()[0]
+            rank, local_rank, _, _ = get_dist_setting()
+            torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
