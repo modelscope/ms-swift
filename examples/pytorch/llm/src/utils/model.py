@@ -185,7 +185,7 @@ MODEL_MAPPING = {
     },
     'qwen-7b-chat': {
         'model_id': 'qwen/Qwen-7B-Chat',
-        'revision': 'v1.0.6',
+        'revision': 'v1.0.7',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
@@ -298,6 +298,26 @@ MODEL_MAPPING = {
         'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_polylm,
         'lora_TM': LoRATM.polylm,
+    },
+    'baichuan2-7b': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Base',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-7b-chat': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-7b-chat-int4': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Chat-int4',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-13b': {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Base',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-13b-chat': {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
+        'lora_TM': LoRATM.baichuan,
     },
 }
 
