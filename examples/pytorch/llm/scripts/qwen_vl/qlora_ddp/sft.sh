@@ -7,7 +7,7 @@ torchrun \
     src/llm_sft.py \
     --model_type qwen-vl \
     --sft_type lora \
-    --template_type chatml \
+    --template_type default \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
