@@ -1,5 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from types import MethodType
 from typing import NamedTuple, Optional
 
