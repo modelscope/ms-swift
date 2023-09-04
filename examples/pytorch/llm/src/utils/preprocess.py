@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from transformers import PreTrainedTokenizer

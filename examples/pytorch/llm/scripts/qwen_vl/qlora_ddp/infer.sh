@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type qwen-vl \
     --sft_type lora \
-    --template_type chatml \
+    --template_type default \
     --dtype bf16 \
     --ckpt_dir "runs/qwen-vl/vx_xxx/checkpoint-xxx" \
     --eval_human false \
