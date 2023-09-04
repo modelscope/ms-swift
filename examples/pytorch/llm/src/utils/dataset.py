@@ -12,15 +12,16 @@ from modelscope import MsDataset
 from tqdm.auto import tqdm
 
 from swift.utils import get_seed
+from .preprocess import History
 from .utils import download_dataset
 
 
-def _process_alpaca(
+def _process_alpaca_dataset(
         dataset: HfDataset,
         preprocess_input: Optional[Callable[[str], str]] = None) -> HfDataset:
     instruction = dataset['instruction']
     input_ = dataset['input']
-    new_instruction = []
+    new_instruction: List[str] = []
     for inst, inp in zip(instruction, input_):
         if inp is None:
             inp = ''
@@ -38,7 +39,7 @@ def _process_alpaca(
 def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def get_alpaca_gpt4_zh_dataset() -> HfDataset:
@@ -50,13 +51,13 @@ def get_alpaca_gpt4_zh_dataset() -> HfDataset:
             inp = inp[3:]
         return inp
 
-    return _process_alpaca(dataset, _preprocess_input)
+    return _process_alpaca_dataset(dataset, _preprocess_input)
 
 
 def get_finance_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/finance_en', split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 _multi_alpaca_language_list = [
@@ -69,7 +70,7 @@ def _get_multi_alpaca(subset_name: str) -> HfDataset:
         'damo/nlp_polylm_multialpaca_sft',
         subset_name=subset_name,
         split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def get_multi_alpaca(language_list: List[str]) -> HfDataset:
@@ -87,7 +88,7 @@ def get_multi_alpaca(language_list: List[str]) -> HfDataset:
         th	Thai	11,496
         vi	Vietnamese	13,908
     """
-    dataset_list = []
+    dataset_list: List[HfDataset] = []
     for subset_name in language_list:
         dataset = _get_multi_alpaca(subset_name)
         dataset_list.append(dataset)
@@ -102,33 +103,33 @@ def get_multi_alpaca_all() -> HfDataset:
 def get_code_alpaca_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/code_alpaca_en', split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def get_instinwild_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='default',
         split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def get_instinwild_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='subset',
         split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def get_cot_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT', split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def get_cot_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT_zh', split='train').to_hf_dataset()
-    return _process_alpaca(dataset)
+    return _process_alpaca_dataset(dataset)
 
 
 def _process_mutimodal_dataset(dataset: HfDataset, prompt: str, image_key: str,
@@ -161,7 +162,7 @@ def _filter_agent_dataset(dataset: List[Dict[str, Any]],
         pattern = r'\d\. {"plugin_name": "(.+?)"'
     else:
         pattern = r'\d\. {"(?:plugin_)?name": "(.+?)"'
-    res = []
+    res: List[Dict[str, Any]] = []
     for d in tqdm(dataset):
         idx = d['conversations'].find(r"'from': 'user")
         if idx == -1:
@@ -178,10 +179,10 @@ def _filter_agent_dataset(dataset: List[Dict[str, Any]],
 
 
 def _process_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
-    system = []
-    query = []
-    response = []
-    history = []
+    system: List[str] = []
+    query: List[str] = []
+    response: List[str] = []
+    history: List[Optional[History]] = []
     for d in tqdm(dataset):
         conversations = d['conversations']
         assert len(conversations) >= 3
@@ -189,7 +190,7 @@ def _process_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
         system.append(conversations[0]['value'])
         query.append(conversations[-2]['value'])
         response.append(conversations[-1]['value'])
-        h = None
+        h: Optional[History] = None
         if len(conversations) > 3:
             assert len(conversations) % 2 == 1
             conversations_h = conversations[1:-2]
@@ -227,8 +228,8 @@ _firefly_kind_list = [
 def _process_firefly(dataset: List[Dict[str, str]],
                      kind_list: List[str]) -> HfDataset:
     kind_set = set(kind_list)
-    query = []
-    response = []
+    query: List[str] = []
+    response: List[str] = []
     for d in dataset:
         if d['kind'] not in kind_set:
             continue
@@ -270,6 +271,20 @@ def get_poetry_zh_dataset() -> HfDataset:
     })
 
 
+def get_instruct_en_dataset() -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'wyj123456/instruct', split='train').to_hf_dataset()
+    dataset = dataset.rename_column('prompt', 'query')
+    dataset = dataset.rename_column('completion', 'response')
+    return dataset
+
+
+def get_gpt4all_en_dataset() -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'wyj123456/GPT4all', split='train').to_hf_dataset()
+    return _process_alpaca_dataset(dataset)
+
+
 DATASET_MAPPING = {
     # nlp
     'alpaca-en': get_alpaca_gpt4_en_dataset,
@@ -285,13 +300,15 @@ DATASET_MAPPING = {
     'damo-agent-zh': get_damo_agent_zh_dataset,  # containing normal chat
     'firefly-all-zh': get_firefly_all_zh_dataset,
     'poetry-zh': get_poetry_zh_dataset,
+    'instruct-en': get_instruct_en_dataset,
+    'gpt4all-en': get_gpt4all_en_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
 }
 
 
 def get_dataset(dataset_name_list: List[str]) -> HfDataset:
-    dataset_list = []
+    dataset_list: List[HfDataset] = []
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset_list.append(get_function())

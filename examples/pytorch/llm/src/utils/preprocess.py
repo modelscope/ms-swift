@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from transformers import PreTrainedTokenizer
 
 DEFAULT_SYSTEM = 'you are a helpful assistant!'
+History = List[Tuple[str, str]]
 
 TEMPLATE_MAPPING = {
     'default': {
@@ -116,7 +117,7 @@ def _preprocess(
     tokenizer: PreTrainedTokenizer,
     query: str,
     response: Optional[str] = None,
-    history: Optional[List[Tuple[str, str]]] = None,
+    history: Optional[History] = None,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
 ) -> Dict[str, List[int]]:
@@ -174,7 +175,7 @@ def get_preprocess(
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
-        history: Optional[List[Tuple[str, str]]] = example.get('history', None)
+        history: Optional[History] = example.get('history', None)
         query: str = example['query']
         response: str = example.get('response', None)
         custom_system = example.get('system', system)

@@ -7,7 +7,7 @@ torchrun \
     src/llm_sft.py \
     --model_type qwen-7b \
     --sft_type lora \
-    --template_type chatml \
+    --template_type default \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
@@ -21,6 +21,7 @@ torchrun \
     --lora_alpha 16 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

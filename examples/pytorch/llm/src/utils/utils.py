@@ -244,6 +244,6 @@ else:
     logger.setLevel(logging.ERROR)
     ms_logger.setLevel(logging.ERROR)
 
-# monkey patch
+# monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
