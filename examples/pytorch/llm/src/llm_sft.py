@@ -167,7 +167,7 @@ class SftArguments:
             else:
                 assert ModelScopeConfig.get_token(
                 ) is not None, 'Please enter hub_token'
-            logger.info('hub login successful!!!')
+            logger.info('hub login successful!')
 
 
 def llm_sft(args: SftArguments) -> None:
