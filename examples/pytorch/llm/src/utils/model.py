@@ -4,12 +4,13 @@ from types import MethodType
 from typing import NamedTuple, Optional
 
 import torch
+import torch.distributed as dist
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
                         AutoTokenizer, Model, read_config, snapshot_download)
 from torch import dtype as Dtype
 
 from swift import get_logger
-from .utils import broadcast_string, is_dist, is_master
+from .utils import is_local_master
 
 logger = get_logger()
 
@@ -313,16 +314,15 @@ def get_model_tokenizer(model_type: str,
 
     model_dir = kwargs.pop('model_dir', None)
     if model_dir is None:
-        if is_master():
-            model_dir = model_id
-            if not os.path.exists(model_id):
-                revision = data.get('revision', 'master')
-                model_dir = snapshot_download(
-                    model_id,
-                    revision,
-                    ignore_file_pattern=ignore_file_pattern)
-        if is_dist():
-            model_dir = broadcast_string(model_dir)
+        if not is_local_master():
+            dist.barrier()
+        model_dir = model_id
+        if not os.path.exists(model_id):
+            revision = data.get('revision', 'master')
+            model_dir = snapshot_download(
+                model_id, revision, ignore_file_pattern=ignore_file_pattern)
+        if is_local_master():
+            dist.barrier()
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)

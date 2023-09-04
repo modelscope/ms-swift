@@ -104,7 +104,11 @@ def llm_infer(args: InferArguments) -> None:
 
     # ### Inference
     preprocess_func = get_preprocess(
-        args.template_type, tokenizer, args.system, args.max_length, batched=False)
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        batched=False)
     streamer = TextStreamer(
         tokenizer, skip_prompt=True, skip_special_tokens=True)
     generation_config = GenerationConfig(

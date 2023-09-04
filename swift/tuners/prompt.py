@@ -61,7 +61,7 @@ class PromptConfig(SwiftConfig):
             'help':
             'When set to True, prompt is attached in front of the embedding'
         })
-    
+
     extract_embedding: bool = field(
         default=False,
         metadata={
