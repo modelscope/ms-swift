@@ -13,7 +13,7 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    is_dist, is_master, plot_images, process_dataset,
                    select_bnb, select_dtype, show_layers)
 
-from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
+from swift import (HubStrategy, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
@@ -207,12 +207,11 @@ def llm_sft(args: SftArguments) -> None:
             logger.info(
                 f'Setting lora_target_modules: {args.lora_target_modules}')
         if args.resume_from_ckpt is None:
-            lora_config = LoraConfig(
+            lora_config = LoRAConfig(
                 r=args.lora_rank,
                 target_modules=args.lora_target_modules,
                 lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout_p,
-                task_type='CAUSAL_LM')
+                lora_dropout=args.lora_dropout_p)
             logger.info(f'lora_config: {lora_config}')
             model = Swift.prepare_model(model, lora_config)
         else:

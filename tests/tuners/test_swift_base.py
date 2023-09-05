@@ -33,7 +33,7 @@ class TestSwift(unittest.TestCase):
         model = Swift.prepare_model(model, config=lora_config)
         inputs = preprocessor('how are you')
         outputs = model(**inputs)
-        self.assertTrue('logits' in outputs)
+        self.assertTrue(hasattr(outputs, 'logits'))
 
     def test_swift_lora_injection(self):
         model = SbertForSequenceClassification(SbertConfig())
