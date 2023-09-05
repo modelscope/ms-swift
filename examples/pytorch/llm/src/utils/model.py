@@ -278,13 +278,19 @@ MODEL_MAPPING = {
     'openbuddy-llama2-13b': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy_llama',
+        'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
     },
     'openbuddy-llama-65b': {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy_llama',
+        'template': 'openbuddy-llama',
+        'lora_TM': LoRATM.llama2,
+    },
+    'openbuddy-llama2-70b': {
+        'model_id': 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
+        'revision': 'v1.0.0',
+        'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
     },
     'polylm-13b': {

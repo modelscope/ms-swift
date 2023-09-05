@@ -37,7 +37,7 @@ def get_function(
     return method_or_function
 
 
-def is_instance_of_ms_Model(model: Module) -> bool:
+def is_instance_of_ms_model(model: Module) -> bool:
     """avoid import modelscope: circular dependency problem"""
     for m_cls in model.__class__.__mro__:
         cls_name = m_cls.__name__

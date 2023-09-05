@@ -26,7 +26,7 @@ from swift.tuners import SwiftModel
 from swift.utils.constants import Invoke
 from swift.utils.logger import get_logger
 from .utils import (can_return_loss, find_labels, get_function,
-                    is_instance_of_ms_Model)
+                    is_instance_of_ms_model)
 
 logger = get_logger()
 
@@ -229,7 +229,7 @@ class SwiftMixin:
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
-        if is_instance_of_ms_Model(self.model):
+        if is_instance_of_ms_model(self.model):
             model_dir = getattr(self.model, 'model_dir', None)
             if model_dir is not None:
                 src_path = os.path.join(model_dir, 'configuration.json')
@@ -263,7 +263,7 @@ class SwiftMixin:
                 else:
                     torch.save(state_dict,
                                os.path.join(output_dir, 'pytorch_model.bin'))
-        elif is_instance_of_ms_Model(self.model):
+        elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model,
                 output_dir,
