@@ -81,7 +81,14 @@ class Prompt:
         module_keys = [key for key, _ in model.named_modules()]
         match_module_keys = []
         for module_key in module_keys:
-            if re.fullmatch(config.target_modules, module_key):  # noqa
+            if isinstance(config.target_modules, str):
+                target_module_found = re.fullmatch(config.target_modules,
+                                                   module_key)
+            else:
+                target_module_found = any(
+                    module_key.endswith(target_key)
+                    for target_key in config.target_modules)
+            if target_module_found:  # noqa
                 module = model.get_submodule(module_key)
 
                 def _forward(self, *args, **kwargs):

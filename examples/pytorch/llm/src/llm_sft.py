@@ -2,7 +2,7 @@ import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
 from functools import partial
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
@@ -13,8 +13,8 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    is_dist, is_master, plot_images, process_dataset,
                    select_bnb, select_dtype, show_layers)
 
-from swift import (HubStrategy, LoRAConfig, Seq2SeqTrainer,
-                   Seq2SeqTrainingArguments, Swift, get_logger, SwiftConfig)
+from swift import (AdapterConfig, HubStrategy, LoRAConfig, Seq2SeqTrainer,
+                   Seq2SeqTrainingArguments, Swift, SwiftConfig, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
@@ -68,6 +68,7 @@ class SftArguments:
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.1
+    adapter_length: int = 128
 
     gradient_checkpointing: bool = True
     batch_size: int = 1
@@ -199,15 +200,16 @@ def llm_sft(args: SftArguments) -> None:
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     if args.resume_from_ckpt is None:
-    swift_config: Dict[str, SwiftConfig] = dict()
-    for sft_type in args.sft_type.split(','):
-        if sft_type == 'lora':
-            if 'ALL' in args.lora_target_modules:
-                assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linear_for_lora(
-                    model, args.quantization_bit, args.model_type)
-                logger.info(
-                    f'Setting lora_target_modules: {args.lora_target_modules}')
+        swift_config: Dict[str, SwiftConfig] = dict()
+        for sft_type in args.sft_type.split(','):
+            if sft_type == 'lora':
+                if 'ALL' in args.lora_target_modules:
+                    assert len(args.lora_target_modules) == 1
+                    args.lora_target_modules = find_all_linear_for_lora(
+                        model, args.quantization_bit, args.model_type)
+                    logger.info(
+                        f'Setting lora_target_modules: {args.lora_target_modules}'
+                    )
 
                 lora_config = LoRAConfig(
                     r=args.lora_rank,
@@ -215,10 +217,18 @@ def llm_sft(args: SftArguments) -> None:
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p)
                 logger.info(f'lora_config: {lora_config}')
-    # ### Preparing lora
-    if args.sft_type == 'lora':
-
-            model = Swift.prepare_model(model, lora_config)
+                swift_config['lora'] = lora_config
+            elif sft_type == 'adapter':
+                adapter_config = AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=MODEL_MAPPING[model.config.model_type].get(
+                        'adapter_TM', 'mlp'),
+                    method_name='forward',
+                    hidden_pos=0,
+                    adapter_length=args.adapter_length,
+                )
+                swift_config['adapter'] = adapter_config
+        model = Swift.prepare_model(model, swift_config)
     else:
         model = Swift.from_pretrained(
             model, args.resume_from_ckpt, is_trainable=True)
