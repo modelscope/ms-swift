@@ -9,6 +9,7 @@ from transformers.training_args_seq2seq import \
 
 @dataclass
 class SwiftArgumentsMixin:
+    # ckpt only save model
     only_save_model: bool = False
 
 
