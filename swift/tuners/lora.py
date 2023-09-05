@@ -130,6 +130,7 @@ class LoRA:
         assert isinstance(replace_modules, (str, list))
         if isinstance(replace_modules, str):
             replace_modules = [replace_modules]
+        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(get_quantization_config(model, method="gptq"))
 
         for module_key in module_keys:
             if isinstance(replace_modules, str):
@@ -145,19 +146,48 @@ class LoRA:
                 _key = parts[-1]
 
                 lora_module = None
-                if isinstance(sub_module, torch.nn.Linear):
+                if getattr(model, "is_loaded_in_8bit", False) and isinstance(sub_module, bnb.nn.Linear8bitLt):
+                    eight_bit_kwargs = kwargs.copy()
+                    eight_bit_kwargs.update(
+                        {
+                            "has_fp16_weights": sub_module.state.has_fp16_weights,
+                            "memory_efficient_backward": sub_module.state.memory_efficient_backward,
+                            "threshold": sub_module.state.threshold,
+                            "index": sub_module.index,
+                        }
+                    )
+                    lora_module = Linear8bitLt(
+                        'default', sub_module.in_features, sub_module.out_features,
+                        bias=hasattr(sub_module, "bias") and sub_module.bias is not None, **eight_bit_kwargs
+                    )
+                elif getattr(model, "is_loaded_in_4bit", False) and is_bnb_4bit_available() and isinstance(sub_module,
+                                                                                                    bnb.nn.Linear4bit):
+                    four_bit_kwargs = kwargs.copy()
+                    four_bit_kwargs.update(
+                        {
+                            "compute_dtype": sub_module.compute_dtype,
+                            "compress_statistics": sub_module.weight.compress_statistics,
+                            "quant_type": sub_module.weight.quant_type,
+                        }
+                    )
+                    lora_module = Linear4bit('default', sub_module.in_features, sub_module.out_features,
+                                             bias=hasattr(sub_module, "bias") and sub_module.bias is not None, **four_bit_kwargs)
+                elif AutoGPTQQuantLinear is not None and isinstance(sub_module, AutoGPTQQuantLinear):
+                    lora_module = QuantLinear('default', sub_module, **kwargs)
+                    sub_module.weight = sub_module.qweight
+                elif isinstance(sub_module, torch.nn.Linear):
                     if use_merged_linear:
                         lora_module = MergedLinear(
                             sub_module.in_features,
                             sub_module.out_features,
-                            bias=sub_module.bias is not None,
+                            bias=hasattr(sub_module, "bias") and sub_module.bias is not None,
                             **kwargs)
                     else:
                         kwargs.pop('enable_lora', None)
                         lora_module = Linear(
                             sub_module.in_features,
                             sub_module.out_features,
-                            bias=sub_module.bias is not None,
+                            bias=hasattr(sub_module, "bias") and sub_module.bias is not None,
                             **kwargs)
                 elif isinstance(sub_module, torch.nn.Embedding):
                     lora_module = Embedding(
@@ -177,45 +207,17 @@ class LoRA:
                         dilation=sub_module.dilation,
                         groups=sub_module.groups,
                         **kwargs)
-                elif kwargs.pop('loaded_in_8bit', False) and isinstance(sub_module, bnb.nn.Linear8bitLt):
-                    eight_bit_kwargs = kwargs.copy()
-                    eight_bit_kwargs.update(
-                        {
-                            "has_fp16_weights": sub_module.state.has_fp16_weights,
-                            "memory_efficient_backward": sub_module.state.memory_efficient_backward,
-                            "threshold": sub_module.state.threshold,
-                            "index": sub_module.index,
-                        }
-                    )
-                    lora_module = Linear8bitLt(
-                        'default', sub_module.in_features, sub_module.out_features,
-                        bias=kwargs.pop('bias', False), **eight_bit_kwargs
-                    )
-                elif kwargs.pop('loaded_in_4bit', False) and is_bnb_4bit_available() and isinstance(sub_module,
-                                                                                                    bnb.nn.Linear4bit):
-                    four_bit_kwargs = kwargs.copy()
-                    four_bit_kwargs.update(
-                        {
-                            "compute_dtype": sub_module.compute_dtype,
-                            "compress_statistics": sub_module.weight.compress_statistics,
-                            "quant_type": sub_module.weight.quant_type,
-                        }
-                    )
-                    lora_module = Linear4bit('default', sub_module.in_features, sub_module.out_features,
-                                             bias=kwargs.pop('bias', False), **four_bit_kwargs)
-
-                AutoGPTQQuantLinear = get_auto_gptq_quant_linear(get_quantization_config(model, method="gptq"))
-                if AutoGPTQQuantLinear is not None and isinstance(sub_module, AutoGPTQQuantLinear):
-                    lora_module = QuantLinear('default', sub_module, **kwargs)
-                    sub_module.weight = sub_module.qweight
 
                 if lora_module is not None:
                     lora_module.weight = sub_module.weight
                     if sub_module.bias is not None:
                         lora_module.bias = sub_module.bias
+                    if getattr(sub_module, "state", None) is not None:
+                        lora_module.state = sub_module.state
                     lora_module.to(sub_module.weight.device)
                     setattr(module, _key, lora_module)
                     modules.append(lora_module)
+
         return modules
 
     @staticmethod
