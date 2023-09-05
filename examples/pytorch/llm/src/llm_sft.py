@@ -2,7 +2,7 @@ import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
 from functools import partial
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import torch
 import torch.distributed as dist
@@ -14,7 +14,7 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    select_bnb, select_dtype, show_layers)
 
 from swift import (HubStrategy, LoRAConfig, Seq2SeqTrainer,
-                   Seq2SeqTrainingArguments, Swift, get_logger)
+                   Seq2SeqTrainingArguments, Swift, get_logger, SwiftConfig)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
@@ -198,25 +198,30 @@ def llm_sft(args: SftArguments) -> None:
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
+    if args.resume_from_ckpt is None:
+    swift_config: Dict[str, SwiftConfig] = dict()
+    for sft_type in args.sft_type.split(','):
+        if sft_type == 'lora':
+            if 'ALL' in args.lora_target_modules:
+                assert len(args.lora_target_modules) == 1
+                args.lora_target_modules = find_all_linear_for_lora(
+                    model, args.quantization_bit, args.model_type)
+                logger.info(
+                    f'Setting lora_target_modules: {args.lora_target_modules}')
+
+                lora_config = LoRAConfig(
+                    r=args.lora_rank,
+                    target_modules=args.lora_target_modules,
+                    lora_alpha=args.lora_alpha,
+                    lora_dropout=args.lora_dropout_p)
+                logger.info(f'lora_config: {lora_config}')
     # ### Preparing lora
     if args.sft_type == 'lora':
-        if 'ALL' in args.lora_target_modules:
-            assert len(args.lora_target_modules) == 1
-            args.lora_target_modules = find_all_linear_for_lora(
-                model, args.quantization_bit, args.model_type)
-            logger.info(
-                f'Setting lora_target_modules: {args.lora_target_modules}')
-        if args.resume_from_ckpt is None:
-            lora_config = LoRAConfig(
-                r=args.lora_rank,
-                target_modules=args.lora_target_modules,
-                lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout_p)
-            logger.info(f'lora_config: {lora_config}')
+
             model = Swift.prepare_model(model, lora_config)
-        else:
-            model = Swift.from_pretrained(
-                model, args.resume_from_ckpt, is_trainable=True)
+    else:
+        model = Swift.from_pretrained(
+            model, args.resume_from_ckpt, is_trainable=True)
 
     show_layers(model)
     print_model_info(model)
