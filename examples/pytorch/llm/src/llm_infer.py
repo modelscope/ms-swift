@@ -109,8 +109,7 @@ def llm_infer(args: InferArguments) -> None:
         args.system,
         args.max_length,
         batched=False)
-    streamer = TextStreamer(
-        tokenizer, skip_prompt=True, skip_special_tokens=True)
+    streamer = TextStreamer(tokenizer, skip_prompt=True)
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -126,6 +125,7 @@ def llm_infer(args: InferArguments) -> None:
             query = input('<<< ')
             data = {'query': query}
             input_ids = preprocess_func(data)['input_ids']
+            streamer.decode_kwargs['skip_special_tokens'] = True
             inference(input_ids, model, tokenizer, streamer, generation_config,
                       args.skip_prompt)
     else:
