@@ -43,7 +43,7 @@ class SideConfig(SwiftConfig):
             'help': 'The target module to be replaced, in full match format'
         })
 
-    side_module_name: float = field(
+    side_module_name: str = field(
         default=1., metadata={'help': 'The name of the additive side networks'})
 
     hidden_pos: Union[str, int] = field(
