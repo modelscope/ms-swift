@@ -13,7 +13,7 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    is_dist, is_master, plot_images, process_dataset,
                    select_bnb, select_dtype, show_layers)
 
-from swift import (HubStrategy, LoraConfig, LoRAConfig, Seq2SeqTrainer,
+from swift import (HubStrategy, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,

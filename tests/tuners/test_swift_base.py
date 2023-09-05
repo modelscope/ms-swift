@@ -27,8 +27,10 @@ class TestSwift(unittest.TestCase):
         super().tearDown()
 
     def test_swift_lora_forward(self):
-        model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
-        preprocessor = Preprocessor.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, config=lora_config)
         inputs = preprocessor('how are you')
