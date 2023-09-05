@@ -20,6 +20,7 @@ python src/llm_sft.py \
     --warmup_ratio 0.03 \
     --eval_steps 50 \
     --save_steps 100 \
+    --only_save_model true \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
