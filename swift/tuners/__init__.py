@@ -8,6 +8,8 @@ if TYPE_CHECKING:
     from .base import SwiftModel, Swift
     from .lora import LoRA, LoRAConfig
     from .mapping import SWIFT_MAPPING
+    from .side import Side, SideConfig, SideModule
+    from .restuning import ResTuning, ResTuningConfig, ResTuningModule
     from .peft import (LoraConfig, PeftConfig, PeftModel, PeftModelForCausalLM,
                        PeftModelForSeq2SeqLM,
                        PeftModelForSequenceClassification,
@@ -23,6 +25,8 @@ else:
         'base': ['SwiftModel', 'Swift'],
         'lora': ['LoRA', 'LoRAConfig'],
         'mapping': ['SWIFT_MAPPING'],
+        'side': ['Side', 'SideConfig', 'SideModule'],
+        'restuning': ['ResTuning', 'ResTuningConfig', 'ResTuningModule'],
         'peft': [
             'LoraConfig', 'PeftConfig', 'PeftModel', 'PeftModelForCausalLM',
             'PeftModelForSeq2SeqLM', 'PeftModelForSequenceClassification',

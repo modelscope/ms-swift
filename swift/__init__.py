@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .tuners import (
         Adapter, AdapterConfig, AdapterModule, SwiftModel, LoRA, LoRAConfig,
         SWIFT_MAPPING, LoraConfig, PeftConfig, PeftModel, PeftModelForCausalLM,
+        ResTuningConfig, SideConfig,
         PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
         PeftModelForTokenClassification, PrefixTuningConfig,
         PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig,
@@ -29,6 +30,7 @@ else:
         'tuners': [
             'Adapter', 'AdapterConfig', 'AdapterModule', 'SwiftModel', 'LoRA',
             'LoRAConfig', 'SWIFT_MAPPING', 'LoraConfig', 'PeftConfig',
+            'ResTuningConfig', 'SideConfig',
             'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
             'PeftModelForSequenceClassification',
             'PeftModelForTokenClassification', 'PrefixTuningConfig',

@@ -129,8 +129,6 @@ class LoRA:
         modules = []
         module_keys = [key for key, _ in model.named_modules()]
         assert isinstance(replace_modules, (str, list))
-        if isinstance(replace_modules, str):
-            replace_modules = [replace_modules]
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             get_quantization_config(model, method='gptq'))
 
