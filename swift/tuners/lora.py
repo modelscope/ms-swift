@@ -77,15 +77,17 @@ class LoRA:
 
     @staticmethod
     def prepare_model(model: nn.Module, config: LoRAConfig):
-        from peft import LoraConfig, LoraModel
-        LoraModel(model, LoraConfig(
+        """Prepare a model with `LoRAConfig`"""
+        LoRA._dynamic_patch_lora(
+            model,
+            replace_modules=config.target_modules,
             r=config.r,
-            target_modules=config.target_modules,
-            lora_alpha=int(config.lora_alpha),
+            lora_alpha=config.lora_alpha,
             lora_dropout=config.lora_dropout,
-            fan_in_fan_out=config.fan_in_fan_out,
-            bias=config.bias,
-        ), 'default')
+            merge_weights=config.merge_weights,
+            use_merged_linear=config.use_merged_linear,
+            enable_lora=config.enable_lora,
+            fan_in_fan_out=config.fan_in_fan_out)
 
         def state_dict_callback(state_dict):
             return lora_state_dict(state_dict, config.bias)
