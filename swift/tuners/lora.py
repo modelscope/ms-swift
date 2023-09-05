@@ -10,10 +10,23 @@ from typing import Dict, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from .utils import SwiftConfig, SwiftOutput
+from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
-logger = logging.getLogger(__name__)
+from peft.import_utils import is_bnb_available, is_bnb_4bit_available, is_auto_gptq_available
+
+if is_bnb_available():
+    import bitsandbytes as bnb
+
+    from peft.tuners.lora import Linear8bitLt
+
+if is_bnb_4bit_available():
+    from peft.tuners.lora import Linear4bit
+
+if is_auto_gptq_available():
+    from peft.tuners.lora import QuantLinear
+
+logger = logging.getLogger()
 
 
 @dataclass
@@ -38,7 +51,7 @@ class LoRAConfig(SwiftConfig):
         default=None,
         metadata={
             'help':
-            'The modules to be replaced by LoRA, can be the end of the module name or a regex string'
+                'The modules to be replaced by LoRA, can be the end of the module name or a regex string'
         })
     lora_alpha: float = field(
         default=1., metadata={'help': 'The factor to add the lora weights'})
@@ -54,13 +67,13 @@ class LoRAConfig(SwiftConfig):
         default=None,
         metadata={
             'help':
-            'The modules need to be turned on when using the merged linear layer'
+                'The modules need to be turned on when using the merged linear layer'
         })
     fan_in_fan_out: bool = field(
         default=False,
         metadata={
             'help':
-            'Set this to True if the layer to replace stores weight like (fan_in, fan_out)'
+                'Set this to True if the layer to replace stores weight like (fan_in, fan_out)'
         })
     bias: str = field(
         default='none',
@@ -146,6 +159,13 @@ class LoRA:
                             sub_module.out_features,
                             bias=sub_module.bias is not None,
                             **kwargs)
+                elif isinstance(sub_module, torch.nn.Embedding):
+                    lora_module = Embedding(
+                        num_embeddings=sub_module.num_embeddings,
+                        embedding_dim=sub_module.embedding_dim,
+                        r=kwargs['r'],
+                        lora_alpha=kwargs['lora_alpha'],
+                        merge_weights=kwargs['merge_weights'])
                 elif isinstance(sub_module, torch.nn.Conv2d):
                     kwargs.pop('fan_in_fan_out', None)
                     lora_module = Conv2d(
@@ -157,6 +177,37 @@ class LoRA:
                         dilation=sub_module.dilation,
                         groups=sub_module.groups,
                         **kwargs)
+                elif kwargs.pop('loaded_in_8bit', False) and isinstance(sub_module, bnb.nn.Linear8bitLt):
+                    eight_bit_kwargs = kwargs.copy()
+                    eight_bit_kwargs.update(
+                        {
+                            "has_fp16_weights": sub_module.state.has_fp16_weights,
+                            "memory_efficient_backward": sub_module.state.memory_efficient_backward,
+                            "threshold": sub_module.state.threshold,
+                            "index": sub_module.index,
+                        }
+                    )
+                    lora_module = Linear8bitLt(
+                        'default', sub_module.in_features, sub_module.out_features,
+                        bias=kwargs.pop('bias', False), **eight_bit_kwargs
+                    )
+                elif kwargs.pop('loaded_in_4bit', False) and is_bnb_4bit_available() and isinstance(sub_module,
+                                                                                                    bnb.nn.Linear4bit):
+                    four_bit_kwargs = kwargs.copy()
+                    four_bit_kwargs.update(
+                        {
+                            "compute_dtype": sub_module.compute_dtype,
+                            "compress_statistics": sub_module.weight.compress_statistics,
+                            "quant_type": sub_module.weight.quant_type,
+                        }
+                    )
+                    lora_module = Linear4bit('default', sub_module.in_features, sub_module.out_features,
+                                             bias=kwargs.pop('bias', False), **four_bit_kwargs)
+
+                AutoGPTQQuantLinear = get_auto_gptq_quant_linear(get_quantization_config(model, method="gptq"))
+                if AutoGPTQQuantLinear is not None and isinstance(sub_module, AutoGPTQQuantLinear):
+                    lora_module = QuantLinear('default', sub_module, **kwargs)
+                    sub_module.weight = sub_module.qweight
 
                 if lora_module is not None:
                     lora_module.weight = sub_module.weight
@@ -238,11 +289,11 @@ class LoRA:
 class LoRALayer:
 
     def __init__(
-        self,
-        r: int,
-        lora_alpha: int,
-        lora_dropout: float,
-        merge_weights: bool,
+            self,
+            r: int,
+            lora_alpha: int,
+            lora_dropout: float,
+            merge_weights: bool,
     ):
         self.r = r
         self.lora_alpha = lora_alpha
@@ -458,7 +509,7 @@ class MergedLinear(nn.Linear, LoRALayer):
             self.weight.requires_grad = False
             # Compute the indices
             self.lora_ind = self.weight.new_zeros(
-                (out_features, ), dtype=torch.bool).view(len(enable_lora), -1)
+                (out_features,), dtype=torch.bool).view(len(enable_lora), -1)
             self.lora_ind[enable_lora, :] = True
             self.lora_ind = self.lora_ind.view(-1)
         self.reset_parameters()

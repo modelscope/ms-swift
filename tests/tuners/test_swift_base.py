@@ -6,6 +6,7 @@ import unittest
 from time import time
 
 import torch
+from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
 from peft.utils import WEIGHTS_NAME
@@ -24,6 +25,15 @@ class TestSwift(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp_dir)
         super().tearDown()
+
+    def test_swift_lora_forward(self):
+        model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
+        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
+        model = Swift.prepare_model(model, config=lora_config)
+        inputs = preprocessor('how are you')
+        outputs = model(**inputs)
+        self.assertTrue('logits' in outputs)
 
     def test_swift_lora_injection(self):
         model = SbertForSequenceClassification(SbertConfig())
