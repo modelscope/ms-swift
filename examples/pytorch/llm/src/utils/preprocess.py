@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from transformers import PreTrainedTokenizer
@@ -41,7 +42,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
         'suffix': [['eos_token_id']],
     },
-    'openbuddy_llama': {
+    'openbuddy-llama': {
         'prefix': ['{{system}}\n\n'],
         'prompt': ['User: {{query}}\nAssistant: '],
         'chat_sep': ['\n'],

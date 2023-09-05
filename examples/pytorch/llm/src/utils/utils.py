@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import logging
 import os
 import shutil
@@ -45,6 +46,11 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
 def is_master():
     rank = get_dist_setting()[0]
     return rank in {-1, 0}
+
+
+def is_local_master():
+    local_rank = get_dist_setting()[1]
+    return local_rank in {-1, 0}
 
 
 def is_dist():

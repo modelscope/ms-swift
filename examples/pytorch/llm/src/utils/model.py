@@ -1,15 +1,16 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from types import MethodType
 from typing import NamedTuple, Optional
 
 import torch
+import torch.distributed as dist
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
                         AutoTokenizer, Model, read_config, snapshot_download)
 from torch import dtype as Dtype
 
 from swift import get_logger
-from .utils import broadcast_string, is_dist, is_master
+from .utils import is_dist, is_local_master
 
 logger = get_logger()
 
@@ -180,7 +181,6 @@ MODEL_MAPPING = {
         'model_id': 'qwen/Qwen-7B',  # model id or model dir
         'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_qwen,
-        'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
     'qwen-7b-chat': {
@@ -194,7 +194,6 @@ MODEL_MAPPING = {
         'model_id': 'qwen/Qwen-VL',
         'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_qwen_vl,
-        'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
     'qwen-vl-chat': {
@@ -207,14 +206,12 @@ MODEL_MAPPING = {
     'baichuan-7b': {
         'model_id': 'baichuan-inc/baichuan-7B',
         'revision': 'v1.0.7',
-        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
         'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_baichuan13b,
-        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan-13b-chat': {
@@ -239,7 +236,6 @@ MODEL_MAPPING = {
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',
-        'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2,
     },
@@ -247,14 +243,12 @@ MODEL_MAPPING = {
         'model_id': 'modelscope/Llama-2-13b-ms',
         'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_llama2,
-        'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
     },
     'llama2-70b': {
         'model_id': 'modelscope/Llama-2-70b-ms',
         'revision': 'v1.0.0',
-        'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
     },
@@ -284,13 +278,19 @@ MODEL_MAPPING = {
     'openbuddy-llama2-13b': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy_llama',
+        'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
     },
     'openbuddy-llama-65b': {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy_llama',
+        'template': 'openbuddy-llama',
+        'lora_TM': LoRATM.llama2,
+    },
+    'openbuddy-llama2-70b': {
+        'model_id': 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
+        'revision': 'v1.0.0',
+        'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
     },
     'polylm-13b': {
@@ -344,16 +344,15 @@ def get_model_tokenizer(model_type: str,
 
     model_dir = kwargs.pop('model_dir', None)
     if model_dir is None:
-        if is_master():
-            model_dir = model_id
-            if not os.path.exists(model_id):
-                revision = data.get('revision', 'master')
-                model_dir = snapshot_download(
-                    model_id,
-                    revision,
-                    ignore_file_pattern=ignore_file_pattern)
-        if is_dist():
-            model_dir = broadcast_string(model_dir)
+        if is_dist() and not is_local_master():
+            dist.barrier()
+        model_dir = model_id
+        if not os.path.exists(model_id):
+            revision = data.get('revision', 'master')
+            model_dir = snapshot_download(
+                model_id, revision, ignore_file_pattern=ignore_file_pattern)
+        if is_dist() and is_local_master():
+            dist.barrier()
 
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)
