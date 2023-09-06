@@ -30,7 +30,7 @@ class SftArguments:
         metadata={'choices': list(MODEL_MAPPING.keys())})
     # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+        default='lora')
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -83,7 +83,7 @@ class SftArguments:
     lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
 
-    eval_steps: int = 50
+    eval_steps: int = 10
     save_steps: Optional[int] = None
     save_total_limit: int = 2
     logging_steps: int = 5
@@ -123,12 +123,7 @@ class SftArguments:
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
-        if self.sft_type == 'lora':
-            if self.learning_rate is None:
-                self.learning_rate = 1e-4
-            if self.save_steps is None:
-                self.save_steps = self.eval_steps
-        elif self.sft_type == 'full':
+        if self.sft_type == 'full':
             assert self.quantization_bit is None, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
@@ -137,7 +132,11 @@ class SftArguments:
                 # Saving the model takes a long time
                 self.save_steps = self.eval_steps * 4
         else:
-            raise ValueError(f'sft_type: {self.sft_type}')
+            if self.learning_rate is None:
+                self.learning_rate = 1e-4
+            if self.save_steps is None:
+                self.save_steps = self.eval_steps
+
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', 'default')
@@ -221,7 +220,7 @@ def llm_sft(args: SftArguments) -> None:
             elif sft_type == 'adapter':
                 adapter_config = AdapterConfig(
                     dim=model.config.hidden_size,
-                    target_modules=MODEL_MAPPING[model.config.model_type].get(
+                    target_modules=MODEL_MAPPING[args.model_type].get(
                         'adapter_TM', 'mlp'),
                     method_name='forward',
                     hidden_pos=0,
@@ -239,10 +238,13 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Loading Dataset
     dataset = get_dataset(args.dataset.split(','))
-    train_dataset, val_dataset = process_dataset(dataset,
-                                                 args.dataset_test_size,
-                                                 args.dataset_sample,
-                                                 args.dataset_seed)
+    if isinstance(dataset, tuple):
+        train_dataset, val_dataset = dataset
+    else:
+        train_dataset, val_dataset = process_dataset(dataset,
+                                                    args.dataset_test_size,
+                                                    args.dataset_sample,
+                                                    args.dataset_seed)
     preprocess_func = get_preprocess(
         args.template_type,
         tokenizer,
@@ -314,6 +316,39 @@ def llm_sft(args: SftArguments) -> None:
             trainer_args._frozen = True
     logger.info(f'trainer_args: {trainer_args}')
 
+    def compute_metrics(self, prediction):
+        preds, labels = prediction[0], prediction[1]
+        if isinstance(preds, tuple):
+            preds = preds[0]
+
+        score_dict = {
+            'rouge-1': [],
+            'rouge-2': [],
+            'rouge-l': [],
+            'bleu-4': []
+        }
+        for pred, label in zip(preds, labels):
+            hypothesis = list(jieba.cut(pred))
+            if len(hypothesis) == 0 or ''.join(hypothesis) == '.':
+                hypothesis = ['</s>']
+            reference = list(jieba.cut(label))
+            rouge = Rouge()
+            scores = rouge.get_scores(' '.join(hypothesis),
+                                      ' '.join(reference))
+            result = scores[0]
+
+            for k, v in result.items():
+                score_dict[k].append(round(v['f'] * 100, 4))
+            bleu_score = sentence_bleu(
+                [list(label)],
+                list(pred),
+                smoothing_function=SmoothingFunction().method3)
+            score_dict['bleu-4'].append(round(bleu_score * 100, 4))
+
+        for k, v in score_dict.items():
+            score_dict[k] = float(np.mean(v))
+        return score_dict
+
     trainer = Seq2SeqTrainer(
         model=model,
         args=trainer_args,
@@ -321,6 +356,7 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
+        compute_metrics=compute_metrics,
     )
 
     trainer.train(trainer_args.resume_from_checkpoint)

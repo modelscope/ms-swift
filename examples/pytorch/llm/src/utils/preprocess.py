@@ -12,6 +12,12 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
+    'default_no_template': {
+        'prefix': [],
+        'prompt': ['{{query}}'],
+        'chat_sep': [],
+        'suffix': [['eos_token_id']],
+    },
     'chatml': {
         'prefix': [['im_start_id'], 'system\n{{system}}', ['im_end_id'], '\n'],
         'prompt': [['im_start_id'], 'user\n{{query}}', ['im_end_id'], '\n',

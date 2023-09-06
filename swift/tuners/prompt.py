@@ -79,7 +79,6 @@ class Prompt:
     @staticmethod
     def prepare_model(model: nn.Module, config: PromptConfig):
         module_keys = [key for key, _ in model.named_modules()]
-        match_module_keys = []
         for module_key in module_keys:
             if isinstance(config.target_modules, str):
                 target_module_found = re.fullmatch(config.target_modules,
@@ -144,7 +143,6 @@ class Prompt:
                                              config.attention_mask_value,
                                              config.attach_front)
                 setattr(module, 'prompt', prompt_module)
-                match_module_keys.append(module_key)
 
         def state_dict_callback(state_dict):
             return {
@@ -185,12 +183,11 @@ class PromptModule(nn.Module):
         self.prompt_length = prompt_length
         self.mask_values = mask_values
         self.attach_front = attach_front
-
         self.prompt_token = nn.Parameter(torch.zeros(1, prompt_length, dim))
         nn.init.xavier_uniform_(self.prompt_token)
 
     def forward(self, x):
-        prompt_token = self.prompt_token.expand(x.shape[0], -1, -1)
+        prompt_token = self.prompt_token.expand(x.shape[0], -1, -1).to(x.device)
 
         if self.layer_num == 0:
             if self.attach_front:

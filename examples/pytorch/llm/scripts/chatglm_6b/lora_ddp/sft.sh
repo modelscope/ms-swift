@@ -10,7 +10,7 @@ torchrun \
     --sft_type lora \
     --output_dir runs \
     --ddp_backend gloo \
-    --dataset alpaca-en,alpaca-zh \
+    --dataset advertise_gen \
     --dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \

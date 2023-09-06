@@ -126,7 +126,6 @@ class LoRA:
         Returns:
             The lora modules
         """
-        modules = []
         module_keys = [key for key, _ in model.named_modules()]
         assert isinstance(replace_modules, (str, list))
         if isinstance(replace_modules, str):
@@ -234,9 +233,6 @@ class LoRA:
                         lora_module.state = sub_module.state
                     lora_module.to(sub_module.weight.device)
                     setattr(module, _key, lora_module)
-                    modules.append(lora_module)
-
-        return modules
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig):

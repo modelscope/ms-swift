@@ -42,6 +42,26 @@ def get_alpaca_gpt4_en_dataset() -> HfDataset:
     return _process_alpaca_dataset(dataset)
 
 
+def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
+    dataset_train: HfDataset = MsDataset.load(
+        'lvjianjin/AdvertiseGen', split='train').to_hf_dataset().rename_columns({
+            "content": "query",
+            "summary": "response",
+        })
+    dataset_val: HfDataset = MsDataset.load(
+        'lvjianjin/AdvertiseGen', split='validation').to_hf_dataset().rename_columns({
+            "content": "query",
+            "summary": "response",
+        })
+    return dataset_train, dataset_val
+
+
+def get_alpaca_gpt4_en_dataset() -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
+    return _process_alpaca_dataset(dataset)
+
+
 def get_alpaca_gpt4_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-zh', split='train').to_hf_dataset()
@@ -304,6 +324,7 @@ DATASET_MAPPING = {
     'gpt4all-en': get_gpt4all_en_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
+    'advertise_gen': get_advertise_gen_dataset,
 }
 
 
@@ -312,7 +333,10 @@ def get_dataset(dataset_name_list: List[str]) -> HfDataset:
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset_list.append(get_function())
-    dataset = concatenate_datasets(dataset_list)
+    if not isinstance(dataset_list[0], tuple):
+        dataset = concatenate_datasets(dataset_list)
+    else:
+        dataset = dataset_list[0]
     return dataset
 
 
