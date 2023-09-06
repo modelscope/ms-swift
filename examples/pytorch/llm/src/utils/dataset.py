@@ -137,13 +137,14 @@ def _process_mutimodal_dataset(dataset: HfDataset, prompt: str, image_key: str,
                                response_key: str) -> HfDataset:
     dataset._info.features._column_requires_decoding['image'] = False
     query_format = f'<img>{{image_path}}</img>{prompt}'
-    query = [
-        query_format.format(image_path=d[image_key]['path']) for d in dataset
-    ]
-    dataset = HfDataset.from_dict({
-        'query': query,
-        'response': dataset[response_key]
-    })
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        query.append(query_format.format(image_path=d[image_key]['path']))
+        if '&&' in d[response_key]:
+            d[response_key] = d[response_key].split('&&')[0]
+        response.append(d[response_key])
+    dataset = HfDataset.from_dict({'query': query, 'response': response})
     return dataset
 
 

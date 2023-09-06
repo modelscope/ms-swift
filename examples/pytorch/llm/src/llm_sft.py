@@ -85,6 +85,7 @@ class SftArguments:
 
     eval_steps: int = 50
     save_steps: Optional[int] = None
+    only_save_model: Optional[bool] = None
     save_total_limit: int = 2
     logging_steps: int = 5
     dataloader_num_workers: int = 1
@@ -126,23 +127,24 @@ class SftArguments:
         if self.sft_type == 'lora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.save_steps is None:
-                self.save_steps = self.eval_steps
+            if self.only_save_model is None:
+                self.only_save_model = False
         elif self.sft_type == 'full':
             assert self.quantization_bit is None, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
-            if self.save_steps is None:
-                # Saving the model takes a long time
-                self.save_steps = self.eval_steps * 4
+            if self.only_save_model is None:
+                self.only_save_model = True
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
+
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', 'default')
             logger.info(f'Setting template_type: {self.template_type}')
-
+        if self.save_steps is None:
+            self.save_steps = self.eval_steps
         self.output_dir = os.path.join(self.output_dir, self.model_type)
 
         if self.lora_target_modules is None:
@@ -288,7 +290,8 @@ def llm_sft(args: SftArguments) -> None:
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
-        local_rank=local_rank)
+        local_rank=local_rank,
+        only_save_model=args.only_save_model)
 
     if args.gradient_checkpointing:
         # fix: gradients will be None
