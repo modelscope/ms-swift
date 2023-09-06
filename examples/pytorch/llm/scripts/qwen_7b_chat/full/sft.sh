@@ -18,7 +18,7 @@ python src/llm_sft.py \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 1 \
     --warmup_ratio 0.03 \
-    --eval_steps 50 \
+    --eval_steps 100 \
     --save_steps 100 \
     --only_save_model true \
     --save_total_limit 2 \
