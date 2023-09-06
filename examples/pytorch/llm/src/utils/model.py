@@ -299,6 +299,28 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_polylm,
         'lora_TM': LoRATM.polylm,
     },
+    'baichuan2-7b': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Base',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-7b-chat': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
+        'revision': 'v1.0.0',
+        'template': 'baichuan',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-13b': {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Base',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-13b-chat': {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
+        'revision': 'v1.0.0',
+        'template': 'baichuan',
+        'lora_TM': LoRATM.baichuan,
+    },
 }
 
 
