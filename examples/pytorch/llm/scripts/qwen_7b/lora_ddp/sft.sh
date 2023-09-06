@@ -1,4 +1,4 @@
-# 4 * 16GB VRAM
+# 4 * 22GB VRAM
 nproc_per_node=4
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
@@ -15,12 +15,10 @@ torchrun \
     --dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \
-    --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
-    --lora_rank 64 \
+    --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_target_modules c_attn c_proj \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
@@ -34,6 +32,6 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn false \
     --push_to_hub false \
-    --hub_model_id qwen-7b-qlora \
+    --hub_model_id qwen-7b-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

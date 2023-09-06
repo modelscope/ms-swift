@@ -302,7 +302,6 @@ MODEL_MAPPING = {
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
         'revision': 'v1.0.0',
-        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-7b-chat': {
@@ -314,7 +313,6 @@ MODEL_MAPPING = {
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
         'revision': 'v1.0.0',
-        'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b-chat': {

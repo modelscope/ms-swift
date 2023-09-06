@@ -20,7 +20,7 @@ torchrun \
     --lora_rank 64 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_target_modules c_attn attn.c_proj \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
