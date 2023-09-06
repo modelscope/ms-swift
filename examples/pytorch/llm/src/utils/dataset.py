@@ -56,12 +56,6 @@ def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
     return dataset_train, dataset_val
 
 
-def get_alpaca_gpt4_en_dataset() -> HfDataset:
-    dataset: HfDataset = MsDataset.load(
-        'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
-
-
 def get_alpaca_gpt4_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-zh', split='train').to_hf_dataset()

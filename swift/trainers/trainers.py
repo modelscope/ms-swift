@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.utils.data import Dataset
+from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import PredictionOutput
 from transformers.utils import logging
 
@@ -219,7 +220,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             labels = None
 
-        return (loss, generated_tokens, labels)
+        # return (loss, generated_tokens, labels)
+        return (loss, None, None)
 
     def _pad_tensors_to_max_len(self, tensor, max_length):
         if self.tokenizer is not None and hasattr(self.tokenizer, "pad_token_id"):

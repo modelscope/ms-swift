@@ -14,7 +14,7 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    select_bnb, select_dtype, show_layers)
 
 from swift import (AdapterConfig, HubStrategy, LoRAConfig, Seq2SeqTrainer,
-                   Seq2SeqTrainingArguments, Swift, SwiftConfig, get_logger)
+                   Seq2SeqTrainingArguments, Swift, SwiftConfig, ResTuningConfig, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
@@ -227,6 +227,12 @@ def llm_sft(args: SftArguments) -> None:
                     adapter_length=args.adapter_length,
                 )
                 swift_config['adapter'] = adapter_config
+            elif sft_type == 'restuner':
+                restuner_config = ResTuningConfig(
+                    dims=model.config.hidden_size,
+                    **MODEL_MAPPING[args.model_type]['restuner_TM']
+                )
+                swift_config['restuner'] = restuner_config
         model = Swift.prepare_model(model, swift_config)
     else:
         model = Swift.from_pretrained(
