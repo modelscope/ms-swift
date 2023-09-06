@@ -11,7 +11,7 @@ from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
 from peft.utils import WEIGHTS_NAME
 
-from swift import AdapterConfig, LoRAConfig, Swift, SwiftModel, push_to_hub
+from swift import AdapterConfig, LoRAConfig, Swift, SwiftModel, push_to_hub, SideConfig
 
 
 class TestSwift(unittest.TestCase):
@@ -104,3 +104,41 @@ class TestSwift(unittest.TestCase):
                 all(
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
+    def test_swift_side(self):
+        from transformers import AutoModelForImageClassification
+        model = AutoModelForImageClassification.from_pretrained(
+            'google/vit-base-patch16-224')
+        model2 = copy.deepcopy(model)
+        result_origin = model(torch.ones((1, 3, 224, 224))).logits
+        print(
+            f'test_swift_side result_origin shape: {result_origin.shape}, result_origin sum: {torch.sum(result_origin)}'
+        )
+
+        side_config = SideConfig(
+            dim=768,
+            target_modules=r'vit',
+            side_module_name='fcn4',
+            hidden_pos='last_hidden_state')
+
+        model = Swift.prepare_model(model, config=side_config)
+        result = model(torch.ones((1, 3, 224, 224))).logits
+        print(
+            f'test_swift_side result shape: {result.shape}, result sum: {torch.sum(result)}'
+        )
+        self.assertTrue(isinstance(model, SwiftModel))
+        model.save_pretrained(self.tmp_dir)
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
+
+        model2 = Swift.from_pretrained(model2, self.tmp_dir)
+        state_dict = model.state_dict()
+        state_dict2 = model2.state_dict()
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(
+                all(
+                    torch.isclose(state_dict[key],
+                                  state_dict2[key]).flatten().detach().cpu()))
+
+
+if __name__ == '__main__':
+    unittest.main()
