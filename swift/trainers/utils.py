@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Copyright 2023-present the HuggingFace Inc. team.
+# Part of the implementation is borrowed from huggingface/transformers.
 
 import inspect
 from types import FunctionType, MethodType
@@ -17,7 +17,7 @@ def can_return_loss(model: Module) -> List[str]:
     return False
 
 
-def find_labels(model: Module):
+def find_labels(model: Module) -> List[str]:
     """Find the labels used by a given model."""
     model_name = model.__class__.__name__
     signature = inspect.signature(model.forward)
