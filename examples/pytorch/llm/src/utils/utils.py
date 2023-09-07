@@ -20,7 +20,7 @@ from swift import get_logger
 from swift.hub import ModelScopeConfig
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
-from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
+from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
 
 logger = get_logger()
 ms_logger = get_ms_logger()
