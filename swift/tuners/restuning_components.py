@@ -295,7 +295,7 @@ def detach_tensors(feats):
     elif isinstance(feats, dict):
         feats = {key: detach_tensors(val) for key, val in feats.items()}
     elif isinstance(feats, torch.Tensor):
-        feats = feats.detach().float()
+        feats = feats.detach()
     else:
         feats = feats.detach()
     return feats
