@@ -12,7 +12,7 @@ import torch.distributed as dist
 from nltk.translate.bleu_score import (SmoothingFunction, sentence_bleu)
 from rouge import Rouge
 from rouge.rouge import Rouge
-from transformers import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, GenerationConfig
 
 from swift import (AdapterConfig, HubStrategy, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, SwiftConfig, ResTuningConfig, get_logger)
@@ -262,6 +262,13 @@ def llm_sft(args: SftArguments) -> None:
                                                      args.dataset_sample,
                                                      args.dataset_seed)
 
+    generation_config = {
+            'do_sample': True,
+            'top_p': 0.7,
+            'max_length': args.max_length,
+            'temperature': 0.95
+    }
+
     # args.max_source_length = 64
     # args.max_target_length = 64
     # prompt_column = 'query'
@@ -425,6 +432,7 @@ def llm_sft(args: SftArguments) -> None:
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
+        generation_config=GenerationConfig.from_dict(generation_config),
         local_rank=local_rank)
 
     if args.gradient_checkpointing:
