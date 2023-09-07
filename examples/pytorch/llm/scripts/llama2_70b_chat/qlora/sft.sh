@@ -1,5 +1,5 @@
-# Experimental environment: A100
-CUDA_VISIBLE_DEVICES=0 \
+# Experimental environment: 2 * 3090
+CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type llama2-70b-chat \
     --sft_type lora \

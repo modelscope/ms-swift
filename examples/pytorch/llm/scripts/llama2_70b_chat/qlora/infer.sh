@@ -1,5 +1,4 @@
-# Experimental environment: A100
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_infer.py \
     --model_type llama2-7b-chat \
     --sft_type lora \
