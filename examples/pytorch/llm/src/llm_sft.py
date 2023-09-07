@@ -74,22 +74,24 @@ class SftArguments:
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.1
-    adapter_length: int = 128
+    adapter_length: int = 32
 
     gradient_checkpointing: bool = True
     batch_size: int = 1
+    eval_batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
     optim: str = 'adamw_torch'
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
-    gradient_accumulation_steps: int = 1
+    gradient_accumulation_steps: int = 16
     max_grad_norm: float = 1.
+    predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
 
-    eval_steps: int = 10
+    eval_steps: int = 50
     save_steps: Optional[int] = None
     save_total_limit: int = 2
     logging_steps: int = 5
@@ -105,7 +107,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
+                'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
         })
 
     # other
@@ -113,7 +115,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-            "This parameter is used only when model_type.startswith('qwen-7b')"
+                "This parameter is used only when model_type.startswith('qwen-7b')"
         })
 
     def __post_init__(self):
@@ -232,12 +234,14 @@ def llm_sft(args: SftArguments) -> None:
                     hidden_pos=0,
                     adapter_length=args.adapter_length,
                 )
+                logger.info(f'adapter_config: {adapter_config}')
                 swift_config['adapter'] = adapter_config
             elif sft_type == 'restuner':
                 restuner_config = ResTuningConfig(
                     dims=model.config.hidden_size,
                     **MODEL_MAPPING[args.model_type]['restuner_TM']
                 )
+                logger.info(f'restuner_config: {restuner_config}')
                 swift_config['restuner'] = restuner_config
         model = Swift.prepare_model(model, swift_config)
     else:
@@ -252,125 +256,124 @@ def llm_sft(args: SftArguments) -> None:
     dataset = get_dataset(args.dataset.split(','))
     if isinstance(dataset, tuple):
         train_dataset, val_dataset = dataset
-        # train_dataset = train_dataset.select(range(100))
-        # val_dataset = val_dataset.select(range(100))
     else:
         train_dataset, val_dataset = process_dataset(dataset,
-                                                    args.dataset_test_size,
-                                                    args.dataset_sample,
-                                                    args.dataset_seed)
+                                                     args.dataset_test_size,
+                                                     args.dataset_sample,
+                                                     args.dataset_seed)
 
-    args.max_source_length = 64
-    args.max_target_length = 64
-    prompt_column = 'query'
-    response_column = 'response'
-    history_column = None
-    prefix = ''
-    max_target_length = 128
-    def preprocess_function_eval(examples):
-        inputs, targets = [], []
-        for i in range(len(examples[prompt_column])):
-            if examples[prompt_column][i] and examples[response_column][i]:
-                query = examples[prompt_column][i]
-                if history_column is None or len(examples[history_column][i]) == 0:
-                    prompt = query
-                else:
-                    prompt = ''
-                    history = examples[history_column][i]
-                    for turn_idx, (old_query, response) in enumerate(history):
-                        prompt += '[Round {}]\n问：{}\n答：{}\n'.format(
-                            turn_idx, old_query, response)
-                    prompt += '[Round {}]\n问：{}\n答：'.format(len(history), query)
-                inputs.append(prompt)
-                targets.append(examples[response_column][i])
+    # args.max_source_length = 64
+    # args.max_target_length = 64
+    # prompt_column = 'query'
+    # response_column = 'response'
+    # history_column = None
+    # prefix = ''
+    # max_target_length = 128
+    #
+    # def preprocess_function_eval(examples):
+    #     inputs, targets = [], []
+    #     for i in range(len(examples[prompt_column])):
+    #         if examples[prompt_column][i] and examples[response_column][i]:
+    #             query = examples[prompt_column][i]
+    #             if history_column is None or len(examples[history_column][i]) == 0:
+    #                 prompt = query
+    #             else:
+    #                 prompt = ''
+    #                 history = examples[history_column][i]
+    #                 for turn_idx, (old_query, response) in enumerate(history):
+    #                     prompt += '[Round {}]\n问：{}\n答：{}\n'.format(
+    #                         turn_idx, old_query, response)
+    #                 prompt += '[Round {}]\n问：{}\n答：'.format(len(history), query)
+    #             inputs.append(prompt)
+    #             targets.append(examples[response_column][i])
+    #
+    #     inputs = [prefix + inp for inp in inputs]
+    #     model_inputs = tokenizer(
+    #         inputs,
+    #         max_length=args.max_source_length,
+    #         truncation=True,
+    #         padding=True)
+    #     labels = tokenizer(
+    #         text_target=targets, max_length=max_target_length, truncation=True)
+    #
+    #     if True:
+    #         labels['input_ids'] = [[(lb if lb != tokenizer.pad_token_id else -100)
+    #                                 for lb in label]
+    #                                for label in labels['input_ids']]
+    #     model_inputs['labels'] = labels['input_ids']
+    #
+    #     return model_inputs
+    #
+    # def preprocess_function_train(examples):
+    #     max_seq_length = args.max_source_length + args.max_target_length
+    #
+    #     model_inputs = {
+    #         'input_ids': [],
+    #         'labels': [],
+    #     }
+    #     for i in range(len(examples[prompt_column])):
+    #         if examples[prompt_column][i] and examples[response_column][i]:
+    #             query, answer = examples[prompt_column][i], examples[
+    #                 response_column][i]
+    #
+    #             if history_column is None:
+    #                 prompt = query
+    #             else:
+    #                 prompt = ''
+    #                 history = examples[history_column][i]
+    #                 for turn_idx, (old_query, response) in enumerate(history):
+    #                     prompt += '[Round {}]\n问：{}\n答：{}\n'.format(
+    #                         turn_idx, old_query, response)
+    #                 prompt += '[Round {}]\n问：{}\n答：'.format(len(history), query)
+    #
+    #             prompt = prefix + prompt
+    #             a_ids = tokenizer.encode(text=prompt, add_special_tokens=False)
+    #             b_ids = tokenizer.encode(text=answer, add_special_tokens=False)
+    #
+    #             if len(a_ids) > args.max_source_length - 1:
+    #                 a_ids = a_ids[:args.max_source_length - 1]
+    #
+    #             if len(b_ids) > args.max_target_length - 2:
+    #                 b_ids = b_ids[:args.max_target_length - 2]
+    #
+    #             input_ids = tokenizer.build_inputs_with_special_tokens(
+    #                 a_ids, b_ids)
+    #
+    #             if False:
+    #                 context_length = input_ids.index(tokenizer.bos_token_id)
+    #             else:
+    #                 context_length = len(a_ids) + 2
+    #             mask_position = context_length - 1
+    #             labels = [-100] * context_length + input_ids[mask_position + 1:]
+    #
+    #             pad_len = max_seq_length - len(input_ids)
+    #             input_ids = input_ids + [tokenizer.pad_token_id] * pad_len
+    #             labels = labels + [tokenizer.pad_token_id] * pad_len
+    #             if True:
+    #                 labels = [(lb if lb != tokenizer.pad_token_id else -100)
+    #                           for lb in labels]
+    #
+    #             model_inputs['input_ids'].append(input_ids)
+    #             model_inputs['labels'].append(labels)
+    #
+    #     return model_inputs
 
-        inputs = [prefix + inp for inp in inputs]
-        model_inputs = tokenizer(
-            inputs,
-            max_length=args.max_source_length,
-            truncation=True,
-            padding=True)
-        labels = tokenizer(
-            text_target=targets, max_length=max_target_length, truncation=True)
-
-        if True:
-            labels['input_ids'] = [[(lb if lb != tokenizer.pad_token_id else -100)
-                                    for lb in label]
-                                for label in labels['input_ids']]
-        model_inputs['labels'] = labels['input_ids']
-
-        return model_inputs
-
-
-    def preprocess_function_train(examples):
-        max_seq_length = args.max_source_length + args.max_target_length
-
-        model_inputs = {
-            'input_ids': [],
-            'labels': [],
-        }
-        for i in range(len(examples[prompt_column])):
-            if examples[prompt_column][i] and examples[response_column][i]:
-                query, answer = examples[prompt_column][i], examples[
-                    response_column][i]
-
-                if history_column is None:
-                    prompt = query
-                else:
-                    prompt = ''
-                    history = examples[history_column][i]
-                    for turn_idx, (old_query, response) in enumerate(history):
-                        prompt += '[Round {}]\n问：{}\n答：{}\n'.format(
-                            turn_idx, old_query, response)
-                    prompt += '[Round {}]\n问：{}\n答：'.format(len(history), query)
-
-                prompt = prefix + prompt
-                a_ids = tokenizer.encode(text=prompt, add_special_tokens=False)
-                b_ids = tokenizer.encode(text=answer, add_special_tokens=False)
-
-                if len(a_ids) > args.max_source_length - 1:
-                    a_ids = a_ids[:args.max_source_length - 1]
-
-                if len(b_ids) > args.max_target_length - 2:
-                    b_ids = b_ids[:args.max_target_length - 2]
-
-                input_ids = tokenizer.build_inputs_with_special_tokens(
-                    a_ids, b_ids)
-
-                if False:
-                    context_length = input_ids.index(tokenizer.bos_token_id)
-                else:
-                    context_length = len(a_ids) + 2
-                mask_position = context_length - 1
-                labels = [-100] * context_length + input_ids[mask_position + 1:]
-
-                pad_len = max_seq_length - len(input_ids)
-                input_ids = input_ids + [tokenizer.pad_token_id] * pad_len
-                labels = labels + [tokenizer.pad_token_id] * pad_len
-                if True:
-                    labels = [(lb if lb != tokenizer.pad_token_id else -100)
-                            for lb in labels]
-
-                model_inputs['input_ids'].append(input_ids)
-                model_inputs['labels'].append(labels)
-
-        return model_inputs
-
-    preprocess_func = get_preprocess(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        batched=True)
-    train_dataset = train_dataset.map(preprocess_function_train, batched=True)
     preprocess_func = get_preprocess(
         args.template_type,
         tokenizer,
         args.system,
         args.max_length,
         batched=True,
-        train=False)
-    val_dataset = val_dataset.map(preprocess_function_eval, batched=True)
+        validate_generation=False)
+    train_dataset = train_dataset.map(preprocess_func, batched=True)
+    preprocess_func = get_preprocess(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        batched=True,
+        validate_generation=True)
+    val_dataset = val_dataset.map(preprocess_func, batched=True)
     del dataset
     # Data analysis
     stat_dataset(train_dataset)
@@ -391,7 +394,7 @@ def llm_sft(args: SftArguments) -> None:
         do_eval=True,
         evaluation_strategy='steps',
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=1,
+        per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -421,7 +424,7 @@ def llm_sft(args: SftArguments) -> None:
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
-        predict_with_generate=True,
+        predict_with_generate=args.predict_with_generate,
         local_rank=local_rank)
 
     if args.gradient_checkpointing:
@@ -437,8 +440,6 @@ def llm_sft(args: SftArguments) -> None:
 
     def compute_metrics(prediction):
         preds, labels = prediction[0], prediction[1]
-        if isinstance(preds, tuple):
-            preds = preds[0]
 
         score_dict = {
             'rouge-1': [],
@@ -450,12 +451,12 @@ def llm_sft(args: SftArguments) -> None:
         def _decode(tokens, ignore_pad_token_for_loss=False):
             if ignore_pad_token_for_loss:
                 tokens = np.where(tokens != -100, tokens,
-                                tokenizer.pad_token_id)
+                                  tokenizer.pad_token_id)
             tokens = np.where(tokens < tokenizer.vocab_size, tokens,
-                            tokenizer.pad_token_id)
+                              tokenizer.pad_token_id)
             return [
                 t for t in tokenizer.batch_decode(
-                    tokens, skip_special_tokens=True) if t != '</s>'
+                    tokens, skip_special_tokens=True)
             ]
 
         for pred, label in zip(preds, labels):
@@ -463,7 +464,7 @@ def llm_sft(args: SftArguments) -> None:
             label = ''.join(_decode(label, True))
             hypothesis = list(jieba.cut(pred))
             if len(hypothesis) == 0 or ''.join(hypothesis) == '.':
-                hypothesis = ['</s>']
+                hypothesis = [tokenizer.decode(tokenizer.eos_token_id)]
             reference = list(jieba.cut(label))
             rouge = Rouge()
             scores = rouge.get_scores(' '.join(hypothesis),
@@ -489,7 +490,7 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
+        compute_metrics=compute_metrics if args.predict_with_generate else None,
     )
 
     trainer.train(trainer_args.resume_from_checkpoint)

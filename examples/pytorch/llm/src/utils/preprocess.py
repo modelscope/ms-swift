@@ -12,7 +12,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
-    'default_no_template': {
+    'default_generate': {
         'prefix': [],
         'prompt': ['{{query}}'],
         'chat_sep': [],
@@ -40,7 +40,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
-    'chatglm2_no_template': {
+    'chatglm2_generate': {
         'prefix': [[64790, 64792]],
         'prompt': ['{{query}}'],
         'chat_sep': [],
@@ -132,7 +132,7 @@ def _preprocess(
     history: Optional[History] = None,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
-    train = True,
+    validate_generation=True,  # do cross-validation with `model.generate()`
 ) -> Dict[str, List[int]]:
     if history is None:
         history = []
@@ -167,10 +167,12 @@ def _preprocess(
     if response is not None:
         tgt_input_ids = _encode(tokenizer, [response], [])
         tgt_input_ids += _encode(tokenizer, template_config['suffix'], [])
-        if train:
+        if not validate_generation:
+            # train, or validate with `loss`
             labels = [-100] * len(input_ids) + tgt_input_ids
             input_ids += tgt_input_ids
         else:
+            # validate with `model.generate()`
             labels = tgt_input_ids
 
     if max_length is not None:
@@ -178,9 +180,7 @@ def _preprocess(
         if labels is not None:
             labels = labels[-max_length:]
 
-    # if train:
-    #     pass
-    # else:
+    # if validate_generation:
     #     input_ids = [tokenizer.pad_token_id] * (64-len(input_ids)) + input_ids
 
     return {'input_ids': input_ids, 'labels': labels}
@@ -192,7 +192,7 @@ def get_preprocess(
         system: Optional[str] = None,
         max_length: Optional[int] = None,
         batched: bool = False,
-        train=True,
+        validate_generation=False,
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
@@ -201,7 +201,7 @@ def get_preprocess(
         response: str = example.get('response', None)
         custom_system = example.get('system', system)
         return _preprocess(template_type, tokenizer, query, response, history,
-                           custom_system, max_length, train)
+                           custom_system, max_length, validate_generation)
 
     if batched:
         # Avoid tqdm printing too much logs when dataset.map(...)

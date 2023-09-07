@@ -2,7 +2,7 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -322,15 +322,27 @@ DATASET_MAPPING = {
 }
 
 
-def get_dataset(dataset_name_list: List[str]) -> HfDataset:
-    dataset_list: List[HfDataset] = []
+def get_dataset(dataset_name_list: List[str]) -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
+    """Returns a dataset to be split or a train-val dataset tuple"""
+    dataset_list: List[Union[HfDataset, Tuple[HfDataset, HfDataset]]] = []
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset_list.append(get_function())
+
+    assert(all(isinstance(dataset, tuple) for dataset in dataset_list)
+           or all(isinstance(dataset, HfDataset) for dataset in dataset_list))
     if not isinstance(dataset_list[0], tuple):
         dataset = concatenate_datasets(dataset_list)
     else:
-        dataset = dataset_list[0]
+        train_datasets = [dataset[0] for dataset in dataset_list]
+        val_datasets = [dataset[1] for dataset in dataset_list]
+        if len(train_datasets) > 1:
+            train_dataset = concatenate_datasets(train_datasets)
+            val_dataset = concatenate_datasets(val_datasets)
+        else:
+            train_dataset = train_datasets[0]
+            val_dataset = val_datasets[0]
+        dataset = (train_dataset, val_dataset)
     return dataset
 
 

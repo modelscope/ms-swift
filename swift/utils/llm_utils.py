@@ -32,8 +32,7 @@ def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
     attention_mask = [
-        torch.where(input_ids[i]==tokenizer.pad_token_id, 
-        0, 1)
+        torch.ones(len(input_ids[i]), dtype=torch.int64)
         for i in range(len(input_ids))
     ]
 
@@ -42,15 +41,7 @@ def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
     attention_mask = pad_sequence(
         attention_mask, batch_first=True, padding_value=0)
     labels = pad_sequence(labels, batch_first=True, padding_value=-100)
-
-    # if 'position_ids' in batch[0]:
-    #     position_ids = [torch.tensor(b['position_ids']) for b in batch]
-    #     return {
-    #         'input_ids': input_ids,
-    #         'attention_mask': attention_mask,
-    #         'labels': labels,
-    #         'position_ids': torch.stack(position_ids),
-    #     }
+    
     return {
         'input_ids': input_ids,
         'attention_mask': attention_mask,
