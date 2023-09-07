@@ -178,10 +178,10 @@ def _preprocess(
         if labels is not None:
             labels = labels[-max_length:]
 
-    if train:
-        pass
-    else:
-        input_ids = [tokenizer.pad_token_id] * (64-len(input_ids)) + input_ids
+    # if train:
+    #     pass
+    # else:
+    #     input_ids = [tokenizer.pad_token_id] * (64-len(input_ids)) + input_ids
 
     return {'input_ids': input_ids, 'labels': labels}
 
