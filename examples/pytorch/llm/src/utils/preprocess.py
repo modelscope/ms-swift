@@ -40,6 +40,12 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
+    'chatglm2_no_template': {
+        'prefix': [[64790, 64792]],
+        'prompt': ['{{query}}'],
+        'chat_sep': [],
+        'suffix': [['eos_token_id']],
+    },
     'llama': {
         'prefix': [['bos_token_id'],
                    '[INST] <<SYS>>\n{{system}}\n<</SYS>>\n\n'],
@@ -126,6 +132,7 @@ def _preprocess(
     history: Optional[History] = None,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
+    train = True,
 ) -> Dict[str, List[int]]:
     if history is None:
         history = []
@@ -158,16 +165,23 @@ def _preprocess(
 
     labels = None
     if response is not None:
-        labels = [-100] * len(input_ids)
         tgt_input_ids = _encode(tokenizer, [response], [])
         tgt_input_ids += _encode(tokenizer, template_config['suffix'], [])
-        input_ids += tgt_input_ids
-        labels += tgt_input_ids
+        if train:
+            labels = [-100] * len(input_ids) + tgt_input_ids
+            input_ids += tgt_input_ids
+        else:
+            labels = tgt_input_ids
 
     if max_length is not None:
         input_ids = input_ids[-max_length:]
         if labels is not None:
             labels = labels[-max_length:]
+
+    if train:
+        pass
+    else:
+        input_ids = [tokenizer.pad_token_id] * (64-len(input_ids)) + input_ids
 
     return {'input_ids': input_ids, 'labels': labels}
 
@@ -177,7 +191,8 @@ def get_preprocess(
         tokenizer: PreTrainedTokenizer,
         system: Optional[str] = None,
         max_length: Optional[int] = None,
-        batched: bool = False
+        batched: bool = False,
+        train=True,
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
@@ -186,7 +201,7 @@ def get_preprocess(
         response: str = example.get('response', None)
         custom_system = example.get('system', system)
         return _preprocess(template_type, tokenizer, query, response, history,
-                           custom_system, max_length)
+                           custom_system, max_length, train)
 
     if batched:
         # Avoid tqdm printing too much logs when dataset.map(...)

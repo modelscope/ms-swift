@@ -2,16 +2,17 @@ import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Dict, List, Optional
+from typing import Dict, List
+from typing import Optional
 
+import jieba
+import numpy as np
 import torch
 import torch.distributed as dist
+from nltk.translate.bleu_score import (SmoothingFunction, sentence_bleu)
+from rouge import Rouge
+from rouge.rouge import Rouge
 from transformers import BitsAndBytesConfig
-from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, find_all_linear_for_lora, get_dataset,
-                   get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers)
 
 from swift import (AdapterConfig, HubStrategy, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, SwiftConfig, ResTuningConfig, get_logger)
@@ -19,6 +20,11 @@ from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
 from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
+from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
+                   broadcast_string, find_all_linear_for_lora, get_dataset,
+                   get_dist_setting, get_model_tokenizer, get_preprocess,
+                   is_dist, is_master, plot_images, process_dataset,
+                   select_bnb, select_dtype, show_layers)
 
 logger = get_logger()
 
@@ -78,7 +84,7 @@ class SftArguments:
     optim: str = 'adamw_torch'
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
-    gradient_accumulation_steps: int = 16
+    gradient_accumulation_steps: int = 1
     max_grad_norm: float = 1.
     lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
@@ -246,6 +252,8 @@ def llm_sft(args: SftArguments) -> None:
     dataset = get_dataset(args.dataset.split(','))
     if isinstance(dataset, tuple):
         train_dataset, val_dataset = dataset
+        # train_dataset = train_dataset.select(range(100))
+        # val_dataset = val_dataset.select(range(100))
     else:
         train_dataset, val_dataset = process_dataset(dataset,
                                                     args.dataset_test_size,
@@ -258,6 +266,13 @@ def llm_sft(args: SftArguments) -> None:
         args.max_length,
         batched=True)
     train_dataset = train_dataset.map(preprocess_func, batched=True)
+    preprocess_func = get_preprocess(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        batched=True,
+        train=False)
     val_dataset = val_dataset.map(preprocess_func, batched=True)
     del dataset
     # Data analysis
@@ -279,7 +294,7 @@ def llm_sft(args: SftArguments) -> None:
         do_eval=True,
         evaluation_strategy='steps',
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
+        per_device_eval_batch_size=1,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -309,6 +324,7 @@ def llm_sft(args: SftArguments) -> None:
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
+        predict_with_generate=True,
         local_rank=local_rank)
 
     if args.gradient_checkpointing:
@@ -322,7 +338,7 @@ def llm_sft(args: SftArguments) -> None:
             trainer_args._frozen = True
     logger.info(f'trainer_args: {trainer_args}')
 
-    def compute_metrics(self, prediction):
+    def compute_metrics(prediction):
         preds, labels = prediction[0], prediction[1]
         if isinstance(preds, tuple):
             preds = preds[0]
@@ -333,7 +349,21 @@ def llm_sft(args: SftArguments) -> None:
             'rouge-l': [],
             'bleu-4': []
         }
+
+        def _decode(tokens, ignore_pad_token_for_loss=False):
+            if ignore_pad_token_for_loss:
+                tokens = np.where(tokens != -100, tokens,
+                                tokenizer.pad_token_id)
+            tokens = np.where(tokens < tokenizer.vocab_size, tokens,
+                            tokenizer.pad_token_id)
+            return [
+                t for t in tokenizer.batch_decode(
+                    tokens, skip_special_tokens=True) if t != '</s>'
+            ]
+
         for pred, label in zip(preds, labels):
+            pred = ''.join(_decode(pred, False))
+            label = ''.join(_decode(label, True))
             hypothesis = list(jieba.cut(pred))
             if len(hypothesis) == 0 or ''.join(hypothesis) == '.':
                 hypothesis = ['</s>']

@@ -166,7 +166,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         inputs = self._prepare_inputs(inputs)
 
         # XXX: adapt synced_gpus for fairscale as well
-        gen_kwargs = self._gen_kwargs.copy()
+        gen_kwargs = {
+            'do_sample': True,
+            'top_p': 0.7,
+            'max_length': 512,
+            'temperature': 0.95
+        }
         if gen_kwargs.get("max_length") is None and gen_kwargs.get("max_new_tokens") is None:
             gen_kwargs["max_length"] = self.model.config.max_length
         gen_kwargs["num_beams"] = (
@@ -220,8 +225,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             labels = None
 
-        # return (loss, generated_tokens, labels)
-        return (loss, None, None)
+        return (loss, generated_tokens, labels)
+        # return (loss, None, None)
 
     def _pad_tensors_to_max_len(self, tensor, max_length):
         if self.tokenizer is not None and hasattr(self.tokenizer, "pad_token_id"):

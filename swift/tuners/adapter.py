@@ -175,8 +175,12 @@ class AdapterModule(nn.Module):
             self.activate.to(x.device)
             self.ln2.to(x.device)
             self._prepared = True
+        
+        x_dtype = x.dtype
+        x = x.to(self.ln1.weight.dtype)
         out = self.ln2(self.activate(self.ln1(x)))
         if identity is None:
             identity = x
+        identity = identity.to(out.dtype)
         out = identity + out
-        return out
+        return out.to(x_dtype)

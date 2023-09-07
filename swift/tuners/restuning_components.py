@@ -60,7 +60,7 @@ class ResAdapter(nn.Module):
         self.layer_num = layer_num
         self.depth = depth
 
-        self.adapter_length = tuner_cfg['adapter_length'] if 'adapter_length' in tuner_cfg else 10
+        self.adapter_length = tuner_cfg['adapter_length'] if 'adapter_length' in tuner_cfg else 17
         self.adapter_type = tuner_cfg['adapter_type'] if 'adapter_type' in tuner_cfg else None
         self.adapter_weight = tuner_cfg['adapter_weight'] if 'adapter_weight' in tuner_cfg else None
 
@@ -86,6 +86,7 @@ class ResAdapter(nn.Module):
             self._xavier_init_weights(self.ln2)
 
         self.scaling = init_weight_type(dim, self.adapter_weight)
+        self._prepared = False
 
     def _zero_init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -103,6 +104,14 @@ class ResAdapter(nn.Module):
             nn.init.normal_(m.bias, std=1e-6)
 
     def forward(self, x):
+        if not self._prepared:
+            self.ln1.to(x.device)
+            self.activate.to(x.device)
+            self.ln2.to(x.device)
+            self._prepared = True
+        
+        x_dtype = x.dtype
+        x = x.to(self.ln1.weight.dtype)
         x_shortcut = x
         if len(x_shortcut.size()) == 4:
             B, C, N1, N2 = x.size()
@@ -117,7 +126,7 @@ class ResAdapter(nn.Module):
             x_adapter = x_adapter.permute(0, 2, 1).view(x_shortcut.size()[0], x_adapter.size()[-1],
                                                         x_shortcut.size()[2], x_shortcut.size()[3])
         x_out = x_shortcut + x_adapter
-        return x_out
+        return x_out.to(x_dtype)
 
 
 class ResGroupAdapter(nn.Module):
@@ -148,6 +157,7 @@ class ResGroupAdapter(nn.Module):
         else:
             self._kaiming_init_weights(self.ln2)
         self.scaling = init_weight_type(dim, self.adapter_weight)
+        self._prepared = False
 
     def _zero_init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -165,6 +175,14 @@ class ResGroupAdapter(nn.Module):
             nn.init.normal_(m.bias, std=1e-6)
 
     def forward(self, x):
+        if not self._prepared:
+            self.ln1.to(x.device)
+            self.activate.to(x.device)
+            self.ln2.to(x.device)
+            self._prepared = True
+        
+        x_dtype = x.dtype
+        x = x.to(self.ln1.weight.dtype)
         x_shortcut = x
 
         batch, inner_dim, height, width = x.shape
@@ -181,7 +199,7 @@ class ResGroupAdapter(nn.Module):
         x_adapter = x_adapter.reshape(batch, height, width, -1).permute(0, 3, 1, 2).contiguous()
         x_out = x_shortcut + x_adapter
 
-        return x_out
+        return x_out.to(x_dtype)
 
 
 class Identity(nn.Module):
