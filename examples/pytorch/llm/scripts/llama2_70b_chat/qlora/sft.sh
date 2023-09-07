@@ -15,7 +15,7 @@ python src/llm_sft.py \
     --batch_size 1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
