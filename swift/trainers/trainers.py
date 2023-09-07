@@ -8,6 +8,7 @@ from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
 from transformers.deepspeed import is_deepspeed_zero3_enabled
+import time
 
 from .mixin import PushToMsHubMixin, SwiftMixin
 from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
@@ -18,6 +19,15 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 
 
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
+
+    def __init__(self, *args, **kwargs):
+        super.__init__(*args, **kwargs)
+        self.perf = {
+            'gen_time': 0.,
+            'gen_len': 0,
+            'eval_memory': 0.,
+            'train_memory': 0.,
+        }
 
     def prediction_step(
             self,
@@ -83,8 +93,14 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             generation_inputs = inputs[self.model.main_input_name]
 
         gen_kwargs["input_ids"] = generation_inputs
+        gen_time = time.time()
         generated_tokens = self.model.generate(**gen_kwargs)
+        gen_time = time.time() - gen_time
         generated_tokens = generated_tokens[:, generation_inputs.size()[-1]:]
+        gen_len = len(generated_tokens[0])
+        self.perf['gen_time'] = self.perf['gen_time'] + gen_time
+        self.perf['gen_len'] = self.perf['gen_len'] + gen_len
+        self.perf['eval_memory'] = torch.cuda.memory_allocated()
 
         # in case the batch is shorter than max length, the output should be padded
         if gen_kwargs.get("max_length") is not None and generated_tokens.shape[-1] < gen_kwargs["max_length"]:
