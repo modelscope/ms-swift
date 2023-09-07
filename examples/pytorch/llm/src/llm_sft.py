@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
@@ -70,7 +71,7 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.1
 
-    gradient_checkpointing: bool = True
+    gradient_checkpointing: bool = False
     batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
@@ -254,6 +255,12 @@ def llm_sft(args: SftArguments) -> None:
     if is_dist():
         # Make sure to set the same output_dir when using DDP.
         output_dir = broadcast_string(output_dir)
+
+    parameters = inspect.signature(
+        Seq2SeqTrainingArguments.__init__).parameters
+    kwargs = {}
+    if 'only_save_model' in parameters:
+        kwargs['only_save_model'] = args.only_save_model
     trainer_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         do_train=True,
@@ -291,17 +298,15 @@ def llm_sft(args: SftArguments) -> None:
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
         local_rank=local_rank,
-        only_save_model=args.only_save_model)
+        **kwargs)
 
     if args.gradient_checkpointing:
         # fix: gradients will be None
         model.config.use_cache = False
         model.enable_input_require_grads()
         if is_dist():
-            trainer_args._frozen = False  # Compatible with transformers==4.32.0
             trainer_args.ddp_find_unused_parameters = False
             trainer_args.ddp_broadcast_buffers = False
-            trainer_args._frozen = True
     logger.info(f'trainer_args: {trainer_args}')
 
     trainer = Seq2SeqTrainer(

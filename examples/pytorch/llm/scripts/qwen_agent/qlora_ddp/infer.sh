@@ -1,4 +1,3 @@
-# 10G
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type qwen-7b-chat \

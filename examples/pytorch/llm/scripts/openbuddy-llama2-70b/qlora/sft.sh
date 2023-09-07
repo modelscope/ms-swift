@@ -1,5 +1,5 @@
-# 42G VRAM
-CUDA_VISIBLE_DEVICES=0,1 \
+# Experimental environment: A100
+CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type openbuddy-llama2-70b \
     --sft_type lora \
@@ -15,7 +15,7 @@ python src/llm_sft.py \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.1 \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

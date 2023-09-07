@@ -1,6 +1,5 @@
-# 95GB VRAM
-# Experimental environment: 8 * 3090
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 \
+# Experimental environment: 2 * A100
+CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
     --sft_type full \
@@ -11,7 +10,7 @@ python src/llm_sft.py \
     --dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-5 \

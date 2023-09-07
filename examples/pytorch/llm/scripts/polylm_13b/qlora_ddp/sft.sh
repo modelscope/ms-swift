@@ -1,6 +1,5 @@
-# 4 * 17G
-nproc_per_node=4
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+nproc_per_node=2
+CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \

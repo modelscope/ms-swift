@@ -1,6 +1,5 @@
-# 4 * 22GB VRAM
-nproc_per_node=4
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+nproc_per_node=2
+CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
@@ -19,7 +18,7 @@ torchrun \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules c_attn c_proj \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

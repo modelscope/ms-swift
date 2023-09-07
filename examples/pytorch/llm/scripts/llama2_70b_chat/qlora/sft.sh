@@ -1,6 +1,5 @@
-# 44G
-# llama2 is not good at Chinese
-CUDA_VISIBLE_DEVICES=0,1 \
+# Experimental environment: A100
+CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type llama2-70b-chat \
     --sft_type lora \
