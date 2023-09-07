@@ -233,14 +233,10 @@ def llm_sft(args: SftArguments) -> None:
                                                  args.dataset_test_size,
                                                  args.dataset_sample,
                                                  args.dataset_seed)
-    preprocess_func = get_preprocess(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        batched=True)
-    train_dataset = train_dataset.map(preprocess_func, batched=True)
-    val_dataset = val_dataset.map(preprocess_func, batched=True)
+    preprocess_func = get_preprocess(args.template_type, tokenizer,
+                                     args.system, args.max_length)
+    train_dataset = train_dataset.map(preprocess_func)
+    val_dataset = val_dataset.map(preprocess_func)
     del dataset
     # Data analysis
     stat_dataset(train_dataset)
