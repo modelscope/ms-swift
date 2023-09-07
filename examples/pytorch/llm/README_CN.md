@@ -61,21 +61,21 @@ pip install .
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# 微调(lora)+推理 qwen-7b, 需要22GB显存.
+# 微调(lora)+推理 qwen-7b, 需要27GB显存.
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# 微调(lora+ddp)+推理 qwen-7b, 需要4卡*22GB显存.
+# 微调(lora+ddp)+推理 qwen-7b, 需要4卡*27GB显存.
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
-# 微调(qlora)+推理 qwen-7b, 需要16GB显存.
+# 微调(qlora)+推理 qwen-7b, 需要20GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*16GB显存.
+# 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*20GB显存.
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 

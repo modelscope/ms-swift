@@ -300,13 +300,11 @@ def llm_sft(args: SftArguments) -> None:
         local_rank=local_rank,
         **kwargs)
 
+    trainer_args.ddp_find_unused_parameters = False
     if args.gradient_checkpointing:
         # fix: gradients will be None
         model.config.use_cache = False
         model.enable_input_require_grads()
-        if is_dist():
-            trainer_args.ddp_find_unused_parameters = False
-            trainer_args.ddp_broadcast_buffers = False
     logger.info(f'trainer_args: {trainer_args}')
 
     trainer = Seq2SeqTrainer(
