@@ -1,3 +1,4 @@
+# Experimental environment: 2 * A100
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \

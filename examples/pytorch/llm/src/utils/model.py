@@ -171,6 +171,7 @@ class LoRATM(NamedTuple):
     llama2 = ['q_proj', 'k_proj', 'v_proj']
     qwen = ['c_attn']
     polylm = ['c_attn']
+    bloom = ['query_key_value']
 
 
 # Model Home: 'https://modelscope.cn/models/{model_id}/summary'
@@ -321,6 +322,12 @@ MODEL_MAPPING = {
         'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
+    'seqgpt-560m': {
+        'model_id': 'damo/nlp_seqgpt-560m',
+        'revision': 'v1.0.1',
+        'template': 'seqgpt',
+        'lora_TM': LoRATM.bloom,
+    }
 }
 
 
