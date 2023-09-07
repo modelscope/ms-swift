@@ -502,6 +502,7 @@ def llm_sft(args: SftArguments) -> None:
     )
 
     trainer.train(trainer_args.resume_from_checkpoint)
+    logger.info(trainer.perf)
 
     # ### Visualization
     if is_master():

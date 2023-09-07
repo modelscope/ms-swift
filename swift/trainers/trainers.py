@@ -21,13 +21,24 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
-        super.__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.perf = {
             'gen_time': 0.,
             'gen_len': 0,
             'eval_memory': 0.,
-            'train_memory': 0.,
+            'train_memory': None,
+            'model': self.model.get_trainable_parameters(),
         }
+
+    def train(
+        self,
+        *args,
+        **kwargs,
+    ):
+        training_output = super().train(*args, **kwargs)
+        if self.perf['train_memory'] is None:
+            self.perf['train_memory'] = torch.cuda.memory_allocated()
+        return training_output
 
     def prediction_step(
             self,
@@ -100,7 +111,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         gen_len = len(generated_tokens[0])
         self.perf['gen_time'] = self.perf['gen_time'] + gen_time
         self.perf['gen_len'] = self.perf['gen_len'] + gen_len
-        self.perf['eval_memory'] = torch.cuda.memory_allocated()
+        self.perf['eval_memory'] = max(torch.cuda.memory_allocated(), self.perf['eval_memory'])
 
         # in case the batch is shorter than max length, the output should be padded
         if gen_kwargs.get("max_length") is not None and generated_tokens.shape[-1] < gen_kwargs["max_length"]:

@@ -397,7 +397,8 @@ class SwiftModel(nn.Module):
             if param.requires_grad:
                 trainable_params += num_params
         return f'trainable params: {trainable_params:,d} || all params: {all_param:,d} ' \
-               f'|| trainable%: {100 * trainable_params / all_param}'
+               f'|| trainable%: {100 * trainable_params / all_param}' \
+               f'|| cuda memory: {sum([torch.cuda.memory_allocated(i) for i in range(torch.cuda.device_count())])}'
 
 
 class Swift:
