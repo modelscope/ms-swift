@@ -134,7 +134,7 @@ class SftArguments:
             assert self.quantization_bit is None, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
-                self.learning_rate = 1e-5
+                self.learning_rate = 2e-5
             if self.only_save_model is None:
                 self.only_save_model = True
         else:

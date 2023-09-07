@@ -13,7 +13,7 @@ python src/llm_sft.py \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.01 \
-    --learning_rate 1e-5 \
+    --learning_rate 2e-5 \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 1 \
     --warmup_ratio 0.03 \
@@ -22,7 +22,7 @@ python src/llm_sft.py \
     --only_save_model true \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
+    --use_flash_attn true \
     --push_to_hub false \
     --hub_model_id qwen-7b-chat-full \
     --hub_private_repo true \
