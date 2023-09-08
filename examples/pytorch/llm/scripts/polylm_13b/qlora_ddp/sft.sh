@@ -1,6 +1,5 @@
-# 4 * 17G
-nproc_per_node=4
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+nproc_per_node=2
+CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
@@ -21,7 +20,7 @@ torchrun \
     --batch_size 1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \

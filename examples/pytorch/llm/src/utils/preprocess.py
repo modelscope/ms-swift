@@ -13,6 +13,11 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
+    'default-generation': {
+        'prefix': [],
+        'prompt': ['{{query}}'],
+        'suffix': [['eos_token_id']],
+    },
     'chatml': {
         'prefix': [['im_start_id'], 'system\n{{system}}', ['im_end_id'], '\n'],
         'prompt': [['im_start_id'], 'user\n{{query}}', ['im_end_id'], '\n',
@@ -65,9 +70,6 @@ def simplify_context_list(context_list: List[Context]) -> List[Context]:
             res.append(c)
     if len(temp) > 0:
         res.append(''.join(temp))
-    if len(res) > 0 and isinstance(res[-1], str):
-        # avoid two spaces
-        res[-1] = res[-1].rstrip(' ')
     return res
 
 
@@ -136,6 +138,7 @@ def _preprocess(
         placeholder_list,
         system=system)
     for i, (q, r) in enumerate(history):
+        assert 'chat_sep' in template_config, 'not support multi-round chat'
         concat_context_list(
             [*template_config['prompt'], r, *template_config['chat_sep']],
             total_context_list,
@@ -168,11 +171,10 @@ def _preprocess(
 
 
 def get_preprocess(
-        template_type: str,
-        tokenizer: PreTrainedTokenizer,
-        system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        batched: bool = False
+    template_type: str,
+    tokenizer: PreTrainedTokenizer,
+    system: Optional[str] = None,
+    max_length: Optional[int] = None,
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
@@ -183,21 +185,4 @@ def get_preprocess(
         return _preprocess(template_type, tokenizer, query, response, history,
                            custom_system, max_length)
 
-    if batched:
-        # Avoid tqdm printing too much logs when dataset.map(...)
-        def batched_preprocess(
-                batched_examples: Dict[str,
-                                       List[Any]]) -> Dict[str, List[Any]]:
-            n = len(batched_examples['query'])
-            res: List[Dict[str, Any]] = []
-            for i in range(n):
-                example = {k: v[i] for k, v in batched_examples.items()}
-                res.append(preprocess(example))
-            batched_res: Dict[List[str, Any]] = {}
-            assert len(res) > 0
-            for k in res[0].keys():
-                batched_res[k] = [r[k] for r in res]
-            return batched_res
-
-        return batched_preprocess
     return preprocess

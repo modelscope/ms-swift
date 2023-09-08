@@ -1,4 +1,4 @@
-# 42G VRAM
+# Experimental environment: 2 * 3090
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type openbuddy-llama2-70b \
@@ -15,15 +15,15 @@ python src/llm_sft.py \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.1 \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \

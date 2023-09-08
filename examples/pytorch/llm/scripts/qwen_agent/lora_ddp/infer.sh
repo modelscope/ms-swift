@@ -1,4 +1,3 @@
-# 10G
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type qwen-7b-chat \
@@ -9,8 +8,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --dataset_sample -1 \
-    --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --use_flash_attn true \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \
