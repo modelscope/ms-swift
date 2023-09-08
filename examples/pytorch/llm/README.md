@@ -16,7 +16,15 @@
 
 ## Features
 1. supported SFT methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
-2. supported models: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B), qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL), baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, openbuddy-llama2-70b, polylm-13b, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, seqgpt-560m
+2. supported models:
+   1. qwen series: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B)
+   2. qwen-vl series: qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL)
+   3. baichuan series: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat
+   4. chatglm2 series: chatglm2-6b, chatglm2-6b-32k
+   5. llama series: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat
+   6. openbuddy-llama series: openbuddy-llama2-13b, openbuddy-llama-65b, openbuddy-llama2-70b
+   7. internlm series: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k
+   8. other: polylm-13b, seqgpt-560m
 3. supported features: quantization, ddp, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 4. supported datasets:
    1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh
