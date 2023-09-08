@@ -324,8 +324,8 @@ def llm_sft(args: SftArguments) -> None:
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
         load_best_model_at_end=True,
-        metric_for_best_model='loss',
-        greater_is_better=False,
+        metric_for_best_model='rouge-l',
+        greater_is_better=True,
         sortish_sampler=True,
         optim=args.optim,
         hub_model_id=args.hub_model_id,
@@ -379,18 +379,21 @@ def llm_sft(args: SftArguments) -> None:
             if len(hypothesis) == 0 or ''.join(hypothesis) == '.':
                 hypothesis = [tokenizer.decode(tokenizer.eos_token_id)]
             reference = list(jieba.cut(label))
-            rouge = Rouge()
-            scores = rouge.get_scores(' '.join(hypothesis),
-                                      ' '.join(reference))
-            result = scores[0]
+            try:
+                rouge = Rouge()
+                scores = rouge.get_scores(' '.join(hypothesis),
+                                        ' '.join(reference))
+                result = scores[0]
 
-            for k, v in result.items():
-                score_dict[k].append(round(v['f'] * 100, 4))
-            bleu_score = sentence_bleu(
-                [list(label)],
-                list(pred),
-                smoothing_function=SmoothingFunction().method3)
-            score_dict['bleu-4'].append(round(bleu_score * 100, 4))
+                for k, v in result.items():
+                    score_dict[k].append(round(v['f'] * 100, 4))
+                bleu_score = sentence_bleu(
+                    [list(label)],
+                    list(pred),
+                    smoothing_function=SmoothingFunction().method3)
+                score_dict['bleu-4'].append(round(bleu_score * 100, 4))
+            except:
+                logger.error(f'eval error {hypothesis}, {reference}')
 
         for k, v in score_dict.items():
             score_dict[k] = float(np.mean(v))
