@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import os
 import re
@@ -16,7 +17,7 @@ from .preprocess import History
 from .utils import download_dataset
 
 
-def _process_alpaca_dataset(
+def _preprocess_alpaca_dataset(
         dataset: HfDataset,
         preprocess_input: Optional[Callable[[str], str]] = None) -> HfDataset:
     instruction = dataset['instruction']
@@ -39,7 +40,7 @@ def _process_alpaca_dataset(
 def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
@@ -65,13 +66,13 @@ def get_alpaca_gpt4_zh_dataset() -> HfDataset:
             inp = inp[3:]
         return inp
 
-    return _process_alpaca_dataset(dataset, _preprocess_input)
+    return _preprocess_alpaca_dataset(dataset, _preprocess_input)
 
 
 def get_finance_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/finance_en', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 _multi_alpaca_language_list = [
@@ -84,7 +85,7 @@ def _get_multi_alpaca(subset_name: str) -> HfDataset:
         'damo/nlp_polylm_multialpaca_sft',
         subset_name=subset_name,
         split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 def get_multi_alpaca(language_list: List[str]) -> HfDataset:
@@ -117,21 +118,21 @@ def get_multi_alpaca_all() -> HfDataset:
 def get_code_alpaca_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/code_alpaca_en', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 def get_instinwild_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='default',
         split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 def get_instinwild_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='subset',
         split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 def get_du_reader_dataset() -> Tuple[HfDataset, HfDataset]:
@@ -151,26 +152,28 @@ def get_du_reader_dataset() -> Tuple[HfDataset, HfDataset]:
 def get_cot_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
 def get_cot_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT_zh', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
 
 
-def _process_mutimodal_dataset(dataset: HfDataset, prompt: str, image_key: str,
-                               response_key: str) -> HfDataset:
+def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
+                                  image_key: str,
+                                  response_key: str) -> HfDataset:
     dataset._info.features._column_requires_decoding['image'] = False
     query_format = f'<img>{{image_path}}</img>{prompt}'
-    query = [
-        query_format.format(image_path=d[image_key]['path']) for d in dataset
-    ]
-    dataset = HfDataset.from_dict({
-        'query': query,
-        'response': dataset[response_key]
-    })
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        query.append(query_format.format(image_path=d[image_key]['path']))
+        if '&&' in d[response_key]:
+            d[response_key] = d[response_key].split('&&')[0]
+        response.append(d[response_key])
+    dataset = HfDataset.from_dict({'query': query, 'response': response})
     return dataset
 
 
@@ -180,8 +183,8 @@ def get_coco_en_dataset() -> HfDataset:
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['validation'].to_hf_dataset()
     ])
-    return _process_mutimodal_dataset(dataset, 'please describe the image',
-                                      'image', 'caption')
+    return _preprocess_mutimodal_dataset(dataset, 'please describe the image',
+                                         'image', 'caption')
 
 
 def _filter_agent_dataset(dataset: List[Dict[str, Any]],
@@ -206,7 +209,7 @@ def _filter_agent_dataset(dataset: List[Dict[str, Any]],
     return res
 
 
-def _process_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
+def _preprocess_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
     system: List[str] = []
     query: List[str] = []
     response: List[str] = []
@@ -241,7 +244,7 @@ def get_damo_agent_zh_dataset(use_mini: bool = False) -> HfDataset:
         dataset_dict['validation'].to_hf_dataset()
     ])
     dataset = _filter_agent_dataset(dataset, use_mini)
-    return _process_agent_dataset(dataset)
+    return _preprocess_agent_dataset(dataset)
 
 
 _firefly_kind_list = [
@@ -253,8 +256,8 @@ _firefly_kind_list = [
 ]
 
 
-def _process_firefly(dataset: List[Dict[str, str]],
-                     kind_list: List[str]) -> HfDataset:
+def _preprocess_firefly(dataset: List[Dict[str, str]],
+                        kind_list: List[str]) -> HfDataset:
     kind_set = set(kind_list)
     query: List[str] = []
     response: List[str] = []
@@ -280,7 +283,7 @@ def get_firefly_zh_dataset(kind_list: List[str]) -> HfDataset:
         text = text.replace('}{', '},{')
         text = f'[{text}]'
         dataset = json.loads(text)
-    return _process_firefly(dataset, kind_list)
+    return _preprocess_firefly(dataset, kind_list)
 
 
 def get_firefly_all_zh_dataset() -> HfDataset:
@@ -310,7 +313,34 @@ def get_instruct_en_dataset() -> HfDataset:
 def get_gpt4all_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/GPT4all', split='train').to_hf_dataset()
-    return _process_alpaca_dataset(dataset)
+    return _preprocess_alpaca_dataset(dataset)
+
+
+def _preprocess_nli(dataset: HfDataset) -> HfDataset:
+    cls_mapping = ['neutral', 'entailment', 'contradiction']
+    prompt = """Input:
+    Sentence1: {sentence1}
+    Sentence2: {sentence2}
+Classification: neutral, entailment, contradiction
+Output: """
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        query.append(
+            prompt.format(sentence1=d['sentence1'], sentence2=d['sentence2']))
+        label = d['label']
+        response.append(cls_mapping[label])
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_cmnli_zh_dataset() -> HfDataset:
+    dataset_dict = MsDataset.load('clue', subset_name='cmnli')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset(),
+        dataset_dict['test'].to_hf_dataset(),
+    ])
+    return _preprocess_nli(dataset)
 
 
 DATASET_MAPPING = {
@@ -330,6 +360,7 @@ DATASET_MAPPING = {
     'poetry-zh': get_poetry_zh_dataset,
     'instruct-en': get_instruct_en_dataset,
     'gpt4all-en': get_gpt4all_en_dataset,
+    'cmnli-zh': get_cmnli_zh_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
     'advertise_gen': get_advertise_gen_dataset,

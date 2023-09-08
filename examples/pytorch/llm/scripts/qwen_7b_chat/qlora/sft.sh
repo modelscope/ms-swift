@@ -1,4 +1,3 @@
-# 16GB VRAM
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
@@ -13,18 +12,18 @@ python src/llm_sft.py \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 64 \
-    --lora_alpha 16 \
+    --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \

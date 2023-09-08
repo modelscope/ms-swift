@@ -1,6 +1,5 @@
-# 4 * 23GB VRAM
-nproc_per_node=4
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+nproc_per_node=2
+CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
@@ -18,18 +17,19 @@ torchrun \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --gradient_checkpointing true \
+    --lora_target_modules c_attn attn.c_proj \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
+    --use_flash_attn true \
     --push_to_hub false \
     --hub_model_id qwen-vl-chat-lora \
     --hub_private_repo true \

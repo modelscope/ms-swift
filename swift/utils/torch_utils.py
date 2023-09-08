@@ -125,6 +125,11 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
     return rank, local_rank, world_size, local_world_size
 
 
+def is_local_master():
+    local_rank = get_dist_setting()[1]
+    return local_rank in {-1, 0}
+
+
 def is_dist():
     """Determine if the training is distributed"""
     rank, local_rank, _, _ = get_dist_setting()

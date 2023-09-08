@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import logging
 import os
 import shutil
@@ -19,7 +20,7 @@ from swift import get_logger
 from swift.hub import ModelScopeConfig
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
-from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
+from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -45,6 +46,11 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
 def is_master():
     rank = get_dist_setting()[0]
     return rank in {-1, 0}
+
+
+def is_local_master():
+    local_rank = get_dist_setting()[1]
+    return local_rank in {-1, 0}
 
 
 def is_dist():
@@ -184,8 +190,6 @@ def find_all_linear_for_lora(model: Module,
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm2-6b'):
         head_module_name = 'output_layer'
-    if model_type.startswith('qwen-vl'):
-        return ['c_attn', 'attn.c_proj', 'w1', 'w2']
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
         linear_cls = Linear4bit

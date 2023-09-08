@@ -10,8 +10,8 @@ from transformers import trainer
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 import time
 
+from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .trainer_patch import DefaultFlowCallbackNew, ProgressCallbackNew
 
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):

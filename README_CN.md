@@ -30,13 +30,21 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
 
 1. 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
-2. 支持的模型: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B), qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL), baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b
+2. 支持的模型:
+   1. qwen 系列: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B)
+   2. qwen-vl 系列: qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL)
+   3. baichuan 系列: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat
+   4. chatglm2 系列: chatglm2-6b, chatglm2-6b-32k
+   5. llama 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat
+   6. openbuddy-llama 系列: openbuddy-llama2-13b, openbuddy-llama-65b, openbuddy-llama2-70b
+   7. internlm 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k
+   8. other: polylm-13b, seqgpt-560m
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 4. 支持的数据集:
-   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en
+   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
-   3. multi-modal: coco-en
-5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default
+   3. 多模态: coco-en
+5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 # 安装
 

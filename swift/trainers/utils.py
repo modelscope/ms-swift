@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Copyright 2023-present the HuggingFace Inc. team.
+# Part of the implementation is borrowed from huggingface/transformers.
 
 import inspect
 from types import FunctionType, MethodType
@@ -17,7 +17,7 @@ def can_return_loss(model: Module) -> List[str]:
     return False
 
 
-def find_labels(model: Module):
+def find_labels(model: Module) -> List[str]:
     """Find the labels used by a given model."""
     model_name = model.__class__.__name__
     signature = inspect.signature(model.forward)
@@ -37,7 +37,7 @@ def get_function(
     return method_or_function
 
 
-def is_instance_of_ms_Model(model: Module) -> bool:
+def is_instance_of_ms_model(model: Module) -> bool:
     """avoid import modelscope: circular dependency problem"""
     for m_cls in model.__class__.__mro__:
         cls_name = m_cls.__name__

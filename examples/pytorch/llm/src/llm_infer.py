@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
@@ -56,6 +57,14 @@ class InferArguments:
     top_p: float = 0.9
     skip_prompt: Optional[bool] = None
 
+    # other
+    use_flash_attn: Optional[bool] = field(
+        default=None,
+        metadata={
+            'help':
+            "This parameter is used only when model_type.startswith('qwen-7b')"
+        })
+
     def __post_init__(self):
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
@@ -71,6 +80,9 @@ class InferArguments:
             self.quantization_bit, self.bnb_4bit_comp_dtype)
         if self.skip_prompt is None:
             self.skip_prompt = self.eval_human
+
+        if self.use_flash_attn is None:
+            self.use_flash_attn = 'auto'
 
 
 def llm_infer(args: InferArguments) -> None:
@@ -88,6 +100,8 @@ def llm_infer(args: InferArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
+    if args.model_type.startswith('qwen'):
+        kwargs['use_flash_attn'] = args.use_flash_attn
 
     if args.sft_type == 'full':
         kwargs['model_dir'] = args.ckpt_dir
@@ -102,11 +116,9 @@ def llm_infer(args: InferArguments) -> None:
     print_model_info(model)
 
     # ### Inference
-    template_type = MODEL_MAPPING[args.model_type]['template']
-    preprocess_func = get_preprocess(
-        template_type, tokenizer, args.system, args.max_length, batched=False)
-    streamer = TextStreamer(
-        tokenizer, skip_prompt=True, skip_special_tokens=True)
+    preprocess_func = get_preprocess(args.template_type, tokenizer,
+                                     args.system, args.max_length)
+    streamer = TextStreamer(tokenizer, skip_prompt=True)
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -122,6 +134,7 @@ def llm_infer(args: InferArguments) -> None:
             query = input('<<< ')
             data = {'query': query}
             input_ids = preprocess_func(data)['input_ids']
+            streamer.decode_kwargs['skip_special_tokens'] = True
             inference(input_ids, model, tokenizer, streamer, generation_config,
                       args.skip_prompt)
     else:
@@ -129,7 +142,8 @@ def llm_infer(args: InferArguments) -> None:
         _, test_dataset = process_dataset(dataset, args.dataset_test_size,
                                           args.dataset_sample,
                                           args.dataset_seed)
-        mini_test_dataset = test_dataset.select(range(10))
+        mini_test_dataset = test_dataset.select(
+            range(min(10, test_dataset.shape[0])))
         del dataset
         for data in mini_test_dataset:
             response = data['response']
