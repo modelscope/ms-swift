@@ -98,6 +98,18 @@ def print_model_info(model: Module, name: Optional[str] = None) -> None:
     logger.info(''.join(s))
 
 
+def find_sub_module(module: torch.nn.Module, module_name: str) -> List[torch.nn.Module]:
+    _modules = list()
+    for name, sub_module in module.named_modules():
+        if not name:
+            continue
+        if module_name == name or getattr(sub_module, 'adapter_name', None) == module_name:
+            _modules.append(sub_module)
+        else:
+            _modules.extend(find_sub_module(sub_module, module_name))
+    return _modules
+
+
 def get_seed(random_state: RandomState) -> int:
     seed_max = np.iinfo(np.int32).max
     seed = random_state.randint(0, seed_max)

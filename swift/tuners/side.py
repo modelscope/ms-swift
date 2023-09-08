@@ -5,7 +5,7 @@ import types
 import copy
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Union, Callable, Any
+from typing import Union, Callable, Any, List
 from collections import OrderedDict
 from itertools import repeat
 
@@ -15,6 +15,7 @@ import torchvision
 
 from swift.utils.logger import get_logger
 from .utils import SwiftConfig, SwiftOutput
+from ..utils.torch_utils import find_sub_module
 
 logger = get_logger()
 
@@ -61,7 +62,7 @@ class SideConfig(SwiftConfig):
 class Side:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: SideConfig) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: SideConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `SideConfig`"""
         module_keys = [key for key, _ in model.named_modules()]
 
@@ -77,9 +78,9 @@ class Side:
                     args_main = self.forward_origin(*args, **kwargs)
                     if isinstance(args_main, (tuple, list, dict)):
                         if isinstance(config.hidden_pos, str):
-                            args_main[config.hidden_pos] = getattr(self, 'side')(*args, args_main[config.hidden_pos])
+                            args_main[config.hidden_pos] = getattr(self, f'side_{adapter_name}')(*args, args_main[config.hidden_pos])
                     else:
-                        args_main = getattr(self, 'side')(*args, args_main)
+                        args_main = getattr(self, f'side_{adapter_name}')(*args, args_main)
                     return args_main
 
                 if isinstance(tgt_module, nn.Sequential):
@@ -96,12 +97,12 @@ class Side:
                     tgt_module.forward_origin = tgt_module.forward
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
                 side_module = SideModule(config.dim, config.side_module_name)
-                setattr(tgt_module, 'side', side_module)
+                setattr(tgt_module, f'side_{adapter_name}', side_module)
 
-        def state_dict_callback(state_dict):
+        def state_dict_callback(state_dict, adapter_name):
             return {
                 key: value
-                for key, value in state_dict.items() if 'side' in key
+                for key, value in state_dict.items() if f'side_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -109,6 +110,12 @@ class Side:
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
+
+    @staticmethod
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        for _module in modules:
+            module.activate(activate)
 
 
 class SideModule(nn.Module):
@@ -147,8 +154,14 @@ class SideModule(nn.Module):
         else:
             raise ValueError(f'Unsupported side_module_name: {side_module_name}')
         self.alpha = nn.Parameter(torch.tensor(0.0))
+        self._activate = True
+
+    def activate(self, activate=True):
+        self._activate = activate
 
     def forward(self, x, x_main):
+        if not self._activate:
+            return x_main
         alpha_squashed = torch.sigmoid(self.alpha)
         x_side = self.side_net(x)
         x_out = alpha_squashed * x_main + (1 - alpha_squashed) * x_side

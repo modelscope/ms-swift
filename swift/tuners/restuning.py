@@ -5,11 +5,13 @@ import types
 from dataclasses import dataclass, field
 from typing import Union, Dict, Optional, List
 
+import torch
 import torch.nn as nn
 
 from swift.utils.logger import get_logger
 from .restuning_components import probe_input_pre_hook, probe_output_hook, detach_tensors, ResTuner
 from .utils import SwiftConfig, SwiftOutput
+from ..utils.torch_utils import find_sub_module
 
 logger = get_logger()
 
@@ -112,7 +114,7 @@ class ResTuningConfig(SwiftConfig):
 class ResTuning:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: ResTuningConfig) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: ResTuningConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `ResTuningConfig`"""
 
         def _forward_seq(self, input, *args, **kwargs):
@@ -123,17 +125,21 @@ class ResTuning:
 
         def _forward_target(self, *args, **kwargs):
             if self.target_modules_hook == "input":
-                args_main = _forward_restuning(self)
-                args_main = self.forward_origin(args_main, **kwargs)
+                args = list(args)
+                _arg = args[0 if self.target_hidden_pos is None else self.target_hidden_pos]
+                args_main = _forward_restuning(self, _arg)
+                args[0 if self.target_hidden_pos is None else self.target_hidden_pos] = args_main
+                args_main = self.forward_origin(*args, **kwargs)
             else:
                 _args_main = self.forward_origin(*args, **kwargs)
-                args_main = _forward_restuning(self)
+                _arg = _args_main[0 if self.target_hidden_pos is None else self.target_hidden_pos] if isinstance(_args_main, (tuple, list)) else _args_main
+                args_main = _forward_restuning(self, _arg)
                 if type(_args_main) != type(args_main):
-                    _args_main[self.target_hidden_pos] = args_main
+                    _args_main[0 if self.target_hidden_pos is None else self.target_hidden_pos] = args_main
                     args_main = _args_main
             return args_main
 
-        def _forward_restuning(self):
+        def _forward_restuning(self, origin_arg):
             probe_results = []
             root_module_ins = self.root_module_ins_list[0]
             stem_module_ins_list = self.stem_module_ins_list
@@ -150,7 +156,7 @@ class ResTuning:
                     probe_results.append(st_mod.probe_input_data)
                 else:
                     probe_results.append(st_mod.probe_output_data)
-            args_main = getattr(top_module, 'restuning')(probe_results)
+            args_main = getattr(top_module, f'restuning_{adapter_name}')(probe_results, origin_arg)
             return args_main
 
         # 1. Matching the root module
@@ -208,7 +214,7 @@ class ResTuning:
             restuning_module = ResTuningBypassModule(config.dims, depth, config.use_upsample,
                                                      config.upsample_out_channels, config.zero_init_last,
                                                      config.tuner_cfg)
-            setattr(top_module, 'restuning', restuning_module)
+            setattr(top_module, f'restuning_{adapter_name}', restuning_module)
 
         # 4. Matching the target module
         target_module_ins = None
@@ -235,10 +241,10 @@ class ResTuning:
         if target_module_ins is None:
             raise Exception(f"Cannot match target modules")
 
-        def state_dict_callback(state_dict):
+        def state_dict_callback(state_dict, adapter_name):
             return {
                 key: value
-                for key, value in state_dict.items() if 'restuning' in key
+                for key, value in state_dict.items() if f'restuning_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -246,6 +252,12 @@ class ResTuning:
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
+
+    @staticmethod
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        for _module in modules:
+            module.activate(activate)
 
 
 class ResTuningBypassModule(nn.Module):
@@ -263,6 +275,7 @@ class ResTuningBypassModule(nn.Module):
     ):
         super(ResTuningBypassModule, self).__init__()
 
+        self._activate = True
         self.bypass_blocks = nn.Sequential(*[
             ResTunerBypassBlock(
                 dim=dims[i] if isinstance(dims, list) else dims,
@@ -276,7 +289,12 @@ class ResTuningBypassModule(nn.Module):
             )
             for i in range(depth)])
 
-    def forward(self, x_list, **kwargs):
+    def activate(self, activate=True):
+        self._activate = activate
+
+    def forward(self, x_list, origin_arg, **kwargs):
+        if not self._activate:
+            return origin_arg
         x_bypass = detach_tensors(x_list.pop(0))
         x_bypass = x_bypass[0] if isinstance(x_bypass, (list, tuple)) else x_bypass
         x_list = detach_tensors(x_list)
