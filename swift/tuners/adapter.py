@@ -167,7 +167,7 @@ class AdapterModule(nn.Module):
         self.ln2 = nn.Linear(adapter_length, dim)
         self.init_weights()
         self._prepared = False
-		self._activate = True
+        self._activate = True
 
     def init_weights(self):
 
