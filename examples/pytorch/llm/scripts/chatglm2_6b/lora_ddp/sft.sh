@@ -1,15 +1,15 @@
-# 4 * 15G
-# ddp_backend gloo: support windows
-nproc_per_node=4
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+nproc_per_node=2
+CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     src/llm_sft.py \
     --model_type chatglm2-6b \
     --sft_type lora \
+    --template_type chatglm2 \
+    --dtype bf16 \
     --output_dir runs \
-    --ddp_backend gloo \
+    --ddp_backend nccl \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample -1 \
     --num_train_epochs 1 \
@@ -17,10 +17,18 @@ torchrun \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.1 \
+    --gradient_checkpointing false \
     --batch_size 1 \
+    --weight_decay 0. \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --max_grad_norm 0.5 \
+    --warmup_ratio 0.03 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
+    --push_to_hub false \
+    --hub_model_id chatglm2-6b-lora \
+    --hub_private_repo true \
+    --hub_token 'your-sdk-token' \

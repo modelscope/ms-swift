@@ -1,3 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
@@ -69,7 +71,7 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.1
 
-    gradient_checkpointing: bool = True
+    gradient_checkpointing: bool = False
     batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
@@ -84,6 +86,7 @@ class SftArguments:
 
     eval_steps: int = 50
     save_steps: Optional[int] = None
+    only_save_model: Optional[bool] = None
     save_total_limit: int = 2
     logging_steps: int = 5
     dataloader_num_workers: int = 1
@@ -125,23 +128,24 @@ class SftArguments:
         if self.sft_type == 'lora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.save_steps is None:
-                self.save_steps = self.eval_steps
+            if self.only_save_model is None:
+                self.only_save_model = False
         elif self.sft_type == 'full':
             assert self.quantization_bit is None, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
-                self.learning_rate = 1e-5
-            if self.save_steps is None:
-                # Saving the model takes a long time
-                self.save_steps = self.eval_steps * 4
+                self.learning_rate = 2e-5
+            if self.only_save_model is None:
+                self.only_save_model = True
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
+
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', 'default')
             logger.info(f'Setting template_type: {self.template_type}')
-
+        if self.save_steps is None:
+            self.save_steps = self.eval_steps
         self.output_dir = os.path.join(self.output_dir, self.model_type)
 
         if self.lora_target_modules is None:
@@ -192,7 +196,7 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
-    if args.model_type.startswith('qwen-7b'):
+    if args.model_type.startswith('qwen'):
         kwargs['use_flash_attn'] = args.use_flash_attn
 
     model, tokenizer = get_model_tokenizer(
@@ -228,14 +232,10 @@ def llm_sft(args: SftArguments) -> None:
                                                  args.dataset_test_size,
                                                  args.dataset_sample,
                                                  args.dataset_seed)
-    preprocess_func = get_preprocess(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        batched=True)
-    train_dataset = train_dataset.map(preprocess_func, batched=True)
-    val_dataset = val_dataset.map(preprocess_func, batched=True)
+    preprocess_func = get_preprocess(args.template_type, tokenizer,
+                                     args.system, args.max_length)
+    train_dataset = train_dataset.map(preprocess_func)
+    val_dataset = val_dataset.map(preprocess_func)
     del dataset
     # Data analysis
     stat_dataset(train_dataset)
@@ -250,6 +250,12 @@ def llm_sft(args: SftArguments) -> None:
     if is_dist():
         # Make sure to set the same output_dir when using DDP.
         output_dir = broadcast_string(output_dir)
+
+    parameters = inspect.signature(
+        Seq2SeqTrainingArguments.__init__).parameters
+    kwargs = {}
+    if 'only_save_model' in parameters:
+        kwargs['only_save_model'] = args.only_save_model
     trainer_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         do_train=True,
@@ -286,17 +292,13 @@ def llm_sft(args: SftArguments) -> None:
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
-        local_rank=local_rank)
+        local_rank=local_rank,
+        **kwargs)
 
+    # trainer_args.ddp_find_unused_parameters = False
     if args.gradient_checkpointing:
-        # fix: gradients will be None
         model.config.use_cache = False
         model.enable_input_require_grads()
-        if is_dist():
-            trainer_args._frozen = False  # Compatible with transformers==4.32.0
-            trainer_args.ddp_find_unused_parameters = False
-            trainer_args.ddp_broadcast_buffers = False
-            trainer_args._frozen = True
     logger.info(f'trainer_args: {trainer_args}')
 
     trainer = Seq2SeqTrainer(

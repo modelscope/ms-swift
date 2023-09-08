@@ -1,4 +1,3 @@
-# 10G
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type qwen-vl-chat \
@@ -12,6 +11,7 @@ python src/llm_infer.py \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --max_new_tokens 1024 \
+    --use_flash_attn false \
     --temperature 0.9 \
     --top_k 50 \
     --top_p 0.9 \

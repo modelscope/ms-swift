@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
+# Part of the implementation is borrowed from huggingface/transformers.
 import os
 import shutil
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import json
+import numpy as np
 import safetensors
 import torch
 from datasets import Dataset as HfDataset
@@ -15,6 +16,7 @@ from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
+from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction, HubStrategy
 from transformers.training_args import TrainingArguments
@@ -26,7 +28,7 @@ from swift.tuners import SwiftModel
 from swift.utils.constants import Invoke
 from swift.utils.logger import get_logger
 from .utils import (can_return_loss, find_labels, get_function,
-                    is_instance_of_ms_Model)
+                    is_instance_of_ms_model)
 
 logger = get_logger()
 
@@ -229,7 +231,7 @@ class SwiftMixin:
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
-        if is_instance_of_ms_Model(self.model):
+        if is_instance_of_ms_model(self.model):
             model_dir = getattr(self.model, 'model_dir', None)
             if model_dir is not None:
                 src_path = os.path.join(model_dir, 'configuration.json')
@@ -263,7 +265,7 @@ class SwiftMixin:
                 else:
                     torch.save(state_dict,
                                os.path.join(output_dir, 'pytorch_model.bin'))
-        elif is_instance_of_ms_Model(self.model):
+        elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model,
                 output_dir,
@@ -278,3 +280,52 @@ class SwiftMixin:
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
+
+    def _save_checkpoint(self, model, trial, metrics=None):
+        only_save_model = getattr(self.args, 'only_save_model', False)
+        if only_save_model:
+            return self._only_save_model(model, trial, metrics)
+        else:
+            return super()._save_checkpoint(model, trial, metrics)
+
+    def _only_save_model(self, model, trial, metrics=None):
+        # Save model checkpoint
+        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
+
+        if self.hp_search_backend is None and trial is None:
+            self.store_flos()
+
+        run_dir = self._get_output_dir(trial=trial)
+        output_dir = os.path.join(run_dir, checkpoint_folder)
+        self.save_model(output_dir, _internal_call=True)
+        if self.is_deepspeed_enabled:
+            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
+            # config `stage3_gather_16bit_weights_on_model_save` is True
+            self.model_wrapped.save_checkpoint(output_dir)
+
+        # Determine the new best metric / best model checkpoint
+        if metrics is not None and self.args.metric_for_best_model is not None:
+            metric_to_check = self.args.metric_for_best_model
+            if not metric_to_check.startswith('eval_'):
+                metric_to_check = f'eval_{metric_to_check}'
+            metric_value = metrics[metric_to_check]
+
+            operator = np.greater if self.args.greater_is_better else np.less
+            if (self.state.best_metric is None
+                    or self.state.best_model_checkpoint is None
+                    or operator(metric_value, self.state.best_metric)):
+                self.state.best_metric = metric_value
+                self.state.best_model_checkpoint = output_dir
+
+        # Save the Trainer state
+        if self.args.should_save:
+            self.state.save_to_json(
+                os.path.join(output_dir, TRAINER_STATE_NAME))
+
+        # push to hub
+        if self.args.push_to_hub:
+            self._push_from_checkpoint(output_dir)
+
+        # Maybe delete some older checkpoints.
+        if self.args.should_save:
+            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
