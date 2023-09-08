@@ -290,8 +290,7 @@ def get_gpt4all_en_dataset() -> HfDataset:
 
 def _preprocess_nli(dataset: HfDataset) -> HfDataset:
     cls_mapping = ['neutral', 'entailment', 'contradiction']
-    prompt = """
-Input:
+    prompt = """Input:
     Sentence1: {sentence1}
     Sentence2: {sentence2}
 Classification: neutral, entailment, contradiction
