@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type seqgpt-560m \
     --sft_type full \
-    --template_type text-generation \
+    --template_type default-generation \
     --dtype bf16 \
     --output_dir runs \
     --dataset cmnli-zh \

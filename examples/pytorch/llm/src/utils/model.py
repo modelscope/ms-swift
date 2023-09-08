@@ -325,7 +325,7 @@ MODEL_MAPPING = {
     'seqgpt-560m': {
         'model_id': 'damo/nlp_seqgpt-560m',
         'revision': 'v1.0.1',
-        'template': 'text-generation',
+        'template': 'default-generation',
         'lora_TM': LoRATM.bloom,
     }
 }

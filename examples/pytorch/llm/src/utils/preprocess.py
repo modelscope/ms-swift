@@ -13,7 +13,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
-    'text-generation': {
+    'default-generation': {
         'prefix': [],
         'prompt': ['{{query}}'],
         'suffix': [['eos_token_id']],

@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type seqgpt-560m \
     --sft_type full \
-    --template_type text-generation \
+    --template_type default-generation \
     --dtype bf16 \
     --ckpt_dir "runs/seqgpt-560m/vx_xxx/checkpoint-xxx" \
     --eval_human false \
