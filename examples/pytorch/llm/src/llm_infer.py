@@ -142,7 +142,8 @@ def llm_infer(args: InferArguments) -> None:
         _, test_dataset = process_dataset(dataset, args.dataset_test_size,
                                           args.dataset_sample,
                                           args.dataset_seed)
-        mini_test_dataset = test_dataset.select(range(10))
+        mini_test_dataset = test_dataset.select(
+            range(min(10, test_dataset.shape[0])))
         del dataset
         for data in mini_test_dataset:
             response = data['response']
