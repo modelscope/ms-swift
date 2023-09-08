@@ -8,6 +8,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --dataset_sample -1 \
+    --use_flash_attn true \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \

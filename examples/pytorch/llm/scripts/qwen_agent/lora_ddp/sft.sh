@@ -1,3 +1,4 @@
+# Experimental environment: 2 * A100
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -29,7 +30,7 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
+    --use_flash_attn true \
     --push_to_hub false \
     --hub_model_id qwen-7b-chat-qlora \
     --hub_private_repo true \
