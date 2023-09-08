@@ -70,9 +70,6 @@ def simplify_context_list(context_list: List[Context]) -> List[Context]:
             res.append(c)
     if len(temp) > 0:
         res.append(''.join(temp))
-    if len(res) > 0 and isinstance(res[-1], str):
-        # avoid two spaces
-        res[-1] = res[-1].rstrip(' ')
     return res
 
 
