@@ -100,7 +100,7 @@ def llm_infer(args: InferArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
-    if args.model_type.startswith('qwen-7b'):
+    if args.model_type.startswith('qwen'):
         kwargs['use_flash_attn'] = args.use_flash_attn
 
     if args.sft_type == 'full':

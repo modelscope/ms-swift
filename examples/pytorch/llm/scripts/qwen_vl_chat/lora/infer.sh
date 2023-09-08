@@ -9,6 +9,7 @@ python src/llm_infer.py \
     --dataset coco-en \
     --dataset_sample 20000 \
     --max_new_tokens 1024 \
+    --use_flash_attn true \
     --temperature 0.9 \
     --top_k 50 \
     --top_p 0.9 \

@@ -196,7 +196,7 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
-    if args.model_type.startswith('qwen-7b'):
+    if args.model_type.startswith('qwen'):
         kwargs['use_flash_attn'] = args.use_flash_attn
 
     model, tokenizer = get_model_tokenizer(
@@ -296,7 +296,7 @@ def llm_sft(args: SftArguments) -> None:
         local_rank=local_rank,
         **kwargs)
 
-    trainer_args.ddp_find_unused_parameters = False
+    # trainer_args.ddp_find_unused_parameters = False
     if args.gradient_checkpointing:
         # fix: gradients will be None
         model.config.use_cache = False
