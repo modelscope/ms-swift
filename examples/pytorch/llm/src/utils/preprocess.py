@@ -23,7 +23,7 @@ TEMPLATE_MAPPING = {
         'prompt':
         ['<|im_start|>user\n{{query}}<|im_end|>\n<|im_start|>assistant\n'],
         'chat_sep': ['<|im_end|>\n'],
-        'suffix': ['<|im_end|>\n<|endoftext|>'],
+        'suffix': ['<|im_end|><|endoftext|>'],
     },
     'baichuan': {
         'prefix': [],
@@ -51,10 +51,10 @@ TEMPLATE_MAPPING = {
         'suffix': [['eos_token_id']],
     },
     'internlm': {
-        'prefix': [['bos_token_id']],
+        'prefix': ['<s>'],
         'prompt': ['<|User|>:{{query}}<eoh>\n<|Bot|>:'],
         'chat_sep': ['<eoa>\n'],
-        'suffix': ['<eoa>\n', ['eos_token_id']],
+        'suffix': ['<eoa></s>'],
     }
 }
 Context = Union[str, List[int]]
