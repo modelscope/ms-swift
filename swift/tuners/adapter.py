@@ -3,12 +3,12 @@ import inspect
 import re
 import types
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Union, List
 
 import torch
 from torch import nn
 from transformers.activations import ACT2CLS
-
+from swift.utils.torch_utils import find_sub_module
 from .utils import SwiftConfig, SwiftOutput
 
 
@@ -71,7 +71,7 @@ class AdapterConfig(SwiftConfig):
 class Adapter:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: AdapterConfig) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: AdapterConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `AdapterConfig`"""
         module_keys = [key for key, _ in model.named_modules()]
 
@@ -92,18 +92,20 @@ class Adapter:
                     if isinstance(args, (tuple, list, dict)):
                         if isinstance(config.hidden_pos, int):
                             return args[0:config.hidden_pos] + args[
-                                config.hidden_pos] + getattr(self, 'adapter')(args[config.hidden_pos]) \
+                                config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(args[config.hidden_pos]) \
                                 + args[config.hidden_pos + 1:] # noqa
                         else:
                             kwargs[config.hidden_pos] = args[
-                                config.hidden_pos] + getattr(self, 'adapter')(
+                                config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(
                                     args[config.hidden_pos])
                     elif isinstance(args, torch.Tensor):
-                        args = getattr(self, 'adapter')(args)
+                        args = getattr(self, f'adapter_{adapter_name}')(args)
                     return args
 
                 def _feed_forward_chunk(self, attention_output):
                     return _forward(self, attention_output)
+
+                # TODO The `config.method_name` method should not be replaced twice.
 
                 module.forward_origin = getattr(module, config.method_name)
                 num_args_in_forward_chunk_fn = len(
@@ -117,12 +119,12 @@ class Adapter:
                 adapter_module = AdapterModule(config.dim,
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
-                setattr(module, 'adapter', adapter_module)
+                setattr(module, f'adapter_{adapter_name}', adapter_module)
 
-        def state_dict_callback(state_dict):
+        def state_dict_callback(state_dict, adapter_name: str):
             return {
                 key: value
-                for key, value in state_dict.items() if 'adapter' in key
+                for key, value in state_dict.items() if f'adapter_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -130,6 +132,12 @@ class Adapter:
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
+
+    @staticmethod
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        for _module in modules:
+            module.activate(activate)
 
 
 class AdapterModule(nn.Module):
@@ -159,6 +167,7 @@ class AdapterModule(nn.Module):
         self.ln2 = nn.Linear(adapter_length, dim)
         self.init_weights()
         self._prepared = False
+		self._activate = True
 
     def init_weights(self):
 
@@ -169,7 +178,12 @@ class AdapterModule(nn.Module):
 
         self.apply(_init_weights)
 
+    def activate(self, activate=True):
+        self._activate = activate
+
     def forward(self, x, identity=None):
+        if not self.activate:
+            return 0.
         if not self._prepared:
             self.ln1.to(x.device)
             self.activate.to(x.device)

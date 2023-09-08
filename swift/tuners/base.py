@@ -52,12 +52,12 @@ class SwiftModel(nn.Module):
 
         self.adapters = {}
         if isinstance(config, SwiftConfig):
-            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(model, config)
+            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(model, config, DEFAULT_ADAPTER)
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, config in config.items():
                 self.adapters[adapter_name] = self._prepare_model(
-                    model, config)
+                    model, config, adapter_name)
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
@@ -151,7 +151,7 @@ class SwiftModel(nn.Module):
         if kwargs.get('save_adapter', True):
             for name, output in self.adapters.items():
                 if adapter_name == name or adapter_name is None:
-                    state_dicts.update(output.state_dict_callback(destination))
+                    state_dicts.update(output.state_dict_callback(destination, adapter_name))
         if kwargs.get('save_extra_states', True):
             state_dicts.update({
                 k: v
@@ -260,10 +260,11 @@ class SwiftModel(nn.Module):
         cls,
         model: nn.Module,
         config: SwiftConfig,
+        adapter_name: str,
     ):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
-        return SWIFT_MAPPING[config.swift_type][1].prepare_model(model, config)
+        return SWIFT_MAPPING[config.swift_type][1].prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
@@ -380,6 +381,22 @@ class SwiftModel(nn.Module):
     @property
     def base_model(self):
         return self.model
+
+    def activate_adapter(self, adapter_name):
+        if adapter_name not in self.adapters:
+            return
+
+        from .mapping import SWIFT_MAPPING
+        SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
+            .activate_adapter(self.base_model, adapter_name, True)
+
+    def deactivate_adapter(self, adapter_name):
+        if adapter_name not in self.adapters:
+            return
+
+        from .mapping import SWIFT_MAPPING
+        SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
+            .activate_adapter(self.base_model, adapter_name, False)
 
     def get_trainable_parameters(self):
         """

@@ -15,6 +15,7 @@ from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
 from .utils import SwiftConfig, SwiftOutput
+from ..utils.torch_utils import find_sub_module
 
 if is_bnb_available():
     import bitsandbytes as bnb
@@ -90,12 +91,13 @@ class LoRAConfig(SwiftConfig):
 class LoRA:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: LoRAConfig):
+    def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
         """Prepare a model with `LoRAConfig`"""
         LoRA._dynamic_patch_lora(
             model,
             replace_modules=config.target_modules,
             r=config.r,
+            adapter_name=adapter_name,
             lora_alpha=config.lora_alpha,
             lora_dropout=config.lora_dropout,
             merge_weights=config.merge_weights,
@@ -103,8 +105,8 @@ class LoRA:
             enable_lora=config.enable_lora,
             fan_in_fan_out=config.fan_in_fan_out)
 
-        def state_dict_callback(state_dict):
-            return lora_state_dict(state_dict, config.bias)
+        def state_dict_callback(state_dict, adapter_name):
+            return lora_state_dict(state_dict, model.lora_module_map, adapter_name, config.bias)
 
         def mark_trainable_callback(model):
             mark_lora_as_trainable(model, config.bias)
@@ -113,7 +115,16 @@ class LoRA:
                            mark_trainable_callback)
 
     @staticmethod
-    def _dynamic_patch_lora(model, replace_modules, use_merged_linear,
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        for _module in modules:
+            if isinstance(module, LoRALayer):
+                module.activate(activate)
+            else:
+                module.active_adapter = 'default' if activate else 'invalid'
+
+    @staticmethod
+    def _dynamic_patch_lora(model, replace_modules, use_merged_linear, adapter_name,
                             **kwargs):
         """Dynamic patch lora to model
 
@@ -126,6 +137,9 @@ class LoRA:
         Returns:
             The lora modules
         """
+        if not hasattr(model, 'lora_module_map'):
+            model.lora_module_map = {}
+        modules = {}
         module_keys = [key for key, _ in model.named_modules()]
         assert isinstance(replace_modules, (str, list))
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
@@ -208,9 +222,15 @@ class LoRA:
                     lora_module = Embedding(
                         num_embeddings=sub_module.num_embeddings,
                         embedding_dim=sub_module.embedding_dim,
+                        padding_idx=sub_module.padding_idx,
+                        max_norm=sub_module.max_norm,
+                        norm_type=sub_module.norm_type,
+                        scale_grad_by_freq=sub_module.scale_grad_by_freq,
+                        sparse=sub_module.sparse,
                         r=kwargs['r'],
                         lora_alpha=kwargs['lora_alpha'],
-                        merge_weights=kwargs['merge_weights'])
+                        merge_weights=kwargs['merge_weights'],
+                        )
                 elif isinstance(sub_module, torch.nn.Conv2d):
                     kwargs.pop('fan_in_fan_out', None)
                     lora_module = Conv2d(
@@ -230,7 +250,11 @@ class LoRA:
                     if getattr(sub_module, 'state', None) is not None:
                         lora_module.state = sub_module.state
                     lora_module.to(sub_module.weight.device)
+                    lora_module.adapter_name = adapter_name
                     setattr(module, _key, lora_module)
+                    modules[module_key] = adapter_name
+
+        model.lora_module_map.update(modules)
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig):
@@ -243,11 +267,9 @@ class LoRA:
         Args:
             model: The model called with `tune` function.
             config: The `LoRAConfig` to use.
-
-        Returns:
-            The lora modules.
         """
-        modules = []
+        if not hasattr(model, 'lora_module_map'):
+            model.lora_module_map = {}
         module_keys = [key for key, _ in model.named_modules()]
         assert isinstance(config.replace_modules, (str, list))
         replace_modules = config.replace_modules
@@ -270,7 +292,18 @@ class LoRA:
                     origin_module = torch.nn.Linear(
                         sub_module.in_features,
                         sub_module.out_features,
-                        bias=sub_module.bias is not None)
+                        bias=hasattr(sub_module, 'bias') and sub_module.bias is not None,
+                    )
+                elif isinstance(sub_module, Embedding):
+                    origin_module = torch.nn.Embedding(
+                        num_embeddings=sub_module.num_embeddings,
+                        embedding_dim=sub_module.embedding_dim,
+                        padding_idx=sub_module.padding_idx,
+                        max_norm=sub_module.max_norm,
+                        norm_type=sub_module.norm_type,
+                        scale_grad_by_freq=sub_module.scale_grad_by_freq,
+                        sparse=sub_module.sparse,
+                    )
                 elif isinstance(sub_module, Conv2d):
                     origin_module = torch.nn.Conv2d(
                         sub_module.in_channels,
@@ -285,19 +318,12 @@ class LoRA:
                     sub_module.merge_weights = True
                     sub_module.eval()
                     origin_module.weight = sub_module.weight
-                    if sub_module.bias is not None:
+                    if getattr(sub_module, 'bias', None) is not None:
                         origin_module.bias = sub_module.bias
                     origin_module.to(sub_module.weight.device).to(
                         sub_module.weight.dtype)
                     setattr(module, _key, origin_module)
-                    modules.append(sub_module)
-
-        model.state_dict_hook_handle.remove()
-        if hasattr(model, 'load_state_dict_hook_handle'):
-            model.load_state_dict_hook_handle.remove()
-        else:
-            model.load_state_dict = model.load_state_dict_origin
-        return modules
+                    model.lora_module_map.pop(module_key, None)
 
 
 class LoRALayer:
@@ -310,6 +336,7 @@ class LoRALayer:
         merge_weights: bool,
     ):
         self.r = r
+        self.old_r = r
         self.lora_alpha = lora_alpha
         # Optional dropout
         if lora_dropout > 0.:
@@ -319,6 +346,12 @@ class LoRALayer:
         # Mark the weight as unmerged
         self.merged = False
         self.merge_weights = merge_weights
+
+    def activate(self, activate=True):
+        if activate:
+            self.r = self.old_r
+        else:
+            self.r = 0
 
 
 class Embedding(nn.Embedding, LoRALayer):
@@ -690,7 +723,7 @@ class Conv2d(nn.Conv2d, LoRALayer):
         return nn.Conv2d.forward(self, x)
 
 
-def mark_lora_as_trainable(model: nn.Module, bias: str = 'none') -> None:
+def mark_lora_as_trainable(model: nn.Module, adapter_name: str, bias: str = 'none') -> None:
     if bias == 'none':
         return
     elif bias == 'all':
@@ -699,7 +732,7 @@ def mark_lora_as_trainable(model: nn.Module, bias: str = 'none') -> None:
                 p.requires_grad = True
     elif bias == 'lora_only':
         for m in model.modules():
-            if isinstance(m, LoRALayer) and \
+            if adapter_name == getattr(m, 'adapter_name', None) and \
                     hasattr(m, 'bias') and \
                     m.bias is not None:
                 m.bias.requires_grad = True
@@ -707,18 +740,18 @@ def mark_lora_as_trainable(model: nn.Module, bias: str = 'none') -> None:
         raise NotImplementedError
 
 
-def lora_state_dict(state_dict, bias: str = 'none') -> Dict[str, torch.Tensor]:
+def lora_state_dict(state_dict, module_map: Dict, adapter_name: str, bias: str = 'none') -> Dict[str, torch.Tensor]:
     if bias == 'none':
-        return {k: state_dict[k] for k in state_dict if 'lora_' in k}
+        return {k: state_dict[k] for k in state_dict if 'lora_' in k and module_map.get(k, None) == adapter_name}
     elif bias == 'all':
         return {
             k: state_dict[k]
-            for k in state_dict if 'lora_' in k or 'bias' in k
+            for k in state_dict if ('lora_' in k and module_map.get(k, None) == adapter_name) or 'bias' in k
         }
     elif bias == 'lora_only':
         to_return = {}
         for k in state_dict:
-            if 'lora_' in k:
+            if 'lora_' in k and module_map.get(k, None) == adapter_name:
                 to_return[k] = state_dict[k]
                 bias_name = k.split('lora_')[0] + 'bias'
                 if bias_name in state_dict:

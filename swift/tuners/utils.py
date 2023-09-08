@@ -109,10 +109,10 @@ class SwiftOutput:
             which is used to get the tuner's state dict among the model's state dict.
             This callback should receive a state dict, and returns a created state dict.
             Examples:
-                >>> def state_dict_callback(state_dict):
+                >>> def state_dict_callback(state_dict, adapter_name):
                 >>>     return {
                 >>>         key: value
-                >>>         for key, value in state_dict.items() if 'adapter' in key
+                >>>         for key, value in state_dict.items() if adapter_name in key
                 >>>     }
         mark_trainable_callback (`FunctionType`): A callback returned by the tuner
             which is used to mark the tuner's adapter's parameters to trainable.

@@ -3,12 +3,13 @@
 import re
 import types
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Union, List
 
 import torch
 from torch import nn
 
 from .utils import SwiftConfig, SwiftOutput
+from ..utils.torch_utils import find_sub_module
 
 
 @dataclass
@@ -77,7 +78,7 @@ class PromptConfig(SwiftConfig):
 class Prompt:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: PromptConfig):
+    def prepare_model(model: nn.Module, config: PromptConfig, adapter_name: str):
         module_keys = [key for key, _ in model.named_modules()]
         for module_key in module_keys:
             if isinstance(config.target_modules, str):
@@ -97,7 +98,7 @@ class Prompt:
                         input_embedding = kwargs[config.embedding_pos]
 
                     input_embedding = getattr(
-                        self, 'prompt').forward(input_embedding)
+                        self, f'prompt_{adapter_name}').forward(input_embedding)
                     if isinstance(config.embedding_pos, int):
                         args = type(args)(
                             args[0:config.embedding_pos] + (input_embedding, )
@@ -115,7 +116,7 @@ class Prompt:
                         if attention_mask is not None:
                             attention_mask = getattr(
                                 self,
-                                'prompt').patch_attention_mask(attention_mask)
+                                f'prompt_{adapter_name}').patch_attention_mask(attention_mask)
                         if isinstance(config.attention_mask_pos, int):
                             args = type(args)(
                                 args[0:config.attention_mask_pos]
@@ -127,7 +128,7 @@ class Prompt:
                     forward_output = self.forward_origin(*args, **kwargs)
                     if config.extract_embedding:
                         forward_output = getattr(
-                            self, 'prompt').extract(forward_output)
+                            self, f'prompt_{adapter_name}').extract(forward_output)
 
                     return forward_output
 
@@ -142,12 +143,12 @@ class Prompt:
                                              config.prompt_length,
                                              config.attention_mask_value,
                                              config.attach_front)
-                setattr(module, 'prompt', prompt_module)
+                setattr(module, f'prompt_{adapter_name}', prompt_module)
 
-        def state_dict_callback(state_dict):
+        def state_dict_callback(state_dict, adapter_name):
             return {
                 key: value
-                for key, value in state_dict.items() if 'prompt' in key
+                for key, value in state_dict.items() if f'prompt_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -155,6 +156,12 @@ class Prompt:
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
+
+    @staticmethod
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        for _module in modules:
+            module.activate(activate)
 
 
 class PromptModule(nn.Module):
@@ -183,10 +190,13 @@ class PromptModule(nn.Module):
         self.prompt_length = prompt_length
         self.mask_values = mask_values
         self.attach_front = attach_front
+        self._activate = True
         self.prompt_token = nn.Parameter(torch.zeros(1, prompt_length, dim))
         nn.init.xavier_uniform_(self.prompt_token)
 
     def forward(self, x):
+        if not self._activate:
+            return x
         prompt_token = self.prompt_token.expand(x.shape[0], -1, -1).to(x.device)
 
         if self.layer_num == 0:
@@ -202,6 +212,9 @@ class PromptModule(nn.Module):
                 x = torch.cat((x[:, :-self.prompt_length, :], prompt_token),
                               dim=1)
         return x
+
+    def activate(self, activate=True):
+        self._activate = activate
 
     def patch_attention_mask(self, m):
         prefix_attention_mask = torch.full((*m.shape[:-1], self.prompt_length),
