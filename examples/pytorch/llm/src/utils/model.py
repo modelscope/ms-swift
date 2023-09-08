@@ -172,6 +172,7 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
+    internlm = ['q_proj', 'k_proj', 'v_proj']
 
 
 # Model Home: 'https://modelscope.cn/models/{model_id}/summary'
@@ -327,7 +328,24 @@ MODEL_MAPPING = {
         'revision': 'v1.0.1',
         'template': 'default-generation',
         'lora_TM': LoRATM.bloom,
-    }
+    },
+    'internlm-7b': {
+        'model_id': 'Shanghai_AI_Laboratory/internlm-7b',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.internlm,
+    },
+    'internlm-7b-chat': {
+        'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
+        'revision': 'v1.0.0',
+        'template': 'internlm',
+        'lora_TM': LoRATM.internlm,
+    },
+    'internlm-7b-chat-8k': {
+        'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-8k',
+        'revision': 'v1.0.0',
+        'template': 'internlm',
+        'lora_TM': LoRATM.internlm,
+    },
 }
 
 

@@ -19,14 +19,11 @@ TEMPLATE_MAPPING = {
         'suffix': [['eos_token_id']],
     },
     'chatml': {
-        'prefix': [['im_start_id'], 'system\n{{system}}', ['im_end_id'], '\n'],
-        'prompt': [['im_start_id'], 'user\n{{query}}', ['im_end_id'], '\n',
-                   ['im_start_id'], 'assistant\n'],
-        'chat_sep': [
-            ['im_end_id'],
-            '\n',
-        ],
-        'suffix': [['im_end_id'], ['eod_id']],
+        'prefix': ['<|im_start|>system\n{{system}}<|im_end|>\n'],
+        'prompt':
+        ['<|im_start|>user\n{{query}}<|im_end|>\n<|im_start|>assistant\n'],
+        'chat_sep': ['<|im_end|>\n'],
+        'suffix': ['<|im_end|>\n<|endoftext|>'],
     },
     'baichuan': {
         'prefix': [],
@@ -52,6 +49,12 @@ TEMPLATE_MAPPING = {
         'prompt': ['User: {{query}}\nAssistant: '],
         'chat_sep': ['\n'],
         'suffix': [['eos_token_id']],
+    },
+    'internlm': {
+        'prefix': [['bos_token_id']],
+        'prompt': ['<|User|>:{{query}}<eoh>\n<|Bot|>:'],
+        'chat_sep': ['<eoa>\n'],
+        'suffix': ['<eoa>\n', ['eos_token_id']],
     }
 }
 Context = Union[str, List[int]]
