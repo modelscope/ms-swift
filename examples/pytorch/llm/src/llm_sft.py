@@ -298,7 +298,6 @@ def llm_sft(args: SftArguments) -> None:
 
     # trainer_args.ddp_find_unused_parameters = False
     if args.gradient_checkpointing:
-        # fix: gradients will be None
         model.config.use_cache = False
         model.enable_input_require_grads()
     logger.info(f'trainer_args: {trainer_args}')
