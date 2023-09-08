@@ -134,6 +134,20 @@ def get_instinwild_en_dataset() -> HfDataset:
     return _process_alpaca_dataset(dataset)
 
 
+def get_du_reader_dataset() -> Tuple[HfDataset, HfDataset]:
+    dataset_train: HfDataset = MsDataset.load(
+        'modelscope/DuReader_robust-QG', split='train').to_hf_dataset().rename_columns({
+            "text1": "query",
+            "text2": "response",
+        })
+    dataset_val: HfDataset = MsDataset.load(
+        'modelscope/DuReader_robust-QG', split='validation').to_hf_dataset().rename_columns({
+            "text1": "query",
+            "text2": "response",
+        })
+    return dataset_train, dataset_val
+
+
 def get_cot_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT', split='train').to_hf_dataset()
@@ -319,6 +333,7 @@ DATASET_MAPPING = {
     # multi-modal
     'coco-en': get_coco_en_dataset,
     'advertise_gen': get_advertise_gen_dataset,
+    'du_reader': get_du_reader_dataset,
 }
 
 
