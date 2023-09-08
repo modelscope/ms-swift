@@ -57,6 +57,14 @@ class InferArguments:
     top_p: float = 0.9
     skip_prompt: Optional[bool] = None
 
+    # other
+    use_flash_attn: Optional[bool] = field(
+        default=None,
+        metadata={
+            'help':
+            "This parameter is used only when model_type.startswith('qwen-7b')"
+        })
+
     def __post_init__(self):
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
@@ -72,6 +80,9 @@ class InferArguments:
             self.quantization_bit, self.bnb_4bit_comp_dtype)
         if self.skip_prompt is None:
             self.skip_prompt = self.eval_human
+
+        if self.use_flash_attn is None:
+            self.use_flash_attn = 'auto'
 
 
 def llm_infer(args: InferArguments) -> None:
@@ -89,6 +100,8 @@ def llm_infer(args: InferArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         kwargs['quantization_config'] = quantization_config
+    if args.model_type.startswith('qwen-7b'):
+        kwargs['use_flash_attn'] = args.use_flash_attn
 
     if args.sft_type == 'full':
         kwargs['model_dir'] = args.ckpt_dir
