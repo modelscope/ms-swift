@@ -118,10 +118,10 @@ class LoRA:
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
         modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
         for _module in modules:
-            if isinstance(module, LoRALayer):
-                module.activate(activate)
+            if isinstance(_module, LoRALayer):
+                _module.activate(activate)
             else:
-                module.active_adapter = 'default' if activate else 'invalid'
+                _module.active_adapter = 'default' if activate else 'invalid'
 
     @staticmethod
     def _dynamic_patch_lora(model, replace_modules, use_merged_linear, adapter_name,

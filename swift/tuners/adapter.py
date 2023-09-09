@@ -91,15 +91,17 @@ class Adapter:
                     args = self.forward_origin(*args, **kwargs)
                     if isinstance(args, (tuple, list, dict)):
                         if isinstance(config.hidden_pos, int):
-                            return args[0:config.hidden_pos] + args[
-                                config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(args[config.hidden_pos]) \
-                                + args[config.hidden_pos + 1:] # noqa
+                            _type = type(args)
+                            args = list(args)
+                            args[config.hidden_pos] = args[
+                                config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(args[config.hidden_pos])
+                            return _type(args)
                         else:
-                            kwargs[config.hidden_pos] = args[
+                            args[config.hidden_pos] = args[
                                 config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(
                                     args[config.hidden_pos])
                     elif isinstance(args, torch.Tensor):
-                        args = getattr(self, f'adapter_{adapter_name}')(args)
+                        args = args + getattr(self, f'adapter_{adapter_name}')(args)
                     return args
 
                 def _feed_forward_chunk(self, attention_output):
@@ -135,9 +137,9 @@ class Adapter:
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        modules: List[torch.nn.Module] = find_sub_module(module, f'adapter_{adapter_name}')
         for _module in modules:
-            module.activate(activate)
+            _module.activate(activate)
 
 
 class AdapterModule(nn.Module):
@@ -182,7 +184,7 @@ class AdapterModule(nn.Module):
         self._activate = activate
 
     def forward(self, x, identity=None):
-        if not self.activate:
+        if not self._activate:
             return 0.
         if not self._prepared:
             self.ln1.to(x.device)

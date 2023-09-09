@@ -159,9 +159,9 @@ class Prompt:
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        modules: List[torch.nn.Module] = find_sub_module(module, f'prompt_{adapter_name}')
         for _module in modules:
-            module.activate(activate)
+            _module.activate(activate)
 
 
 class PromptModule(nn.Module):

@@ -10,7 +10,8 @@ from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
 from peft.utils import WEIGHTS_NAME
-
+from torch import nn
+import math
 from swift import AdapterConfig, LoRAConfig, Swift, SwiftModel, push_to_hub, SideConfig
 
 
@@ -27,15 +28,55 @@ class TestSwift(unittest.TestCase):
         super().tearDown()
 
     def test_swift_lora_forward(self):
+
+        from swift.tuners.lora import Linear
+        def reset_parameters(self):
+            nn.Linear.reset_parameters(self)
+            if hasattr(self, 'lora_A'):
+                # initialize A the same way as the default for nn.Linear and B to zero
+                nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+                nn.init.ones_(self.lora_B)
+
+        Linear.reset_parameters = reset_parameters
+
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         preprocessor = Preprocessor.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
-        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
-        model = Swift.prepare_model(model, config=lora_config)
         inputs = preprocessor('how are you')
+        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         outputs = model(**inputs)
-        self.assertTrue(hasattr(outputs, 'logits'))
+        model = Swift.prepare_model(model, config=lora_config)
+        outputs_lora = model(**inputs)
+        model.deactivate_adapter('default')
+        outputs_deactivate = model(**inputs)
+        model.activate_adapter('default')
+        outputs_reactivate = model(**inputs)
+        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+
+    def test_swift_adapter_forward(self):
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
+        adapter_config = AdapterConfig(
+            dim=model.config.hidden_size,
+            target_modules=r'.*layer\.\d+$',
+            method_name='feed_forward_chunk',
+            hidden_pos=0)
+        outputs = model(**inputs)
+        model = Swift.prepare_model(model, config=adapter_config)
+        outputs_lora = model(**inputs)
+        model.deactivate_adapter('default')
+        outputs_deactivate = model(**inputs)
+        model.activate_adapter('default')
+        outputs_reactivate = model(**inputs)
+        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_lora_injection(self):
         model = SbertForSequenceClassification(SbertConfig())

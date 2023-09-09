@@ -80,7 +80,10 @@ class Side:
                         if isinstance(config.hidden_pos, str):
                             args_main[config.hidden_pos] = getattr(self, f'side_{adapter_name}')(*args, args_main[config.hidden_pos])
                     else:
-                        args_main = getattr(self, f'side_{adapter_name}')(*args, args_main)
+                        _type = type(args_main)
+                        args_main = list(args_main)
+                        args_main[config.hidden_pos] = getattr(self, f'side_{adapter_name}')(*args, args_main[config.hidden_pos])
+                        args_main = _type(args_main)
                     return args_main
 
                 if isinstance(tgt_module, nn.Sequential):
@@ -113,9 +116,9 @@ class Side:
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        modules: List[torch.nn.Module] = find_sub_module(module, f'side_{adapter_name}')
         for _module in modules:
-            module.activate(activate)
+            _module.activate(activate)
 
 
 class SideModule(nn.Module):
