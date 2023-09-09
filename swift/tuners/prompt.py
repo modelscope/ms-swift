@@ -80,6 +80,7 @@ class Prompt:
     @staticmethod
     def prepare_model(model: nn.Module, config: PromptConfig, adapter_name: str):
         module_keys = [key for key, _ in model.named_modules()]
+        match_module_keys = []
         for module_key in module_keys:
             if isinstance(config.target_modules, str):
                 target_module_found = re.fullmatch(config.target_modules,
@@ -144,6 +145,7 @@ class Prompt:
                                              config.attention_mask_value,
                                              config.attach_front)
                 setattr(module, f'prompt_{adapter_name}', prompt_module)
+                match_module_keys.append(module_key)
 
         def state_dict_callback(state_dict, adapter_name):
             return {
@@ -217,9 +219,14 @@ class PromptModule(nn.Module):
         self._activate = activate
 
     def patch_attention_mask(self, m):
+        if not self._activate:
+            return m
         prefix_attention_mask = torch.full((*m.shape[:-1], self.prompt_length),
                                            self.mask_values).to(m.device)
-        return torch.cat((prefix_attention_mask, m), dim=-1)
+        if self.attach_front:
+            return torch.cat((prefix_attention_mask, m), dim=-1)
+        else:
+            return torch.cat((m, prefix_attention_mask), dim=-1)
 
     def extract(self, x):
         if self.attach_front:

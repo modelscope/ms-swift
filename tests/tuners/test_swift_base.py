@@ -12,7 +12,7 @@ from modelscope.models.nlp.structbert import (SbertConfig,
 from peft.utils import WEIGHTS_NAME
 from torch import nn
 import math
-from swift import AdapterConfig, LoRAConfig, Swift, SwiftModel, push_to_hub, SideConfig
+from swift import AdapterConfig, LoRAConfig, Swift, SwiftModel, push_to_hub, SideConfig, PromptConfig, ResTuningConfig
 
 
 class TestSwift(unittest.TestCase):
@@ -69,6 +69,53 @@ class TestSwift(unittest.TestCase):
             hidden_pos=0)
         outputs = model(**inputs)
         model = Swift.prepare_model(model, config=adapter_config)
+        outputs_lora = model(**inputs)
+        model.deactivate_adapter('default')
+        outputs_deactivate = model(**inputs)
+        model.activate_adapter('default')
+        outputs_reactivate = model(**inputs)
+        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+
+    def test_swift_prompt_forward(self):
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
+        prompt_config = PromptConfig(
+            dim=model.config.hidden_size,
+            target_modules=r'.*layer\.\d+$',
+            embedding_pos=0,
+            attention_mask_pos=1)
+        outputs = model(**inputs)
+        model = Swift.prepare_model(model, config=prompt_config)
+        outputs_lora = model(**inputs)
+        model.deactivate_adapter('default')
+        outputs_deactivate = model(**inputs)
+        model.activate_adapter('default')
+        outputs_reactivate = model(**inputs)
+        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+
+    def test_swift_restuner_forward(self):
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
+        restuner_config = ResTuningConfig(
+            dims=model.config.hidden_size,
+            root_modules=r'.*layer.0$',
+            stem_modules=r'.*layer\.\d+$',
+            target_modules=r'.*pooler',
+            target_modules_hook='input',
+            tuner_cfg="res_adapter",
+        )
+        outputs = model(**inputs)
+        model = Swift.prepare_model(model, config=restuner_config)
         outputs_lora = model(**inputs)
         model.deactivate_adapter('default')
         outputs_deactivate = model(**inputs)
@@ -154,7 +201,7 @@ class TestSwift(unittest.TestCase):
         print(
             f'test_swift_side result_origin shape: {result_origin.shape}, result_origin sum: {torch.sum(result_origin)}'
         )
-
+        result = model(torch.ones((1, 3, 224, 224))).logits
         side_config = SideConfig(
             dim=768,
             target_modules=r'vit',
@@ -162,7 +209,14 @@ class TestSwift(unittest.TestCase):
             hidden_pos='last_hidden_state')
 
         model = Swift.prepare_model(model, config=side_config)
-        result = model(torch.ones((1, 3, 224, 224))).logits
+        result_activate = model(torch.ones((1, 3, 224, 224))).logits
+        model.deactivate_adapter('default')
+        result_deactivate = model(torch.ones((1, 3, 224, 224))).logits
+        model.activate_adapter('default')
+        result_reactivate = model(torch.ones((1, 3, 224, 224))).logits
+        self.assertTrue(torch.allclose(result, result_deactivate))
+        self.assertTrue(not torch.allclose(result, result_activate))
+        self.assertTrue(torch.allclose(result_activate, result_reactivate))
         print(
             f'test_swift_side result shape: {result.shape}, result sum: {torch.sum(result)}'
         )

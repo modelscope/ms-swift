@@ -306,13 +306,13 @@ def probe_tensors(module, feats, name):
     setattr(module, name, feats)
 
 
-def probe_input_pre_hook(self, args, kwargs):
+def probe_input_pre_hook(self, args):
     input = args[0]
     probe_tensors(self, input, 'probe_input_data')
-    return args, kwargs
+    return args
 
 
-def probe_output_hook(self, args, kwargs, result):
+def probe_output_hook(self, args, result):
     output = result
     probe_tensors(self, output, 'probe_output_data')
     return output

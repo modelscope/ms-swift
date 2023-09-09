@@ -171,9 +171,9 @@ class ResTuning:
                         logger.warning(
                             f"Type of {type(root_module)} may not be supported because of its customized forward")
                     if config.root_modules_hook == "input":
-                        root_module.register_forward_pre_hook(probe_input_pre_hook, with_kwargs=True)
+                        root_module.register_forward_pre_hook(probe_input_pre_hook)
                     else:
-                        root_module.register_forward_hook(probe_output_hook, with_kwargs=True)
+                        root_module.register_forward_hook(probe_output_hook)
                     root_module.root_modules_hook = config.root_modules_hook
                     root_module_ins_list.append(root_module)
                     break
@@ -194,11 +194,11 @@ class ResTuning:
                     logger.warning(
                         f"Type of {type(stem_module)} may not be supported because of its customized forward")
                 if len(root_module_ins_list) == 0 and len(stem_module_ins_list) == 0:
-                    stem_module.register_forward_pre_hook(probe_input_pre_hook, with_kwargs=True)
+                    stem_module.register_forward_pre_hook(probe_input_pre_hook)
                 if config.stem_modules_hook == "input":
-                    stem_module.register_forward_pre_hook(probe_input_pre_hook, with_kwargs=True)
+                    stem_module.register_forward_pre_hook(probe_input_pre_hook)
                 else:
-                    stem_module.register_forward_hook(probe_output_hook, with_kwargs=True)
+                    stem_module.register_forward_hook(probe_output_hook)
                 stem_module.stem_modules_hook = config.stem_modules_hook
                 stem_module_ins_list.append(stem_module)
         if isinstance(config.stem_modules, list):
