@@ -104,6 +104,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             generation_inputs = inputs[self.model.main_input_name]
 
         gen_kwargs["input_ids"] = generation_inputs
+        gen_kwargs["pad_token_id"] = self.tokenizer.pad_token_id
+        gen_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
         gen_time = time.time()
         generated_tokens = self.model.generate(**gen_kwargs)
         gen_time = time.time() - gen_time
