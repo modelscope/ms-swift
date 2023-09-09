@@ -8,6 +8,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset coco-en \
     --dataset_sample 20000 \
+    --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --max_new_tokens 1024 \

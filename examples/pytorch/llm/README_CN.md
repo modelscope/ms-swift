@@ -64,13 +64,16 @@ pip install .
 ```
 
 ## 微调和推理
+性能: full(优) > lora > qlora
+训练显存: qlora(低,3090) > lora > full(2*A100)
 ```bash
 # clone仓库并进入代码目录
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
 # 微调(lora)+推理 qwen-7b, 需要27GB显存.
-# 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`
+# 你可以通过设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
+# 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 

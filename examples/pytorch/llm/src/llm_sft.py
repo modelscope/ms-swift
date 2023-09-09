@@ -13,7 +13,7 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, find_all_linear_for_lora, get_dataset,
                    get_dist_setting, get_model_tokenizer, get_preprocess,
                    is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers)
+                   select_bnb, select_dtype, show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
@@ -30,7 +30,6 @@ class SftArguments:
     model_type: str = field(
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
-    # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     template_type: str = field(
@@ -53,13 +52,12 @@ class SftArguments:
     dataset_sample: int = -1  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
-    max_length: Optional[int] = 1024
+    max_length: Optional[int] = 2048
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
     # note: bf16 and quantization have requirements for gpu architecture
-    quantization_bit: Optional[int] = field(
-        default=None, metadata={'choices': {4, 8}})
+    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
     bnb_4bit_comp_dtype: str = field(
         default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
@@ -105,6 +103,7 @@ class SftArguments:
         })
 
     # other
+    sort_by_max_length: bool = False  # just for cheking OOM error
     use_flash_attn: Optional[bool] = field(
         default=None,
         metadata={
@@ -119,7 +118,7 @@ class SftArguments:
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
-            if self.ddp_backend == 'gloo' and self.quantization_bit is not None:
+            if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 
             # Initialize in advance
@@ -131,7 +130,7 @@ class SftArguments:
             if self.only_save_model is None:
                 self.only_save_model = False
         elif self.sft_type == 'full':
-            assert self.quantization_bit is None, 'not supported'
+            assert self.quantization_bit == 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
@@ -238,6 +237,8 @@ def llm_sft(args: SftArguments) -> None:
     train_dataset = train_dataset.map(preprocess_func)
     val_dataset = val_dataset.map(preprocess_func)
     del dataset
+    if args.sort_by_max_length:
+        train_dataset = sort_by_max_length(train_dataset)
     # Data analysis
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)

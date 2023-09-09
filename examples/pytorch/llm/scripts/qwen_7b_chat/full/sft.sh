@@ -9,7 +9,7 @@ python src/llm_sft.py \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 1024 \
+    --max_length 2048 \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.01 \

@@ -12,7 +12,7 @@ torchrun \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 1024 \
+    --max_length 2048 \
     --quantization_bit 4 \
     --lora_rank 8 \
     --lora_alpha 32 \

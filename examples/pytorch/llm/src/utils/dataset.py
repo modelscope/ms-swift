@@ -3,16 +3,14 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import json
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
 from tqdm.auto import tqdm
 
-from swift.utils import get_seed
 from .preprocess import History
 from .utils import download_dataset
 
@@ -292,13 +290,13 @@ def _preprocess_cls_dataset(dataset: HfDataset, cls_mapping: List[str],
                             task: str, pair_seq: bool) -> HfDataset:
     category = ', '.join(cls_mapping)
     if pair_seq:
-        input_ = '\n    Sentence1: {sentence1}\n    Sentence2: {sentence2}'
+        input_ = 'Sentence1: {sentence1}\nSentence2: {sentence2}'
     else:
-        input_ = '{sentence}'
+        input_ = 'Sentence: {sentence}'
     prompt = f"""Task: {task}
-Input: {input_}
+{input_}
 Category: {category}
-Output: """
+Label: """
     query = []
     response = []
     for d in tqdm(dataset):
@@ -343,10 +341,9 @@ def get_jd_zh_dataset() -> HfDataset:
 
 def _process_dureader_robust(dataset: HfDataset) -> HfDataset:
     prompt = """Task: Question Generation
-Input:
-    Context: {context}
-    Answer: {answer}
-Output: """
+Context: {context}
+Answer: {answer}
+Question: """
     query = []
     response = []
     for d in dataset:
@@ -369,7 +366,7 @@ def get_dureader_robust_qg_zh_dataset() -> HfDataset:
 
 
 DATASET_MAPPING = {
-    # nlp
+    # nlp chat
     'alpaca-en': get_alpaca_gpt4_en_dataset,
     'alpaca-zh': get_alpaca_gpt4_zh_dataset,
     'finance-en': get_finance_en_dataset,
@@ -385,10 +382,11 @@ DATASET_MAPPING = {
     'poetry-zh': get_poetry_zh_dataset,
     'instruct-en': get_instruct_en_dataset,
     'gpt4all-en': get_gpt4all_en_dataset,
+    # nlp text-generation (please use model:base, template:default-generation)
     'cmnli-zh': get_cmnli_zh_dataset,
     'jd-zh': get_jd_zh_dataset,
     'dureader-robust-zh': get_dureader_robust_qg_zh_dataset,
-    # multi-modal
+    # multi-modal chat
     'coco-en': get_coco_en_dataset,
 }
 
@@ -400,15 +398,3 @@ def get_dataset(dataset_name_list: List[str]) -> HfDataset:
         dataset_list.append(get_function())
     dataset = concatenate_datasets(dataset_list)
     return dataset
-
-
-def process_dataset(dataset: HfDataset, dataset_test_size: float,
-                    dataset_sample: int,
-                    dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
-    random_state = np.random.RandomState(dataset_seed)
-    if dataset_sample >= 0:
-        index = random_state.permutation(len(dataset))[:dataset_sample]
-        dataset = dataset.select(index)
-    dataset = dataset.train_test_split(
-        dataset_test_size, seed=get_seed(random_state))
-    return dataset['train'], dataset['test']

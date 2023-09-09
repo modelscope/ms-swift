@@ -6,9 +6,11 @@ from tempfile import TemporaryDirectory
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
 import requests
 import torch
 import torch.distributed as dist
+from datasets import Dataset as HfDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import dtype as Dtype
@@ -18,6 +20,7 @@ from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
 from swift.hub import ModelScopeConfig
+from swift.utils import get_seed
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
@@ -144,7 +147,7 @@ def select_dtype(dtype: str) -> Tuple[Dtype, bool, bool]:
     return torch_dtype, fp16, bf16
 
 
-def select_bnb(quantization_bit: Optional[int],
+def select_bnb(quantization_bit: int,
                bnb_4bit_compute_dtype: str) -> Tuple[Dtype, bool, bool]:
     bnb_4bit_compute_dtype = DTYPE_MAPPING[bnb_4bit_compute_dtype]
     assert bnb_4bit_compute_dtype in {
@@ -184,7 +187,7 @@ def broadcast_string(string: Optional[str], buffer_size: int = 100) -> str:
 
 
 def find_all_linear_for_lora(model: Module,
-                             quantization_bit: Optional[int],
+                             quantization_bit: int,
                              model_type: Optional[str] = None) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
@@ -235,6 +238,30 @@ def download_files(url: str, local_path: str, cookies) -> None:
     with open(local_path, 'wb') as f:
         for data in tqdm(resp.iter_lines()):
             f.write(data)
+
+
+def process_dataset(dataset: HfDataset, dataset_test_size: float,
+                    dataset_sample: int,
+                    dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
+    random_state = np.random.RandomState(dataset_seed)
+    if dataset_sample >= 0:
+        index = random_state.permutation(len(dataset))[:dataset_sample]
+        dataset = dataset.select(index)
+    dataset = dataset.train_test_split(
+        dataset_test_size, seed=get_seed(random_state))
+    return dataset['train'], dataset['test']
+
+
+def sort_by_max_length(dataset: HfDataset) -> HfDataset:
+    dataset_len = [len(d['input_ids']) for d in dataset]
+    idx = sorted(
+        range(len(dataset)), key=lambda i: dataset_len[i], reverse=True)
+    input_ids = []
+    labels = []
+    for i in tqdm(idx):
+        input_ids.append(dataset[i]['input_ids'])
+        labels.append(dataset[i]['labels'])
+    return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
 
 
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
