@@ -60,7 +60,7 @@ class ResAdapter(nn.Module):
         self.layer_num = layer_num
         self.depth = depth
 
-        self.adapter_length = tuner_cfg['adapter_length'] if 'adapter_length' in tuner_cfg else 17
+        self.adapter_length = tuner_cfg['adapter_length'] if 'adapter_length' in tuner_cfg else 32
         self.adapter_type = tuner_cfg['adapter_type'] if 'adapter_type' in tuner_cfg else None
         self.adapter_weight = tuner_cfg['adapter_weight'] if 'adapter_weight' in tuner_cfg else None
 

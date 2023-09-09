@@ -318,14 +318,14 @@ class SwiftModel(nn.Module):
     def save_pretrained(self,
                         save_directory: str,
                         safe_serialization: bool = False,
-                        adapter_name: Union[str, List[str]] = 'default',
+                        adapter_name: Union[str, List[str]] = None,
                         **kwargs):
         """Save the adapters to a local directory.
 
         Args:
             save_directory (`str`): The directory to use.
             safe_serialization (`bool`): Use safe tensors to save the weights, default False.
-            adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `default`.
+            adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `None` to save all.
         """
         if os.path.isfile(save_directory):
             raise ValueError(
@@ -335,9 +335,9 @@ class SwiftModel(nn.Module):
         self.create_or_update_model_card(save_directory)
 
         adapter_names = adapter_name if isinstance(adapter_name,
-                                                   list) else [adapter_name]
+                                                   list) or adapter_name is None else [adapter_name]
         for adapter_name, output in self.adapters.items():
-            if adapter_name not in adapter_names:
+            if adapter_names is not None and adapter_name not in adapter_names:
                 continue
 
             # save only the trainable weights

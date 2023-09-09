@@ -110,7 +110,7 @@ def llm_infer(args: InferArguments) -> None:
 
     # ### Preparing lora
     if args.sft_type == 'lora':
-        model = Swift.from_pretrained(model, args.ckpt_dir)
+        model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
 
     show_layers(model)
     print_model_info(model)

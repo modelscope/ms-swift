@@ -742,16 +742,16 @@ def mark_lora_as_trainable(model: nn.Module, adapter_name: str, bias: str = 'non
 
 def lora_state_dict(state_dict, module_map: Dict, adapter_name: str, bias: str = 'none') -> Dict[str, torch.Tensor]:
     if bias == 'none':
-        return {k: state_dict[k] for k in state_dict if 'lora_' in k and module_map.get(k, None) == adapter_name}
+        return {k: state_dict[k] for k in state_dict if 'lora_' in k and module_map.get(k[:k.find('lora_')-1], None) == adapter_name}
     elif bias == 'all':
         return {
             k: state_dict[k]
-            for k in state_dict if ('lora_' in k and module_map.get(k, None) == adapter_name) or 'bias' in k
+            for k in state_dict if ('lora_' in k and module_map.get(k[:k.find('lora_')-1], None) == adapter_name) or 'bias' in k
         }
     elif bias == 'lora_only':
         to_return = {}
         for k in state_dict:
-            if 'lora_' in k and module_map.get(k, None) == adapter_name:
+            if 'lora_' in k and module_map.get(k[:k.find('lora_')-1], None) == adapter_name:
                 to_return[k] = state_dict[k]
                 bias_name = k.split('lora_')[0] + 'bias'
                 if bias_name in state_dict:

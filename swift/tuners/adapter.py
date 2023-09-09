@@ -163,7 +163,7 @@ class AdapterModule(nn.Module):
         self.adapter_length = adapter_length
         # self.adapter_type = adapter_type
         self.ln1 = nn.Linear(dim, adapter_length)
-        self.activate = act_layer()
+        self.act = act_layer()
         self.ln2 = nn.Linear(adapter_length, dim)
         self.init_weights()
         self._prepared = False
@@ -186,13 +186,13 @@ class AdapterModule(nn.Module):
             return 0.
         if not self._prepared:
             self.ln1.to(x.device)
-            self.activate.to(x.device)
+            self.act.to(x.device)
             self.ln2.to(x.device)
             self._prepared = True
         
         x_dtype = x.dtype
         x = x.to(self.ln1.weight.dtype)
-        out = self.ln2(self.activate(self.ln1(x)))
+        out = self.ln2(self.act(self.ln1(x)))
         if identity is None:
             identity = x
         identity = identity.to(out.dtype)
