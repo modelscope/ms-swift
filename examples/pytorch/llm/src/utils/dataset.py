@@ -288,31 +288,84 @@ def get_gpt4all_en_dataset() -> HfDataset:
     return _preprocess_alpaca_dataset(dataset)
 
 
-def _preprocess_nli(dataset: HfDataset) -> HfDataset:
-    cls_mapping = ['neutral', 'entailment', 'contradiction']
-    prompt = """Input:
-    Sentence1: {sentence1}
-    Sentence2: {sentence2}
-Classification: neutral, entailment, contradiction
+def _preprocess_cls_dataset(dataset: HfDataset, cls_mapping: List[str],
+                            task: str, pair_seq: bool) -> HfDataset:
+    category = ', '.join(cls_mapping)
+    if pair_seq:
+        input_ = '\n    Sentence1: {sentence1}\n    Sentence2: {sentence2}'
+    else:
+        input_ = '{sentence}'
+    prompt = f"""Task: {task}
+Input: {input_}
+Category: {category}
 Output: """
     query = []
     response = []
     for d in tqdm(dataset):
-        query.append(
-            prompt.format(sentence1=d['sentence1'], sentence2=d['sentence2']))
-        label = d['label']
+        if d['label'] is None:
+            continue
+        if pair_seq:
+            q = prompt.format(
+                sentence1=d['sentence1'], sentence2=d['sentence2'])
+        else:
+            q = prompt.format(sentence=d['sentence'])
+        query.append(q)
+        label = int(d['label'])
         response.append(cls_mapping[label])
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
 def get_cmnli_zh_dataset() -> HfDataset:
+    """Natural Language Inference"""
     dataset_dict = MsDataset.load('clue', subset_name='cmnli')
     dataset: HfDataset = concatenate_datasets([
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['validation'].to_hf_dataset(),
         dataset_dict['test'].to_hf_dataset(),
     ])
-    return _preprocess_nli(dataset)
+    cls_mapping = ['neutral', 'entailment', 'contradiction']
+    return _preprocess_cls_dataset(dataset, cls_mapping,
+                                   'Natural Language Inference', True)
+
+
+def get_jd_zh_dataset() -> HfDataset:
+    """Sentiment classification"""
+    dataset_dict = MsDataset.load('DAMO_NLP/jd')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset()
+    ])
+
+    cls_mapping = ['negative', 'positive']
+    return _preprocess_cls_dataset(dataset, cls_mapping,
+                                   'Sentiment Classification', False)
+
+
+def _process_dureader_robust(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Question Generation
+Input:
+    Context: {context}
+    Answer: {answer}
+Output: """
+    query = []
+    response = []
+    for d in dataset:
+        answer, context = d['text1'].split('[SEP]')
+        q = prompt.format(context=context, answer=answer)
+        query.append(q)
+        response.append(d['text2'])
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_dureader_robust_qg_zh_dataset() -> HfDataset:
+    """Question Generation"""
+    dataset_dict = MsDataset.load('modelscope/DuReader_robust-QG')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset(),
+        dataset_dict['test'].to_hf_dataset()
+    ])
+    return _process_dureader_robust(dataset)
 
 
 DATASET_MAPPING = {
@@ -333,6 +386,8 @@ DATASET_MAPPING = {
     'instruct-en': get_instruct_en_dataset,
     'gpt4all-en': get_gpt4all_en_dataset,
     'cmnli-zh': get_cmnli_zh_dataset,
+    'jd-zh': get_jd_zh_dataset,
+    'dureader-robust-zh': get_dureader_robust_qg_zh_dataset,
     # multi-modal
     'coco-en': get_coco_en_dataset,
 }

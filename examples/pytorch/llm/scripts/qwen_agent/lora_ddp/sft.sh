@@ -15,7 +15,7 @@ torchrun \
     --dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
-    --lora_rank 64 \
+    --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
