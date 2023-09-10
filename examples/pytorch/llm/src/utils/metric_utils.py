@@ -10,7 +10,7 @@ from swift import get_logger
 logger = get_logger()
 
 
-def compute_nlg_metrics(tokenizer, prediction):
+def compute_nlg_metrics(prediction, tokenizer):
     preds, labels = prediction[0], prediction[1]
 
     score_dict = {'rouge-1': [], 'rouge-2': [], 'rouge-l': [], 'bleu-4': []}
