@@ -2,9 +2,10 @@
 
 import jieba
 import numpy as np
-from swift import get_logger
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge.rouge import Rouge
+
+from swift import get_logger
 
 logger = get_logger()
 
@@ -12,22 +13,16 @@ logger = get_logger()
 def compute_nlg_metrics(tokenizer, prediction):
     preds, labels = prediction[0], prediction[1]
 
-    score_dict = {
-        'rouge-1': [],
-        'rouge-2': [],
-        'rouge-l': [],
-        'bleu-4': []
-    }
+    score_dict = {'rouge-1': [], 'rouge-2': [], 'rouge-l': [], 'bleu-4': []}
 
     def _decode(tokens, ignore_pad_token_for_loss=False):
         if ignore_pad_token_for_loss:
-            tokens = np.where(tokens != -100, tokens,
-                              tokenizer.pad_token_id)
+            tokens = np.where(tokens != -100, tokens, tokenizer.pad_token_id)
         tokens = np.where(tokens < tokenizer.vocab_size, tokens,
                           tokenizer.pad_token_id)
         return [
-            t for t in tokenizer.batch_decode(
-                tokens, skip_special_tokens=True)
+            t
+            for t in tokenizer.batch_decode(tokens, skip_special_tokens=True)
         ]
 
     for pred, label in zip(preds, labels):

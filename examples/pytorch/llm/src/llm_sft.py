@@ -275,20 +275,20 @@ def llm_sft(args: SftArguments) -> None:
         'top_k': args.top_k,
     }
 
-    preprocess_func = get_preprocess(
+    preprocess_func_train = get_preprocess(
         args.template_type,
         tokenizer,
         args.system,
         args.max_length,
         validate_generation=False)
-    train_dataset = train_dataset.map(preprocess_func)
-    preprocess_func = get_preprocess(
+    train_dataset = train_dataset.map(preprocess_func_train)
+    preprocess_func_eval = get_preprocess(
         args.template_type,
         tokenizer,
         args.system,
         args.max_length,
         validate_generation=True)
-    val_dataset = val_dataset.map(preprocess_func)
+    val_dataset = val_dataset.map(preprocess_func_eval)
     del dataset
     # Data analysis
     stat_dataset(train_dataset)

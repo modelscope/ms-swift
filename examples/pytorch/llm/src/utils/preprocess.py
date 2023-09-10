@@ -131,7 +131,8 @@ def _preprocess(
         history: Optional[History] = None,
         system: Optional[str] = None,
         max_length: Optional[int] = None,
-        validate_generation=True,  # do cross-validation with `model.generate()`
+        validate_generation: Optional[
+            bool] = True,  # do cross-validation with `model.generate()`
 ) -> Dict[str, List[int]]:
     if history is None:
         history = []
@@ -179,9 +180,6 @@ def _preprocess(
         input_ids = input_ids[-max_length:]
         if labels is not None:
             labels = labels[-max_length:]
-
-    # if validate_generation:
-    #     input_ids = [tokenizer.pad_token_id] * (64-len(input_ids)) + input_ids
 
     return {'input_ids': input_ids, 'labels': labels}
 

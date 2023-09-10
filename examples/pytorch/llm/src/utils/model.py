@@ -176,7 +176,7 @@ class LoRATM(NamedTuple):
 
 
 class AdapterTM(NamedTuple):
-    # default lora target modules. qkv
+    # default adapter target modules.
     baichuan = ['mlp']
     chatglm2 = ['mlp']
     llama2 = ['mlp']
@@ -185,7 +185,7 @@ class AdapterTM(NamedTuple):
 
 
 class ResTunerTM(NamedTuple):
-    # default lora target modules. qkv
+    # default res-tuning config.
     baichuan = {
         'root_modules': r'.*layers.0$',
         'stem_modules': r'.*layers\.\d+$',
