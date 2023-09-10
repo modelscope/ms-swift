@@ -191,7 +191,7 @@ def get_preprocess(
     tokenizer: PreTrainedTokenizer,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
-    validate_generation=False,
+    validate_generation: Optional[bool] = False,
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:

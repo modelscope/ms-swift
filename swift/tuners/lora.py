@@ -110,7 +110,7 @@ class LoRA:
                                    adapter_name, config.bias)
 
         def mark_trainable_callback(model):
-            mark_lora_as_trainable(model, config.bias)
+            mark_lora_as_trainable(model, adapter_name, config.bias)
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
@@ -121,7 +121,7 @@ class LoRA:
         modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
         for _module in modules:
             if isinstance(_module, LoRALayer):
-                _module.activate(activate)
+                _module.set_activation(activate)
             else:
                 _module.active_adapter = 'default' if activate else 'invalid'
 
@@ -351,7 +351,7 @@ class LoRALayer:
         self.merged = False
         self.merge_weights = merge_weights
 
-    def activate(self, activate=True):
+    def set_activation(self, activate=True):
         if activate:
             self.r = self.old_r
         else:

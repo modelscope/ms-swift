@@ -297,7 +297,7 @@ class ResTuning:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'restuning_{adapter_name}')
         for _module in modules:
-            _module.activate(activate)
+            _module.set_activation(activate)
 
 
 class ResTuningBypassModule(nn.Module):
@@ -330,7 +330,7 @@ class ResTuningBypassModule(nn.Module):
             for i in range(depth)
         ])
 
-    def activate(self, activate=True):
+    def set_activation(self, activate=True):
         self._activate = activate
 
     def forward(self, x_list, origin_arg, **kwargs):

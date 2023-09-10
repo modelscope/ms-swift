@@ -1,4 +1,5 @@
 from .dataset import DATASET_MAPPING, get_dataset, process_dataset
+from .metric_utils import compute_nlg_metrics
 from .model import MODEL_MAPPING, get_model_tokenizer
 from .preprocess import TEMPLATE_MAPPING, get_preprocess
 from .utils import (broadcast_string, download_dataset,

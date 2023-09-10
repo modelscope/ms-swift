@@ -176,7 +176,7 @@ class Prompt:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'prompt_{adapter_name}')
         for _module in modules:
-            _module.activate(activate)
+            _module.set_activation(activate)
 
 
 class PromptModule(nn.Module):
@@ -229,7 +229,7 @@ class PromptModule(nn.Module):
                               dim=1)
         return x
 
-    def activate(self, activate=True):
+    def set_activation(self, activate=True):
         self._activate = activate
 
     def patch_attention_mask(self, m):

@@ -6,12 +6,9 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Dict, List, Optional
 
-import jieba
-import numpy as np
 import torch
 import torch.distributed as dist
-from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-from rouge.rouge import Rouge
+from examples.pytorch.llm.src.utils.metric_utils import compute_nlg_metrics
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, find_all_linear_for_lora, get_dataset,
@@ -36,7 +33,8 @@ class SftArguments:
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
     # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
-    sft_type: str = field(default='lora')
+    sft_type: str = field(
+        default='lora', metadata={'choices': ['lora', 'full']})
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -118,6 +116,13 @@ class SftArguments:
             'help':
             "This parameter is used only when model_type.startswith('qwen-7b')"
         })
+
+    # generation config, only useful when `predict_with_generate=True`
+    do_sample: bool = True
+    top_p: float = 0.7
+    max_new_tokens: int = None
+    temperature: float = 0.95
+    top_k: int = 20
 
     def __post_init__(self):
         if is_dist():
@@ -263,10 +268,11 @@ def llm_sft(args: SftArguments) -> None:
                                                      args.dataset_seed)
 
     generation_config = {
-        'do_sample': True,
-        'top_p': 0.7,
-        'max_length': args.max_length,
-        'temperature': 0.95
+        'do_sample': args.do_sample,
+        'top_p': args.top_p,
+        'max_new_tokens': args.max_new_tokens,
+        'temperature': args.temperature,
+        'top_k': args.top_k,
     }
 
     preprocess_func = get_preprocess(
@@ -359,55 +365,6 @@ def llm_sft(args: SftArguments) -> None:
 
     logger.info(f'trainer_args: {trainer_args}')
 
-    def compute_metrics(prediction):
-        preds, labels = prediction[0], prediction[1]
-
-        score_dict = {
-            'rouge-1': [],
-            'rouge-2': [],
-            'rouge-l': [],
-            'bleu-4': []
-        }
-
-        def _decode(tokens, ignore_pad_token_for_loss=False):
-            if ignore_pad_token_for_loss:
-                tokens = np.where(tokens != -100, tokens,
-                                  tokenizer.pad_token_id)
-            tokens = np.where(tokens < tokenizer.vocab_size, tokens,
-                              tokenizer.pad_token_id)
-            return [
-                t for t in tokenizer.batch_decode(
-                    tokens, skip_special_tokens=True)
-            ]
-
-        for pred, label in zip(preds, labels):
-            pred = ''.join(_decode(pred, False))
-            label = ''.join(_decode(label, True))
-            hypothesis = list(jieba.cut(pred))
-            if len(hypothesis) == 0 or ''.join(hypothesis) == '.':
-                hypothesis = [tokenizer.decode(tokenizer.eos_token_id)]
-            reference = list(jieba.cut(label))
-            try:
-                rouge = Rouge()
-                scores = rouge.get_scores(' '.join(hypothesis),
-                                          ' '.join(reference))
-                result = scores[0]
-
-                for k, v in result.items():
-                    score_dict[k].append(round(v['f'] * 100, 4))
-                bleu_score = sentence_bleu(
-                    [list(label)],
-                    list(pred),
-                    smoothing_function=SmoothingFunction().method3)
-                score_dict['bleu-4'].append(round(bleu_score * 100, 4))
-            except Exception as e:
-                logger.error(e)
-                logger.error(f'eval error {hypothesis}, {reference}')
-
-        for k, v in score_dict.items():
-            score_dict[k] = float(np.mean(v))
-        return score_dict
-
     trainer = Seq2SeqTrainer(
         model=model,
         args=trainer_args,
@@ -415,7 +372,7 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics
+        compute_metrics=partial(compute_nlg_metrics, tokenizer=tokenizer)
         if args.predict_with_generate else None,
     )
 

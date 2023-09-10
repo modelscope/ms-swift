@@ -135,7 +135,7 @@ class Side:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'side_{adapter_name}')
         for _module in modules:
-            _module.activate(activate)
+            _module.set_activation(activate)
 
 
 class SideModule(nn.Module):
@@ -172,7 +172,7 @@ class SideModule(nn.Module):
         self.alpha = nn.Parameter(torch.tensor(0.0))
         self._activate = True
 
-    def activate(self, activate=True):
+    def set_activation(self, activate=True):
         self._activate = activate
 
     def forward(self, x, x_main):
