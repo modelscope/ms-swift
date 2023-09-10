@@ -21,12 +21,15 @@ Currently supported approches (and counting):
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
 3. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-4. All tuners offered on [Peft](https://github.com/huggingface/peft).
+4. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+5. ResTuning-Bypass
+7. All tuners offered on [Peft](https://github.com/huggingface/peft)
 
 Key features:
 
 1. By integrating the ModelScope library, models can be readily obatined via a model-id.
 2. Tuners provided by SWIFT be combined together to allow exploration of multiple tuners on a model for best result.
+3. Support calling `activate_adapter`或`deactivate_adapter` to activate/deactivate a single tuner. User can use one model with different tuners in different threads in a time-sharing manner.
 
 ## LLM SFT Example
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)

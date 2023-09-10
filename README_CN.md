@@ -20,11 +20,14 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 1. LoRA：[LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. Adapter：[Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
 3. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-4. 所有在[Peft](https://github.com/huggingface/peft)上提供的tuners。
+4. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+5. ResTuning-Bypass
+6. 所有在[Peft](https://github.com/huggingface/peft)上提供的tuners
 
 关键特点：
 1. 通过集成ModelScope库，可以通过model id轻松获取模型。
 2. SWIFT提供的tuners可以组合在一起，以便在模型上探索多个tuners，以获得最佳结果。
+3. 支持调用`activate_adapter`或`deactivate_adapter`来使tuner激活或失活，用户可以用一个模型在不同线程中分时使用不同的tuners。
 
 ## 大模型微调的例子
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
