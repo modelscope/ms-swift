@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-import logging
 import math
 import re
 from dataclasses import dataclass, field
@@ -14,6 +13,7 @@ from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
+from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .utils import SwiftConfig, SwiftOutput
 
@@ -28,7 +28,7 @@ if is_bnb_4bit_available():
 if is_auto_gptq_available():
     from peft.tuners.lora import QuantLinear
 
-logger = logging.getLogger()
+logger = get_logger()
 
 
 @dataclass
@@ -257,6 +257,7 @@ class LoRA:
                     modules[module_key] = adapter_name
 
         model.lora_module_map.update(modules)
+        logger.info(f'Lora modules(module_key -> adapter_name): {modules}')
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig):

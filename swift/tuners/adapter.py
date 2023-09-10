@@ -9,8 +9,11 @@ import torch
 from torch import nn
 from transformers.activations import ACT2CLS
 
+from swift import get_logger
 from swift.utils.torch_utils import find_sub_module
 from .utils import SwiftConfig, SwiftOutput
+
+logger = get_logger()
 
 
 @dataclass
@@ -128,6 +131,9 @@ class Adapter:
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
+                logger.info(
+                    f'Adapter modules(module_key): {module_key}.adapter_{adapter_name}'
+                )
 
         def state_dict_callback(state_dict, adapter_name: str):
             return {

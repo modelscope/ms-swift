@@ -1,13 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import copy
-import inspect
 import re
 import types
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import repeat
-from typing import Any, Callable, List, Union
+from typing import List, Union
 
 import torch
 import torchvision
@@ -113,6 +112,9 @@ class Side:
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
                 side_module = SideModule(config.dim, config.side_module_name)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
+                logger.info(
+                    f'Side modules(module_key): {module_key}.side_{adapter_name}'
+                )
 
         def state_dict_callback(state_dict, adapter_name):
             return {

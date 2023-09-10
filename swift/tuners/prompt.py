@@ -8,8 +8,11 @@ from typing import List, Union
 import torch
 from torch import nn
 
+from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .utils import SwiftConfig, SwiftOutput
+
+logger = get_logger()
 
 
 @dataclass
@@ -149,6 +152,9 @@ class Prompt:
                                              config.attention_mask_value,
                                              config.attach_front)
                 setattr(module, f'prompt_{adapter_name}', prompt_module)
+                logger.info(
+                    f'Prompt modules(module_key): {module_key}.prompt_{adapter_name}'
+                )
                 match_module_keys.append(module_key)
 
         def state_dict_callback(state_dict, adapter_name):
