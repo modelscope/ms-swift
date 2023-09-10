@@ -11,6 +11,7 @@ from transformers.training_args_seq2seq import \
 class SwiftArgumentsMixin:
     # ckpt only save model
     only_save_model: bool = False
+    train_sampler_random: bool = True
 
 
 @dataclass

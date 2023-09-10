@@ -8,6 +8,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset cmnli-zh \
     --dataset_sample 20000 \
+    --max_length 1024 \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \

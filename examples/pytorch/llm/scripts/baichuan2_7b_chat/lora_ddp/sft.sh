@@ -14,10 +14,10 @@ torchrun \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 1024 \
+    --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout_p 0. \
     --lora_target_modules W_pack o_proj \
     --gradient_checkpointing false \
     --batch_size 1 \

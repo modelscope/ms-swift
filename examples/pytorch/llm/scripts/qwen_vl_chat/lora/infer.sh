@@ -8,6 +8,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset coco-en \
     --dataset_sample 20000 \
+    --max_length 2048 \
     --max_new_tokens 1024 \
     --use_flash_attn true \
     --temperature 0.9 \
