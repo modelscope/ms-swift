@@ -420,6 +420,9 @@ def llm_sft(args: SftArguments) -> None:
     )
 
     trainer.train(trainer_args.resume_from_checkpoint)
+    for i in range(torch.cuda.device_count()):
+        trainer.perf['memory'][f'device:{i}'] = torch.cuda.max_memory_reserved(
+            i)
     logger.info(trainer.perf)
 
     # ### Visualization
