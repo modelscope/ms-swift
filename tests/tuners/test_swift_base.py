@@ -192,39 +192,48 @@ class TestSwift(unittest.TestCase):
                 all(
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
-    def test_swift_side(self):
-        from transformers import AutoModelForImageClassification
-        model = AutoModelForImageClassification.from_pretrained(
-            'google/vit-base-patch16-224')
+
+    def test_swift_side_bert(self):
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
         model2 = copy.deepcopy(model)
-        result_origin = model(torch.ones((1, 3, 224, 224))).logits
+        result_origin = model(**inputs).logits
         print(
-            f'test_swift_side result_origin shape: {result_origin.shape}, result_origin sum: {torch.sum(result_origin)}'
+            f'test_swift_side_bert result_origin shape: {result_origin.shape}, result_origin sum: {torch.sum(result_origin)}'
         )
-        result = model(torch.ones((1, 3, 224, 224))).logits
+
         side_config = SideConfig(
-            dim=768,
-            target_modules=r'vit',
-            side_module_name='fcn4',
-            hidden_pos='last_hidden_state')
+            dim=model.config.hidden_size,
+            target_modules=r'.*encoder.encoder',
+            side_module_name='mlp',
+            hidden_pos='last_hidden_state'
+        )
 
         model = Swift.prepare_model(model, config=side_config)
-        result_activate = model(torch.ones((1, 3, 224, 224))).logits
+        result_activate = model(**inputs).logits
         model.deactivate_adapter('default')
-        result_deactivate = model(torch.ones((1, 3, 224, 224))).logits
+        result_deactivate = model(**inputs).logits
         model.activate_adapter('default')
-        result_reactivate = model(torch.ones((1, 3, 224, 224))).logits
-        self.assertTrue(torch.allclose(result, result_deactivate))
-        self.assertTrue(not torch.allclose(result, result_activate))
+        result_reactivate = model(**inputs).logits
+        self.assertTrue(torch.allclose(result_origin, result_deactivate))
+        self.assertTrue(not torch.allclose(result_origin, result_activate))
         self.assertTrue(torch.allclose(result_activate, result_reactivate))
         print(
-            f'test_swift_side result shape: {result.shape}, result sum: {torch.sum(result)}'
+            f'test_swift_side_bert result shape: {result_origin.shape}, result sum: {torch.sum(result_origin)}'
         )
+
         self.assertTrue(isinstance(model, SwiftModel))
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(self.tmp_dir, 'default', WEIGHTS_NAME)))
 
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
+
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:
