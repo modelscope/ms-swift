@@ -74,6 +74,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         if len(gen_kwargs) == 0 and hasattr(self, '_gen_kwargs'):
             gen_kwargs = self._gen_kwargs.copy()
+            if hasattr(self.model, 'generation_config'):
+                gen_kwargs.update(self.model.generation_config.to_dict())
 
         if gen_kwargs.get('max_length') is None and gen_kwargs.get(
                 'max_new_tokens') is None:
