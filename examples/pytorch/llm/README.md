@@ -69,30 +69,33 @@ Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# sft lora and infer qwen-7b, Requires 27GB GPU memory.
+# sft lora and infer qwen-7b-chat, Requires 27GB GPU memory.
 # You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.
+# Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# sft(lora+ddp) and infer qwen-7b, Requires 4*27GB GPU memory.
+# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*27GB GPU memory.
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
-# sft(qlora) and infer qwen-7b, Requires 20GB GPU memory.
+# sft(qlora) and infer qwen-7b-chat, Requires 13GB GPU memory.
 # If you want to use quantification, you need to `pip install bitsandbytes -U`
+# Recommended experimental environment: 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# sft(qlora+ddp) and infer qwen-7b, Requires 4*20GB GPU memory.
+# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*13GB GPU memory.
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
-# sft(full) and infer qwen-7b, Requires 95GB GPU memory.
+# sft(full) and infer qwen-7b-chat, Requires 100GB GPU memory.
+# Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full/sft.sh
 bash scripts/qwen_7b_chat/full/infer.sh
 
-# For more scripts, please see `scripts/` folder
+# For more scripts, please see `scripts/` folder.
 ```
 
 ## Extend Datasets

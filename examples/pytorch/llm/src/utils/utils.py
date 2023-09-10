@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 from tempfile import TemporaryDirectory
-from typing import List, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -163,7 +163,7 @@ def select_bnb(quantization_bit: int,
     return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
 
 
-def broadcast_string(string: Optional[str], buffer_size: int = 100) -> str:
+def broadcast_string(string: Optional[str], buffer_size: int = 200) -> str:
     """String broadcasting in case of DDP
     string: main rank: str
         other rank: None
@@ -262,6 +262,24 @@ def sort_by_max_length(dataset: HfDataset) -> HfDataset:
         input_ids.append(dataset[i]['input_ids'])
         labels.append(dataset[i]['labels'])
     return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
+
+
+def check_json_format(obj: Any) -> Any:
+    if obj is None or isinstance(
+            obj, (int, float, str, complex)):  # bool is a subclass of int
+        return obj
+
+    if isinstance(obj, Sequence):
+        res = []
+        for x in obj:
+            res.append(check_json_format(x))
+    elif isinstance(obj, Mapping):
+        res = {}
+        for k, v in obj.items():
+            res[k] = check_json_format(v)
+    else:
+        res = repr(obj)  # e.g. function
+    return res
 
 
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')

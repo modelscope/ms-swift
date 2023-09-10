@@ -71,30 +71,33 @@ pip install .
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# 微调(lora)+推理 qwen-7b, 需要27GB显存.
+# 微调(lora)+推理 qwen-7b-chat, 需要27GB显存.
 # 你可以通过设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
+# 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# 微调(lora+ddp)+推理 qwen-7b, 需要4卡*27GB显存.
+# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*27GB显存.
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
-# 微调(qlora)+推理 qwen-7b, 需要20GB显存.
+# 微调(qlora)+推理 qwen-7b-chat, 需要13GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
+# 推荐的实验环境: 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# 微调(qlora+ddp)+推理 qwen-7b, 需要4卡*20GB显存.
+# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*13GB显存.
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
-# 微调(full)+推理 qwen-7b, 需要95G显存.
+# 微调(full)+推理 qwen-7b-chat, 需要100G显存.
+# 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full/sft.sh
 bash scripts/qwen_7b_chat/full/infer.sh
 
-# 更多的scripts脚本, 可以看`scripts`文件夹
+# 更多的scripts脚本, 可以看`scripts`文件夹.
 ```
 
 ## 拓展数据集

@@ -6,14 +6,16 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import List, Optional
 
+import json
 import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, find_all_linear_for_lora, get_dataset,
-                   get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers, sort_by_max_length)
+                   broadcast_string, check_json_format,
+                   find_all_linear_for_lora, get_dataset, get_dist_setting,
+                   get_model_tokenizer, get_preprocess, is_dist, is_master,
+                   plot_images, process_dataset, select_bnb, select_dtype,
+                   show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
@@ -67,7 +69,7 @@ class SftArguments:
     lora_target_modules: Optional[List[str]] = None
     lora_rank: int = 8
     lora_alpha: int = 32
-    lora_dropout_p: float = 0.1
+    lora_dropout_p: float = 0.
 
     gradient_checkpointing: bool = False
     batch_size: int = 1
@@ -103,7 +105,7 @@ class SftArguments:
         })
 
     # other
-    sort_by_max_length: bool = False  # just for cheking OOM error
+    test_oom_error: bool = False
     use_flash_attn: Optional[bool] = field(
         default=None,
         metadata={
@@ -159,8 +161,6 @@ class SftArguments:
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-{self.sft_type}'
             logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-        if self.use_flash_attn is None:
-            self.use_flash_attn = 'auto'
         if self.push_to_hub:
             api = HubApi()
             if self.hub_token is None:
@@ -171,6 +171,10 @@ class SftArguments:
                 assert ModelScopeConfig.get_token(
                 ) is not None, 'Please enter hub_token'
             logger.info('hub login successful!')
+
+        if self.use_flash_attn is None:
+            self.use_flash_attn = 'auto'
+        self.train_sampler_random = not self.test_oom_error
 
 
 def llm_sft(args: SftArguments) -> None:
@@ -237,7 +241,7 @@ def llm_sft(args: SftArguments) -> None:
     train_dataset = train_dataset.map(preprocess_func)
     val_dataset = val_dataset.map(preprocess_func)
     del dataset
-    if args.sort_by_max_length:
+    if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset)
     # Data analysis
     stat_dataset(train_dataset)
@@ -245,7 +249,7 @@ def llm_sft(args: SftArguments) -> None:
     data_collator = partial(data_collate_fn, tokenizer=tokenizer)
     print_example(train_dataset[0], tokenizer)
 
-    # ### Setting trainer_args
+    # ### Setting training_args
     output_dir = None
     if is_master():
         output_dir = add_version_to_work_dir(args.output_dir)
@@ -256,9 +260,15 @@ def llm_sft(args: SftArguments) -> None:
     parameters = inspect.signature(
         Seq2SeqTrainingArguments.__init__).parameters
     kwargs = {}
-    if 'only_save_model' in parameters:
-        kwargs['only_save_model'] = args.only_save_model
-    trainer_args = Seq2SeqTrainingArguments(
+    for k in ['only_save_model', 'train_sampler_random']:
+        if k in parameters:
+            kwargs[k] = getattr(args, k)
+        else:
+            logger.warning(
+                f'The `{k}` parameter is invalid. '
+                'You can resolve this warning by upgrading ms-swift or installing from source.'
+            )
+    training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         do_train=True,
         do_eval=True,
@@ -302,24 +312,33 @@ def llm_sft(args: SftArguments) -> None:
         model.enable_input_require_grads()
     if is_dist():
         if args.gradient_checkpointing:
-            trainer_args.ddp_find_unused_parameters = False
-            trainer_args.ddp_broadcast_buffers = False
+            training_args.ddp_find_unused_parameters = False
+            training_args.ddp_broadcast_buffers = False
         else:
-            trainer_args.ddp_find_unused_parameters = True
-            trainer_args.ddp_broadcast_buffers = True
+            training_args.ddp_find_unused_parameters = True
+            training_args.ddp_broadcast_buffers = True
 
-    logger.info(f'trainer_args: {trainer_args}')
+    logger.info(f'training_args: {training_args}')
 
     trainer = Seq2SeqTrainer(
         model=model,
-        args=trainer_args,
+        args=training_args,
         data_collator=data_collator,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
     )
-
-    trainer.train(trainer_args.resume_from_checkpoint)
+    if is_master():
+        for args_obj, fname in zip([args, training_args],
+                                   ['sft_args.json', 'training_args.json']):
+            fpath = os.path.join(output_dir, fname)
+            with open(fpath, 'w') as f:
+                json.dump(
+                    check_json_format(args_obj.__dict__),
+                    f,
+                    ensure_ascii=False,
+                    indent=2)
+    trainer.train(training_args.resume_from_checkpoint)
 
     # ### Visualization
     if is_master():

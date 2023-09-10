@@ -11,7 +11,7 @@ python src/llm_sft.py \
     --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout_p 0. \
     --lora_target_modules c_attn c_proj \
     --gradient_checkpointing false \
     --batch_size 1 \
@@ -24,7 +24,7 @@ python src/llm_sft.py \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
+    --use_flash_attn true \
     --push_to_hub false \
     --hub_model_id qwen-7b-chat-lora \
     --hub_private_repo true \

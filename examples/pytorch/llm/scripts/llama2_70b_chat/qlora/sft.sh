@@ -11,7 +11,7 @@ python src/llm_sft.py \
     --quantization_bit 4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.1 \
+    --lora_dropout_p 0. \
     --batch_size 1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
