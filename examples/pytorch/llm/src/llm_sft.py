@@ -349,11 +349,14 @@ def llm_sft(args: SftArguments) -> None:
         # fix: gradients will be None
         model.config.use_cache = True
         model.enable_input_require_grads()
-        if is_dist():
-            trainer_args._frozen = False  # Compatible with transformers==4.32.0
+    if is_dist():
+        if args.gradient_checkpointing:
             trainer_args.ddp_find_unused_parameters = False
             trainer_args.ddp_broadcast_buffers = False
-            trainer_args._frozen = True
+        else:
+            trainer_args.ddp_find_unused_parameters = True
+            trainer_args.ddp_broadcast_buffers = True
+
     logger.info(f'trainer_args: {trainer_args}')
 
     def compute_metrics(prediction):
