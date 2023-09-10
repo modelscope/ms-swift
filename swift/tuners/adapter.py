@@ -98,19 +98,16 @@ class Adapter:
                         if isinstance(config.hidden_pos, int):
                             _type = type(args)
                             args = list(args)
-                            args[config.hidden_pos] = args[
-                                config.hidden_pos] + getattr(
-                                    self, f'adapter_{adapter_name}')(
-                                        args[config.hidden_pos])
+                            args[config.hidden_pos] = getattr(
+                                self, f'adapter_{adapter_name}')(
+                                    args[config.hidden_pos])
                             args = _type(args)
                         else:
-                            args[config.hidden_pos] = args[
-                                config.hidden_pos] + getattr(
-                                    self, f'adapter_{adapter_name}')(
-                                        args[config.hidden_pos])
+                            args[config.hidden_pos] = getattr(
+                                self, f'adapter_{adapter_name}')(
+                                    args[config.hidden_pos])
                     elif isinstance(args, torch.Tensor):
-                        args = args + getattr(self, f'adapter_{adapter_name}')(
-                            args)
+                        args = getattr(self, f'adapter_{adapter_name}')(args)
                     return args
 
                 def _feed_forward_chunk(self, attention_output):
