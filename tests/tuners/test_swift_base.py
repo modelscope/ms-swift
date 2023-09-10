@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import shutil
 import tempfile
@@ -11,8 +12,9 @@ from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
 from peft.utils import WEIGHTS_NAME
 from torch import nn
-import math
-from swift import AdapterConfig, LoRAConfig, Swift, SwiftModel, push_to_hub, SideConfig, PromptConfig, ResTuningConfig
+
+from swift import (AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig,
+                   SideConfig, Swift, SwiftModel, push_to_hub)
 
 
 class TestSwift(unittest.TestCase):
@@ -30,6 +32,7 @@ class TestSwift(unittest.TestCase):
     def test_swift_lora_forward(self):
 
         from swift.tuners.lora import Linear
+
         def reset_parameters(self):
             nn.Linear.reset_parameters(self)
             if hasattr(self, 'lora_A'):
@@ -52,9 +55,12 @@ class TestSwift(unittest.TestCase):
         outputs_deactivate = model(**inputs)
         model.activate_adapter('default')
         outputs_reactivate = model(**inputs)
-        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
-        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
-        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+        self.assertTrue(
+            torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(
+            not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(
+            torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_adapter_forward(self):
         model = Model.from_pretrained(
@@ -74,9 +80,12 @@ class TestSwift(unittest.TestCase):
         outputs_deactivate = model(**inputs)
         model.activate_adapter('default')
         outputs_reactivate = model(**inputs)
-        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
-        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
-        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+        self.assertTrue(
+            torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(
+            not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(
+            torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_prompt_forward(self):
         model = Model.from_pretrained(
@@ -96,9 +105,12 @@ class TestSwift(unittest.TestCase):
         outputs_deactivate = model(**inputs)
         model.activate_adapter('default')
         outputs_reactivate = model(**inputs)
-        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
-        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
-        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+        self.assertTrue(
+            torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(
+            not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(
+            torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_restuner_forward(self):
         model = Model.from_pretrained(
@@ -112,7 +124,7 @@ class TestSwift(unittest.TestCase):
             stem_modules=r'.*layer\.\d+$',
             target_modules=r'.*pooler',
             target_modules_hook='input',
-            tuner_cfg="res_adapter",
+            tuner_cfg='res_adapter',
         )
         outputs = model(**inputs)
         model = Swift.prepare_model(model, config=restuner_config)
@@ -121,9 +133,12 @@ class TestSwift(unittest.TestCase):
         outputs_deactivate = model(**inputs)
         model.activate_adapter('default')
         outputs_reactivate = model(**inputs)
-        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
-        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
-        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+        self.assertTrue(
+            torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(
+            not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(
+            torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_lora_injection(self):
         model = SbertForSequenceClassification(SbertConfig())
@@ -202,15 +217,14 @@ class TestSwift(unittest.TestCase):
         model2 = copy.deepcopy(model)
         result_origin = model(**inputs).logits
         print(
-            f'test_swift_side_bert result_origin shape: {result_origin.shape}, result_origin sum: {torch.sum(result_origin)}'
-        )
+            f'test_swift_side_bert result_origin shape: {result_origin.shape}, '
+            f'result_origin sum: {torch.sum(result_origin)}')
 
         side_config = SideConfig(
             dim=model.config.hidden_size,
             target_modules=r'.*encoder.encoder',
             side_module_name='mlp',
-            hidden_pos='last_hidden_state'
-        )
+            hidden_pos='last_hidden_state')
 
         model = Swift.prepare_model(model, config=side_config)
         result_activate = model(**inputs).logits

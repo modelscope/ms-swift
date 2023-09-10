@@ -13,7 +13,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
-    'default_generation': {
+    'default-generation': {
         'prefix': [],
         'prompt': ['{{query}}'],
         'suffix': [['eos_token_id']],
@@ -37,7 +37,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
-    'chatglm2_generation': {
+    'chatglm2-generation': {
         'prefix': [[64790, 64792]],
         'prompt': ['{{query}}'],
         'suffix': [['eos_token_id']],
@@ -124,14 +124,14 @@ def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
 
 
 def _preprocess(
-    template_type: str,
-    tokenizer: PreTrainedTokenizer,
-    query: str,
-    response: Optional[str] = None,
-    history: Optional[History] = None,
-    system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    validate_generation=True,  # do cross-validation with `model.generate()`
+        template_type: str,
+        tokenizer: PreTrainedTokenizer,
+        query: str,
+        response: Optional[str] = None,
+        history: Optional[History] = None,
+        system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        validate_generation=True,  # do cross-validation with `model.generate()`
 ) -> Dict[str, List[int]]:
     if history is None:
         history = []
@@ -187,11 +187,11 @@ def _preprocess(
 
 
 def get_preprocess(
-        template_type: str,
-        tokenizer: PreTrainedTokenizer,
-        system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        validate_generation=False,
+    template_type: str,
+    tokenizer: PreTrainedTokenizer,
+    system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    validate_generation=False,
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
@@ -201,4 +201,5 @@ def get_preprocess(
         custom_system = example.get('system', system)
         return _preprocess(template_type, tokenizer, query, response, history,
                            custom_system, max_length, validate_generation)
+
     return preprocess

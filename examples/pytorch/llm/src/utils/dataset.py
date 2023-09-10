@@ -45,14 +45,18 @@ def get_alpaca_gpt4_en_dataset() -> HfDataset:
 
 def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_train: HfDataset = MsDataset.load(
-        'lvjianjin/AdvertiseGen', split='train').to_hf_dataset().rename_columns({
-            "content": "query",
-            "summary": "response",
+        'lvjianjin/AdvertiseGen',
+        split='train').to_hf_dataset().rename_columns({
+            'content': 'query',
+            'summary': 'response',
         })
     dataset_val: HfDataset = MsDataset.load(
-        'lvjianjin/AdvertiseGen', split='validation').to_hf_dataset().rename_columns({
-            "content": "query",
-            "summary": "response",
+        'lvjianjin/AdvertiseGen',
+        split='validation').to_hf_dataset().rename_columns({
+            'content':
+            'query',
+            'summary':
+            'response',
         })
     return dataset_train, dataset_val
 
@@ -137,14 +141,16 @@ def get_instinwild_en_dataset() -> HfDataset:
 
 def get_du_reader_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_train: HfDataset = MsDataset.load(
-        'modelscope/DuReader_robust-QG', split='train').to_hf_dataset().rename_columns({
-            "text1": "query",
-            "text2": "response",
+        'modelscope/DuReader_robust-QG',
+        split='train').to_hf_dataset().rename_columns({
+            'text1': 'query',
+            'text2': 'response',
         })
     dataset_val: HfDataset = MsDataset.load(
-        'modelscope/DuReader_robust-QG', split='validation').to_hf_dataset().rename_columns({
-            "text1": "query",
-            "text2": "response",
+        'modelscope/DuReader_robust-QG',
+        split='validation').to_hf_dataset().rename_columns({
+            'text1': 'query',
+            'text2': 'response',
         })
     return dataset_train, dataset_val
 
@@ -368,15 +374,17 @@ DATASET_MAPPING = {
 }
 
 
-def get_dataset(dataset_name_list: List[str]) -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
+def get_dataset(
+    dataset_name_list: List[str]
+) -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
     """Returns a dataset to be split or a train-val dataset tuple"""
     dataset_list: List[Union[HfDataset, Tuple[HfDataset, HfDataset]]] = []
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset_list.append(get_function())
 
-    assert(all(isinstance(dataset, tuple) for dataset in dataset_list)
-           or all(isinstance(dataset, HfDataset) for dataset in dataset_list))
+    assert (all(isinstance(dataset, tuple) for dataset in dataset_list)
+            or all(isinstance(dataset, HfDataset) for dataset in dataset_list))
     if not isinstance(dataset_list[0], tuple):
         dataset = concatenate_datasets(dataset_list)
     else:

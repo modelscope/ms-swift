@@ -3,15 +3,16 @@ import copy
 import re
 import types
 from dataclasses import dataclass, field
-from typing import Union, Dict, Optional, List
+from typing import Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
 
 from swift.utils.logger import get_logger
-from .restuning_components import probe_input_pre_hook, probe_output_hook, detach_tensors, ResTuner
-from .utils import SwiftConfig, SwiftOutput
 from ..utils.torch_utils import find_sub_module
+from .restuning_components import (ResTuner, detach_tensors,
+                                   probe_input_pre_hook, probe_output_hook)
+from .utils import SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -46,11 +47,12 @@ class ResTuningConfig(SwiftConfig):
     root_modules: str = field(
         default=None,
         metadata={
-            'help': 'The root module to be replaced, can a regex string (use the first matching module) or full match format'
+            'help':
+            'The root module to be replaced, can a regex string (use the first matching module) or full match format'
         })
 
     root_modules_hook: str = field(
-        default="input",
+        default='input',
         metadata={
             'help': 'The hook type of root modules, can be "input" or "output"'
         })
@@ -58,11 +60,12 @@ class ResTuningConfig(SwiftConfig):
     stem_modules: Optional[Union[List[str], str]] = field(
         default=None,
         metadata={
-            'help': 'The stem modules to be replaced, can a regex string or name list of full match format'
+            'help':
+            'The stem modules to be replaced, can a regex string or name list of full match format'
         })
 
     stem_modules_hook: str = field(
-        default="output",
+        default='output',
         metadata={
             'help': 'The hook type of stem modules, can be "input" or "output"'
         })
@@ -70,25 +73,30 @@ class ResTuningConfig(SwiftConfig):
     target_modules: str = field(
         default=None,
         metadata={
-            'help': 'The target module to be replaced, can a regex string (use the first matching module) or full match format'
+            'help':
+            'The target module to be replaced, can a regex string (use the first matching module) or full match format'
         })
 
     target_modules_hook: str = field(
-        default="input",
+        default='input',
         metadata={
-            'help': 'The hook type of target modules, can be "input" or "output"'
+            'help':
+            'The hook type of target modules, can be "input" or "output"'
         })
 
     target_hidden_pos: str = field(
         default=None,
         metadata={
             'help':
-                'The position of the hidden state for target modules output'
+            'The position of the hidden state for target modules output'
         })
 
     tuner_cfg: Optional[Union[List[Dict], Dict, str]] = field(
         default=None,
-        metadata={'help': 'The configuration of the tuning module, can a string or customized config'})
+        metadata={
+            'help':
+            'The configuration of the tuning module, can a string or customized config'
+        })
 
     use_upsample: bool = field(
         default=False,
@@ -96,15 +104,16 @@ class ResTuningConfig(SwiftConfig):
 
     upsample_out_channels: List[int] = field(
         default=None,
-        metadata={'help': 'The number of output channels when "use_upsample" is set to "True"'})
+        metadata={
+            'help':
+            'The number of output channels when "use_upsample" is set to "True"'
+        })
 
     zero_init_last: bool = field(
-        default=False,
-        metadata={'help': 'Zero init last weight'})
+        default=False, metadata={'help': 'Zero init last weight'})
 
     use_bypass: bool = field(
-        default=True,
-        metadata={'help': 'Whether to use bypass'})
+        default=True, metadata={'help': 'Whether to use bypass'})
 
     def __post_init__(self):
         from .mapping import SwiftTuners
@@ -114,28 +123,36 @@ class ResTuningConfig(SwiftConfig):
 class ResTuning:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: ResTuningConfig, adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: ResTuningConfig,
+                      adapter_name: str) -> SwiftOutput:
         """Prepare a model with `ResTuningConfig`"""
 
         def _forward_seq(self, input, *args, **kwargs):
             for idx, module in enumerate(self):
-                if idx >= len(self.origin_module_keys): continue
+                if idx >= len(self.origin_module_keys):
+                    continue
                 input = module(input)
             return input
 
         def _forward_target(self, *args, **kwargs):
-            if self.target_modules_hook == "input":
+            if self.target_modules_hook == 'input':
                 args = list(args)
-                _arg = args[0 if self.target_hidden_pos is None else self.target_hidden_pos]
+                _arg = args[0 if self.target_hidden_pos is None else self.
+                            target_hidden_pos]
                 args_main = _forward_restuning(self, _arg)
-                args[0 if self.target_hidden_pos is None else self.target_hidden_pos] = args_main
+                args[0 if self.target_hidden_pos is None else self.
+                     target_hidden_pos] = args_main
                 args_main = self.forward_origin(*args, **kwargs)
             else:
                 _args_main = self.forward_origin(*args, **kwargs)
-                _arg = _args_main[0 if self.target_hidden_pos is None else self.target_hidden_pos] if isinstance(_args_main, (tuple, list)) else _args_main
+                _arg = _args_main[0 if self.target_hidden_pos is None else self
+                                  .target_hidden_pos] if isinstance(
+                                      _args_main,
+                                      (tuple, list)) else _args_main
                 args_main = _forward_restuning(self, _arg)
                 if type(_args_main) != type(args_main):
-                    _args_main[0 if self.target_hidden_pos is None else self.target_hidden_pos] = args_main
+                    _args_main[0 if self.target_hidden_pos is None else self.
+                               target_hidden_pos] = args_main
                     args_main = _args_main
             return args_main
 
@@ -156,7 +173,9 @@ class ResTuning:
                     probe_results.append(st_mod.probe_input_data)
                 else:
                     probe_results.append(st_mod.probe_output_data)
-            args_main = getattr(top_module, f'restuning_{adapter_name}')(probe_results, origin_arg)
+            args_main = getattr(top_module,
+                                f'restuning_{adapter_name}')(probe_results,
+                                                             origin_arg)
             return args_main
 
         # 1. Matching the root module
@@ -166,19 +185,23 @@ class ResTuning:
             for module_key in module_keys:
                 if re.fullmatch(config.root_modules, module_key):
                     root_module = model.get_submodule(module_key)
-                    logger.info(f"Matching root module [{module_key}] of type {type(root_module)}")
+                    logger.info(
+                        f'Matching root module [{module_key}] of type {type(root_module)}'
+                    )
                     if isinstance(root_module, (nn.ModuleList, nn.ModuleDict)):
                         logger.warning(
-                            f"Type of {type(root_module)} may not be supported because of its customized forward")
-                    if config.root_modules_hook == "input":
-                        root_module.register_forward_pre_hook(probe_input_pre_hook)
+                            f'Type of {type(root_module)} may not be supported because of its customized forward'
+                        )
+                    if config.root_modules_hook == 'input':
+                        root_module.register_forward_pre_hook(
+                            probe_input_pre_hook)
                     else:
                         root_module.register_forward_hook(probe_output_hook)
                     root_module.root_modules_hook = config.root_modules_hook
                     root_module_ins_list.append(root_module)
                     break
             if len(root_module_ins_list) == 0:
-                logger.error(f"Cannot match root modules")
+                logger.error('Cannot match root modules')
 
         # 2. Matching the stem module
         stem_module_ins_list = []
@@ -188,32 +211,40 @@ class ResTuning:
                     (isinstance(config.stem_modules, list) and module_key in config.stem_modules):
                 stem_module = model.get_submodule(module_key)
                 if isinstance(config.stem_modules, list):
-                    stem_module_ins_index.append(config.stem_modules.index(module_key))
-                logger.info(f"Matching stem module [{module_key}] of type {type(stem_module)}")
+                    stem_module_ins_index.append(
+                        config.stem_modules.index(module_key))
+                logger.info(
+                    f'Matching stem module [{module_key}] of type {type(stem_module)}'
+                )
                 if isinstance(stem_module, (nn.ModuleList, nn.ModuleDict)):
                     logger.warning(
-                        f"Type of {type(stem_module)} may not be supported because of its customized forward")
-                if len(root_module_ins_list) == 0 and len(stem_module_ins_list) == 0:
+                        f'Type of {type(stem_module)} may not be supported because of its customized forward'
+                    )
+                if len(root_module_ins_list) == 0 and len(
+                        stem_module_ins_list) == 0:
                     stem_module.register_forward_pre_hook(probe_input_pre_hook)
-                if config.stem_modules_hook == "input":
+                if config.stem_modules_hook == 'input':
                     stem_module.register_forward_pre_hook(probe_input_pre_hook)
                 else:
                     stem_module.register_forward_hook(probe_output_hook)
                 stem_module.stem_modules_hook = config.stem_modules_hook
                 stem_module_ins_list.append(stem_module)
         if isinstance(config.stem_modules, list):
-            stem_module_ins_list = [stem_module_ins_list[stem_module_ins_index.index(i)] for i in
-                                    range(len(stem_module_ins_index))]
+            stem_module_ins_list = [
+                stem_module_ins_list[stem_module_ins_index.index(i)]
+                for i in range(len(stem_module_ins_index))
+            ]
         depth = len(stem_module_ins_list)
         if len(stem_module_ins_list) == 0:
-            raise Exception(f"Cannot match source modules")
+            raise Exception('Cannot match source modules')
 
         # 3. Init restuning module
         if len(stem_module_ins_list) != 0:
             top_module = model.get_submodule('')
-            restuning_module = ResTuningBypassModule(config.dims, depth, config.use_upsample,
-                                                     config.upsample_out_channels, config.zero_init_last,
-                                                     config.tuner_cfg)
+            restuning_module = ResTuningBypassModule(
+                config.dims, depth, config.use_upsample,
+                config.upsample_out_channels, config.zero_init_last,
+                config.tuner_cfg)
             setattr(top_module, f'restuning_{adapter_name}', restuning_module)
 
         # 4. Matching the target module
@@ -221,10 +252,13 @@ class ResTuning:
         for module_key in module_keys:
             if re.fullmatch(config.target_modules, module_key):
                 tgt_module = model.get_submodule(module_key)
-                logger.info(f"Matching target module [{module_key}] of type {type(tgt_module)}")
+                logger.info(
+                    f'Matching target module [{module_key}] of type {type(tgt_module)}'
+                )
                 if isinstance(tgt_module, (nn.ModuleList, nn.ModuleDict)):
                     raise Exception(
-                        f"Type of {type(tgt_module)} may not be supported because of its customized forward")
+                        f'Type of {type(tgt_module)} may not be supported because of its customized forward'
+                    )
 
                 tgt_module.target_modules_hook = config.target_modules_hook
                 tgt_module.target_hidden_pos = config.target_hidden_pos
@@ -233,18 +267,22 @@ class ResTuning:
                 target_module_ins = tgt_module
 
                 if isinstance(tgt_module, nn.Sequential):
-                    tgt_module.origin_module_keys = copy.deepcopy(list(tgt_module._modules.keys()))
-                    tgt_module.forward_origin = types.MethodType(_forward_seq, tgt_module)
+                    tgt_module.origin_module_keys = copy.deepcopy(
+                        list(tgt_module._modules.keys()))
+                    tgt_module.forward_origin = types.MethodType(
+                        _forward_seq, tgt_module)
                 else:
                     tgt_module.forward_origin = tgt_module.forward
-                tgt_module.forward = types.MethodType(_forward_target, tgt_module)
+                tgt_module.forward = types.MethodType(_forward_target,
+                                                      tgt_module)
         if target_module_ins is None:
-            raise Exception(f"Cannot match target modules")
+            raise Exception('Cannot match target modules')
 
         def state_dict_callback(state_dict, adapter_name):
             return {
                 key: value
-                for key, value in state_dict.items() if f'restuning_{adapter_name}' in key
+                for key, value in state_dict.items()
+                if f'restuning_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -254,8 +292,10 @@ class ResTuning:
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, f'restuning_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module, adapter_name: str,
+                         activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(
+            module, f'restuning_{adapter_name}')
         for _module in modules:
             _module.activate(activate)
 
@@ -265,13 +305,13 @@ class ResTuningBypassModule(nn.Module):
     """
 
     def __init__(
-            self,
-            dims,
-            depth,
-            use_upsample=False,
-            upsample_out_channels=None,
-            zero_init_last=False,
-            tuner_cfg=None,
+        self,
+        dims,
+        depth,
+        use_upsample=False,
+        upsample_out_channels=None,
+        zero_init_last=False,
+        tuner_cfg=None,
     ):
         super(ResTuningBypassModule, self).__init__()
 
@@ -282,12 +322,13 @@ class ResTuningBypassModule(nn.Module):
                 layer_num=i,
                 depth=depth,
                 use_upsample=use_upsample,
-                upsample_out_channels=upsample_out_channels[i] if isinstance(upsample_out_channels,
-                                                                             list) else upsample_out_channels,
+                upsample_out_channels=upsample_out_channels[i] if isinstance(
+                    upsample_out_channels, list) else upsample_out_channels,
                 zero_init_last=zero_init_last,
-                tuner_cfg=tuner_cfg[i] if isinstance(tuner_cfg, list) else tuner_cfg
-            )
-            for i in range(depth)])
+                tuner_cfg=tuner_cfg[i] if isinstance(tuner_cfg, list
+                                                     ) else tuner_cfg)
+            for i in range(depth)
+        ])
 
     def activate(self, activate=True):
         self._activate = activate
@@ -296,17 +337,29 @@ class ResTuningBypassModule(nn.Module):
         if not self._activate:
             return origin_arg
         x_bypass = detach_tensors(x_list.pop(0))
-        x_bypass = x_bypass[0] if isinstance(x_bypass, (list, tuple)) else x_bypass
+        x_bypass = x_bypass[0] if isinstance(x_bypass,
+                                             (list, tuple)) else x_bypass
         x_list = detach_tensors(x_list)
-        x_list = [_x[0] if isinstance(_x, (list, tuple)) else _x for _x in x_list]
+        x_list = [
+            _x[0] if isinstance(_x, (list, tuple)) else _x for _x in x_list
+        ]
         for i, (bp_blk, x_stem) in enumerate(zip(self.bypass_blocks, x_list)):
-            target_size = x_list[i + 1].shape[2:] if i < len(x_list) - 1 else None
+            target_size = x_list[
+                i + 1].shape[2:] if i < len(x_list) - 1 else None
             x_bypass = bp_blk(x_stem, x_bypass, target_size, **kwargs)
         return x_bypass
 
 
 class ResTunerBypassBlock(nn.Module):
-    def __init__(self, dim, layer_num=-1, depth=-1, use_upsample=False, zero_init_last=False, tuner_cfg=None, **kwargs):
+
+    def __init__(self,
+                 dim,
+                 layer_num=-1,
+                 depth=-1,
+                 use_upsample=False,
+                 zero_init_last=False,
+                 tuner_cfg=None,
+                 **kwargs):
         super().__init__()
         self.layer_num = layer_num
         self.depth = depth
@@ -314,16 +367,21 @@ class ResTunerBypassBlock(nn.Module):
         if isinstance(tuner_cfg, str):
             lateral_cfg = tuner_cfg
             vertical_cfg = tuner_cfg
-            aux_cfg = "upsample" if use_upsample and layer_num != depth - 1 else None
+            aux_cfg = 'upsample' if use_upsample and layer_num != depth - 1 else None
         elif isinstance(tuner_cfg, dict):
-            lateral_cfg = tuner_cfg['lateral_cfg'] if 'lateral_cfg' in tuner_cfg else None
-            vertical_cfg = tuner_cfg['vertical_cfg'] if 'vertical_cfg' in tuner_cfg else None
+            lateral_cfg = tuner_cfg[
+                'lateral_cfg'] if 'lateral_cfg' in tuner_cfg else None
+            vertical_cfg = tuner_cfg[
+                'vertical_cfg'] if 'vertical_cfg' in tuner_cfg else None
             aux_cfg = tuner_cfg['aux_cfg'] if 'aux_cfg' in tuner_cfg else None
 
-        self.lateral_tuner = ResTuner(dim, layer_num, depth, zero_init_last, "lateral", lateral_cfg, **kwargs)
-        self.vertical_tuner = ResTuner(dim, layer_num, depth, zero_init_last, "vertical", vertical_cfg, **kwargs)
+        self.lateral_tuner = ResTuner(dim, layer_num, depth, zero_init_last,
+                                      'lateral', lateral_cfg, **kwargs)
+        self.vertical_tuner = ResTuner(dim, layer_num, depth, zero_init_last,
+                                       'vertical', vertical_cfg, **kwargs)
         if aux_cfg and len(aux_cfg) != 0:
-            self.aux_tuner = ResTuner(dim, layer_num, depth, zero_init_last, "aux", aux_cfg, **kwargs)
+            self.aux_tuner = ResTuner(dim, layer_num, depth, zero_init_last,
+                                      'aux', aux_cfg, **kwargs)
 
     def forward(self, x_stem, x_bypass, target_size=None, **kwargs):
         x_lateral = self.lateral_tuner(x_stem)
@@ -332,10 +390,4 @@ class ResTunerBypassBlock(nn.Module):
         x_bypass_out = x_lateral + x_vertical
         if hasattr(self, 'aux_tuner'):
             x_bypass_out = self.aux_tuner(x_bypass_out, target_size)
-
-        # logger.info(f"x_main:{x_stem.shape} / {torch.sum(x_stem)}, x_side:{x_bypass.shape} / {torch.sum(x_bypass)}")
-        # logger.info(f"x_lateral:{x_lateral.shape} / {torch.sum(x_lateral)}, x_vertical:{x_vertical.shape} / {torch.sum(x_vertical)}")
-        # logger.info(f"x_bypass_out: {x_bypass_out.shape} / {torch.sum(x_bypass_out)}")
-
         return x_bypass_out
-

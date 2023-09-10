@@ -4,29 +4,28 @@ import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Dict, List
-from typing import Optional
+from typing import Dict, List, Optional
 
 import jieba
 import numpy as np
 import torch
 import torch.distributed as dist
-from nltk.translate.bleu_score import (SmoothingFunction, sentence_bleu)
-from rouge import Rouge
+from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge.rouge import Rouge
 from transformers import BitsAndBytesConfig, GenerationConfig
-
-from swift import (AdapterConfig, HubStrategy, LoRAConfig, Seq2SeqTrainer,
-                   Seq2SeqTrainingArguments, Swift, SwiftConfig, ResTuningConfig, get_logger)
-from swift.hub import HubApi, ModelScopeConfig
-from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
-                         seed_everything)
-from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, find_all_linear_for_lora, get_dataset,
                    get_dist_setting, get_model_tokenizer, get_preprocess,
                    is_dist, is_master, plot_images, process_dataset,
                    select_bnb, select_dtype, show_layers)
+
+from swift import (AdapterConfig, HubStrategy, LoRAConfig, ResTuningConfig,
+                   Seq2SeqTrainer, Seq2SeqTrainingArguments, Swift,
+                   SwiftConfig, get_logger)
+from swift.hub import HubApi, ModelScopeConfig
+from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
+                         seed_everything)
+from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
 
 logger = get_logger()
 
@@ -37,8 +36,7 @@ class SftArguments:
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
     # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
-    sft_type: str = field(
-        default='lora')
+    sft_type: str = field(default='lora')
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -110,7 +108,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-                'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
+            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
         })
 
     # other
@@ -118,7 +116,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-                "This parameter is used only when model_type.startswith('qwen-7b')"
+            "This parameter is used only when model_type.startswith('qwen-7b')"
         })
 
     def __post_init__(self):
@@ -241,8 +239,7 @@ def llm_sft(args: SftArguments) -> None:
             elif sft_type == 'restuner':
                 restuner_config = ResTuningConfig(
                     dims=model.config.hidden_size,
-                    **MODEL_MAPPING[args.model_type]['restuner_TM']
-                )
+                    **MODEL_MAPPING[args.model_type]['restuner_TM'])
                 logger.info(f'restuner_config: {restuner_config}')
                 swift_config['restuner'] = restuner_config
         model = Swift.prepare_model(model, swift_config)
@@ -330,8 +327,9 @@ def llm_sft(args: SftArguments) -> None:
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
         load_best_model_at_end=True,
-        metric_for_best_model='rouge-l',
-        greater_is_better=True,
+        metric_for_best_model='rouge-l'
+        if args.predict_with_generate else 'loss',
+        greater_is_better=args.predict_with_generate,
         sortish_sampler=True,
         optim=args.optim,
         hub_model_id=args.hub_model_id,
@@ -344,8 +342,8 @@ def llm_sft(args: SftArguments) -> None:
         gradient_checkpointing=args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
         generation_config=GenerationConfig.from_dict(generation_config),
-        local_rank=local_rank, 
-		**kwargs)
+        local_rank=local_rank,
+        **kwargs)
 
     if args.gradient_checkpointing:
         # fix: gradients will be None
@@ -389,7 +387,7 @@ def llm_sft(args: SftArguments) -> None:
             try:
                 rouge = Rouge()
                 scores = rouge.get_scores(' '.join(hypothesis),
-                                        ' '.join(reference))
+                                          ' '.join(reference))
                 result = scores[0]
 
                 for k, v in result.items():
@@ -399,7 +397,8 @@ def llm_sft(args: SftArguments) -> None:
                     list(pred),
                     smoothing_function=SmoothingFunction().method3)
                 score_dict['bleu-4'].append(round(bleu_score * 100, 4))
-            except:
+            except Exception as e:
+                logger.error(e)
                 logger.error(f'eval error {hypothesis}, {reference}')
 
         for k, v in score_dict.items():
@@ -413,7 +412,8 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics if args.predict_with_generate else None,
+        compute_metrics=compute_metrics
+        if args.predict_with_generate else None,
     )
 
     trainer.train(trainer_args.resume_from_checkpoint)

@@ -5,15 +5,16 @@ from .utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
-    from .tuners import (
-        Adapter, AdapterConfig, AdapterModule, SwiftModel, LoRA, LoRAConfig,
-        SWIFT_MAPPING, LoraConfig, PeftConfig, PeftModel, PeftModelForCausalLM,
-        ResTuningConfig, SideConfig,
-        PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
-        PeftModelForTokenClassification, PrefixTuningConfig,
-        PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig,
-        get_peft_config, get_peft_model, get_peft_model_state_dict, Prompt,
-        PromptConfig, PromptModule, SwiftConfig, SwiftOutput, Swift)
+    from .tuners import (Adapter, AdapterConfig, AdapterModule, SwiftModel,
+                         LoRA, LoRAConfig, SWIFT_MAPPING, LoraConfig,
+                         PeftConfig, PeftModel, PeftModelForCausalLM,
+                         ResTuningConfig, SideConfig, PeftModelForSeq2SeqLM,
+                         PeftModelForSequenceClassification,
+                         PeftModelForTokenClassification, PrefixTuningConfig,
+                         PromptEncoderConfig, PromptLearningConfig,
+                         PromptTuningConfig, get_peft_config, get_peft_model,
+                         get_peft_model_state_dict, Prompt, PromptConfig,
+                         PromptModule, SwiftConfig, SwiftOutput, Swift)
     from .hub import snapshot_download, push_to_hub, push_to_hub_async, push_to_hub_in_queue
     from .trainers import (EvaluationStrategy, FSDPOption, HPSearchBackend,
                            HubStrategy, IntervalStrategy, SchedulerType,
@@ -30,8 +31,8 @@ else:
         'tuners': [
             'Adapter', 'AdapterConfig', 'AdapterModule', 'SwiftModel', 'LoRA',
             'LoRAConfig', 'SWIFT_MAPPING', 'LoraConfig', 'PeftConfig',
-            'ResTuningConfig', 'SideConfig',
-            'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
+            'ResTuningConfig', 'SideConfig', 'PeftModel',
+            'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
             'PeftModelForSequenceClassification',
             'PeftModelForTokenClassification', 'PrefixTuningConfig',
             'PromptEncoderConfig', 'PromptLearningConfig',

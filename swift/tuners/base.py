@@ -52,7 +52,8 @@ class SwiftModel(nn.Module):
 
         self.adapters = {}
         if isinstance(config, SwiftConfig):
-            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(model, config, DEFAULT_ADAPTER)
+            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
+                model, config, DEFAULT_ADAPTER)
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, config in config.items():
@@ -151,7 +152,8 @@ class SwiftModel(nn.Module):
         if kwargs.get('save_adapter', True):
             for name, output in self.adapters.items():
                 if adapter_name == name or adapter_name is None:
-                    state_dicts.update(output.state_dict_callback(destination, adapter_name))
+                    state_dicts.update(
+                        output.state_dict_callback(destination, adapter_name))
         if kwargs.get('save_extra_states', True):
             state_dicts.update({
                 k: v
@@ -264,7 +266,8 @@ class SwiftModel(nn.Module):
     ):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
-        return SWIFT_MAPPING[config.swift_type][1].prepare_model(model, config, adapter_name)
+        return SWIFT_MAPPING[config.swift_type][1].prepare_model(
+            model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
@@ -334,8 +337,8 @@ class SwiftModel(nn.Module):
         os.makedirs(save_directory, exist_ok=True)
         self.create_or_update_model_card(save_directory)
 
-        adapter_names = adapter_name if isinstance(adapter_name,
-                                                   list) or adapter_name is None else [adapter_name]
+        adapter_names = adapter_name if isinstance(
+            adapter_name, list) or adapter_name is None else [adapter_name]
         for adapter_name, output in self.adapters.items():
             if adapter_names is not None and adapter_name not in adapter_names:
                 continue

@@ -14,8 +14,8 @@ from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
-from .utils import SwiftConfig, SwiftOutput
 from ..utils.torch_utils import find_sub_module
+from .utils import SwiftConfig, SwiftOutput
 
 if is_bnb_available():
     import bitsandbytes as bnb
@@ -106,7 +106,8 @@ class LoRA:
             fan_in_fan_out=config.fan_in_fan_out)
 
         def state_dict_callback(state_dict, adapter_name):
-            return lora_state_dict(state_dict, model.lora_module_map, adapter_name, config.bias)
+            return lora_state_dict(state_dict, model.lora_module_map,
+                                   adapter_name, config.bias)
 
         def mark_trainable_callback(model):
             mark_lora_as_trainable(model, config.bias)
@@ -115,7 +116,8 @@ class LoRA:
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str,
+                         activate: bool):
         modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
         for _module in modules:
             if isinstance(_module, LoRALayer):
@@ -124,8 +126,8 @@ class LoRA:
                 _module.active_adapter = 'default' if activate else 'invalid'
 
     @staticmethod
-    def _dynamic_patch_lora(model, replace_modules, use_merged_linear, adapter_name,
-                            **kwargs):
+    def _dynamic_patch_lora(model, replace_modules, use_merged_linear,
+                            adapter_name, **kwargs):
         """Dynamic patch lora to model
 
         Args:
@@ -230,7 +232,7 @@ class LoRA:
                         r=kwargs['r'],
                         lora_alpha=kwargs['lora_alpha'],
                         merge_weights=kwargs['merge_weights'],
-                        )
+                    )
                 elif isinstance(sub_module, torch.nn.Conv2d):
                     kwargs.pop('fan_in_fan_out', None)
                     lora_module = Conv2d(
@@ -292,7 +294,8 @@ class LoRA:
                     origin_module = torch.nn.Linear(
                         sub_module.in_features,
                         sub_module.out_features,
-                        bias=hasattr(sub_module, 'bias') and sub_module.bias is not None,
+                        bias=hasattr(sub_module, 'bias')
+                        and sub_module.bias is not None,
                     )
                 elif isinstance(sub_module, Embedding):
                     origin_module = torch.nn.Embedding(
@@ -723,7 +726,9 @@ class Conv2d(nn.Conv2d, LoRALayer):
         return nn.Conv2d.forward(self, x)
 
 
-def mark_lora_as_trainable(model: nn.Module, adapter_name: str, bias: str = 'none') -> None:
+def mark_lora_as_trainable(model: nn.Module,
+                           adapter_name: str,
+                           bias: str = 'none') -> None:
     if bias == 'none':
         return
     elif bias == 'all':
@@ -740,18 +745,28 @@ def mark_lora_as_trainable(model: nn.Module, adapter_name: str, bias: str = 'non
         raise NotImplementedError
 
 
-def lora_state_dict(state_dict, module_map: Dict, adapter_name: str, bias: str = 'none') -> Dict[str, torch.Tensor]:
+def lora_state_dict(state_dict,
+                    module_map: Dict,
+                    adapter_name: str,
+                    bias: str = 'none') -> Dict[str, torch.Tensor]:
     if bias == 'none':
-        return {k: state_dict[k] for k in state_dict if 'lora_' in k and module_map.get(k[:k.find('lora_')-1], None) == adapter_name}
+        return {
+            k: state_dict[k]
+            for k in state_dict
+            if 'lora_' in k and module_map.get(k[:k.find('lora_')
+                                                 - 1], None) == adapter_name
+        }
     elif bias == 'all':
         return {
             k: state_dict[k]
-            for k in state_dict if ('lora_' in k and module_map.get(k[:k.find('lora_')-1], None) == adapter_name) or 'bias' in k
+            for k in state_dict if ('lora_' in k and module_map.get(
+                k[:k.find('lora_') - 1], None) == adapter_name) or 'bias' in k
         }
     elif bias == 'lora_only':
         to_return = {}
         for k in state_dict:
-            if 'lora_' in k and module_map.get(k[:k.find('lora_')-1], None) == adapter_name:
+            if 'lora_' in k and module_map.get(k[:k.find('lora_') - 1],
+                                               None) == adapter_name:
                 to_return[k] = state_dict[k]
                 bias_name = k.split('lora_')[0] + 'bias'
                 if bias_name in state_dict:

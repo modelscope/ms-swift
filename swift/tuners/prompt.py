@@ -3,13 +3,13 @@
 import re
 import types
 from dataclasses import dataclass, field
-from typing import Union, List
+from typing import List, Union
 
 import torch
 from torch import nn
 
-from .utils import SwiftConfig, SwiftOutput
 from ..utils.torch_utils import find_sub_module
+from .utils import SwiftConfig, SwiftOutput
 
 
 @dataclass
@@ -78,7 +78,8 @@ class PromptConfig(SwiftConfig):
 class Prompt:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: PromptConfig, adapter_name: str):
+    def prepare_model(model: nn.Module, config: PromptConfig,
+                      adapter_name: str):
         module_keys = [key for key, _ in model.named_modules()]
         match_module_keys = []
         for module_key in module_keys:
@@ -99,7 +100,8 @@ class Prompt:
                         input_embedding = kwargs[config.embedding_pos]
 
                     input_embedding = getattr(
-                        self, f'prompt_{adapter_name}').forward(input_embedding)
+                        self,
+                        f'prompt_{adapter_name}').forward(input_embedding)
                     if isinstance(config.embedding_pos, int):
                         args = type(args)(
                             args[0:config.embedding_pos] + (input_embedding, )
@@ -117,7 +119,8 @@ class Prompt:
                         if attention_mask is not None:
                             attention_mask = getattr(
                                 self,
-                                f'prompt_{adapter_name}').patch_attention_mask(attention_mask)
+                                f'prompt_{adapter_name}').patch_attention_mask(
+                                    attention_mask)
                         if isinstance(config.attention_mask_pos, int):
                             args = type(args)(
                                 args[0:config.attention_mask_pos]
@@ -129,7 +132,8 @@ class Prompt:
                     forward_output = self.forward_origin(*args, **kwargs)
                     if config.extract_embedding:
                         forward_output = getattr(
-                            self, f'prompt_{adapter_name}').extract(forward_output)
+                            self,
+                            f'prompt_{adapter_name}').extract(forward_output)
 
                     return forward_output
 
@@ -150,7 +154,8 @@ class Prompt:
         def state_dict_callback(state_dict, adapter_name):
             return {
                 key: value
-                for key, value in state_dict.items() if f'prompt_{adapter_name}' in key
+                for key, value in state_dict.items()
+                if f'prompt_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -160,8 +165,10 @@ class Prompt:
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, f'prompt_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module, adapter_name: str,
+                         activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(
+            module, f'prompt_{adapter_name}')
         for _module in modules:
             _module.activate(activate)
 
@@ -199,7 +206,8 @@ class PromptModule(nn.Module):
     def forward(self, x):
         if not self._activate:
             return x
-        prompt_token = self.prompt_token.expand(x.shape[0], -1, -1).to(x.device)
+        prompt_token = self.prompt_token.expand(x.shape[0], -1,
+                                                -1).to(x.device)
 
         if self.layer_num == 0:
             if self.attach_front:

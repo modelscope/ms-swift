@@ -187,39 +187,39 @@ class AdapterTM(NamedTuple):
 class ResTunerTM(NamedTuple):
     # default lora target modules. qkv
     baichuan = {
-        "root_modules": r'.*layers.0$',
-        "stem_modules": r'.*layers\.\d+$',
-        "target_modules": r'.*model.norm',
-        "target_modules_hook": "input",
-        "tuner_cfg": "res_adapter",
+        'root_modules': r'.*layers.0$',
+        'stem_modules': r'.*layers\.\d+$',
+        'target_modules': r'.*model.norm',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
     }
     chatglm2 = {
-        "root_modules": r'.*layers.0$',
-        "stem_modules": r'.*layers\.\d+$',
-        "target_modules": r'.*final_layernorm',
-        "target_modules_hook": "input",
-        "tuner_cfg": "res_adapter",
+        'root_modules': r'.*layers.0$',
+        'stem_modules': r'.*layers\.\d+$',
+        'target_modules': r'.*final_layernorm',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
     }
     llama2 = {
-        "root_modules": r'.*layers.0$',
-        "stem_modules": r'.*layers\.\d+$',
-        "target_modules": r'.*model.norm',
-        "target_modules_hook": "input",
-        "tuner_cfg": "res_adapter",
+        'root_modules': r'.*layers.0$',
+        'stem_modules': r'.*layers\.\d+$',
+        'target_modules': r'.*model.norm',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
     }
     qwen = {
-        "root_modules": r'.*transformer.h.0$',
-        "stem_modules": r'.*transformer.h\.\d+$',
-        "target_modules": r'.*transformer.ln_f',
-        "target_modules_hook": "input",
-        "tuner_cfg": "res_adapter",
+        'root_modules': r'.*transformer.h.0$',
+        'stem_modules': r'.*transformer.h\.\d+$',
+        'target_modules': r'.*transformer.ln_f',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
     }
     polylm = {
-        "root_modules": r'.*transformer.h.0$',
-        "stem_modules": r'.*transformer.h\.\d+$',
-        "target_modules": r'.*transformer.ln_f',
-        "target_modules_hook": "input",
-        "tuner_cfg": "res_adapter",
+        'root_modules': r'.*transformer.h.0$',
+        'stem_modules': r'.*transformer.h\.\d+$',
+        'target_modules': r'.*transformer.ln_f',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
     }
 
 

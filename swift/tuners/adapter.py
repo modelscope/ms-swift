@@ -3,11 +3,12 @@ import inspect
 import re
 import types
 from dataclasses import dataclass, field
-from typing import Union, List
+from typing import List, Union
 
 import torch
 from torch import nn
 from transformers.activations import ACT2CLS
+
 from swift.utils.torch_utils import find_sub_module
 from .utils import SwiftConfig, SwiftOutput
 
@@ -71,7 +72,8 @@ class AdapterConfig(SwiftConfig):
 class Adapter:
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: AdapterConfig, adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: AdapterConfig,
+                      adapter_name: str) -> SwiftOutput:
         """Prepare a model with `AdapterConfig`"""
         module_keys = [key for key, _ in model.named_modules()]
 
@@ -94,14 +96,18 @@ class Adapter:
                             _type = type(args)
                             args = list(args)
                             args[config.hidden_pos] = args[
-                                config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(args[config.hidden_pos])
-                            return _type(args)
+                                config.hidden_pos] + getattr(
+                                    self, f'adapter_{adapter_name}')(
+                                        args[config.hidden_pos])
+                            args = _type(args)
                         else:
                             args[config.hidden_pos] = args[
-                                config.hidden_pos] + getattr(self, f'adapter_{adapter_name}')(
-                                    args[config.hidden_pos])
+                                config.hidden_pos] + getattr(
+                                    self, f'adapter_{adapter_name}')(
+                                        args[config.hidden_pos])
                     elif isinstance(args, torch.Tensor):
-                        args = args + getattr(self, f'adapter_{adapter_name}')(args)
+                        args = args + getattr(self, f'adapter_{adapter_name}')(
+                            args)
                     return args
 
                 def _feed_forward_chunk(self, attention_output):
@@ -126,7 +132,8 @@ class Adapter:
         def state_dict_callback(state_dict, adapter_name: str):
             return {
                 key: value
-                for key, value in state_dict.items() if f'adapter_{adapter_name}' in key
+                for key, value in state_dict.items()
+                if f'adapter_{adapter_name}' in key
             }
 
         def mark_trainable_callback(model):
@@ -136,8 +143,10 @@ class Adapter:
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, f'adapter_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module, adapter_name: str,
+                         activate: bool):
+        modules: List[torch.nn.Module] = find_sub_module(
+            module, f'adapter_{adapter_name}')
         for _module in modules:
             _module.activate(activate)
 
@@ -191,7 +200,7 @@ class AdapterModule(nn.Module):
             self.act.to(x.device)
             self.ln2.to(x.device)
             self._prepared = True
-        
+
         x_dtype = x.dtype
         x = x.to(self.ln1.weight.dtype)
         out = self.ln2(self.act(self.ln1(x)))
