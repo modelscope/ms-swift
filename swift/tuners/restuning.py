@@ -12,7 +12,7 @@ from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .restuning_components import (ResTuner, detach_tensors,
                                    probe_input_pre_hook, probe_output_hook)
-from .utils import SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -297,10 +297,11 @@ class ResTuning:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'restuning_{adapter_name}')
         for _module in modules:
+            _module: ActivationMixin
             _module.set_activation(activate)
 
 
-class ResTuningBypassModule(nn.Module):
+class ResTuningBypassModule(nn.Module, ActivationMixin):
     """The implementation of ResTuningBypass method.
     """
 
@@ -314,8 +315,8 @@ class ResTuningBypassModule(nn.Module):
         tuner_cfg=None,
     ):
         super(ResTuningBypassModule, self).__init__()
+        super(nn.Module, self).__init__()
 
-        self._activate = True
         self.bypass_blocks = nn.Sequential(*[
             ResTunerBypassBlock(
                 dim=dims[i] if isinstance(dims, list) else dims,
@@ -330,11 +331,8 @@ class ResTuningBypassModule(nn.Module):
             for i in range(depth)
         ])
 
-    def set_activation(self, activate=True):
-        self._activate = activate
-
     def forward(self, x_list, origin_arg, **kwargs):
-        if not self._activate:
+        if not self.is_activated():
             return origin_arg
         x_bypass = detach_tensors(x_list.pop(0))
         x_bypass = x_bypass[0] if isinstance(x_bypass,

@@ -1,21 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, Any
+from typing import Any, Dict
 
 import torch.nn
 
-from swift import (AdapterConfig, LoRAConfig, ResTuningConfig,
-                   Swift,
-                   SwiftConfig, get_logger)
-from .model import (MODEL_MAPPING)
+from swift import (AdapterConfig, LoRAConfig, ResTuningConfig, Swift,
+                   SwiftConfig, SwiftTuners, get_logger)
+from .model import MODEL_MAPPING
 from .utils import find_all_linear_for_lora
-from swift import SwiftTuners
 
 logger = get_logger()
 
 
-def prepare_model(model: torch.nn.Module,
-                  args: Any,
-                  ):
+def prepare_model(
+    model: torch.nn.Module,
+    args: Any,
+):
     swift_config: Dict[str, SwiftConfig] = dict()
     for sft_type in [_type.strip() for _type in args.sft_type.split(',')]:
         if sft_type.lower() == SwiftTuners.LORA.lower():
@@ -24,8 +23,7 @@ def prepare_model(model: torch.nn.Module,
                 args.lora_target_modules = find_all_linear_for_lora(
                     model, args.quantization_bit, args.model_type)
                 logger.info(
-                    f'Setting lora_target_modules: {args.lora_target_modules}'
-                )
+                    f'Setting lora_target_modules: {args.lora_target_modules}')
 
             lora_config = LoRAConfig(
                 r=args.lora_rank,

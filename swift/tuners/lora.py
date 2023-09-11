@@ -15,18 +15,86 @@ from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 if is_bnb_available():
     import bitsandbytes as bnb
 
     from peft.tuners.lora import Linear8bitLt
 
+    class Linear8bitLtSwift(ActivationMixin, Linear8bitLt):
+
+        def __init__(
+            self,
+            adapter_name,
+            in_features,
+            out_features,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            **kwargs,
+        ):
+            super(ActivationMixin,
+                  self).__init__(adapter_name, in_features, out_features, r,
+                                 lora_alpha, lora_dropout, **kwargs)
+            super(Linear8bitLtSwift, self).__init__()
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            if not self.is_activated():
+                return bnb.nn.Linear8bitLt.forward(self, x)
+            return super().forward(x)
+
+
 if is_bnb_4bit_available():
     from peft.tuners.lora import Linear4bit
 
+    class Linear4bitSwift(ActivationMixin, Linear4bit):
+
+        def __init__(
+            self,
+            adapter_name,
+            in_features,
+            out_features,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            **kwargs,
+        ):
+            super(ActivationMixin,
+                  self).__init__(adapter_name, in_features, out_features, r,
+                                 lora_alpha, lora_dropout, **kwargs)
+            super(Linear4bitSwift, self).__init__()
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            if not self.is_activated():
+                return bnb.nn.Linear4bit.forward(self, x)
+            return super().forward(x)
+
+
 if is_auto_gptq_available():
     from peft.tuners.lora import QuantLinear
+
+    class QuantLinearSwift(ActivationMixin, QuantLinear):
+
+        def __init__(
+            self,
+            adapter_name,
+            quant_linear_module,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            **kwargs,
+        ):
+            super(ActivationMixin,
+                  self).__init__(adapter_name, quant_linear_module, r,
+                                 lora_alpha, lora_dropout, **kwargs)
+            super(QuantLinearSwift, self).__init__()
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            if not self.is_activated():
+                return self.quant_linear_module(x)
+            return super().forward(x)
+
 
 logger = get_logger()
 
@@ -120,10 +188,8 @@ class LoRA:
                          activate: bool):
         modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
         for _module in modules:
-            if isinstance(_module, LoRALayer):
-                _module.set_activation(activate)
-            else:
-                _module.active_adapter = 'default' if activate else 'invalid'
+            _module: ActivationMixin
+            _module.set_activation(activate)
 
     @staticmethod
     def _dynamic_patch_lora(model, replace_modules, use_merged_linear,
@@ -174,7 +240,7 @@ class LoRA:
                         'index':
                         sub_module.index,
                     })
-                    lora_module = Linear8bitLt(
+                    lora_module = Linear8bitLtSwift(
                         'default',
                         sub_module.in_features,
                         sub_module.out_features,
@@ -193,7 +259,7 @@ class LoRA:
                         'quant_type':
                         sub_module.weight.quant_type,
                     })
-                    lora_module = Linear4bit(
+                    lora_module = Linear4bitSwift(
                         'default',
                         sub_module.in_features,
                         sub_module.out_features,
@@ -202,7 +268,8 @@ class LoRA:
                         **four_bit_kwargs)
                 elif AutoGPTQQuantLinear is not None and isinstance(
                         sub_module, AutoGPTQQuantLinear):
-                    lora_module = QuantLinear('default', sub_module, **kwargs)
+                    lora_module = QuantLinearSwift('default', sub_module,
+                                                   **kwargs)
                     sub_module.weight = sub_module.qweight
                 elif isinstance(sub_module, torch.nn.Linear):
                     if use_merged_linear:
@@ -330,7 +397,7 @@ class LoRA:
                     model.lora_module_map.pop(module_key, None)
 
 
-class LoRALayer:
+class LoRALayer(ActivationMixin):
 
     def __init__(
         self,
@@ -339,8 +406,8 @@ class LoRALayer:
         lora_dropout: float,
         merge_weights: bool,
     ):
+        super().__init__()
         self.r = r
-        self.old_r = r
         self.lora_alpha = lora_alpha
         # Optional dropout
         if lora_dropout > 0.:
@@ -350,12 +417,6 @@ class LoRALayer:
         # Mark the weight as unmerged
         self.merged = False
         self.merge_weights = merge_weights
-
-    def set_activation(self, activate=True):
-        if activate:
-            self.r = self.old_r
-        else:
-            self.r = 0
 
 
 class Embedding(nn.Embedding, LoRALayer):
@@ -420,7 +481,7 @@ class Embedding(nn.Embedding, LoRALayer):
             self.merged = True
 
     def forward(self, x: torch.Tensor):
-        if self.r > 0 and not self.merged:
+        if self.r > 0 and not self.merged and self.is_activated():
             result = nn.Embedding.forward(self, x)
             if self.r > 0:
                 after_A = F.embedding(x, self.lora_A.T, self.padding_idx,
@@ -511,7 +572,7 @@ class Linear(nn.Linear, LoRALayer):
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
-        if self.r > 0 and not self.merged:
+        if self.r > 0 and not self.merged and self.is_activated():
             result = F.linear(x, T(self.weight), bias=self.bias)
             if self.r > 0:
                 x_dtype = x.dtype
@@ -631,7 +692,7 @@ class MergedLinear(nn.Linear, LoRALayer):
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
-        if self.merged:
+        if self.merged or not self.is_activated():
             return F.linear(x, T(self.weight), bias=self.bias)
         else:
             result = F.linear(x, T(self.weight), bias=self.bias)
@@ -713,7 +774,7 @@ class Conv2d(nn.Conv2d, LoRALayer):
             self.merged = True
 
     def forward(self, x: torch.Tensor):
-        if self.r > 0 and not self.merged:
+        if self.r > 0 and not self.merged and self.is_activated():
             return F.conv2d(
                 x,
                 self.weight +  # noqa

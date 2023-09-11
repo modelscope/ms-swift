@@ -11,7 +11,7 @@ from transformers.activations import ACT2CLS
 
 from swift import get_logger
 from swift.utils.torch_utils import find_sub_module
-from .utils import SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -151,10 +151,11 @@ class Adapter:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'adapter_{adapter_name}')
         for _module in modules:
+            _module: ActivationMixin
             _module.set_activation(activate)
 
 
-class AdapterModule(nn.Module):
+class AdapterModule(nn.Module, ActivationMixin):
     """The implementation of adapter tuning method.
 
     Adapters project input tokens by an MLP layer.
@@ -173,6 +174,7 @@ class AdapterModule(nn.Module):
         act_layer=nn.GELU,
     ):
         super(AdapterModule, self).__init__()
+        super(nn.Module, self).__init__()
         self.dim = dim
         self.adapter_length = adapter_length
         # self.adapter_type = adapter_type
@@ -181,7 +183,6 @@ class AdapterModule(nn.Module):
         self.linear2 = nn.Linear(adapter_length, dim)
         self.init_weights()
         self._prepared = False
-        self._activate = True
 
     def init_weights(self):
 
@@ -192,11 +193,8 @@ class AdapterModule(nn.Module):
 
         self.apply(_init_weights)
 
-    def set_activation(self, activate=True):
-        self._activate = activate
-
     def forward(self, x, identity=None):
-        if not self._activate:
+        if not self.is_activated():
             return x
         if not self._prepared:
             self.linear1.to(x.device)

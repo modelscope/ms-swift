@@ -10,7 +10,7 @@ from torch import nn
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -176,10 +176,11 @@ class Prompt:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'prompt_{adapter_name}')
         for _module in modules:
+            _module: ActivationMixin
             _module.set_activation(activate)
 
 
-class PromptModule(nn.Module):
+class PromptModule(nn.Module, ActivationMixin):
     """The implementation of vision prompt tuning method.
 
     Visual prompt tuning (VPT) is proposed to initialize tunable prompt tokens
@@ -200,17 +201,17 @@ class PromptModule(nn.Module):
                  mask_values=0.,
                  attach_front=True):
         super(PromptModule, self).__init__()
+        super(nn.Module, self).__init__()
         self.dim = dim
         self.layer_num = layer_num
         self.prompt_length = prompt_length
         self.mask_values = mask_values
         self.attach_front = attach_front
-        self._activate = True
         self.prompt_token = nn.Parameter(torch.zeros(1, prompt_length, dim))
         nn.init.xavier_uniform_(self.prompt_token)
 
     def forward(self, x):
-        if not self._activate:
+        if not self.is_activated():
             return x
         prompt_token = self.prompt_token.expand(x.shape[0], -1,
                                                 -1).to(x.device)
@@ -229,11 +230,8 @@ class PromptModule(nn.Module):
                               dim=1)
         return x
 
-    def set_activation(self, activate=True):
-        self._activate = activate
-
     def patch_attention_mask(self, m):
-        if not self._activate:
+        if not self.is_activated():
             return m
         prefix_attention_mask = torch.full((*m.shape[:-1], self.prompt_length),
                                            self.mask_values).to(m.device)

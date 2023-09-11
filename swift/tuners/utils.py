@@ -2,8 +2,10 @@
 # Copyright 2023-present the HuggingFace Inc. team.
 
 import os
+import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
+from typing import Dict
 
 import json
 from peft.utils import CONFIG_NAME
@@ -125,3 +127,20 @@ class SwiftOutput:
     config: SwiftConfig = None
     state_dict_callback: FunctionType = None
     mark_trainable_callback: FunctionType = None
+
+
+class ActivationMixin:
+
+    USE_UNIQUE_THREAD = 'USE_UNIQUE_THREAD'
+
+    def __init__(self):
+        self._thread_inf: Dict[int, bool] = {}
+        self._unique_thread = os.environ.get(ActivationMixin.USE_UNIQUE_THREAD)
+
+    def set_activation(self, activate=True):
+        tid = 0 if self._unique_thread else threading.get_ident()
+        self._thread_inf[tid] = activate
+
+    def is_activated(self):
+        tid = 0 if self._unique_thread else threading.get_ident()
+        return self._thread_inf.get(tid, True)

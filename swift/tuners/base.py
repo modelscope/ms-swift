@@ -385,8 +385,21 @@ class SwiftModel(nn.Module):
     def base_model(self):
         return self.model
 
+    def set_active_adapters(self, adapter_names: List[str]):
+        if not adapter_names:
+            return
+
+        adapter_names = set(adapter_names)
+        for adapter_name in (adapter_names & set(self.adapters.keys())):
+            self.activate_adapter(adapter_name)
+
+        for adapter_name in (set(self.adapters.keys()) - adapter_names):
+            self.deactivate_adapter(adapter_name)
+
     def activate_adapter(self, adapter_name):
         if adapter_name not in self.adapters:
+            logger.warning(
+                f'{adapter_name} not in adapters: {self.adapters.keys()}')
             return
 
         from .mapping import SWIFT_MAPPING
@@ -395,6 +408,8 @@ class SwiftModel(nn.Module):
 
     def deactivate_adapter(self, adapter_name):
         if adapter_name not in self.adapters:
+            logger.warning(
+                f'{adapter_name} not in adapters: {self.adapters.keys()}')
             return
 
         from .mapping import SWIFT_MAPPING

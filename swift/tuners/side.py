@@ -14,7 +14,7 @@ from torch import nn
 
 from swift.utils.logger import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -135,10 +135,11 @@ class Side:
         modules: List[torch.nn.Module] = find_sub_module(
             module, f'side_{adapter_name}')
         for _module in modules:
+            _module: ActivationMixin
             _module.set_activation(activate)
 
 
-class SideModule(nn.Module):
+class SideModule(nn.Module, ActivationMixin):
     """The implementation of vision side-tuning method.
 
     Side-Tuning only needs to train one side network and
@@ -153,6 +154,7 @@ class SideModule(nn.Module):
 
     def __init__(self, dim, side_module_name='fcn4'):
         super(SideModule, self).__init__()
+        super(nn.Module, self).__init__()
 
         side_module_name = side_module_name.lower()
         if side_module_name == 'fcn4':
@@ -170,13 +172,9 @@ class SideModule(nn.Module):
             raise ValueError(
                 f'Unsupported side_module_name: {side_module_name}')
         self.alpha = nn.Parameter(torch.tensor(0.0))
-        self._activate = True
-
-    def set_activation(self, activate=True):
-        self._activate = activate
 
     def forward(self, x, x_main):
-        if not self._activate:
+        if not self.is_activated():
             return x_main
         alpha_squashed = torch.sigmoid(self.alpha)
         x_side = self.side_net(x)
