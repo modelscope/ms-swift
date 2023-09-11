@@ -2,6 +2,7 @@
 import logging
 import os
 import shutil
+from functools import wraps
 from tempfile import TemporaryDirectory
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
@@ -11,6 +12,7 @@ import requests
 import torch
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
+from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import dtype as Dtype
@@ -282,6 +284,22 @@ def check_json_format(obj: Any) -> Any:
     return res
 
 
+_old_msdataset_load = MsDataset.load
+
+
+@wraps(_old_msdataset_load)
+def _msdataset_ddp_load(*args, **kwargs):
+    if is_dist() and not is_local_master():
+        dist.barrier()
+    dataset = _old_msdataset_load(*args, **kwargs)
+    if is_dist() and is_local_master():
+        dist.barrier()
+
+    if is_dist():
+        dist.barrier()
+    return dataset
+
+
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
 
 logger.handlers[0].setFormatter(logger_format)
@@ -296,3 +314,4 @@ else:
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+MsDataset.load = _msdataset_ddp_load
