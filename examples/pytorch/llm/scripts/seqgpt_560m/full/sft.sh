@@ -5,9 +5,9 @@ python src/llm_sft.py \
     --template_type default-generation \
     --dtype bf16 \
     --output_dir runs \
-    --dataset cmnli-zh \
-    --dataset_sample 20000 \
-    --num_train_epochs 1 \
+    --dataset ner-jave-zh \
+    --dataset_sample -1 \
+    --num_train_epochs 3 \
     --max_length 1024 \
     --gradient_checkpointing false \
     --batch_size 32 \

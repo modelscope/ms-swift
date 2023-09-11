@@ -6,8 +6,8 @@ python src/llm_infer.py \
     --dtype bf16 \
     --ckpt_dir "runs/seqgpt-560m/vx_xxx/checkpoint-xxx" \
     --eval_human false \
-    --dataset cmnli-zh \
-    --dataset_sample 20000 \
+    --dataset ner-jave-zh \
+    --dataset_sample -1 \
     --max_length 1024 \
     --max_new_tokens 1024 \
     --temperature 0.9 \

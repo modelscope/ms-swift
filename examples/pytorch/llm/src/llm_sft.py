@@ -105,7 +105,13 @@ class SftArguments:
         })
 
     # other
-    test_oom_error: bool = False
+    test_oom_error: bool = field(
+        default=False,
+        metadata={
+            'help':
+            'If set to True, the train_dataset will be sorted according to max_length, '
+            'enabling faster detection of OOM (Out of Memory) errors.'
+        })
     use_flash_attn: Optional[bool] = field(
         default=None,
         metadata={
