@@ -34,12 +34,19 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self.model.get_trainable_parameters() if hasattr(
                 self.model, 'get_trainable_parameters') else None,
         }
+        self._iter_perf = 0
 
     def training_step(self, *args, **kwargs) -> torch.Tensor:
         train_time = time.time()
         training_output = super().training_step(*args, **kwargs)
         train_time = time.time() - train_time
         self.perf['train_time'] = self.perf['train_time'] + train_time
+        self._iter_perf += 1
+        if self._iter_perf > 20 and not self.perf[
+                'memory'] and torch.cuda.device_count() > 0:
+            for i in range(torch.cuda.device_count()):
+                self.perf['memory'][
+                    f'device:{i}'] = torch.cuda.memory_reserved(i)
         return training_output
 
     def prediction_step(

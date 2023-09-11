@@ -33,8 +33,7 @@ class SftArguments:
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
     # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
-    sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+    sft_type: str = field(default='lora')
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -76,7 +75,6 @@ class SftArguments:
 
     gradient_checkpointing: bool = False
     batch_size: int = 1
-    eval_batch_size: int = 1
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -137,6 +135,11 @@ class SftArguments:
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
+        from swift import SWIFT_MAPPING
+        all_types = [key.lower() for key in SWIFT_MAPPING.keys()] + ['full']
+        sft_type = [_type.strip() for _type in self.sft_type.split(',')]
+        assert all([_type.lower() in all_types for _type in sft_type]), \
+            f'Unsupported tuners: {self.sft_type}, supported tuners are: {all_types}'
         if self.sft_type == 'full':
             assert self.quantization_bit is None, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
@@ -270,6 +273,7 @@ def llm_sft(args: SftArguments) -> None:
     generation_config = {
         'do_sample': args.do_sample,
         'top_p': args.top_p,
+        'max_length': None,
         'max_new_tokens': args.max_new_tokens,
         'temperature': args.temperature,
         'top_k': args.top_k,
@@ -315,7 +319,8 @@ def llm_sft(args: SftArguments) -> None:
         do_eval=True,
         evaluation_strategy='steps',
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.eval_batch_size,
+        per_device_eval_batch_size=1
+        if args.predict_with_generate else args.batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -377,9 +382,6 @@ def llm_sft(args: SftArguments) -> None:
     )
 
     trainer.train(trainer_args.resume_from_checkpoint)
-    for i in range(torch.cuda.device_count()):
-        trainer.perf['memory'][f'device:{i}'] = torch.cuda.max_memory_reserved(
-            i)
     logger.info(trainer.perf)
 
     # ### Visualization

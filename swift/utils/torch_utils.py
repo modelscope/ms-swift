@@ -92,9 +92,8 @@ def print_model_info(model: Module, name: Optional[str] = None) -> None:
     s = [
         f'{name}: ', f'{n_params:.4f}M Params ({n_grads:.4f}M Trainable), ',
         f'{n_buffers:.4f}M Buffers, ',
-        f'Trainable percentage: {100 * n_grads / n_params:.2f}%'
+        f'Trainable percentage: {100 * n_grads / n_params:.2f}%.'
     ]
-    s += '.'
     logger.info(''.join(s))
 
 
