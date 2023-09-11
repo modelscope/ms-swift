@@ -4,21 +4,21 @@ import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
 from examples.pytorch.llm.src.utils.metric_utils import compute_nlg_metrics
+from examples.pytorch.llm.src.utils.swift_utils import prepare_model
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, find_all_linear_for_lora, get_dataset,
-                   get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers)
+                   broadcast_string, get_dataset, get_dist_setting,
+                   get_model_tokenizer, get_preprocess, is_dist, is_master,
+                   plot_images, process_dataset, select_bnb, select_dtype,
+                   show_layers)
 
-from swift import (AdapterConfig, HubStrategy, LoRAConfig, ResTuningConfig,
-                   Seq2SeqTrainer, Seq2SeqTrainingArguments, Swift,
-                   SwiftConfig, get_logger)
+from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
+                   Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
@@ -135,8 +135,12 @@ class SftArguments:
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
-        from swift import SWIFT_MAPPING
-        all_types = [key.lower() for key in SWIFT_MAPPING.keys()] + ['full']
+        from swift import SwiftTuners
+        all_types = [
+            SwiftTuners.LORA.lower(),
+            SwiftTuners.ADAPTER.lower(),
+            SwiftTuners.RESTUNING.lower()
+        ] + ['full']
         sft_type = [_type.strip() for _type in self.sft_type.split(',')]
         assert all([_type.lower() in all_types for _type in sft_type]), \
             f'Unsupported tuners: {self.sft_type}, supported tuners are: {all_types}'
@@ -215,42 +219,7 @@ def llm_sft(args: SftArguments) -> None:
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     if args.resume_from_ckpt is None:
-        swift_config: Dict[str, SwiftConfig] = dict()
-        for sft_type in args.sft_type.split(','):
-            if sft_type == 'lora':
-                if 'ALL' in args.lora_target_modules:
-                    assert len(args.lora_target_modules) == 1
-                    args.lora_target_modules = find_all_linear_for_lora(
-                        model, args.quantization_bit, args.model_type)
-                    logger.info(
-                        f'Setting lora_target_modules: {args.lora_target_modules}'
-                    )
-
-                lora_config = LoRAConfig(
-                    r=args.lora_rank,
-                    target_modules=args.lora_target_modules,
-                    lora_alpha=args.lora_alpha,
-                    lora_dropout=args.lora_dropout_p)
-                logger.info(f'lora_config: {lora_config}')
-                swift_config['lora'] = lora_config
-            elif sft_type == 'adapter':
-                adapter_config = AdapterConfig(
-                    dim=model.config.hidden_size,
-                    target_modules=MODEL_MAPPING[args.model_type].get(
-                        'adapter_TM', ['mlp']),
-                    method_name='forward',
-                    hidden_pos=0,
-                    adapter_length=args.adapter_length,
-                )
-                logger.info(f'adapter_config: {adapter_config}')
-                swift_config['adapter'] = adapter_config
-            elif sft_type == 'restuner':
-                restuner_config = ResTuningConfig(
-                    dims=model.config.hidden_size,
-                    **MODEL_MAPPING[args.model_type]['restuner_TM'])
-                logger.info(f'restuner_config: {restuner_config}')
-                swift_config['restuner'] = restuner_config
-        model = Swift.prepare_model(model, swift_config)
+        model = prepare_model(model, args)
     else:
         model = Swift.from_pretrained(
             model, args.resume_from_ckpt, is_trainable=True)

@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from time import time
 
 import torch
@@ -207,6 +208,74 @@ class TestSwift(unittest.TestCase):
                 all(
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
+
+    def test_swift_multiple_adapters_switching(self):
+        from swift.tuners.lora import Linear
+        from swift.tuners.adapter import AdapterModule
+
+        def reset_parameters(self):
+            nn.Linear.reset_parameters(self)
+            if hasattr(self, 'lora_A'):
+                # initialize A the same way as the default for nn.Linear and B to zero
+                nn.init.ones_(self.lora_A)
+                nn.init.ones_(self.lora_B)
+
+        Linear.reset_parameters = reset_parameters
+
+        def init_weights(self):
+
+            def _init_weights(m):
+                if isinstance(m, nn.Linear):
+                    nn.init.ones_(m.weight)
+                    nn.init.ones_(m.bias)
+
+            self.apply(_init_weights)
+
+        AdapterModule.init_weights = init_weights
+
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
+        model1 = copy.deepcopy(model)
+        model2 = copy.deepcopy(model)
+        model1 = Swift.prepare_model(
+            model1,
+            config={
+                'lora': LoRAConfig(target_modules=['query', 'key', 'value'])
+            })
+        model2 = Swift.prepare_model(
+            model2,
+            config={
+                'adapter':
+                AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=r'.*layer\.\d+$',
+                    method_name='feed_forward_chunk',
+                    hidden_pos=0)
+            })
+        model = Swift.prepare_model(
+            model,
+            config={
+                'lora':
+                LoRAConfig(target_modules=['query', 'key', 'value']),
+                'adapter':
+                AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=r'.*layer\.\d+$',
+                    method_name='feed_forward_chunk',
+                    hidden_pos=0)
+            })
+        model.deactivate_adapter('adapter')
+        outputs1 = model(**inputs)
+        outputs2 = model1(**inputs)
+        self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
+        model.activate_adapter('adapter')
+        model.deactivate_adapter('lora')
+        outputs1 = model(**inputs)
+        outputs2 = model2(**inputs)
+        self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
 
     def test_swift_side_bert(self):
         model = Model.from_pretrained(

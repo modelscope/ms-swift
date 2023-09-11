@@ -38,7 +38,7 @@ class PromptConfig(SwiftConfig):
         extract_embedding: Whether the embedding is extracted at final stage to keep the same dims with inputs
     """
 
-    dim: int = field(
+    dim: Union[int, List[int]] = field(
         default=None, metadata={'help': 'The dimension of the hidden states'})
 
     target_modules: str = field(

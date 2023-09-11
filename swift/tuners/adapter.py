@@ -197,7 +197,7 @@ class AdapterModule(nn.Module):
 
     def forward(self, x, identity=None):
         if not self._activate:
-            return 0.
+            return x
         if not self._prepared:
             self.linear1.to(x.device)
             self.act.to(x.device)
