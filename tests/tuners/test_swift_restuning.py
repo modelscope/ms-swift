@@ -6,7 +6,7 @@ import unittest
 
 import torch
 
-from swift import ResTuningConfig, Swift, SwiftModel
+from swift import ResTuningConfig, Swift, SwiftModel, snapshot_download
 
 
 class TestSwiftResTuning(unittest.TestCase):
@@ -45,9 +45,9 @@ class TestSwiftResTuning(unittest.TestCase):
         self.assertTrue(torch.isclose(model_val, model2_val))
 
     def test_swift_restuning_vit(self):
+        model_dir = snapshot_download('AI-ModelScope/vit-base-patch16-224')
         from transformers import AutoModelForImageClassification
-        model = AutoModelForImageClassification.from_pretrained(
-            'google/vit-base-patch16-224')
+        model = AutoModelForImageClassification.from_pretrained(model_dir)
         model_swift_1 = copy.deepcopy(model)
         model_swift_2 = copy.deepcopy(model)
         result_origin = model(torch.ones((1, 3, 224, 224))).logits
@@ -103,9 +103,10 @@ class TestSwiftResTuning(unittest.TestCase):
         self.model_comparison(model_swift_1, model_loaded)
 
     def test_swift_restuning_diffusers_sd(self):
+        model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v1-5')
         from diffusers import UNet2DConditionModel
         model = UNet2DConditionModel.from_pretrained(
-            'runwayml/stable-diffusion-v1-5', subfolder='unet')
+            model_dir, subfolder='unet')
         model.requires_grad_(False)
         model2 = copy.deepcopy(model)
         self.set_random_seed()
