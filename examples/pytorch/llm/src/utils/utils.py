@@ -20,6 +20,7 @@ from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
 from torch import dtype as Dtype
 from torch.nn import Linear, Module
+from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm.auto import tqdm
 from transformers import GenerationConfig, TextStreamer, trainer
 
@@ -318,6 +319,7 @@ def is_ddp_plus_mp() -> bool:
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support DDP + MP"""
     import psutil
+    # Make sure CUDA is initialized on each GPU to have the right memory info.
     for i in device_ids:
         _ = torch.tensor([0], device=i)
 
@@ -388,8 +390,6 @@ MsDataset.load = _msdataset_ddp_load
 if is_ddp_plus_mp():
     import transformers
     import accelerate
-
-    from torch.nn.parallel import DistributedDataParallel as DDP
     _old_ddp_init = DDP.__init__
     accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (
         lambda self, model, device_ids, output_device, *args, **kwargs:
