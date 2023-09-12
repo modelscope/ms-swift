@@ -431,14 +431,17 @@ _sharegpt_en_subset_list = ['common-en', 'computer-en']
 
 
 def get_sharegpt_all_zh_dataset():
+    """multi-round chat"""
     return get_sharegpt_dataset(_sharegpt_zh_subset_list)
 
 
 def get_sharegpt_all_en_dataset():
+    """multi-round chat"""
     return get_sharegpt_dataset(_sharegpt_en_subset_list)
 
 
 def get_cls_fudan_news_zh() -> HfDataset:
+    """Sequence Classification """
     dataset = MsDataset.load('damo/zh_cls_fudan-news').to_hf_dataset()
     return HfDataset.from_dict({
         'query': dataset['prompt'],
@@ -447,6 +450,7 @@ def get_cls_fudan_news_zh() -> HfDataset:
 
 
 def get_ner_jave_zh() -> HfDataset:
+    """Named Entity Recognition"""
     dataset = MsDataset.load('damo/zh_ner-JAVE').to_hf_dataset()
     return HfDataset.from_dict({
         'query': dataset['prompt'],

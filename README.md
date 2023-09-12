@@ -46,6 +46,7 @@ Key features:
    1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. multi-modal: coco-en
+   4. other: cls-fudan-news-zh, ner-jave-zh
 5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 # Installation
