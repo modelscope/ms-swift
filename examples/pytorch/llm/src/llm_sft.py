@@ -109,7 +109,7 @@ class SftArguments:
         default=False,
         metadata={
             'help':
-            'If set to True, the train_dataset will be sorted according to max_length, '
+            'If set to True, the train_dataset will be sorted in descending order based on max_length, '
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
     use_flash_attn: Optional[bool] = field(
