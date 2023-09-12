@@ -135,7 +135,7 @@ class ActivationMixin:
 
     def __init__(self):
         self._thread_inf: Dict[int, bool] = {}
-        self._unique_thread = os.environ.get(ActivationMixin.USE_UNIQUE_THREAD)
+        self._unique_thread = int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '0'))
 
     def set_activation(self, activate=True):
         tid = 0 if self._unique_thread else threading.get_ident()
