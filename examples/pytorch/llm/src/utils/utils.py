@@ -1,22 +1,27 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from huggingface/transformers.
 import logging
 import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
 import torch
 import torch.distributed as dist
+from accelerate.utils.modeling import (get_balanced_memory,
+                                       infer_auto_device_map)
 from datasets import Dataset as HfDataset
 from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
+from torch import device as Device
 from torch import dtype as Dtype
 from torch.nn import Linear, Module
+from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm.auto import tqdm
 from transformers import GenerationConfig, TextStreamer, trainer
 
@@ -300,6 +305,74 @@ def _msdataset_ddp_load(*args, **kwargs):
     return dataset
 
 
+def is_ddp_plus_mp() -> bool:
+    if not is_dist():
+        return False
+    n_gpu = torch.cuda.device_count()
+    local_world_size = get_dist_setting()[3]
+    assert n_gpu % local_world_size == 0
+    if n_gpu // local_world_size >= 2:
+        logger.info('Using DDP + MP(device_map)')
+        return True
+    return False
+
+
+def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
+    """add feat in accelerate to support DDP + MP"""
+    import psutil
+    # Make sure CUDA is initialized on each GPU to have the right memory info.
+    for i in device_ids:
+        _ = torch.tensor([0], device=i)
+
+    device_ids_set = set(device_ids)
+    max_memory = {}
+    for i in range(torch.cuda.device_count()):
+        max_memory[i] = 0
+        if i in device_ids_set:
+            max_memory[i] = torch.cuda.mem_get_info(i)[0]
+    max_memory['cpu'] = psutil.virtual_memory().available
+    return max_memory
+
+
+def _sync_max_memory(
+        max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, str], int]:
+    """Make sure that the model structure of MP(device_map) is the same, when using DDP."""
+    max_memory_list = [
+        v for k, v in max_memory.items() if (v > 0 and k != 'cpu')
+    ]
+    _, local_rank, world_size, _ = get_dist_setting()
+    src_tensor = torch.tensor(max_memory_list).to(local_rank)
+    tgt_tensor_list = [torch.zeros_like(src_tensor) for _ in range(world_size)]
+    dist.all_gather(tgt_tensor_list, src_tensor)
+    tgt_tensor = torch.stack(tgt_tensor_list, dim=0)
+    new_max_memory_iter = iter(tgt_tensor.min(dim=0)[0].tolist())
+    new_max_memory = {}
+    for k, v in max_memory.items():
+        new_max_memory[k] = v
+        if v > 0 and k != 'cpu':
+            new_max_memory[k] = next(new_max_memory_iter)
+    return new_max_memory
+
+
+@wraps(infer_auto_device_map)
+def _infer_auto_device_map_patch(
+        model: Module,
+        max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
+        **kwargs) -> Dict[str, Union[int, str, Device]]:
+    """The auxiliary function for supports DDP+MP. Monkey Patching.
+    add feat in accelerate to support DDP + MP"""
+    verbose = kwargs.pop('verbose', False)
+    n_gpu = torch.cuda.device_count()
+    _, local_rank, _, local_world_size = get_dist_setting()
+    device_ids = list(range(local_rank, n_gpu, local_world_size))
+    max_memory = _get_max_memory(device_ids)
+    max_memory = _sync_max_memory(max_memory)
+    max_memory = get_balanced_memory(
+        model, max_memory, low_zero=False, **kwargs)
+    max_memory = {k: v for k, v in max_memory.items() if v > 0}
+    return infer_auto_device_map(model, max_memory, verbose=verbose, **kwargs)
+
+
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
 
 logger.handlers[0].setFormatter(logger_format)
@@ -315,3 +388,18 @@ else:
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
 MsDataset.load = _msdataset_ddp_load
+if is_ddp_plus_mp():
+    import transformers
+    import accelerate
+    _old_ddp_init = DDP.__init__
+    accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (
+        lambda self, model, device_ids, output_device, *args, **kwargs:
+        _old_ddp_init(self, model, *args, **kwargs))
+    transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: None
+    transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
+    _old_accelerator_init = trainer.Accelerator.__init__
+    trainer.Accelerator.__init__ = (
+        lambda self, device_placement=False, *args, **kwargs:
+        _old_accelerator_init(
+            self, device_placement=device_placement, *args, **kwargs))
+    trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False

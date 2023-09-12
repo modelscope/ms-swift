@@ -1,7 +1,11 @@
-# Experimental environment: 2 * A100
-# 100GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 \
-python src/llm_sft.py \
+# Experimental environment: 4 * A100
+# 4 * 50GB GPU memory
+nproc_per_node=2
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    src/llm_sft.py \
     --model_type qwen-7b-chat \
     --sft_type full \
     --template_type chatml \
@@ -15,7 +19,7 @@ python src/llm_sft.py \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 2e-5 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 1 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \

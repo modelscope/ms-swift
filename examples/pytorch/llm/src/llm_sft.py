@@ -13,9 +13,9 @@ from transformers import BitsAndBytesConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, check_json_format,
                    find_all_linear_for_lora, get_dataset, get_dist_setting,
-                   get_model_tokenizer, get_preprocess, is_dist, is_master,
-                   plot_images, process_dataset, select_bnb, select_dtype,
-                   show_layers, sort_by_max_length)
+                   get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
+                   is_dist, is_master, plot_images, process_dataset,
+                   select_bnb, select_dtype, show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
@@ -37,7 +37,6 @@ class SftArguments:
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
-    # DDP + MP(device_map) is not supported
     ddp_backend: Optional[str] = field(
         default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
@@ -192,7 +191,7 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Loading Model and Tokenizer
     kwargs = {'low_cpu_mem_usage': True}
-    if is_dist():
+    if is_dist() and not is_ddp_plus_mp():
         kwargs['device_map'] = {'': local_rank}
     else:
         kwargs['device_map'] = 'auto'
