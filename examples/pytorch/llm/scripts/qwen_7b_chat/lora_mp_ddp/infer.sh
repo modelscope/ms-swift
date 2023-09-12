@@ -6,7 +6,8 @@ python src/llm_infer.py \
     --dtype bf16 \
     --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human true \
-    --use_flash_attn true \
+    --max_length 2048 \
+    --use_flash_attn false \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \

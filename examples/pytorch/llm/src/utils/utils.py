@@ -315,7 +315,7 @@ def is_ddp_plus_mp() -> bool:
     return False
 
 
-def get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
+def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support DDP + MP"""
     import psutil
     for i in device_ids:
@@ -331,7 +331,7 @@ def get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     return max_memory
 
 
-def sync_max_memory(
+def _sync_max_memory(
         max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, str], int]:
     """Make sure that the model structure of MP(device_map) is the same, when using DDP."""
     max_memory_list = [
@@ -352,7 +352,7 @@ def sync_max_memory(
 
 
 @wraps(infer_auto_device_map)
-def infer_auto_device_map_patch(
+def _infer_auto_device_map_patch(
         model: Module,
         max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
         **kwargs) -> Dict[str, Union[int, str, Device]]:
@@ -362,8 +362,8 @@ def infer_auto_device_map_patch(
     n_gpu = torch.cuda.device_count()
     _, local_rank, _, local_world_size = get_dist_setting()
     device_ids = list(range(local_rank, n_gpu, local_world_size))
-    max_memory = get_max_memory(device_ids)
-    max_memory = sync_max_memory(max_memory)
+    max_memory = _get_max_memory(device_ids)
+    max_memory = _sync_max_memory(max_memory)
     max_memory = get_balanced_memory(
         model, max_memory, low_zero=False, **kwargs)
     max_memory = {k: v for k, v in max_memory.items() if v > 0}
@@ -395,7 +395,7 @@ if is_ddp_plus_mp():
         lambda self, model, device_ids, output_device, *args, **kwargs:
         _old_ddp_init(self, model, *args, **kwargs))
     transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: None
-    transformers.modeling_utils.infer_auto_device_map = infer_auto_device_map_patch
+    transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
     _old_accelerator_init = trainer.Accelerator.__init__
     trainer.Accelerator.__init__ = (
         lambda self, device_placement=False, *args, **kwargs:

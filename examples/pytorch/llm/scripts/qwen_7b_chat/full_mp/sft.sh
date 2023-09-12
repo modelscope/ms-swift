@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 100GB GPU memory
+# 2 * 50GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \

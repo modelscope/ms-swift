@@ -8,6 +8,7 @@ python src/llm_infer.py \
     --eval_human true \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
+    --use_flash_attn false \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \
