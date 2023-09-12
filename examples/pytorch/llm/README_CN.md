@@ -81,16 +81,23 @@ bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*27GB显存.
+# 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
+# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*14GB显存.
+# 推荐的实验环境: V100, 3090, A10
+bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
+
 # 微调(qlora)+推理 qwen-7b-chat, 需要13GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
-# 推荐的实验环境: 3090
+# 推荐的实验环境: 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*13GB显存.
+# 推荐的实验环境: 3090, A10
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
@@ -100,6 +107,7 @@ bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
 # 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*50G显存.
+# 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 

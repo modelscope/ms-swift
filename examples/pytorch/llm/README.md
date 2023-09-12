@@ -79,16 +79,23 @@ bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # sft(lora+ddp) and infer qwen-7b-chat, Requires 2*27GB GPU memory.
+# Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
+# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*14GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
+bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
+
 # sft(qlora) and infer qwen-7b-chat, Requires 13GB GPU memory.
 # If you want to use quantification, you need to `pip install bitsandbytes -U`
-# Recommended experimental environment: 3090
+# Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*13GB GPU memory.
+# Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
@@ -98,6 +105,7 @@ bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
 # sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*50GB GPU memory.
+# Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 # For more scripts, please see `scripts/` folder.

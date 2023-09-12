@@ -1,5 +1,5 @@
-# Experimental environment: 4 * 3090
-# 4 * 17GB GPU memory
+# Experimental environment: 4 * V100(16GB)
+# 4 * 14GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
@@ -9,7 +9,7 @@ torchrun \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
-    --dtype bf16 \
+    --dtype fp16 \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset alpaca-en,alpaca-zh \
@@ -20,7 +20,7 @@ torchrun \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules c_attn c_proj \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

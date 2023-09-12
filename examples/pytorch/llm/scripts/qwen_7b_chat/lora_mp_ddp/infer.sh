@@ -3,7 +3,7 @@ python src/llm_infer.py \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
-    --dtype bf16 \
+    --dtype fp16 \
     --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human true \
     --max_length 2048 \
