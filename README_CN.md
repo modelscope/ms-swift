@@ -41,9 +41,10 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
    8. other: polylm-13b, seqgpt-560m
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 4. 支持的数据集:
-   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh
+   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. 多模态: coco-en
+   4. 其他: cls-fudan-news-zh, ner-jave-zh
 5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 # 安装
