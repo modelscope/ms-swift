@@ -198,7 +198,7 @@ class SwiftModel(nn.Module):
     def from_pretrained(cls,
                         model: nn.Module,
                         model_id: str = None,
-                        adapter_name: Union[str, List[str]] = 'default',
+                        adapter_name: Union[str, List[str]] = None,
                         inference_mode: bool = False,
                         revision: str = None,
                         **kwargs):
@@ -230,6 +230,12 @@ class SwiftModel(nn.Module):
             )
         if not os.path.exists(model_id):
             model_dir = snapshot_download(model_id, revision=revision)
+        if adapter_name is None:
+            adapter_name = [
+                sub_dir for sub_dir in os.listdir(model_dir)
+                if os.path.isdir(os.path.join(model_dir, sub_dir)) and
+                os.path.isfile(os.path.join(model_dir, sub_dir, CONFIG_NAME))
+            ]
         for _name in adapter_name if isinstance(adapter_name,
                                                 list) else [adapter_name]:
             sub_folder = os.path.join(model_dir, _name)
@@ -466,7 +472,7 @@ class Swift:
     @staticmethod
     def from_pretrained(model: nn.Module,
                         model_id: str = None,
-                        adapter_name: Union[str, List[str]] = 'default',
+                        adapter_name: Union[str, List[str]] = None,
                         revision: str = None,
                         **kwargs):
         """Prepare a model by a model_id in the ModelScope hub or a local dir.
@@ -489,8 +495,9 @@ class Swift:
                 _json = json.load(f)
             is_peft_model = PEFT_TYPE_KEY in _json
 
-        _name = adapter_name if isinstance(adapter_name,
-                                           str) else adapter_name[0]
+        _name = adapter_name if isinstance(
+            adapter_name, str) or adapter_name is None else adapter_name[0]
+        _name = _name or ''
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
             with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
@@ -500,7 +507,7 @@ class Swift:
                 model,
                 model_id,
                 revision=revision,
-                adapter_name=adapter_name,
+                adapter_name=adapter_name or 'default',
                 **kwargs)
         else:
             return SwiftModel.from_pretrained(
