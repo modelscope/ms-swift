@@ -25,7 +25,7 @@
    6. openbuddy-llama series: openbuddy-llama2-13b, openbuddy-llama-65b, openbuddy-llama2-70b
    7. internlm series: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k
    8. other: polylm-13b, seqgpt-560m
-3. supported features: quantization, ddp, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
+3. supported features: quantization, DDP, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 4. supported datasets:
    1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
@@ -92,11 +92,14 @@ bash scripts/qwen_7b_chat/qlora/infer.sh
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
-# sft(full) and infer qwen-7b-chat, Requires 100GB GPU memory.
+# sft(full+mp) and infer qwen-7b-chat, Requires 2*50GB GPU memory.
 # Recommended experimental environment: A100
-bash scripts/qwen_7b_chat/full/sft.sh
-bash scripts/qwen_7b_chat/full/infer.sh
+bash scripts/qwen_7b_chat/full_mp/sft.sh
+bash scripts/qwen_7b_chat/full_mp/infer.sh
 
+# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*50GB GPU memory.
+bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
+bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 # For more scripts, please see `scripts/` folder.
 ```
 
