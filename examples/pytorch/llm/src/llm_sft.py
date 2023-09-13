@@ -115,7 +115,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-            "This parameter is used only when model_type.startswith('qwen-7b')"
+            "This parameter is used only when model_type.startswith('qwen')"
         })
 
     def __post_init__(self):
@@ -316,6 +316,8 @@ def llm_sft(args: SftArguments) -> None:
         model.config.use_cache = False
         model.enable_input_require_grads()
     if is_dist():
+        # Compatible with https://github.com/huggingface/transformers/pull/25903
+        training_args._frozen = False
         if args.gradient_checkpointing:
             training_args.ddp_find_unused_parameters = False
             training_args.ddp_broadcast_buffers = False

@@ -34,7 +34,7 @@
 5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## Prepare the Environment
-Experimental environment: A10, 3090, A100, ... (V100 does not support bf16, quantization)
+Experimental environment: V100, A10, 3090, A100, ... (V100 does not support bf16, quantization)
 ```bash
 # Installing miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh

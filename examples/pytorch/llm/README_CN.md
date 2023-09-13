@@ -35,7 +35,7 @@
 5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## 准备实验环境
-实验环境: A10, 3090, A100均可. (V100不支持bf16, 量化)
+实验环境: V100, A10, 3090, A100均可. (V100不支持bf16, 量化)
 ```bash
 # 安装miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
