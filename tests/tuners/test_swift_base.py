@@ -267,10 +267,13 @@ class TestSwift(unittest.TestCase):
         model = Swift.prepare_model(
             model,
             config={
-                'lora1':
-                LoRAConfig(target_modules=['query', 'key', 'value']),
-                'lora2':
-                LoRAConfig(target_modules=['query', 'key', 'value']),
+                'lora1': LoRAConfig(target_modules=['query', 'key', 'value']),
+                'lora2': LoRAConfig(target_modules=['query', 'key', 'value']),
+            })
+
+        model = Swift.prepare_model(
+            model,
+            config={
                 'adapter1':
                 AdapterConfig(
                     dim=model.config.hidden_size,
@@ -284,6 +287,7 @@ class TestSwift(unittest.TestCase):
                     method_name='feed_forward_chunk',
                     hidden_pos=0),
             })
+
         model.deactivate_adapter('adapter2')
         model.deactivate_adapter('lora2')
         outputs1 = model(**inputs)
