@@ -311,8 +311,7 @@ class LoRA:
 
                 def _forward(self, *args, **kwargs):
                     for _name, _module in sub_module.named_modules():
-                        if f'loramodule_{adapter_name}' in _name and _module.is_activated(
-                        ):
+                        if 'loramodule_' in _name and _module.is_activated():
                             return _module.forward(*args, **kwargs)
                     return self.forward_origin(*args, **kwargs)
 

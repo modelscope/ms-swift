@@ -62,9 +62,9 @@ class SwiftModel(nn.Module):
                 model, config, DEFAULT_ADAPTER)
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
-            for adapter_name, config in config.items():
+            for adapter_name, _config in config.items():
                 self.adapters[adapter_name] = self._prepare_model(
-                    model, config, adapter_name)
+                    model, _config, adapter_name)
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
