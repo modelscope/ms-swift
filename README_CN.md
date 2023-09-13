@@ -27,7 +27,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 关键特点：
 1. 通过集成ModelScope库，可以通过model id轻松获取模型。
 2. SWIFT提供的tuners可以组合在一起，以便在模型上探索多个tuners，以获得最佳结果。
-3. 支持调用`activate_adapter`或`deactivate_adapter`来使tuner激活或失活，用户可以用一个模型在不同线程中分时使用不同的tuners。
+3. 支持调用`activate_adapter`或`deactivate_adapter`来使tuner激活或失活，用户可以在推理时用一个模型在不同线程中使用多种tuners而互不干扰。
 
 ## 大模型微调的例子
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)

@@ -84,7 +84,7 @@ class ResTuningConfig(SwiftConfig):
             'The hook type of target modules, can be "input" or "output"'
         })
 
-    target_hidden_pos: str = field(
+    target_hidden_pos: Union[int, str] = field(
         default=None,
         metadata={
             'help':
@@ -118,6 +118,7 @@ class ResTuningConfig(SwiftConfig):
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.RESTUNING
+        self.target_hidden_pos = 0 if self.target_hidden_pos is None else self.target_hidden_pos
 
 
 class ResTuning:
@@ -136,26 +137,27 @@ class ResTuning:
 
         def _forward_target(self, *args, **kwargs):
             if self.target_modules_hook == 'input':
-                args = list(args)
-                _arg = args[0 if self.target_hidden_pos is None else self.
-                            target_hidden_pos]
+                if isinstance(self.target_hidden_pos, int):
+                    args = list(args)
+                    _arg = args[self.target_hidden_pos]
+                else:
+                    _arg = kwargs[self.target_hidden_pos]
                 args_main = _forward_restuning(self, _arg)
-                args[0 if self.target_hidden_pos is None else self.
-                     target_hidden_pos] = args_main
+                if isinstance(self.target_hidden_pos, int):
+                    args[self.target_hidden_pos] = args_main
+                else:
+                    kwargs[self.target_hidden_pos] = args_main
                 args_main = getattr(self,
                                     f'forward_origin_{adapter_name}')(*args,
                                                                       **kwargs)
             else:
                 _args_main = getattr(self, f'forward_origin_{adapter_name}')(
                     *args, **kwargs)
-                _arg = _args_main[0 if self.target_hidden_pos is None else self
-                                  .target_hidden_pos] if isinstance(
-                                      _args_main,
-                                      (tuple, list)) else _args_main
+                _arg = _args_main[self.target_hidden_pos] if isinstance(
+                    _args_main, (tuple, list, dict)) else _args_main
                 args_main = _forward_restuning(self, _arg)
                 if type(_args_main) != type(args_main):
-                    _args_main[0 if self.target_hidden_pos is None else self.
-                               target_hidden_pos] = args_main
+                    _args_main[self.target_hidden_pos] = args_main
                     args_main = _args_main
             return args_main
 

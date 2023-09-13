@@ -29,7 +29,7 @@ Key features:
 
 1. By integrating the ModelScope library, models can be readily obatined via a model-id.
 2. Tuners provided by SWIFT be combined together to allow exploration of multiple tuners on a model for best result.
-3. Support calling `activate_adapter`或`deactivate_adapter` to activate/deactivate a single tuner. User can use one model with different tuners in different threads in a time-sharing manner.
+3. Support calling `activate_adapter`或`deactivate_adapter` to activate/deactivate a single tuner. User can use one model with multiple tuners in different threads.
 
 ## LLM SFT Example
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)

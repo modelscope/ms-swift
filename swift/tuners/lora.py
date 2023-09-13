@@ -12,7 +12,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
-from peft.tuners.lora import LoraLayer
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
 from swift import get_logger
