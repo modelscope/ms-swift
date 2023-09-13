@@ -142,6 +142,18 @@ class TestSwift(unittest.TestCase):
             torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_lora_injection(self):
+
+        from swift.tuners.lora import Linear
+
+        def reset_parameters(self):
+            nn.Linear.reset_parameters(self)
+            if hasattr(self, 'lora_A'):
+                # initialize A the same way as the default for nn.Linear and B to zero
+                nn.init.ones_(self.lora_A)
+                nn.init.ones_(self.lora_B)
+
+        Linear.reset_parameters = reset_parameters
+
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         preprocessor = Preprocessor.from_pretrained(
