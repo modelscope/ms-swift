@@ -159,7 +159,7 @@ class SwiftModel(nn.Module):
             for name, output in self.adapters.items():
                 if adapter_name == name or adapter_name is None:
                     state_dicts.update(
-                        output.state_dict_callback(destination, adapter_name))
+                        output.state_dict_callback(destination, name))
         if kwargs.get('save_extra_states', True):
             state_dicts.update({
                 k: v
