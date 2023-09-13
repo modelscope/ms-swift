@@ -316,6 +316,7 @@ def llm_sft(args: SftArguments) -> None:
         model.config.use_cache = False
         model.enable_input_require_grads()
     if is_dist():
+        # Compatible with https://github.com/huggingface/transformers/pull/25903
         training_args._frozen = False
         if args.gradient_checkpointing:
             training_args.ddp_find_unused_parameters = False
