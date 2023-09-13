@@ -452,13 +452,13 @@ class Swift:
     """The Wrapper to use both Peft and Swift tuners."""
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: Union[SwiftConfig, PeftConfig,
-                                                      Dict[str, SwiftConfig]],
-                      **kwargs):
+    def prepare_model(model: Union[nn.Module, 'SwiftModel'],
+                      config: Union[SwiftConfig, PeftConfig,
+                                    Dict[str, SwiftConfig]], **kwargs):
         """Prepare a model by the input config.
 
         Args:
-            model(`nn.Module`): The model to be tuned.
+            model(`Union[nn.Module, 'SwiftModel']`): The model to be tuned.
             config(`Union[SwiftConfig, PeftConfig, Dict[str, SwiftConfig]]`): The config or config dict, can be either
                 SwiftConfigs or PeftConfigs
             **kwargs:
@@ -476,7 +476,7 @@ class Swift:
         raise ValueError(f'Unsupported swift config type: {config.__class__}')
 
     @staticmethod
-    def from_pretrained(model: nn.Module,
+    def from_pretrained(model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
                         adapter_name: Union[str, List[str]] = None,
                         revision: str = None,
@@ -484,7 +484,7 @@ class Swift:
         """Prepare a model by a model_id in the ModelScope hub or a local dir.
 
         Args:
-            model(`nn.Module`): The model to be tuned.
+            model(`Union[nn.Module, 'SwiftModel']`): The model to be tuned.
             model_id(`str`): The model id of the modelhub or a local dir containing the configs/weights.
             adapter_name(`str`, `optional`): The adapter_name to use.
             revision(`str`, `optional`): The model revision if the model_id is a model id of the modelhub.
