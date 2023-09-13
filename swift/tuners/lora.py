@@ -4,6 +4,7 @@
 import math
 import re
 from dataclasses import dataclass, field
+from types import MethodType
 from typing import Dict, List
 
 import torch
@@ -11,8 +12,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
-from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 from peft.tuners.lora import LoraLayer
+from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
@@ -175,8 +176,7 @@ class LoRA:
             fan_in_fan_out=config.fan_in_fan_out)
 
         def state_dict_callback(state_dict, adapter_name):
-            return lora_state_dict(state_dict, model.lora_module_map,
-                                   adapter_name, config.bias)
+            return lora_state_dict(state_dict, adapter_name, config.bias)
 
         def mark_trainable_callback(model):
             mark_lora_as_trainable(model, adapter_name, config.bias)
@@ -187,7 +187,8 @@ class LoRA:
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str,
                          activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(module, adapter_name)
+        modules: List[torch.nn.Module] = find_sub_module(
+            module, f'loramodule_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
             _module.set_activation(activate)
@@ -206,8 +207,6 @@ class LoRA:
         Returns:
             The lora modules
         """
-        if not hasattr(model, 'lora_module_map'):
-            model.lora_module_map = {}
         modules = {}
         module_keys = [key for key, _ in model.named_modules()]
         assert isinstance(replace_modules, (str, list))
@@ -222,10 +221,7 @@ class LoRA:
                     module_key.endswith(target_key)
                     for target_key in replace_modules)
             if target_module_found:  # noqa
-                parts = module_key.split('.')
-                module = model.get_submodule('.'.join(parts[:-1]))
                 sub_module = model.get_submodule(module_key)
-                _key = parts[-1]
 
                 lora_module = None
                 if getattr(model, 'is_loaded_in_8bit', False) and isinstance(
@@ -312,8 +308,13 @@ class LoRA:
                         dilation=sub_module.dilation,
                         groups=sub_module.groups,
                         **kwargs)
-                elif isinstance(sub_module, (LoRALayer, LoraLayer)):
 
+                def _forward(self, *args, **kwargs):
+                    for _name, _module in sub_module.named_modules():
+                        if f'loramodule_{adapter_name}' in _name and _module.is_activated(
+                        ):
+                            return _module.forward(*args, **kwargs)
+                    return self.forward_origin(*args, **kwargs)
 
                 if lora_module is not None:
                     lora_module.weight = sub_module.weight
@@ -322,11 +323,13 @@ class LoRA:
                     if getattr(sub_module, 'state', None) is not None:
                         lora_module.state = sub_module.state
                     lora_module.to(sub_module.weight.device)
-                    lora_module.adapter_name = adapter_name
-                    setattr(module, _key, lora_module)
+                    setattr(sub_module, f'loramodule_{adapter_name}',
+                            lora_module)
+                    if not hasattr(sub_module, 'forward_origin'):
+                        sub_module.forward_origin = sub_module.forward
+                        sub_module.forward = MethodType(_forward, sub_module)
                     modules[module_key] = adapter_name
 
-        model.lora_module_map.update(modules)
         logger.info(f'Lora modules(module_key -> adapter_name): {modules}')
 
     @staticmethod
@@ -341,8 +344,6 @@ class LoRA:
             model: The model called with `tune` function.
             config: The `LoRAConfig` to use.
         """
-        if not hasattr(model, 'lora_module_map'):
-            model.lora_module_map = {}
         module_keys = [key for key, _ in model.named_modules()]
         assert isinstance(config.replace_modules, (str, list))
         replace_modules = config.replace_modules
@@ -397,7 +398,6 @@ class LoRA:
                     origin_module.to(sub_module.weight.device).to(
                         sub_module.weight.dtype)
                     setattr(module, _key, origin_module)
-                    model.lora_module_map.pop(module_key, None)
 
 
 class LoRALayer(ActivationMixin):
@@ -420,6 +420,8 @@ class LoRALayer(ActivationMixin):
         # Mark the weight as unmerged
         self.merged = False
         self.merge_weights = merge_weights
+        if not self._unique_thread:
+            self.merge_weights = False
 
 
 class Embedding(nn.Embedding, LoRALayer):
@@ -801,8 +803,8 @@ def mark_lora_as_trainable(model: nn.Module,
             if 'bias' in n:
                 p.requires_grad = True
     elif bias == 'lora_only':
-        for m in model.modules():
-            if adapter_name == getattr(m, 'adapter_name', None) and \
+        for n, m in model.named_modules():
+            if f'loramodule_{adapter_name}' in n and \
                     hasattr(m, 'bias') and \
                     m.bias is not None:
                 m.bias.requires_grad = True
@@ -811,27 +813,25 @@ def mark_lora_as_trainable(model: nn.Module,
 
 
 def lora_state_dict(state_dict,
-                    module_map: Dict,
                     adapter_name: str,
                     bias: str = 'none') -> Dict[str, torch.Tensor]:
     if bias == 'none':
         return {
             k: state_dict[k]
             for k in state_dict
-            if 'lora_' in k and module_map.get(k[:k.find('lora_')
-                                                 - 1], None) == adapter_name
+            if f'loramodule_{adapter_name}' in k and 'lora_' in k
         }
     elif bias == 'all':
         return {
             k: state_dict[k]
-            for k in state_dict if ('lora_' in k and module_map.get(
-                k[:k.find('lora_') - 1], None) == adapter_name) or 'bias' in k
+            for k in state_dict
+            if ('lora_' in k and f'loramodule_{adapter_name}' in k) or (
+                'bias' in k and f'loramodule_{adapter_name}' not in k)
         }
     elif bias == 'lora_only':
         to_return = {}
         for k in state_dict:
-            if 'lora_' in k and module_map.get(k[:k.find('lora_') - 1],
-                                               None) == adapter_name:
+            if f'loramodule_{adapter_name}' in k and 'lora_' in k:
                 to_return[k] = state_dict[k]
                 bias_name = k.split('lora_')[0] + 'bias'
                 if bias_name in state_dict:

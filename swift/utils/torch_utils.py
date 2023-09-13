@@ -103,8 +103,7 @@ def find_sub_module(module: torch.nn.Module,
     for name, sub_module in module.named_modules():
         if not name:
             continue
-        if module_name == name or getattr(sub_module, 'adapter_name',
-                                          None) == module_name:
+        if module_name == name:
             _modules.append(sub_module)
         else:
             _modules.extend(find_sub_module(sub_module, module_name))
