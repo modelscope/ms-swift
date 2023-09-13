@@ -28,7 +28,7 @@ class SwiftModel(nn.Module):
     """The Swift wrapper model.
 
     Args:
-        model (`torch.nn.Module`) A module to be tuned by Swift.
+        model (`Union[nn.Module, 'SwiftModel']`) A module to be tuned by Swift.
         config (`Union[SwiftConfig, Dict[str, SwiftConfig]]`) A config or a dict of adapter_name: SwiftConfig.
             If it's a config class, the adapter_name will be `default`
         extra_state_keys (`List[str]`, `optional`) A list of regex to match the extra state keys to be saved.
@@ -36,12 +36,19 @@ class SwiftModel(nn.Module):
     """
 
     def __init__(self,
-                 model: nn.Module,
+                 model: Union[nn.Module, 'SwiftModel'],
                  config: Union[SwiftConfig, Dict[str, SwiftConfig]],
                  extra_state_keys: List[str] = None,
                  inference_mode: bool = False,
                  **kwargs):
         super().__init__()
+        self.adapters = {}
+        if isinstance(model, SwiftModel):
+            self.adapters = model.adapters
+            extra_state_keys = extra_state_keys or []
+            extra_state_keys.extend(model.extra_state_keys)
+            model = model.base_model
+
         if (getattr(model, 'hf_device_map', None) is not None) and (
                 len(set(model.hf_device_map.values()) & {'cpu', 'disk'}) > 0):
             from accelerate.hooks import remove_hook_from_submodules
@@ -50,7 +57,6 @@ class SwiftModel(nn.Module):
         for _, p in model.named_parameters():
             p.requires_grad = False
 
-        self.adapters = {}
         if isinstance(config, SwiftConfig):
             self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
                 model, config, DEFAULT_ADAPTER)

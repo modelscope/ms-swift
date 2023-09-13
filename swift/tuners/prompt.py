@@ -132,7 +132,7 @@ class Prompt:
                         else:
                             kwargs[config.attention_mask_pos] = attention_mask
 
-                    forward_output = self.forward_origin(*args, **kwargs)
+                    forward_output = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
                     if config.extract_embedding:
                         forward_output = getattr(
                             self,
@@ -140,7 +140,7 @@ class Prompt:
 
                     return forward_output
 
-                module.forward_origin = module.forward
+                setattr(module, f'forward_origin_{adapter_name}', module.forward)
                 module.forward = types.MethodType(_forward, module)
                 if isinstance(config.dim, list):
                     input_dim = config.dim[len(match_module_keys)]

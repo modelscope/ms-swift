@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
+from peft.tuners.lora import LoraLayer
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
@@ -311,6 +312,8 @@ class LoRA:
                         dilation=sub_module.dilation,
                         groups=sub_module.groups,
                         **kwargs)
+                elif isinstance(sub_module, (LoRALayer, LoraLayer)):
+
 
                 if lora_module is not None:
                     lora_module.weight = sub_module.weight

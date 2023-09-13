@@ -79,7 +79,7 @@ class Side:
                     )
 
                 def _forward(self, *args, **kwargs):
-                    args_main = self.forward_origin(*args, **kwargs)
+                    args_main = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
                     if isinstance(args_main, (tuple, list, dict)):
                         if isinstance(config.hidden_pos, str):
                             args_main[config.hidden_pos] = getattr(
@@ -94,7 +94,7 @@ class Side:
                         args_main = _type(args_main)
                     return args_main
 
-                if isinstance(tgt_module, nn.Sequential):
+                if isinstance(tgt_module, nn.Sequential) and not hasattr(tgt_module, 'tgt_module_keys'):
                     tgt_module.tgt_module_keys = copy.deepcopy(
                         list(tgt_module._modules.keys()))
 
@@ -105,10 +105,10 @@ class Side:
                             input = module(input)
                         return input
 
-                    tgt_module.forward_origin = types.MethodType(
-                        forward_seq, tgt_module)
+                    setattr(tgt_module, f'forward_origin_{adapter_name}', types.MethodType(
+                        forward_seq, tgt_module))
                 else:
-                    tgt_module.forward_origin = tgt_module.forward
+                    setattr(tgt_module, f'forward_origin_{adapter_name}', tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
                 side_module = SideModule(config.dim, config.side_module_name)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)

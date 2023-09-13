@@ -93,7 +93,7 @@ class Adapter:
                 module = model.get_submodule(module_key)
 
                 def _forward(self, *args, **kwargs):
-                    args = self.forward_origin(*args, **kwargs)
+                    args = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
                     if isinstance(args, (tuple, list, dict)):
                         if isinstance(config.hidden_pos, int):
                             _type = type(args)
@@ -115,9 +115,9 @@ class Adapter:
 
                 # TODO The `config.method_name` method should not be replaced twice.
 
-                module.forward_origin = getattr(module, config.method_name)
+                setattr(module, f'forward_origin_{adapter_name}', getattr(module, config.method_name))
                 num_args_in_forward_chunk_fn = len(
-                    inspect.signature(module.forward_origin).parameters)
+                    inspect.signature(getattr(module, f'forward_origin_{adapter_name}')).parameters)
                 if config.method_name == 'feed_forward_chunk' and num_args_in_forward_chunk_fn == 1:
                     setattr(module, config.method_name,
                             types.MethodType(_feed_forward_chunk, module))

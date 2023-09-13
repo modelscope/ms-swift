@@ -142,9 +142,9 @@ class ResTuning:
                 args_main = _forward_restuning(self, _arg)
                 args[0 if self.target_hidden_pos is None else self.
                      target_hidden_pos] = args_main
-                args_main = self.forward_origin(*args, **kwargs)
+                args_main = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
             else:
-                _args_main = self.forward_origin(*args, **kwargs)
+                _args_main = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
                 _arg = _args_main[0 if self.target_hidden_pos is None else self
                                   .target_hidden_pos] if isinstance(
                                       _args_main,
@@ -266,13 +266,14 @@ class ResTuning:
                 tgt_module.stem_module_ins_list = stem_module_ins_list
                 target_module_ins = tgt_module
 
-                if isinstance(tgt_module, nn.Sequential):
+                if isinstance(tgt_module, nn.Sequential) and not hasattr(tgt_module, 'origin_module_keys'):
                     tgt_module.origin_module_keys = copy.deepcopy(
                         list(tgt_module._modules.keys()))
-                    tgt_module.forward_origin = types.MethodType(
-                        _forward_seq, tgt_module)
+
+                    setattr(tgt_module, f'forward_origin_{adapter_name}', types.MethodType(
+                        _forward_seq, tgt_module))
                 else:
-                    tgt_module.forward_origin = tgt_module.forward
+                    setattr(tgt_module, f'forward_origin_{adapter_name}', tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward_target,
                                                       tgt_module)
         if target_module_ins is None:
