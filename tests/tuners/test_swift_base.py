@@ -142,11 +142,16 @@ class TestSwift(unittest.TestCase):
             torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_lora_injection(self):
-        model = SbertForSequenceClassification(SbertConfig())
+        model = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        input = preprocessor('this is a test')
         model2 = copy.deepcopy(model)
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, config=lora_config)
         self.assertTrue(isinstance(model, SwiftModel))
+        output1 = model(**input)
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
         self.assertTrue(
@@ -154,7 +159,8 @@ class TestSwift(unittest.TestCase):
                 os.path.join(self.tmp_dir, 'default', WEIGHTS_NAME)))
 
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
-
+        output2 = model2(**input)
+        self.assertTrue(torch.allclose(output1.logits, output2.logits))
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:
