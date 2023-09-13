@@ -115,7 +115,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-            "This parameter is used only when model_type.startswith('qwen-7b')"
+            "This parameter is used only when model_type.startswith('qwen')"
         })
 
     def __post_init__(self):
