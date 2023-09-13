@@ -243,12 +243,19 @@ class TestSwift(unittest.TestCase):
         model1 = Swift.prepare_model(
             model1,
             config={
-                'lora': LoRAConfig(target_modules=['query', 'key', 'value'])
+                'lora1': LoRAConfig(target_modules=['query', 'key', 'value']),
+                'adapter1':
+                AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=r'.*layer\.\d+$',
+                    method_name='feed_forward_chunk',
+                    hidden_pos=0)
             })
         model2 = Swift.prepare_model(
             model2,
             config={
-                'adapter':
+                'lora2': LoRAConfig(target_modules=['query', 'key', 'value']),
+                'adapter2':
                 AdapterConfig(
                     dim=model.config.hidden_size,
                     target_modules=r'.*layer\.\d+$',
@@ -258,34 +265,43 @@ class TestSwift(unittest.TestCase):
         model = Swift.prepare_model(
             model,
             config={
-                'lora':
-                LoRAConfig(target_modules=['query', 'key', 'value']),
-                'adapter':
-                AdapterConfig(
-                    dim=model.config.hidden_size,
-                    target_modules=r'.*layer\.\d+$',
-                    method_name='feed_forward_chunk',
-                    hidden_pos=0)
+                'lora1': LoRAConfig(target_modules=['query', 'key', 'value']),
+                'lora2': LoRAConfig(target_modules=['query', 'key', 'value']),
+                'adapter1':
+                    AdapterConfig(
+                        dim=model.config.hidden_size,
+                        target_modules=r'.*layer\.\d+$',
+                        method_name='feed_forward_chunk',
+                        hidden_pos=0),
+                'adapter2':
+                    AdapterConfig(
+                        dim=model.config.hidden_size,
+                        target_modules=r'.*layer\.\d+$',
+                        method_name='feed_forward_chunk',
+                        hidden_pos=0),
             })
-        model.deactivate_adapter('adapter')
+        model.deactivate_adapter('adapter2')
+        model.deactivate_adapter('lora2')
         outputs1 = model(**inputs)
         outputs2 = model1(**inputs)
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
-        model.activate_adapter('adapter')
-        model.deactivate_adapter('lora')
+        model.activate_adapter('adapter2')
+        model.activate_adapter('lora2')
+        model.deactivate_adapter('adapter1')
+        model.deactivate_adapter('lora1')
         outputs1 = model(**inputs)
         outputs2 = model2(**inputs)
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
 
         def thread_func1():
-            model.set_active_adapters(['lora'])
+            model.set_active_adapters(['lora1', 'adapter1'])
             outputs_single = model1(**inputs)
             outputs_t1 = model(**inputs)
             self.assertTrue(
                 torch.allclose(outputs_single.logits, outputs_t1.logits))
 
         def thread_func2():
-            model.set_active_adapters(['adapter'])
+            model.set_active_adapters(['lora2', 'adapter2'])
             outputs_single = model2(**inputs)
             outputs_t2 = model(**inputs)
             self.assertTrue(
