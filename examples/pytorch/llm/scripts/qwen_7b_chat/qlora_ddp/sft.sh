@@ -1,5 +1,5 @@
 # Experimental environment: 2 * 3090
-# 2 * 13GB GPU memory
+# 2 * 14GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -12,7 +12,7 @@ torchrun \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
-    --dataset alpaca-en,alpaca-zh \
+    --dataset advertise-gen \
     --dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \

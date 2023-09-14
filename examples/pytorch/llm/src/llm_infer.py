@@ -8,7 +8,7 @@ import torch
 from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    get_dataset, get_model_tokenizer, get_preprocess, inference,
-                   process_dataset, select_bnb, select_dtype, show_layers)
+                   select_bnb, select_dtype, show_layers)
 
 from swift import Swift, get_logger
 from swift.utils import parse_args, print_model_info, seed_everything
@@ -138,14 +138,13 @@ def llm_infer(args: InferArguments) -> None:
             inference(input_ids, model, tokenizer, streamer, generation_config,
                       args.skip_prompt)
     else:
-        dataset = get_dataset(args.dataset.split(','))
-        _, test_dataset = process_dataset(dataset, args.dataset_test_size,
-                                          args.dataset_sample,
-                                          args.dataset_seed)
-        mini_test_dataset = test_dataset.select(
-            range(min(10, test_dataset.shape[0])))
+        _, val_dataset = get_dataset(
+            args.dataset.split(','), args.dataset_test_ratio,
+            args.dataset_sample, args.dataset_seed)
+        mini_val_dataset = val_dataset.select(
+            range(min(10, val_dataset.shape[0])))
         del dataset
-        for data in mini_test_dataset:
+        for data in mini_val_dataset:
             response = data['response']
             data['response'] = None
             input_ids = preprocess_func(data)['input_ids']

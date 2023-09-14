@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 50GB GPU memory
+# 2 * 75GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
@@ -7,10 +7,10 @@ python src/llm_sft.py \
     --template_type chatml \
     --dtype bf16 \
     --output_dir runs \
-    --dataset alpaca-en,alpaca-zh \
-    --dataset_sample -1 \
+    --dataset damo-agent-zh \
+    --dataset_sample 200000 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 8192 \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.01 \

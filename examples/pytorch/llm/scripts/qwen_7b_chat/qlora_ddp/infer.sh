@@ -5,7 +5,10 @@ python src/llm_infer.py \
     --template_type chatml \
     --dtype bf16 \
     --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
-    --eval_human true \
+    --eval_human false \
+    --dataset advertise-gen \
+    --dataset_sample -1 \
+    --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --use_flash_attn false \

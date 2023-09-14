@@ -11,7 +11,7 @@ import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format,
+                   broadcast_string, check_json_format, dataset_map,
                    find_all_linear_for_lora, get_dataset, get_dist_setting,
                    get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
                    is_dist, is_master, plot_images, process_dataset,
@@ -51,7 +51,7 @@ class SftArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_sample: int = -1  # -1: all dataset
-    dataset_test_size: float = 0.01
+    dataset_test_ratio: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
 
@@ -236,18 +236,15 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(str(model))
 
     # ### Loading Dataset
-    dataset = get_dataset(args.dataset.split(','))
-    train_dataset, val_dataset = process_dataset(dataset,
-                                                 args.dataset_test_size,
-                                                 args.dataset_sample,
-                                                 args.dataset_seed)
+    train_dataset, val_dataset = get_dataset(
+        args.dataset.split(','), args.dataset_test_ratio, args.dataset_sample,
+        args.dataset_seed)
     preprocess_func = get_preprocess(args.template_type, tokenizer,
                                      args.system, args.max_length)
-    train_dataset = train_dataset.map(preprocess_func)
-    val_dataset = val_dataset.map(preprocess_func)
-    del dataset
+    train_dataset = dataset_map(train_dataset, preprocess_func)
+    val_dataset = dataset_map(val_dataset, preprocess_func)
     if args.test_oom_error:
-        train_dataset = sort_by_max_length(train_dataset)
+        train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)

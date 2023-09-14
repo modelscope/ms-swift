@@ -1,15 +1,14 @@
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type qwen-7b-chat \
+    --model_type chatglm2-6b \
     --sft_type lora \
-    --template_type chatml \
-    --dtype fp16 \
-    --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
+    --template_type chatglm2 \
+    --dtype bf16 \
+    --ckpt_dir "runs/chatglm2-6b/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset advertise-gen \
     --dataset_sample -1 \
     --max_length 2048 \
-    --use_flash_attn false \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 50 \
