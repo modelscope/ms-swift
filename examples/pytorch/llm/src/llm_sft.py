@@ -9,15 +9,14 @@ from typing import List, Optional
 import json
 import torch
 import torch.distributed as dist
-from examples.pytorch.llm.src.utils.metric_utils import compute_nlg_metrics
-from examples.pytorch.llm.src.utils.swift_utils import prepare_model
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, check_json_format,
                    find_all_linear_for_lora, get_dataset, get_dist_setting,
                    get_model_tokenizer, get_preprocess, is_dist, is_master,
                    plot_images, process_dataset, select_bnb, select_dtype,
-                   show_layers, sort_by_max_length)
+                   show_layers, sort_by_max_length,
+                   compute_nlg_metrics, prepare_model)
 
 from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
                    Swift, get_logger)
@@ -36,7 +35,7 @@ class SftArguments:
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora',
-        metadata={'help': f'adapter choices: {["lora", "full", "adapter", "restuning"]}'})
+        metadata={'help': f'tuner choices: {["lora", "full", "adapter", "restuning"]}'})
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -54,7 +53,7 @@ class SftArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: int = -1  # -1: all dataset
+    dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
@@ -271,7 +270,7 @@ def llm_sft(args: SftArguments) -> None:
         tokenizer,
         args.system,
         args.max_length,
-        validate_generation=True)
+        validate_generation=args.predict_with_generate)
     val_dataset = val_dataset.map(preprocess_func_eval)
     del dataset
     if args.test_oom_error:

@@ -37,13 +37,12 @@ class InferArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: int = -1  # -1: all dataset
+    dataset_sample: int = 20000  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
 
-    quantization_bit: Optional[int] = field(
-        default=None, metadata={'choices': {4, 8}})
+    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
     bnb_4bit_comp_dtype: str = field(
         default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(

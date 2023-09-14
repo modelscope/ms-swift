@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-import torch.nn
+from torch.nn import Module
 
 from swift import (AdapterConfig, LoRAConfig, ResTuningConfig, Swift,
                    SwiftConfig, SwiftTuners, get_logger)
@@ -12,8 +12,7 @@ logger = get_logger()
 
 
 def prepare_model(
-    model: torch.nn.Module,
-    args: Any,
+    model: Module, args
 ):
     swift_config: Dict[str, SwiftConfig] = dict()
     for sft_type in [_type.strip() for _type in args.sft_type.split(',')]:

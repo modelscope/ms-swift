@@ -22,6 +22,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # performance
         self.perf: Dict[str, Any] = {
             'gen_time':
             0.,
