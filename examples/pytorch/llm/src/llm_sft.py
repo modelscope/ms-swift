@@ -11,12 +11,12 @@ import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format, dataset_map,
-                   find_all_linear_for_lora, get_dataset, get_dist_setting,
-                   get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
-                   is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers, sort_by_max_length,
-                   compute_nlg_metrics, prepare_model)
+                   broadcast_string, check_json_format, compute_nlg_metrics,
+                   dataset_map, find_all_linear_for_lora, get_dataset,
+                   get_dist_setting, get_model_tokenizer, get_preprocess,
+                   is_ddp_plus_mp, is_dist, is_master, plot_images,
+                   prepare_model, process_dataset, select_bnb, select_dtype,
+                   show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
                    Swift, get_logger)
@@ -35,7 +35,10 @@ class SftArguments:
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora',
-        metadata={'help': f'tuner choices: {["lora", "full", "adapter", "restuning"]}'})
+        metadata={
+            'help':
+            f'tuner choices: {["lora", "full", "adapter", "restuning"]}'
+        })
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'

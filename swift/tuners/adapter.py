@@ -26,10 +26,12 @@ class AdapterConfig(SwiftConfig):
     See http://arxiv.org/abs/1902.00751
 
     Args:
-        dim: The dimension of the hidden states
-        target_modules: The feedforward module to be replaced, in regex format
-        hidden_pos: The position of the hidden state to passed into the adapter, can be int (args) or str (kwargs)
-        method_name: The method to be replaced, default to replace the forward method
+        dim(`int`): The dimension of the hidden states
+        target_modules(`Union[str, List[str]]`): The feedforward module to be replaced.
+            in regex format if this argument is str, else will match with `end with` if List[str].
+        hidden_pos(`Union[str, int]`): The position of the hidden state to be passed into the adapter,
+            can be int (args) or str (kwargs)
+        method_name(`str`): The method to be replaced, default is `forward`
         adapter_length: The length of the adapter length (intermediate length)
         act_layer: The activation layer of the adapter
     """
@@ -37,25 +39,24 @@ class AdapterConfig(SwiftConfig):
     dim: int = field(
         default=None, metadata={'help': 'The dimension of the hidden states'})
 
-    target_modules: str = field(
+    target_modules: Union[str, List[str]] = field(
         default=None,
         metadata={
-            'help': 'The feedforward module to be replaced, in regex format'
+            'help':
+            'The feedforward module to be replaced. in regex format if this argument is str, '
+            'else will match with `end with` if List[str].'
         })
 
     hidden_pos: Union[str, int] = field(
         default=None,
         metadata={
             'help':
-            'The position of the hidden state to passed into the adapter, can be int (args) or str (kwargs)'
+            'The position of the hidden state to be passed into the adapter, can be int (args) or str (kwargs)'
         })
 
     method_name: str = field(
         default='forward',
-        metadata={
-            'help':
-            'The method to be replaced, default to replace the forward method'
-        })
+        metadata={'help': 'The method to be replaced, default is `forward`'})
 
     adapter_length: int = field(
         default=128,
@@ -182,7 +183,6 @@ class AdapterModule(nn.Module, ActivationMixin):
         super(nn.Module, self).__init__()
         self.dim = dim
         self.adapter_length = adapter_length
-        # self.adapter_type = adapter_type
         self.linear1 = nn.Linear(dim, adapter_length)
         self.act = act_layer()
         self.linear2 = nn.Linear(adapter_length, dim)

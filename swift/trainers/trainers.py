@@ -8,13 +8,14 @@ from torch import nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
-try: 
-    from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-except ImportError:
-    from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
+
+try:
+    from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+except ImportError:
+    from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):

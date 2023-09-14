@@ -28,14 +28,15 @@ class PromptConfig(SwiftConfig):
     Here we apply the VPT to other fields.
 
     Args:
-        dim: The dimension of the hidden states
-        target_modules: The layer module to be replaced, in regex format
-        embedding_pos: The position of the embedding tensor
-        attention_mask_pos: The position of the attention mask
-        attention_mask_value: The value to pad to the attention mask
-        prompt_length: The length of the prompt tokens
-        attach_front: When set to True, prompt is attached in front of the embedding
-        extract_embedding: Whether the embedding is extracted at final stage to keep the same dims with inputs
+        dim(`Union[int, List[int]]`): The dimension of the hidden states, use list if there are up-sample blocks
+            or down-sample blocks
+        target_modules(str): The layer module to be replaced, in regex format
+        embedding_pos(Union[str, int]): The position of the embedding tensor
+        attention_mask_pos(Union[str, int]): The position of the attention mask
+        attention_mask_value(Union[float, int, bool]): The value to pad to the attention mask
+        prompt_length(int): The length of the prompt tokens
+        attach_front(bool): When set to True, prompt is attached in front of the embedding
+        extract_embedding(bool): Whether the embedding is extracted at final stage to keep the same dims with inputs
     """
 
     dim: Union[int, List[int]] = field(

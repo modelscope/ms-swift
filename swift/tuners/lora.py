@@ -5,7 +5,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from types import MethodType
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import torch
 import torch.nn as nn
@@ -106,19 +106,20 @@ class LoRAConfig(SwiftConfig):
     The configuration class for the loRA module.
 
     Args:
-        r: The rank of the LoRA module
-        target_modules: The modules to be replaced by LoRA, can be the end of the module name or a regex string
-        lora_alpha: The factor to add the lora weights
-        lora_dropout: The dropout rate of the lora module
-        merge_weights: Whether to merge weights when validating
-        use_merged_linear: Whether to replace with merged linear layer
-        enable_lora: The modules need to be turned on when using the merged linear layer
-        fan_in_fan_out: Set this to True if the layer to replace stores weight like (fan_in, fan_out)
-        bias: Bias type. Values ca be "none", "all" or "lora_only"
+        r(int): The rank of the LoRA module
+        target_modules(List[str]): The modules to be replaced by LoRA,
+            can be the end of the module name or a regex string
+        lora_alpha(float): The factor to add the lora weights
+        lora_dropout(float): The dropout rate of the lora module
+        merge_weights(bool): Whether to merge weights when validating
+        use_merged_linear(bool): Whether to replace with merged linear layer
+        enable_lora(List[bool]): The modules need to be turned on when using the merged linear layer
+        fan_in_fan_out(bool): Set this to True if the layer to replace stores weight like (fan_in, fan_out)
+        bias(str): Bias type. Values ca be "none", "all" or "lora_only"
     """
 
     r: int = field(default=6, metadata={'help': 'The rank of the LoRA module'})
-    target_modules: List = field(
+    target_modules: List[str] = field(
         default=None,
         metadata={
             'help':
@@ -193,18 +194,19 @@ class LoRA:
             _module.set_activation(activate)
 
     @staticmethod
-    def _dynamic_patch_lora(model, replace_modules, use_merged_linear,
-                            adapter_name, **kwargs):
+    def _dynamic_patch_lora(model: torch.nn.Module,
+                            replace_modules: Union[str, List[str]],
+                            use_merged_linear: bool, adapter_name: str,
+                            **kwargs):
         """Dynamic patch lora to model
 
         Args:
-            model: The torch.nn.Module containing the target module to be patched.
-            replace_modules: The module names to be replaced, the replacing strategy is `end with`.
-            use_merged_linear: Whether to replace with merged linear layer
+            model(`torch.nn.Module`): The torch.nn.Module containing the target module to be patched.
+            replace_modules(`Union[str, List[str]]`): The module names to be replaced,
+                the replacing strategy is `end with`.
+            use_merged_linear(bool): Whether to replace with merged linear layer.
+            adapter_name(str): The adapter name.
             **kwargs: The arguments passed from `tune` which are needed by lora.
-
-        Returns:
-            The lora modules
         """
         modules = {}
         module_keys = [key for key, _ in model.named_modules()]
