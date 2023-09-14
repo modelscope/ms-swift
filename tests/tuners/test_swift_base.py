@@ -359,7 +359,7 @@ class TestSwift(unittest.TestCase):
             dim=model.config.hidden_size,
             target_modules=r'.*encoder.encoder',
             side_module_name='mlp',
-            hidden_pos='last_hidden_state')
+            target_hidden_pos='last_hidden_state')
 
         model = Swift.prepare_model(model, config=side_config)
         result_activate = model(**inputs).logits

@@ -44,14 +44,21 @@ class SideConfig(SwiftConfig):
         })
 
     side_module_name: str = field(
-        default=1.,
+        default='fcn4',
         metadata={'help': 'The name of the additive side networks'})
 
-    hidden_pos: Union[str, int] = field(
+    source_hidden_pos: Union[str, int] = field(
         default=0,
         metadata={
             'help':
-            'The position of the hidden state to passed into the adapter, can be int (args) or str (kwargs)'
+            'The position of the hidden state input to the target module, can be int (args) or str (kwargs)'
+        })
+
+    target_hidden_pos: Union[str, int] = field(
+        default=0,
+        metadata={
+            'help':
+            'The position of the hidden state output from the target module, can be int (args) or str (kwargs)'
         })
 
     def __post_init__(self):
@@ -82,18 +89,19 @@ class Side:
                     args_main = getattr(
                         self, f'forward_origin_{adapter_name}')(*args,
                                                                 **kwargs)
-                    if isinstance(args_main, (tuple, list, dict)):
-                        if isinstance(config.hidden_pos, str):
-                            args_main[config.hidden_pos] = getattr(
-                                self, f'side_{adapter_name}')(
-                                    *args, args_main[config.hidden_pos])
+
+                    if isinstance(config.source_hidden_pos, int):
+                        x = args[config.source_hidden_pos]
                     else:
-                        _type = type(args_main)
-                        args_main = list(args_main)
-                        args_main[config.hidden_pos] = getattr(
-                            self, f'side_{adapter_name}')(
-                                *args, args_main[config.hidden_pos])
-                        args_main = _type(args_main)
+                        x = kwargs[config.source_hidden_pos]
+
+                    x_main = args_main[config.target_modules] \
+                        if isinstance(args_main, (tuple, list, dict)) else args_main
+                    out = getattr(self, f'side_{adapter_name}')(x, x_main)
+                    if isinstance(args_main, (tuple, list, dict)):
+                        args_main[config.target_modules] = out
+                    else:
+                        args_main = out
                     return args_main
 
                 if isinstance(tgt_module, nn.Sequential) and not hasattr(

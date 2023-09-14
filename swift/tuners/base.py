@@ -29,7 +29,7 @@ class SwiftModel(nn.Module):
 
     Args:
         model (`Union[nn.Module, 'SwiftModel']`) A module to be tuned by Swift.
-        config (`Union[SwiftConfig, Dict[str, SwiftConfig]]`) A config or a dict of adapter_name: SwiftConfig.
+        config (`Union[SwiftConfig, Dict[str, SwiftConfig]]`) A config or a dict of {adapter_name: SwiftConfig}.
             If it's a config class, the adapter_name will be `default`
         extra_state_keys (`List[str]`, `optional`) A list of regex to match the extra state keys to be saved.
         inference_mode (bool, `optional`): Load model at inference mode, default False.
@@ -202,7 +202,7 @@ class SwiftModel(nn.Module):
 
     @classmethod
     def from_pretrained(cls,
-                        model: nn.Module,
+                        model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
                         adapter_name: Union[str, List[str]] = None,
                         inference_mode: bool = False,
@@ -211,9 +211,11 @@ class SwiftModel(nn.Module):
         """Load a set of tuners and corresponding weights by a model_id.
 
         Args:
-            model (`torch.nn.Module`): The model to be tuned.
-            model_id (`str`): The model_id or a local model dir to use to tune the model.
+            model (`Union[torch.nn.Module, 'SwiftModel']`): The model to be tuned,
+                if the model is already a `SwiftModel` it will be un-wrapped and re-wrapped..
+            model_id (`str`): The model_id or a local model dir of tuners to use to tune the model.
             adapter_name (`Union[str, List[str]]`): The adapter_names saved in the model repo to load.
+                Default `None`, means load all tuners saved in the model_id
             inference_mode (`bool`): Use in the inference mode or not.
             revision (`str`): The model revision to use.
             **kwargs:
@@ -246,6 +248,10 @@ class SwiftModel(nn.Module):
                                                 list) else [adapter_name]:
             sub_folder = os.path.join(model_dir, _name)
             config_file = os.path.join(sub_folder, CONFIG_NAME)
+
+            if not os.path.isfile(config_file):
+                logger.warning(f'{_name} is not a valid tuner')
+                continue
 
             with open(config_file, 'r') as file:
                 json_object = json.load(file)
@@ -315,7 +321,6 @@ class SwiftModel(nn.Module):
             lines.append(
                 f'{training_procedure_heading}\n{training_config_text}')
 
-        # Adds peft version
         framework_block_heading = '### Framework versions\n'
         from swift.version import __version__
         if framework_block_heading in lines:
@@ -325,6 +330,11 @@ class SwiftModel(nn.Module):
         else:
             lines.append(
                 f'{framework_block_heading}\n\n- SWIFT {__version__}\n')
+
+        base_model_heading = '### Base model information\n'
+        lines.append(
+            f'{base_model_heading}\n\n- BaseModel Class {self.base_model.__class__.__name__}\n'
+        )
 
         # write the lines back to README.md
         with open(os.path.join(output_dir, 'README.md'), 'w') as f:

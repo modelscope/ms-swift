@@ -28,16 +28,19 @@ class ResTuningConfig(SwiftConfig):
     See
 
     Args:
-        dims: The dimensions of the hidden states
-        root_modules: The root module to be replaced, can a regex string
-        root_modules_hook: The hook type of root modules, can be "input" or "output"
-        stem_modules: The stem modules to be replaced, can a regex string or name list of full match format
-        stem_modules_hook: The hook type of stem modules, can be "input" or "output"
-        target_modules: The target module to be replaced, can a regex string
-        target_modules_hook: The hook type of target modules, can be "input" or "output"
-        tuner_cfg: The configuration of the tuning module, can a string or customized config
-        use_upsample: Whether to use auxiliary upsample module
-        use_bypass: Whether to use bypass
+        dims(`Union[List[int], int]`): The dimensions of the hidden states
+        root_modules(`str`): The root module to be replaced, can a regex string
+        root_modules_hook(`str`): The hook type of root modules, can be "input" or "output"
+        stem_modules(`Union[List[str], str]`): The stem modules to be replaced,
+            can a regex string or name list of full match format
+        stem_modules_hook(`Union[List[str], str]`): The hook type of stem modules, can be "input" or "output"
+        target_modules(`str`): The target module to be replaced, can a regex string
+        target_modules_hook(`str`): The hook type of target modules, can be "input" or "output"
+        tuner_cfg(`Union[List[Dict], Dict, str]`): The configuration of the tuning module,
+            can a string or customized config
+        use_upsample(bool): Whether to use auxiliary upsample module
+        upsample_out_channels(List[int]): The channels if `use_upsample`
+        zero_init_last(bool): Use zero to initialize the last Linear in every sub tuner.
 
     """
 
