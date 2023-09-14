@@ -217,7 +217,7 @@ class PromptModule(nn.Module, ActivationMixin):
         if not self.is_activated():
             return x
         prompt_token = self.prompt_token.expand(x.shape[0], -1,
-                                                -1).to(x.device)
+                                                -1).to(x.device, x.dtype)
 
         if self.layer_num == 0:
             if self.attach_front:
