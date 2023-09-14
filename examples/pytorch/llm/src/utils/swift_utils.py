@@ -11,9 +11,7 @@ from .utils import find_all_linear_for_lora
 logger = get_logger()
 
 
-def prepare_model(
-    model: Module, args
-):
+def prepare_model(model: Module, args) -> Module:
     swift_config: Dict[str, SwiftConfig] = dict()
     for sft_type in [_type.strip() for _type in args.sft_type.split(',')]:
         if sft_type.lower() == SwiftTuners.LORA.lower():

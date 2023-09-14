@@ -89,12 +89,11 @@ def print_model_info(model: Module, name: Optional[str] = None) -> None:
     n_params /= 1e6
     n_grads /= 1e6
     n_buffers /= 1e6
-    s = [
-        f'{name}: ', f'{n_params:.4f}M Params ({n_grads:.4f}M Trainable), ',
-        f'{n_buffers:.4f}M Buffers, ',
-        f'Trainable percentage: {100 * n_grads / n_params:.2f}%.'
-    ]
-    logger.info(''.join(s))
+    s = (f'{name}: '
+         f'{n_params:.4f}M Params ({n_grads:.4f}M Trainable '
+         f'[{100 * n_grads / n_params:.4f}%]), '
+         f'{n_buffers:.4f}M Buffers.')
+    logger.info(s)
 
 
 def find_sub_module(module: torch.nn.Module,

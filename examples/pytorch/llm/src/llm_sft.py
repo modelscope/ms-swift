@@ -11,12 +11,12 @@ import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format, dataset_map,
-                   find_all_linear_for_lora, get_dataset, get_dist_setting,
-                   get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
-                   is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers, sort_by_max_length,
-                   compute_nlg_metrics, prepare_model)
+                   broadcast_string, check_json_format, compute_nlg_metrics,
+                   dataset_map, find_all_linear_for_lora, get_dataset,
+                   get_dist_setting, get_model_tokenizer, get_preprocess,
+                   is_ddp_plus_mp, is_dist, is_master, plot_images,
+                   prepare_model, process_dataset, select_bnb, select_dtype,
+                   show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
                    Swift, get_logger)
@@ -35,7 +35,10 @@ class SftArguments:
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora',
-        metadata={'help': f'tuner choices: {["lora", "full", "adapter", "restuning"]}'})
+        metadata={
+            'help':
+            f'tuner choices: {["lora", "full", "adapter", "restuning"]}'
+        })
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -234,15 +237,15 @@ def llm_sft(args: SftArguments) -> None:
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     if args.resume_from_ckpt is None:
-        model = prepare_model(model, args)
+        if args.sft_type != 'full':
+            model = prepare_model(model, args)
     else:
         model = Swift.from_pretrained(
             model, args.resume_from_ckpt, is_trainable=True)
 
     show_layers(model)
     print_model_info(model)
-    logger.info(str(model))
-    logger.info(model.get_trainable_parameters())
+    logger.info(model)
 
     # ### Loading Dataset
     dataset = get_dataset(args.dataset.split(','))
@@ -311,8 +314,7 @@ def llm_sft(args: SftArguments) -> None:
         do_eval=True,
         evaluation_strategy='steps',
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=1
-        if args.predict_with_generate else args.batch_size,
+        per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
