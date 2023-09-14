@@ -1,4 +1,6 @@
 # Experimental environment: 2 * A100
+# 2 * 27GB GPU memory
+# use_flash_attn=false: 2 * 31GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -14,10 +16,10 @@ torchrun \
     --dataset alpaca-en,alpaca-zh \
     --dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 1024 \
+    --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout_p 0. \
     --lora_target_modules c_attn c_proj \
     --gradient_checkpointing false \
     --batch_size 1 \

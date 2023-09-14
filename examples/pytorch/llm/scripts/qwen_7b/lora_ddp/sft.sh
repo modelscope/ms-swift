@@ -6,17 +6,17 @@ torchrun \
     src/llm_sft.py \
     --model_type qwen-7b \
     --sft_type lora \
-    --template_type default \
+    --template_type default-generation \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
-    --dataset alpaca-en,alpaca-zh \
+    --dataset dureader-robust-zh \
     --dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 1024 \
+    --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout_p 0. \
     --lora_target_modules c_attn c_proj \
     --gradient_checkpointing false \
     --batch_size 1 \

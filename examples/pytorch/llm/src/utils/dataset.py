@@ -6,13 +6,11 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
 from tqdm.auto import tqdm
 
-from swift.utils import get_seed
 from .preprocess import History
 from .utils import download_dataset
 
@@ -322,35 +320,87 @@ def get_gpt4all_en_dataset() -> HfDataset:
     return _preprocess_alpaca_dataset(dataset)
 
 
-def _preprocess_nli(dataset: HfDataset) -> HfDataset:
-    cls_mapping = ['neutral', 'entailment', 'contradiction']
-    prompt = """Input:
-    Sentence1: {sentence1}
-    Sentence2: {sentence2}
-Classification: neutral, entailment, contradiction
-Output: """
+def _preprocess_cls_dataset(dataset: HfDataset, cls_mapping: List[str],
+                            task: str, pair_seq: bool) -> HfDataset:
+    category = ', '.join(cls_mapping)
+    if pair_seq:
+        input_ = 'Sentence1: {sentence1}\nSentence2: {sentence2}'
+    else:
+        input_ = 'Sentence: {sentence}'
+    prompt = f"""Task: {task}
+{input_}
+Category: {category}
+Label: """
     query = []
     response = []
     for d in tqdm(dataset):
-        query.append(
-            prompt.format(sentence1=d['sentence1'], sentence2=d['sentence2']))
-        label = d['label']
+        if d['label'] is None:
+            continue
+        if pair_seq:
+            q = prompt.format(
+                sentence1=d['sentence1'], sentence2=d['sentence2'])
+        else:
+            q = prompt.format(sentence=d['sentence'])
+        query.append(q)
+        label = int(d['label'])
         response.append(cls_mapping[label])
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
 def get_cmnli_zh_dataset() -> HfDataset:
+    """Natural Language Inference"""
     dataset_dict = MsDataset.load('clue', subset_name='cmnli')
     dataset: HfDataset = concatenate_datasets([
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['validation'].to_hf_dataset(),
         dataset_dict['test'].to_hf_dataset(),
     ])
-    return _preprocess_nli(dataset)
+    cls_mapping = ['neutral', 'entailment', 'contradiction']
+    return _preprocess_cls_dataset(dataset, cls_mapping,
+                                   'Natural Language Inference', True)
+
+
+def get_jd_zh_dataset() -> HfDataset:
+    """Sentiment classification"""
+    dataset_dict = MsDataset.load('DAMO_NLP/jd')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset()
+    ])
+
+    cls_mapping = ['negative', 'positive']
+    return _preprocess_cls_dataset(dataset, cls_mapping,
+                                   'Sentiment Classification', False)
+
+
+def _process_dureader_robust(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Question Generation
+Context: {context}
+Answer: {answer}
+Question: """
+    query = []
+    response = []
+    for d in dataset:
+        answer, context = d['text1'].split('[SEP]')
+        q = prompt.format(context=context, answer=answer)
+        query.append(q)
+        response.append(d['text2'])
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_dureader_robust_qg_zh_dataset() -> HfDataset:
+    """Question Generation"""
+    dataset_dict = MsDataset.load('modelscope/DuReader_robust-QG')
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['validation'].to_hf_dataset(),
+        dataset_dict['test'].to_hf_dataset()
+    ])
+    return _process_dureader_robust(dataset)
 
 
 DATASET_MAPPING = {
-    # nlp
+    # nlp chat
     'alpaca-en': get_alpaca_gpt4_en_dataset,
     'alpaca-zh': get_alpaca_gpt4_zh_dataset,
     'finance-en': get_finance_en_dataset,
@@ -366,8 +416,11 @@ DATASET_MAPPING = {
     'poetry-zh': get_poetry_zh_dataset,
     'instruct-en': get_instruct_en_dataset,
     'gpt4all-en': get_gpt4all_en_dataset,
+    # nlp text-generation (please use model:base, template:default-generation)
     'cmnli-zh': get_cmnli_zh_dataset,
-    # multi-modal
+    'jd-zh': get_jd_zh_dataset,
+    'dureader-robust-zh': get_dureader_robust_qg_zh_dataset,
+    # multi-modal chat
     'coco-en': get_coco_en_dataset,
     'advertise_gen': get_advertise_gen_dataset,
     'du_reader': get_du_reader_dataset,
@@ -398,15 +451,3 @@ def get_dataset(
             val_dataset = val_datasets[0]
         dataset = (train_dataset, val_dataset)
     return dataset
-
-
-def process_dataset(dataset: HfDataset, dataset_test_size: float,
-                    dataset_sample: int,
-                    dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
-    random_state = np.random.RandomState(dataset_seed)
-    if dataset_sample >= 0:
-        index = random_state.permutation(len(dataset))[:dataset_sample]
-        dataset = dataset.select(index)
-    dataset = dataset.train_test_split(
-        dataset_test_size, seed=get_seed(random_state))
-    return dataset['train'], dataset['test']

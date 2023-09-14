@@ -40,7 +40,7 @@ class InferArguments:
     dataset_sample: int = -1  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
-    max_length: Optional[int] = 1024
+    max_length: Optional[int] = 2048
 
     quantization_bit: Optional[int] = field(
         default=None, metadata={'choices': {4, 8}})

@@ -282,7 +282,7 @@ class SwiftMixin:
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
 
     def _save_checkpoint(self, model, trial, metrics=None):
-        only_save_model = getattr(self.args, 'only_save_model', False)
+        only_save_model = self.args.only_save_model
         if only_save_model:
             return self._only_save_model(model, trial, metrics)
         else:
@@ -329,3 +329,10 @@ class SwiftMixin:
         # Maybe delete some older checkpoints.
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+
+    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+        train_sampler_random = self.args.train_sampler_random
+        if train_sampler_random:
+            return super()._get_train_sampler()
+        else:
+            return self._get_eval_sampler(self.train_dataset)

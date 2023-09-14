@@ -6,16 +6,18 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import List, Optional
 
+import json
 import torch
 import torch.distributed as dist
 from examples.pytorch.llm.src.utils.metric_utils import compute_nlg_metrics
 from examples.pytorch.llm.src.utils.swift_utils import prepare_model
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, get_dataset, get_dist_setting,
+                   broadcast_string, check_json_format,
+                   find_all_linear_for_lora, get_dataset, get_dist_setting,
                    get_model_tokenizer, get_preprocess, is_dist, is_master,
                    plot_images, process_dataset, select_bnb, select_dtype,
-                   show_layers)
+                   show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
                    Swift, get_logger)
@@ -32,8 +34,9 @@ class SftArguments:
     model_type: str = field(
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
-    # qwen-7b: lora+4bitQ: 10G, lora+8bitQ: 14G, lora: 22G; full: 95G
-    sft_type: str = field(default='lora')
+    sft_type: str = field(
+        default='lora',
+        metadata={'help': f'adapter choices: {["lora", "full", "adapter", "restuning"]}'})
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -54,13 +57,12 @@ class SftArguments:
     dataset_sample: int = -1  # -1: all dataset
     dataset_test_size: float = 0.01
     system: str = 'you are a helpful assistant!'
-    max_length: Optional[int] = 1024
+    max_length: Optional[int] = 2048
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
     # note: bf16 and quantization have requirements for gpu architecture
-    quantization_bit: Optional[int] = field(
-        default=None, metadata={'choices': {4, 8}})
+    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
     bnb_4bit_comp_dtype: str = field(
         default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
@@ -70,7 +72,7 @@ class SftArguments:
     lora_target_modules: Optional[List[str]] = None
     lora_rank: int = 8
     lora_alpha: int = 32
-    lora_dropout_p: float = 0.1
+    lora_dropout_p: float = 0.
     adapter_length: int = 32
 
     gradient_checkpointing: bool = False
@@ -108,6 +110,13 @@ class SftArguments:
         })
 
     # other
+    test_oom_error: bool = field(
+        default=False,
+        metadata={
+            'help':
+            'If set to True, the train_dataset will be sorted in descending order based on max_length, '
+            'enabling faster detection of OOM (Out of Memory) errors.'
+        })
     use_flash_attn: Optional[bool] = field(
         default=None,
         metadata={
@@ -129,7 +138,7 @@ class SftArguments:
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
-            if self.ddp_backend == 'gloo' and self.quantization_bit is not None:
+            if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 
             # Initialize in advance
@@ -176,8 +185,6 @@ class SftArguments:
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-{self.sft_type}'
             logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-        if self.use_flash_attn is None:
-            self.use_flash_attn = 'auto'
         if self.push_to_hub:
             api = HubApi()
             if self.hub_token is None:
@@ -188,6 +195,10 @@ class SftArguments:
                 assert ModelScopeConfig.get_token(
                 ) is not None, 'Please enter hub_token'
             logger.info('hub login successful!')
+
+        if self.use_flash_attn is None:
+            self.use_flash_attn = 'auto'
+        self.train_sampler_random = not self.test_oom_error
 
 
 def llm_sft(args: SftArguments) -> None:
@@ -263,13 +274,15 @@ def llm_sft(args: SftArguments) -> None:
         validate_generation=True)
     val_dataset = val_dataset.map(preprocess_func_eval)
     del dataset
+    if args.test_oom_error:
+        train_dataset = sort_by_max_length(train_dataset)
     # Data analysis
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)
     data_collator = partial(data_collate_fn, tokenizer=tokenizer)
     print_example(train_dataset[0], tokenizer)
 
-    # ### Setting trainer_args
+    # ### Setting training_args
     output_dir = None
     if is_master():
         output_dir = add_version_to_work_dir(args.output_dir)
@@ -280,9 +293,15 @@ def llm_sft(args: SftArguments) -> None:
     parameters = inspect.signature(
         Seq2SeqTrainingArguments.__init__).parameters
     kwargs = {}
-    if 'only_save_model' in parameters:
-        kwargs['only_save_model'] = args.only_save_model
-    trainer_args = Seq2SeqTrainingArguments(
+    for k in ['only_save_model', 'train_sampler_random']:
+        if k in parameters:
+            kwargs[k] = getattr(args, k)
+        else:
+            logger.warning(
+                f'The `{k}` parameter is invalid. '
+                'You can resolve this warning by upgrading ms-swift or installing from source.'
+            )
+    training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         do_train=True,
         do_eval=True,
@@ -331,17 +350,17 @@ def llm_sft(args: SftArguments) -> None:
         model.enable_input_require_grads()
     if is_dist():
         if args.gradient_checkpointing:
-            trainer_args.ddp_find_unused_parameters = False
-            trainer_args.ddp_broadcast_buffers = False
+            training_args.ddp_find_unused_parameters = False
+            training_args.ddp_broadcast_buffers = False
         else:
-            trainer_args.ddp_find_unused_parameters = True
-            trainer_args.ddp_broadcast_buffers = True
+            training_args.ddp_find_unused_parameters = True
+            training_args.ddp_broadcast_buffers = True
 
-    logger.info(f'trainer_args: {trainer_args}')
+    logger.info(f'training_args: {training_args}')
 
     trainer = Seq2SeqTrainer(
         model=model,
-        args=trainer_args,
+        args=training_args,
         data_collator=data_collator,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
@@ -349,8 +368,17 @@ def llm_sft(args: SftArguments) -> None:
         compute_metrics=partial(compute_nlg_metrics, tokenizer=tokenizer)
         if args.predict_with_generate else None,
     )
-
-    trainer.train(trainer_args.resume_from_checkpoint)
+    if is_master():
+        for args_obj, fname in zip([args, training_args],
+                                   ['sft_args.json', 'training_args.json']):
+            fpath = os.path.join(output_dir, fname)
+            with open(fpath, 'w') as f:
+                json.dump(
+                    check_json_format(args_obj.__dict__),
+                    f,
+                    ensure_ascii=False,
+                    indent=2)
+    trainer.train(training_args.resume_from_checkpoint)
     logger.info(trainer.perf)
 
     # ### Visualization
