@@ -153,7 +153,7 @@ class SftArguments:
         assert all([_type.lower() in all_types for _type in sft_type]), \
             f'Unsupported tuners: {self.sft_type}, supported tuners are: {all_types}'
         if self.sft_type == 'full':
-            assert self.quantization_bit != 0, 'not supported'
+            assert self.quantization_bit == 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
@@ -202,7 +202,7 @@ class SftArguments:
             if self.predict_with_generate:
                 self.eval_batch_size = 1
             else:
-                self.eval_batch_size = batch_size
+                self.eval_batch_size = self.batch_size
 
 
 def llm_sft(args: SftArguments) -> None:

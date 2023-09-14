@@ -3,7 +3,7 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -570,7 +570,7 @@ DATASET_MAPPING = {
     get_jd_zh_dataset,
     'dureader-robust-zh':
     get_dureader_robust_qg_zh_dataset,
-    'advertise_gen': get_advertise_gen_dataset,
+    'advertise-gen': get_advertise_gen_dataset,
     'du_reader': get_du_reader_dataset,
 
     # multi-modal chat
