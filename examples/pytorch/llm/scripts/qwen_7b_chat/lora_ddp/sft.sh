@@ -1,6 +1,6 @@
 # Experimental environment: 2 * A100
-# 2 * 27GB GPU memory
-# use_flash_attn=false: 2 * 31GB GPU memory
+# 2 * 38GB GPU memory
+# use_flash_attn=false: 2 * 70GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -13,14 +13,14 @@ torchrun \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
-    --dataset alpaca-en,alpaca-zh \
-    --dataset_sample -1 \
+    --dataset sharegpt-en,sharegpt-zh \
+    --dataset_sample 50000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
-    --lora_target_modules c_attn c_proj \
+    --lora_target_modules ALL \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \

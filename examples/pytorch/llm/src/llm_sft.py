@@ -11,11 +11,11 @@ import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format,
+                   broadcast_string, check_json_format, dataset_map,
                    find_all_linear_for_lora, get_dataset, get_dist_setting,
-                   get_model_tokenizer, get_preprocess, is_dist, is_master,
-                   plot_images, process_dataset, select_bnb, select_dtype,
-                   show_layers, sort_by_max_length,
+                   get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
+                   is_dist, is_master, plot_images, process_dataset,
+                   select_bnb, select_dtype, show_layers, sort_by_max_length,
                    compute_nlg_metrics, prepare_model)
 
 from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
@@ -39,7 +39,6 @@ class SftArguments:
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
-    # DDP + MP(device_map) is not supported
     ddp_backend: Optional[str] = field(
         default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
@@ -76,6 +75,7 @@ class SftArguments:
 
     gradient_checkpointing: bool = False
     batch_size: int = 1
+    eval_batch_size: Optional[int] = None
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -120,7 +120,7 @@ class SftArguments:
         default=None,
         metadata={
             'help':
-            "This parameter is used only when model_type.startswith('qwen-7b')"
+            "This parameter is used only when model_type.startswith('qwen')"
         })
 
     # generation config, only useful when `predict_with_generate=True`
@@ -153,7 +153,7 @@ class SftArguments:
         assert all([_type.lower() in all_types for _type in sft_type]), \
             f'Unsupported tuners: {self.sft_type}, supported tuners are: {all_types}'
         if self.sft_type == 'full':
-            assert self.quantization_bit is None, 'not supported'
+            assert self.quantization_bit != 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
@@ -198,6 +198,11 @@ class SftArguments:
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
         self.train_sampler_random = not self.test_oom_error
+        if self.eval_batch_size is None:
+            if self.predict_with_generate:
+                self.eval_batch_size = 1
+            else:
+                self.eval_batch_size = batch_size
 
 
 def llm_sft(args: SftArguments) -> None:
@@ -209,7 +214,7 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Loading Model and Tokenizer
     kwargs = {'low_cpu_mem_usage': True}
-    if is_dist():
+    if is_dist() and not is_ddp_plus_mp():
         kwargs['device_map'] = {'': local_rank}
     else:
         kwargs['device_map'] = 'auto'
@@ -274,7 +279,7 @@ def llm_sft(args: SftArguments) -> None:
     val_dataset = val_dataset.map(preprocess_func_eval)
     del dataset
     if args.test_oom_error:
-        train_dataset = sort_by_max_length(train_dataset)
+        train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)
@@ -344,10 +349,10 @@ def llm_sft(args: SftArguments) -> None:
         **kwargs)
 
     if args.gradient_checkpointing:
-        # fix: gradients will be None
-        model.config.use_cache = True
         model.enable_input_require_grads()
     if is_dist():
+        # Compatible with https://github.com/huggingface/transformers/pull/25903
+        training_args._frozen = False
         if args.gradient_checkpointing:
             training_args.ddp_find_unused_parameters = False
             training_args.ddp_broadcast_buffers = False

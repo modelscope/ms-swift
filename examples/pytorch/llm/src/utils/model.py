@@ -392,7 +392,7 @@ MODEL_MAPPING = {
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },

@@ -1,3 +1,5 @@
+# Experimental environment: A100
+# 2 * 50GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -10,13 +12,14 @@ torchrun \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
-    --dataset alpaca-en,alpaca-zh \
+    --dataset code-python-zh \
     --dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 8192 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
+    --lora_target_modules ALL \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \

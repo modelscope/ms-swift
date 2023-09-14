@@ -3,9 +3,10 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional
 
 import json
+import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
@@ -373,7 +374,7 @@ def get_jd_zh_dataset() -> HfDataset:
                                    'Sentiment Classification', False)
 
 
-def _process_dureader_robust(dataset: HfDataset) -> HfDataset:
+def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
     prompt = """Task: Question Generation
 Context: {context}
 Answer: {answer}
@@ -396,34 +397,191 @@ def get_dureader_robust_qg_zh_dataset() -> HfDataset:
         dataset_dict['validation'].to_hf_dataset(),
         dataset_dict['test'].to_hf_dataset()
     ])
-    return _process_dureader_robust(dataset)
+    return _preprocess_dureader_robust(dataset)
+
+
+def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        r = d['output']
+        if r is None:
+            continue
+        if subset_name == 'zh':
+            q = d['instruction']
+        else:
+            q = d['input']
+            if q is None:
+                continue
+        query.append(q)
+        response.append(r)
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_medical_dataset(subset_name: str,
+                        dataset_sample: int = -1) -> HfDataset:
+    """
+    mode: Literal['en', zh]
+    """
+    dataset_dict = MsDataset.load(
+        'huangjintao/medical_zh', subset_name=subset_name)
+    dataset: HfDataset = concatenate_datasets([
+        dataset_dict['train'].to_hf_dataset(),
+        dataset_dict['val'].to_hf_dataset(),
+        dataset_dict['test'].to_hf_dataset(),
+    ])
+    if dataset_sample != -1:
+        idxs = np.random.permutation(dataset_sample)
+        dataset = dataset.select(idxs)
+    return _preprocess_medical(dataset, subset_name)
+
+
+def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
+    query = []
+    response = []
+    history: List[History] = []
+    for d in tqdm(dataset):
+        conversation = ast.literal_eval(d['conversation'])
+        query.append(conversation[-1]['human'])
+        response.append(conversation[-1]['assistant'])
+        h = []
+        for c in conversation[:-1]:
+            h.append((c['human'], c['assistant']))
+        history.append(h)
+    return HfDataset.from_dict({
+        'query': query,
+        'response': response,
+        'history': history
+    })
+
+
+def get_sharegpt_dataset(subset_name_list: List[str]) -> HfDataset:
+    dataset_list = []
+    for subset_name in subset_name_list:
+        dataset = MsDataset.load(
+            'huangjintao/sharegpt', subset_name=subset_name,
+            split='train').to_hf_dataset()
+        dataset_list.append(dataset)
+    dataset = concatenate_datasets(dataset_list)
+    return _preprocess_sharegpt(dataset)
+
+
+_sharegpt_zh_subset_list = ['common-zh', 'computer-zh', 'unknow-zh']
+
+_sharegpt_en_subset_list = ['common-en', 'computer-en']
+
+
+def get_sharegpt_all_zh_dataset():
+    """multi-round chat"""
+    return get_sharegpt_dataset(_sharegpt_zh_subset_list)
+
+
+def get_sharegpt_all_en_dataset():
+    """multi-round chat"""
+    return get_sharegpt_dataset(_sharegpt_en_subset_list)
+
+
+def get_cls_fudan_news_zh() -> HfDataset:
+    """Sequence Classification """
+    dataset = MsDataset.load('damo/zh_cls_fudan-news').to_hf_dataset()
+    return HfDataset.from_dict({
+        'query': dataset['prompt'],
+        'response': dataset['answer']
+    })
+
+
+def get_ner_jave_zh() -> HfDataset:
+    """Named Entity Recognition"""
+    dataset = MsDataset.load('damo/zh_ner-JAVE').to_hf_dataset()
+    return HfDataset.from_dict({
+        'query': dataset['prompt'],
+        'response': dataset['answer']
+    })
+
+
+def _preprocess_code_python_dataset(dataset: HfDataset) -> HfDataset:
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        chat_rounds = ast.literal_eval(d['chat_rounds'])
+        assert len(chat_rounds) == 2
+        query.append(chat_rounds[-2]['content'])
+        response.append(chat_rounds[-1]['content'])
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_code_python_zh_dataset() -> HfDataset:
+    dataset = MsDataset.load(
+        'codefuse-ai/CodeExercise-Python-27k').to_hf_dataset()
+    return _preprocess_code_python_dataset(dataset)
 
 
 DATASET_MAPPING = {
     # nlp chat
-    'alpaca-en': get_alpaca_gpt4_en_dataset,
-    'alpaca-zh': get_alpaca_gpt4_zh_dataset,
-    'finance-en': get_finance_en_dataset,
-    'multi-alpaca-all': get_multi_alpaca_all,
-    'code-en': get_code_alpaca_en_dataset,
-    'instinwild-en': get_instinwild_en_dataset,
-    'instinwild-zh': get_instinwild_zh_dataset,
-    'cot-en': get_cot_en_dataset,
-    'cot-zh': get_cot_zh_dataset,
-    'damo-agent-mini-zh': partial(get_damo_agent_zh_dataset, use_mini=True),
-    'damo-agent-zh': get_damo_agent_zh_dataset,  # containing normal chat
-    'firefly-all-zh': get_firefly_all_zh_dataset,
-    'poetry-zh': get_poetry_zh_dataset,
-    'instruct-en': get_instruct_en_dataset,
-    'gpt4all-en': get_gpt4all_en_dataset,
+    'alpaca-en':
+    get_alpaca_gpt4_en_dataset,
+    'alpaca-zh':
+    get_alpaca_gpt4_zh_dataset,
+    'finance-en':
+    get_finance_en_dataset,
+    'multi-alpaca-all':
+    get_multi_alpaca_all,
+    'code-en':
+    get_code_alpaca_en_dataset,
+    'instinwild-en':
+    get_instinwild_en_dataset,
+    'instinwild-zh':
+    get_instinwild_zh_dataset,
+    'cot-en':
+    get_cot_en_dataset,
+    'cot-zh':
+    get_cot_zh_dataset,
+    'firefly-all-zh':
+    get_firefly_all_zh_dataset,
+    'poetry-zh':
+    get_poetry_zh_dataset,
+    'instruct-en':
+    get_instruct_en_dataset,
+    'gpt4all-en':
+    get_gpt4all_en_dataset,
+    'medical-en':
+    partial(get_medical_dataset, subset_name='en'),
+    'medical-zh':
+    partial(get_medical_dataset, subset_name='zh'),
+    'medical-mini-zh':
+    partial(get_medical_dataset, subset_name='zh', dataset_sample=100000),
+    'code-python-zh':
+    get_code_python_zh_dataset,
+
+    # multi-round chat
+    'damo-agent-mini-zh':
+    partial(get_damo_agent_zh_dataset, use_mini=True),
+    'damo-agent-zh':
+    get_damo_agent_zh_dataset,  # containing normal chat
+    'sharegpt-en':
+    get_sharegpt_all_en_dataset,
+    'sharegpt-zh':
+    get_sharegpt_all_zh_dataset,
+
     # nlp text-generation (please use model:base, template:default-generation)
-    'cmnli-zh': get_cmnli_zh_dataset,
-    'jd-zh': get_jd_zh_dataset,
-    'dureader-robust-zh': get_dureader_robust_qg_zh_dataset,
-    # multi-modal chat
-    'coco-en': get_coco_en_dataset,
+    'cmnli-zh':
+    get_cmnli_zh_dataset,
+    'jd-zh':
+    get_jd_zh_dataset,
+    'dureader-robust-zh':
+    get_dureader_robust_qg_zh_dataset,
     'advertise_gen': get_advertise_gen_dataset,
     'du_reader': get_du_reader_dataset,
+
+    # multi-modal chat
+    'coco-en':
+    get_coco_en_dataset,
+
+    # other (e.g. example dataset for specific model)
+    'cls-fudan-news-zh':
+    get_cls_fudan_news_zh,  # seqgpt-560m
+    'ner-jave-zh':
+    get_ner_jave_zh,  # seqgpt-560m
 }
 
 

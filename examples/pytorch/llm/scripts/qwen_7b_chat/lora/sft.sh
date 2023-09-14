@@ -1,3 +1,5 @@
+# Experimental environment: A100
+# 38GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
@@ -5,14 +7,14 @@ python src/llm_sft.py \
     --template_type chatml \
     --dtype bf16 \
     --output_dir runs \
-    --dataset alpaca-en,alpaca-zh \
-    --dataset_sample -1 \
+    --dataset cot-en,cot-zh \
+    --dataset_sample 50000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
-    --lora_target_modules c_attn c_proj \
+    --lora_target_modules ALL \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \

@@ -28,13 +28,14 @@
    8. other: polylm-13b, seqgpt-560m
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 4. 支持的数据集:
-   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh
+   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh, code-python-zh
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. 多模态: coco-en
+   4. 其他: cls-fudan-news-zh, ner-jave-zh
 5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## 准备实验环境
-实验环境: A10, 3090, A100均可. (V100不支持bf16, 量化)
+实验环境: V100, A10, 3090, A100均可. (V100不支持bf16, 量化)
 ```bash
 # 安装miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -65,37 +66,50 @@ pip install .
 
 ## 微调和推理
 性能: full(优) > lora > qlora
+
 训练显存: qlora(低,3090) > lora > full(2*A100)
 ```bash
 # clone仓库并进入代码目录
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# 微调(lora)+推理 qwen-7b-chat, 需要27GB显存.
+# 微调(lora)+推理 qwen-7b-chat, 需要38GB显存.
 # 你可以通过设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*27GB显存.
+# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*38GB显存.
+# 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
-# 微调(qlora)+推理 qwen-7b-chat, 需要13GB显存.
+# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*15GB显存.
+# 推荐的实验环境: V100, 3090, A10
+bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
+bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
+
+# 微调(qlora)+推理 qwen-7b-chat, 需要9GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
-# 推荐的实验环境: 3090
+# 推荐的实验环境: 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*13GB显存.
+# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
+# 推荐的实验环境: 3090, A10
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
-# 微调(full)+推理 qwen-7b-chat, 需要100G显存.
+# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*75G显存.
 # 推荐的实验环境: A100
-bash scripts/qwen_7b_chat/full/sft.sh
-bash scripts/qwen_7b_chat/full/infer.sh
+bash scripts/qwen_7b_chat/full_mp/sft.sh
+bash scripts/qwen_7b_chat/full_mp/infer.sh
+
+# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*75G显存.
+# 推荐的实验环境: A100
+bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
+bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 
 # 更多的scripts脚本, 可以看`scripts`文件夹.
 ```
