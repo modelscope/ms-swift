@@ -35,11 +35,7 @@ class SftArguments:
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
-        default='lora',
-        metadata={
-            'help':
-            f'tuner choices: {["lora", "full", "adapter", "restuning"]}'
-        })
+        default='lora', metadata={'choices': ['lora', 'full']})
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -75,7 +71,6 @@ class SftArguments:
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.
-    adapter_length: int = 32
 
     gradient_checkpointing: bool = False
     batch_size: int = 1
@@ -147,16 +142,12 @@ class SftArguments:
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
-        from swift import SwiftTuners
-        all_types = [
-            SwiftTuners.LORA.lower(),
-            SwiftTuners.ADAPTER.lower(),
-            SwiftTuners.RESTUNING.lower()
-        ] + ['full']
-        sft_type = [_type.strip() for _type in self.sft_type.split(',')]
-        assert all([_type.lower() in all_types for _type in sft_type]), \
-            f'Unsupported tuners: {self.sft_type}, supported tuners are: {all_types}'
-        if self.sft_type == 'full':
+        if self.sft_type == 'lora':
+            if self.learning_rate is None:
+                self.learning_rate = 1e-4
+            if self.only_save_model is None:
+                self.only_save_model = False
+        elif self.sft_type == 'full':
             assert self.quantization_bit == 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
@@ -164,10 +155,8 @@ class SftArguments:
             if self.only_save_model is None:
                 self.only_save_model = True
         else:
-            if self.learning_rate is None:
-                self.learning_rate = 1e-4
-            if self.only_save_model is None:
-                self.only_save_model = False
+            raise ValueError(f'sft_type: {self.sft_type}')
+
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', 'default')
@@ -239,6 +228,7 @@ def llm_sft(args: SftArguments) -> None:
 
     if args.resume_from_ckpt is None:
         if args.sft_type != 'full':
+            # lora
             model = prepare_model(model, args)
     else:
         model = Swift.from_pretrained(

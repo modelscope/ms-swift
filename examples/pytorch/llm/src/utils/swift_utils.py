@@ -27,7 +27,7 @@ def prepare_model(model: Module, args) -> Module:
                 target_modules=args.lora_target_modules,
                 lora_alpha=args.lora_alpha,
                 lora_dropout=args.lora_dropout_p)
-            logger.info(f'lora_config: {lora_config}')
+            logger.debug(f'lora_config: {lora_config}')
             swift_config['lora'] = lora_config
         elif sft_type.lower() == SwiftTuners.ADAPTER.lower():
             adapter_config = AdapterConfig(
@@ -38,12 +38,12 @@ def prepare_model(model: Module, args) -> Module:
                 hidden_pos=0,
                 adapter_length=args.adapter_length,
             )
-            logger.info(f'adapter_config: {adapter_config}')
+            logger.debug(f'adapter_config: {adapter_config}')
             swift_config['adapter'] = adapter_config
         elif sft_type.lower() == SwiftTuners.RESTUNING.lower():
             restuner_config = ResTuningConfig(
                 dims=model.config.hidden_size,
                 **MODEL_MAPPING[args.model_type]['restuner_TM'])
-            logger.info(f'restuner_config: {restuner_config}')
+            logger.debug(f'restuner_config: {restuner_config}')
             swift_config['restuner'] = restuner_config
     return Swift.prepare_model(model, swift_config)
