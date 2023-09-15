@@ -1,5 +1,5 @@
 # Experimental environment: 2 * 3090
-# not good at Chinese
+# llama2 is not good at Chinese, openbuddy llama2 is recommended
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type llama2-70b-chat \
