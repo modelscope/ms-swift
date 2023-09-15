@@ -56,7 +56,7 @@ class SftArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_sample: int = 20000  # -1: all dataset
-    dataset_test_size: float = 0.01
+    dataset_test_ratio: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
 
@@ -127,11 +127,11 @@ class SftArguments:
         })
 
     # generation config, only useful when `predict_with_generate=True`
+    max_new_tokens: int = 1024
     do_sample: bool = True
-    top_p: float = 0.7
-    max_new_tokens: int = None
-    temperature: float = 0.95
-    top_k: int = 20
+    temperature: float = 0.9
+    top_k: int = 50
+    top_p: float = 0.9
 
     def __post_init__(self):
         if is_dist():
@@ -248,23 +248,17 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(model)
 
     # ### Loading Dataset
-    dataset = get_dataset(args.dataset.split(','))
-    if isinstance(dataset, tuple):
-        train_dataset, val_dataset = dataset
-    else:
-        train_dataset, val_dataset = process_dataset(dataset,
-                                                     args.dataset_test_size,
-                                                     args.dataset_sample,
-                                                     args.dataset_seed)
-
-    generation_config = {
-        'do_sample': args.do_sample,
-        'top_p': args.top_p,
-        'max_length': None,
-        'max_new_tokens': args.max_new_tokens,
-        'temperature': args.temperature,
-        'top_k': args.top_k,
-    }
+    train_dataset, val_dataset = get_dataset(
+        args.dataset.split(','), args.dataset_test_ratio, args.dataset_sample,
+        args.dataset_seed)
+    generation_config = GenerationConfig(
+        do_sample=args.do_sample,
+        max_length=None,
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
+    )
 
     preprocess_func_train = get_preprocess(
         args.template_type,
@@ -346,7 +340,7 @@ def llm_sft(args: SftArguments) -> None:
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
-        generation_config=GenerationConfig.from_dict(generation_config),
+        generation_config=generation_config,
         local_rank=local_rank,
         **kwargs)
 

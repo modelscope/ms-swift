@@ -249,7 +249,7 @@ def download_files(url: str, local_path: str, cookies) -> None:
             f.write(data)
 
 
-def process_dataset(dataset: HfDataset, dataset_test_size: float,
+def process_dataset(dataset: HfDataset, dataset_test_ratio: float,
                     dataset_sample: int,
                     dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
     random_state = np.random.RandomState(dataset_seed)
@@ -257,7 +257,7 @@ def process_dataset(dataset: HfDataset, dataset_test_size: float,
         index = random_state.permutation(len(dataset))[:dataset_sample]
         dataset = dataset.select(index)
     dataset = dataset.train_test_split(
-        dataset_test_size, seed=get_seed(random_state))
+        dataset_test_ratio, seed=get_seed(random_state))
     return dataset['train'], dataset['test']
 
 

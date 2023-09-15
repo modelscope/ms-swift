@@ -13,7 +13,7 @@ from modelscope import MsDataset
 from tqdm.auto import tqdm
 
 from .preprocess import History
-from .utils import download_dataset
+from .utils import download_dataset, process_dataset
 
 
 def _preprocess_alpaca_dataset(
@@ -41,23 +41,17 @@ def get_alpaca_gpt4_en_dataset() -> HfDataset:
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
 
+def _preprocess_advertise_gen_dataset(dataset: HfDataset) -> HfDataset:
+    for d in dataset:
+        pass
 
 def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_train: HfDataset = MsDataset.load(
-        'lvjianjin/AdvertiseGen',
-        split='train').to_hf_dataset().rename_columns({
-            'content': 'query',
-            'summary': 'response',
-        })
+        'lvjianjin/AdvertiseGen',split='train').to_hf_dataset()
     dataset_val: HfDataset = MsDataset.load(
-        'lvjianjin/AdvertiseGen',
-        split='validation').to_hf_dataset().rename_columns({
-            'content':
-            'query',
-            'summary':
-            'response',
-        })
-    return dataset_train, dataset_val
+        'lvjianjin/AdvertiseGen', split='validation').to_hf_dataset()
+    return (_preprocess_advertise_gen_dataset(dataset_train), 
+            _preprocess_advertise_gen_dataset(dataset_val))
 
 
 def get_alpaca_gpt4_zh_dataset() -> HfDataset:
@@ -184,12 +178,12 @@ def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
 
 def get_coco_en_dataset() -> HfDataset:
     dataset_dict = MsDataset.load('modelscope/coco_2014_caption')
-    dataset: HfDataset = concatenate_datasets([
-        dataset_dict['train'].to_hf_dataset(),
-        dataset_dict['validation'].to_hf_dataset()
-    ])
-    return _preprocess_mutimodal_dataset(dataset, 'please describe the image',
-                                         'image', 'caption')
+    train_dataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    return (
+        _preprocess_mutimodal_dataset(dataset, 'please describe the image',
+        'image', 'caption') for dataset in (train_dataset, val_dataset)
+    )
 
 
 def _filter_agent_dataset(dataset: List[Dict[str, Any]],
@@ -392,12 +386,14 @@ Question: """
 def get_dureader_robust_qg_zh_dataset() -> HfDataset:
     """Question Generation"""
     dataset_dict = MsDataset.load('modelscope/DuReader_robust-QG')
-    dataset: HfDataset = concatenate_datasets([
+    train_dataset: HfDataset = concatenate_datasets([
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['validation'].to_hf_dataset(),
-        dataset_dict['test'].to_hf_dataset()
     ])
-    return _preprocess_dureader_robust(dataset)
+    val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
+    return (
+        _preprocess_dureader_robust(dataset) for dataset in (train_dataset, val_dataset)
+    )
 
 
 def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
@@ -419,21 +415,22 @@ def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
 
 
 def get_medical_dataset(subset_name: str,
-                        dataset_sample: int = -1) -> HfDataset:
+                        train_dataset_sample: int = -1) -> HfDataset:
     """
     mode: Literal['en', zh]
     """
     dataset_dict = MsDataset.load(
         'huangjintao/medical_zh', subset_name=subset_name)
-    dataset: HfDataset = concatenate_datasets([
+    train_dataset: HfDataset = concatenate_datasets([
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['val'].to_hf_dataset(),
-        dataset_dict['test'].to_hf_dataset(),
     ])
+    val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset(),
     if dataset_sample != -1:
         idxs = np.random.permutation(dataset_sample)
-        dataset = dataset.select(idxs)
-    return _preprocess_medical(dataset, subset_name)
+        train_dataset = train_dataset.select(idxs)
+    return (_preprocess_medical(dataset, subset_name) 
+           for dataset in (train_dataset, val_dataset))
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
@@ -549,7 +546,7 @@ DATASET_MAPPING = {
     'medical-zh':
     partial(get_medical_dataset, subset_name='zh'),
     'medical-mini-zh':
-    partial(get_medical_dataset, subset_name='zh', dataset_sample=100000),
+    partial(get_medical_dataset, subset_name='zh', train_dataset_sample=100000),
     'code-python-zh':
     get_code_python_zh_dataset,
 
@@ -588,26 +585,25 @@ DATASET_MAPPING = {
 
 
 def get_dataset(
-    dataset_name_list: List[str]
-) -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
+    dataset_name_list: List[str],
+    dataset_test_ratio: float,
+    dataset_sample: int,
+    dataset_seed: int
+) -> Tuple[HfDataset, HfDataset]:
     """Returns a dataset to be split or a train-val dataset tuple"""
-    dataset_list: List[Union[HfDataset, Tuple[HfDataset, HfDataset]]] = []
+    train_dataset_list: List[HfDataset] = []
+    val_dataset_list: List[HfDataset] = []
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
-        dataset_list.append(get_function())
-
-    assert (all(isinstance(dataset, tuple) for dataset in dataset_list)
-            or all(isinstance(dataset, HfDataset) for dataset in dataset_list))
-    if not isinstance(dataset_list[0], tuple):
-        dataset = concatenate_datasets(dataset_list)
-    else:
-        train_datasets = [dataset[0] for dataset in dataset_list]
-        val_datasets = [dataset[1] for dataset in dataset_list]
-        if len(train_datasets) > 1:
-            train_dataset = concatenate_datasets(train_datasets)
-            val_dataset = concatenate_datasets(val_datasets)
+        dataset = get_function()
+        if isinstance(dataset, (list, tuple)):
+            train_dataset = dataset[0]
+            val_dataset = dataset[1]
         else:
-            train_dataset = train_datasets[0]
-            val_dataset = val_datasets[0]
-        dataset = (train_dataset, val_dataset)
-    return dataset
+            process_dataset(dataset, dataset_test_)
+        train_dataset_list.append(train_dataset)
+        val_dataset_list.append(val_dataset)
+
+        train_dataset = concatenate_datasets(train_dataset_list)
+        val_dataset = concatenate_datasets(val_dataset_list)
+    return train_dataset, val_dataset
