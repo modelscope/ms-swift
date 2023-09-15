@@ -27,7 +27,7 @@
    8. other: polylm-13b, seqgpt-560m
 3. supported features: quantization, DDP, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 4. supported datasets:
-   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh
+   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh, code-python-zh, advertise-gen
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. multi-modal: coco-en
    4. other: cls-fudan-news-zh, ner-jave-zh
@@ -71,40 +71,40 @@ Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 git clone https://github.com/modelscope/swift.git
 cd swift/examples/pytorch/llm
 
-# sft lora and infer qwen-7b-chat, Requires 27GB GPU memory.
+# sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.
 # You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*27GB GPU memory.
+# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*38GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
-# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*14GB GPU memory.
+# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*15GB GPU memory.
 # Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# sft(qlora) and infer qwen-7b-chat, Requires 13GB GPU memory.
+# sft(qlora) and infer qwen-7b-chat, Requires 12GB GPU memory.
 # If you want to use quantification, you need to `pip install bitsandbytes -U`
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*13GB GPU memory.
+# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
-# sft(full+mp) and infer qwen-7b-chat, Requires 2*50GB GPU memory.
+# sft(full+mp) and infer qwen-7b-chat, Requires 2*75GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
-# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*50GB GPU memory.
+# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*75GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh

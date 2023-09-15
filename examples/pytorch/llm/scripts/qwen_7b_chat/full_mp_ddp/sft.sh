@@ -1,5 +1,5 @@
 # Experimental environment: 4 * A100
-# 4 * 50GB GPU memory
+# 4 * 75GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
@@ -11,10 +11,10 @@ torchrun \
     --template_type chatml \
     --dtype bf16 \
     --output_dir runs \
-    --dataset alpaca-en,alpaca-zh \
-    --dataset_sample -1 \
+    --dataset medical-en,medical-zh \
+    --train_dataset_sample 200000 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 8192 \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.01 \

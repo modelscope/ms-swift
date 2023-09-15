@@ -6,7 +6,7 @@ python src/llm_sft.py \
     --dtype bf16 \
     --output_dir runs \
     --dataset ner-jave-zh \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --num_train_epochs 3 \
     --max_length 1024 \
     --gradient_checkpointing false \

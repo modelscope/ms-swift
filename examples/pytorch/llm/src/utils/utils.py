@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import heapq
 import logging
 import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
+                    Tuple, Union)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,7 +29,6 @@ from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
 from swift.hub import ModelScopeConfig
-from swift.utils import get_seed
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
@@ -247,22 +248,10 @@ def download_files(url: str, local_path: str, cookies) -> None:
             f.write(data)
 
 
-def process_dataset(dataset: HfDataset, dataset_test_size: float,
-                    dataset_sample: int,
-                    dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
-    random_state = np.random.RandomState(dataset_seed)
-    if dataset_sample >= 0:
-        index = random_state.permutation(len(dataset))[:dataset_sample]
-        dataset = dataset.select(index)
-    dataset = dataset.train_test_split(
-        dataset_test_size, seed=get_seed(random_state))
-    return dataset['train'], dataset['test']
-
-
-def sort_by_max_length(dataset: HfDataset) -> HfDataset:
-    dataset_len = [len(d['input_ids']) for d in dataset]
-    idx = sorted(
-        range(len(dataset)), key=lambda i: dataset_len[i], reverse=True)
+def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+    dataset_len = [len(d['input_ids']) for d in tqdm(dataset)]
+    idx = heapq.nlargest(
+        num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
     input_ids = []
     labels = []
     for i in tqdm(idx):
@@ -371,6 +360,23 @@ def _infer_auto_device_map_patch(
         model, max_memory, low_zero=False, **kwargs)
     max_memory = {k: v for k, v in max_memory.items() if v > 0}
     return infer_auto_device_map(model, max_memory, verbose=verbose, **kwargs)
+
+
+def dataset_map(
+    dataset: HfDataset, preprocess_func: Callable[[Dict[str, Any]],
+                                                  Dict[str,
+                                                       Optional[List[int]]]]
+) -> HfDataset:
+    # faster than dataset.map
+    input_ids = []
+    labels = []
+    for d in tqdm(dataset):
+        d = preprocess_func(d)
+        if d['input_ids'] is None:
+            continue
+        input_ids.append(d['input_ids'])
+        labels.append(d['labels'])
+    return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
 
 
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
