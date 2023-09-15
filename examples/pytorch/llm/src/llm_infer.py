@@ -8,7 +8,7 @@ import torch
 from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    get_dataset, get_model_tokenizer, get_preprocess, inference,
-                   process_dataset, select_bnb, select_dtype, show_layers)
+                   select_bnb, select_dtype, show_layers)
 
 from swift import Swift, get_logger
 from swift.utils import parse_args, print_model_info, seed_everything
@@ -36,9 +36,9 @@ class InferArguments:
     dataset: str = field(
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
-    dataset_sample: int = 20000  # -1: all dataset
+    dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01
+    show_dataset_sample: int = 20
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
 
@@ -140,10 +140,9 @@ def llm_infer(args: InferArguments) -> None:
     else:
         _, val_dataset = get_dataset(
             args.dataset.split(','), args.dataset_test_ratio,
-            args.dataset_sample, args.dataset_seed)
+            args.dataset_split_seed)
         mini_val_dataset = val_dataset.select(
-            range(min(10, val_dataset.shape[0])))
-        del dataset
+            range(min(args.show_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
             response = data['response']
             data['response'] = None

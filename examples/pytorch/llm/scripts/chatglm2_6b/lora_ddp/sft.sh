@@ -1,4 +1,4 @@
-# Experimental environment: A100
+# Experimental environment: 2 * A100
 # 2 * 50GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -13,7 +13,7 @@ torchrun \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset code-python-zh \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 8192 \
     --lora_rank 8 \

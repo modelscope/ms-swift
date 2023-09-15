@@ -7,7 +7,7 @@ python src/llm_sft.py \
     --dtype bf16 \
     --output_dir runs \
     --dataset alpaca-en,alpaca-zh \
-    --dataset_sample 20000 \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \

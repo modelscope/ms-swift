@@ -228,16 +228,16 @@ class ResTunerTM(NamedTuple):
 #   'ignore_file_pattern', 'lora_TM'
 MODEL_MAPPING = {
     'qwen-7b': {
-        'model_id': 'qwen/Qwen-7B',  # model id or model dir
-        'revision': 'v1.0.5',
+        'model_id': 'ccyh123/Qwen-7B',  # model id or model dir
+        'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
         'adapter_TM': AdapterTM.qwen,
         'restuner_TM': ResTunerTM.qwen,
     },
     'qwen-7b-chat': {
-        'model_id': 'qwen/Qwen-7B-Chat',
-        'revision': 'v1.0.7',
+        'model_id': 'ccyh123/Qwen-7B-Chat',
+        'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
@@ -245,16 +245,16 @@ MODEL_MAPPING = {
         'restuner_TM': ResTunerTM.qwen,
     },
     'qwen-vl': {
-        'model_id': 'qwen/Qwen-VL',
-        'revision': 'v1.0.2',
+        'model_id': 'ccyh123/Qwen-VL',
+        'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen_vl,
         'lora_TM': LoRATM.qwen,
         'adapter_TM': AdapterTM.qwen,
         'restuner_TM': ResTunerTM.qwen,
     },
     'qwen-vl-chat': {
-        'model_id': 'qwen/Qwen-VL-Chat',
-        'revision': 'v1.0.2',
+        'model_id': 'ccyh123/Qwen-VL-Chat',
+        'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen_vl,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,

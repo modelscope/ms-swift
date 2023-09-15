@@ -1,5 +1,5 @@
 # Experimental environment: 2 * 3090
-# 2 * 13GB GPU memory
+# 2 * 14GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -12,8 +12,8 @@ torchrun \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
-    --dataset alpaca-en,alpaca-zh \
-    --dataset_sample -1 \
+    --dataset advertise-gen \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \
@@ -22,7 +22,7 @@ torchrun \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules ALL \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

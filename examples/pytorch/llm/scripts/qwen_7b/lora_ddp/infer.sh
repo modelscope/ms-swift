@@ -7,7 +7,6 @@ python src/llm_infer.py \
     --ckpt_dir "runs/qwen-7b/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset dureader-robust-zh \
-    --dataset_sample -1 \
     --max_length 2048 \
     --use_flash_attn true \
     --max_new_tokens 1024 \

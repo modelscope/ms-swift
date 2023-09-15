@@ -7,15 +7,16 @@ from functools import partial
 from typing import List, Optional
 
 import json
+import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format, compute_nlg_metrics,
-                   dataset_map, find_all_linear_for_lora, get_dataset,
-                   get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_ddp_plus_mp, is_dist, is_master, plot_images,
-                   prepare_model, process_dataset, select_bnb, select_dtype,
+                   broadcast_string, check_json_format, dataset_map,
+                   find_all_linear_for_lora, get_dataset, get_dist_setting,
+                   get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
+                   is_dist, is_master, plot_images, select_bnb, select_dtype,
+                   compute_nlg_metrics, prepare_model,
                    show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
@@ -54,8 +55,8 @@ class SftArguments:
     dataset: str = field(
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
-    dataset_sample: int = 20000  # -1: all dataset
+    dataset_split_seed: int = 42
+    train_dataset_sample: int = 20000  # -1: all dataset
     dataset_test_ratio: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
@@ -248,9 +249,6 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(model)
 
     # ### Loading Dataset
-    train_dataset, val_dataset = get_dataset(
-        args.dataset.split(','), args.dataset_test_ratio, args.dataset_sample,
-        args.dataset_seed)
     generation_config = GenerationConfig(
         do_sample=args.do_sample,
         max_length=None,
@@ -259,22 +257,29 @@ def llm_sft(args: SftArguments) -> None:
         top_p=args.top_p,
         top_k=args.top_k,
     )
-
-    preprocess_func_train = get_preprocess(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        validate_generation=False)
-    train_dataset = train_dataset.map(preprocess_func_train)
+    train_dataset, val_dataset = get_dataset(
+        args.dataset.split(','), args.dataset_test_ratio,
+        args.dataset_split_seed)
+    if args.train_dataset_sample >= 0:
+        val_dataset_sample = int(args.train_dataset_sample
+                                 * args.dataset_test_ratio)
+        train_idxs = np.random.permutation(args.train_dataset_sample)
+        train_dataset = train_dataset.select(train_idxs)
+        if val_dataset.shape[0] > val_dataset_sample:
+            val_idxs = np.random.permutation(val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
+    logger.info(f'train_dataset: {train_dataset}')
+    logger.info(f'val_dataset: {val_dataset}')
+    preprocess_func_train = get_preprocess(args.template_type, tokenizer,
+                                     args.system, args.max_length, validate_generation=False)
     preprocess_func_eval = get_preprocess(
         args.template_type,
         tokenizer,
         args.system,
         args.max_length,
         validate_generation=args.predict_with_generate)
-    val_dataset = val_dataset.map(preprocess_func_eval)
-    del dataset
+    train_dataset = dataset_map(train_dataset, preprocess_func)
+    val_dataset = dataset_map(val_dataset, preprocess_func)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis

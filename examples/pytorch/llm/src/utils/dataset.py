@@ -3,7 +3,7 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import json
 import numpy as np
@@ -12,6 +12,7 @@ from datasets import concatenate_datasets
 from modelscope import MsDataset
 from tqdm.auto import tqdm
 
+from swift.utils import get_seed
 from .preprocess import History
 from .utils import download_dataset, process_dataset
 
@@ -19,20 +20,20 @@ from .utils import download_dataset, process_dataset
 def _preprocess_alpaca_dataset(
         dataset: HfDataset,
         preprocess_input: Optional[Callable[[str], str]] = None) -> HfDataset:
-    instruction = dataset['instruction']
-    input_ = dataset['input']
-    new_instruction: List[str] = []
-    for inst, inp in zip(instruction, input_):
+    query: List[str] = []
+    response = []
+    for d in dataset:
+        inst, inp, output = d['instruction'], d['input'], d['output']
+        if output is None:
+            continue
         if inp is None:
             inp = ''
         if preprocess_input is not None:
             inp = preprocess_input(inp)
-        inst = f'{inst}\n{inp}'
-        new_instruction.append(inst)
-    dataset = HfDataset.from_dict({
-        'query': new_instruction,
-        'response': dataset['output']
-    })
+        q = f'{inst}\n{inp}'
+        query.append(q)
+        response.append(output)
+    dataset = HfDataset.from_dict({'query': query, 'response': response})
     return dataset
 
 
@@ -52,6 +53,29 @@ def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
         'lvjianjin/AdvertiseGen', split='validation').to_hf_dataset()
     return (_preprocess_advertise_gen_dataset(dataset_train), 
             _preprocess_advertise_gen_dataset(dataset_val))
+
+
+def _preprocess_advertise_gen_dataset(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Generating advertisements based on keywords.
+Keywords: {query}
+Advertisements: """
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        query.append(prompt.format(query=d['content']))
+        response.append(d['summary'])
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
+    dataset_train: HfDataset = MsDataset.load(
+        'lvjianjin/AdvertiseGen', split='train').to_hf_dataset()
+    dataset_val: HfDataset = MsDataset.load(
+        'lvjianjin/AdvertiseGen', split='validation').to_hf_dataset()
+    return [
+        _preprocess_advertise_gen_dataset(dataset_train),
+        _preprocess_advertise_gen_dataset(dataset_val)
+    ]
 
 
 def get_alpaca_gpt4_zh_dataset() -> HfDataset:
@@ -176,14 +200,14 @@ def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
     return dataset
 
 
-def get_coco_en_dataset() -> HfDataset:
+def get_coco_en_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('modelscope/coco_2014_caption')
     train_dataset = dataset_dict['train'].to_hf_dataset()
     val_dataset = dataset_dict['validation'].to_hf_dataset()
-    return (
+    return tuple(
         _preprocess_mutimodal_dataset(dataset, 'please describe the image',
-        'image', 'caption') for dataset in (train_dataset, val_dataset)
-    )
+                                      'image', 'caption')
+        for dataset in (train_dataset, val_dataset))
 
 
 def _filter_agent_dataset(dataset: List[Dict[str, Any]],
@@ -236,14 +260,17 @@ def _preprocess_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
     return dataset
 
 
-def get_damo_agent_zh_dataset(use_mini: bool = False) -> HfDataset:
+def get_damo_agent_zh_dataset(
+        use_mini: bool = False) -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('damo/MSAgent-Bench')
-    dataset: HfDataset = concatenate_datasets([
-        dataset_dict['train'].to_hf_dataset(),
-        dataset_dict['validation'].to_hf_dataset()
-    ])
-    dataset = _filter_agent_dataset(dataset, use_mini)
-    return _preprocess_agent_dataset(dataset)
+    train_dataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    dataset_list = []
+    for dataset in (train_dataset, val_dataset):
+        dataset = _filter_agent_dataset(dataset, use_mini)
+        dataset = _preprocess_agent_dataset(dataset)
+        dataset_list.append(dataset)
+    return tuple(dataset_list)
 
 
 _firefly_kind_list = [
@@ -289,24 +316,33 @@ def get_firefly_all_zh_dataset() -> HfDataset:
     return get_firefly_zh_dataset(_firefly_kind_list)
 
 
-def get_poetry_zh_dataset() -> HfDataset:
+def get_poetry_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('modelscope/chinese-poetry-collection')
-    dataset: HfDataset = concatenate_datasets([
-        dataset_dict['train'].to_hf_dataset(),
-        dataset_dict['test'].to_hf_dataset()
-    ])
-    return HfDataset.from_dict({
-        'query': ['写诗'] * len(dataset),
-        'response': dataset['text1']
-    })
+    train_dataset: HfDataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
+    dataset_list = []
+    for dataset in (train_dataset, val_dataset):
+        dataset_list.append(
+            HfDataset.from_dict({
+                'query': ['写诗'] * len(dataset),
+                'response': dataset['text1']
+            }))
+    return tuple(dataset_list)
 
 
 def get_instruct_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instruct', split='train').to_hf_dataset()
-    dataset = dataset.rename_column('prompt', 'query')
-    dataset = dataset.rename_column('completion', 'response')
-    return dataset
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        q = d['prompt']
+        r = d['completion']
+        if q is None:
+            continue
+        query.append(q)
+        response.append(r)
+    return HfDataset.from_dict({'query': query, 'response': response})
 
 
 def get_gpt4all_en_dataset() -> HfDataset:
@@ -325,7 +361,7 @@ def _preprocess_cls_dataset(dataset: HfDataset, cls_mapping: List[str],
     prompt = f"""Task: {task}
 {input_}
 Category: {category}
-Label: """
+Output: """
     query = []
     response = []
     for d in tqdm(dataset):
@@ -342,30 +378,32 @@ Label: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-def get_cmnli_zh_dataset() -> HfDataset:
+def get_cmnli_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Natural Language Inference"""
     dataset_dict = MsDataset.load('clue', subset_name='cmnli')
-    dataset: HfDataset = concatenate_datasets([
+    train_dataset: HfDataset = concatenate_datasets([
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['validation'].to_hf_dataset(),
-        dataset_dict['test'].to_hf_dataset(),
     ])
+    val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
     cls_mapping = ['neutral', 'entailment', 'contradiction']
-    return _preprocess_cls_dataset(dataset, cls_mapping,
-                                   'Natural Language Inference', True)
+    return tuple(
+        _preprocess_cls_dataset(dataset, cls_mapping,
+                                'Natural Language Inference', True)
+        for dataset in (train_dataset, val_dataset))
 
 
-def get_jd_zh_dataset() -> HfDataset:
+def get_jd_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Sentiment classification"""
     dataset_dict = MsDataset.load('DAMO_NLP/jd')
-    dataset: HfDataset = concatenate_datasets([
-        dataset_dict['train'].to_hf_dataset(),
-        dataset_dict['validation'].to_hf_dataset()
-    ])
+    train_dataset: HfDataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset: HfDataset = dataset_dict['validation'].to_hf_dataset()
 
     cls_mapping = ['negative', 'positive']
-    return _preprocess_cls_dataset(dataset, cls_mapping,
-                                   'Sentiment Classification', False)
+    return tuple(
+        _preprocess_cls_dataset(dataset, cls_mapping,
+                                'Sentiment Classification', False)
+        for dataset in (train_dataset, val_dataset))
 
 
 def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
@@ -383,7 +421,7 @@ Question: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-def get_dureader_robust_qg_zh_dataset() -> HfDataset:
+def get_dureader_robust_qg_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Question Generation"""
     dataset_dict = MsDataset.load('modelscope/DuReader_robust-QG')
     train_dataset: HfDataset = concatenate_datasets([
@@ -391,9 +429,9 @@ def get_dureader_robust_qg_zh_dataset() -> HfDataset:
         dataset_dict['validation'].to_hf_dataset(),
     ])
     val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
-    return (
-        _preprocess_dureader_robust(dataset) for dataset in (train_dataset, val_dataset)
-    )
+    return tuple(
+        _preprocess_dureader_robust(dataset)
+        for dataset in (train_dataset, val_dataset))
 
 
 def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
@@ -414,8 +452,9 @@ def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-def get_medical_dataset(subset_name: str,
-                        train_dataset_sample: int = -1) -> HfDataset:
+def get_medical_dataset(
+        subset_name: str,
+        train_dataset_sample: int = -1) -> Tuple[HfDataset, HfDataset]:
     """
     mode: Literal['en', zh]
     """
@@ -425,12 +464,13 @@ def get_medical_dataset(subset_name: str,
         dataset_dict['train'].to_hf_dataset(),
         dataset_dict['val'].to_hf_dataset(),
     ])
-    val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset(),
-    if dataset_sample != -1:
-        idxs = np.random.permutation(dataset_sample)
+    val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
+    if train_dataset_sample >= 0:
+        idxs = np.random.permutation(train_dataset_sample)
         train_dataset = train_dataset.select(idxs)
-    return (_preprocess_medical(dataset, subset_name) 
-           for dataset in (train_dataset, val_dataset))
+    return tuple(
+        _preprocess_medical(dataset, subset_name)
+        for dataset in (train_dataset, val_dataset))
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
@@ -546,7 +586,8 @@ DATASET_MAPPING = {
     'medical-zh':
     partial(get_medical_dataset, subset_name='zh'),
     'medical-mini-zh':
-    partial(get_medical_dataset, subset_name='zh', train_dataset_sample=100000),
+    partial(
+        get_medical_dataset, subset_name='zh', train_dataset_sample=100000),
     'code-python-zh':
     get_code_python_zh_dataset,
 
@@ -560,7 +601,7 @@ DATASET_MAPPING = {
     'sharegpt-zh':
     get_sharegpt_all_zh_dataset,
 
-    # nlp text-generation (please use model:base, template:default-generation)
+    # nlp text-generation
     'cmnli-zh':
     get_cmnli_zh_dataset,
     'jd-zh':
@@ -569,8 +610,6 @@ DATASET_MAPPING = {
     get_dureader_robust_qg_zh_dataset,
     'advertise-gen':
     get_advertise_gen_dataset,
-    'du_reader':
-    get_du_reader_dataset,
 
     # multi-modal chat
     'coco-en':
@@ -586,24 +625,33 @@ DATASET_MAPPING = {
 
 def get_dataset(
     dataset_name_list: List[str],
-    dataset_test_ratio: float,
-    dataset_sample: int,
-    dataset_seed: int
-) -> Tuple[HfDataset, HfDataset]:
-    """Returns a dataset to be split or a train-val dataset tuple"""
+    dataset_test_ratio: float = 0.,
+    dataset_split_seed: int = 42,
+) -> Tuple[HfDataset, Optional[HfDataset]]:
+    """Returns train_dataset and val_dataset"""
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
+    random_state = np.random.RandomState(dataset_split_seed)
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset = get_function()
         if isinstance(dataset, (list, tuple)):
-            train_dataset = dataset[0]
-            val_dataset = dataset[1]
+            train_d = dataset[0]
+            val_d = dataset[1]
         else:
-            process_dataset(dataset, dataset_test_)
-        train_dataset_list.append(train_dataset)
-        val_dataset_list.append(val_dataset)
+            if dataset_test_ratio > 0:
+                dataset_dict = dataset.train_test_split(
+                    dataset_test_ratio, seed=get_seed(random_state))
+                train_d, val_d = dataset_dict['train'], dataset_dict['test']
+            else:
+                train_d, val_d = dataset, None
+        train_dataset_list.append(train_d)
+        if val_d is not None:
+            val_dataset_list.append(val_d)
 
-        train_dataset = concatenate_datasets(train_dataset_list)
+    train_dataset = concatenate_datasets(train_dataset_list)
+    val_dataset = None
+    if len(val_dataset_list) > 0:
         val_dataset = concatenate_datasets(val_dataset_list)
+
     return train_dataset, val_dataset

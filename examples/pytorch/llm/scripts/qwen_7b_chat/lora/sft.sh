@@ -8,7 +8,7 @@ python src/llm_sft.py \
     --dtype bf16 \
     --output_dir runs \
     --dataset cot-en,cot-zh \
-    --dataset_sample 50000 \
+    --train_dataset_sample 50000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --lora_rank 8 \

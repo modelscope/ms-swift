@@ -13,7 +13,7 @@ torchrun \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset damo-agent-mini-zh \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \
     --lora_rank 8 \

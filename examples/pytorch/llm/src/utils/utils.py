@@ -29,7 +29,6 @@ from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
 from swift.hub import ModelScopeConfig
-from swift.utils import get_seed
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
@@ -247,18 +246,6 @@ def download_files(url: str, local_path: str, cookies) -> None:
     with open(local_path, 'wb') as f:
         for data in tqdm(resp.iter_lines()):
             f.write(data)
-
-
-def process_dataset(dataset: HfDataset, dataset_test_ratio: float,
-                    dataset_sample: int,
-                    dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
-    random_state = np.random.RandomState(dataset_seed)
-    if dataset_sample >= 0:
-        index = random_state.permutation(len(dataset))[:dataset_sample]
-        dataset = dataset.select(index)
-    dataset = dataset.train_test_split(
-        dataset_test_ratio, seed=get_seed(random_state))
-    return dataset['train'], dataset['test']
 
 
 def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:

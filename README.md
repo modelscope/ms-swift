@@ -46,11 +46,12 @@ Users can check the [documentation of Swift](./docs/Get Started/1.Introduction.m
    6. openbuddy-llama series: openbuddy-llama2-13b, openbuddy-llama-65b, openbuddy-llama2-70b
    7. internlm series: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k
    8. other: polylm-13b, seqgpt-560m
-3. supported features: quantization, ddp, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
+3. supported features: quantization, DDP, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 4. supported datasets:
-   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh
+   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. multi-modal: coco-en
+   4. other: cls-fudan-news-zh, ner-jave-zh
 5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 # Installation

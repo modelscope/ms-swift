@@ -28,7 +28,7 @@
    8. other: polylm-13b, seqgpt-560m
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 4. 支持的数据集:
-   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh, code-python-zh
+   1. NLP: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, jd-zh, dureader-robust-zh, medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh, code-python-zh, advertise-gen
    2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. 多模态: coco-en
    4. 其他: cls-fudan-news-zh, ner-jave-zh
@@ -90,7 +90,7 @@ bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# 微调(qlora)+推理 qwen-7b-chat, 需要9GB显存.
+# 微调(qlora)+推理 qwen-7b-chat, 需要12GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
 # 推荐的实验环境: 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
