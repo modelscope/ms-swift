@@ -7,6 +7,7 @@ from functools import partial
 from typing import List, Optional
 
 import json
+import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig
@@ -50,7 +51,7 @@ class SftArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
-    train_dataset_sample: int = -1  # -1: all dataset
+    train_dataset_sample: int = 20000  # -1: all dataset
     dataset_test_ratio: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
@@ -233,7 +234,7 @@ def llm_sft(args: SftArguments) -> None:
 
     show_layers(model)
     print_model_info(model)
-    logger.info(str(model))
+    logger.info(model)
 
     # ### Loading Dataset
     train_dataset, val_dataset = get_dataset(
@@ -242,12 +243,15 @@ def llm_sft(args: SftArguments) -> None:
     preprocess_func = get_preprocess(args.template_type, tokenizer,
                                      args.system, args.max_length)
     if args.train_dataset_sample >= 0:
-        val_dataset_sample = args.train_dataset_sample * self.dataset_test_ratio
+        val_dataset_sample = int(args.train_dataset_sample
+                                 * args.dataset_test_ratio)
         train_idxs = np.random.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
         if val_dataset.shape[0] > val_dataset_sample:
             val_idxs = np.random.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
+    logger.info(f'train_dataset: {train_dataset}')
+    logger.info(f'val_dataset: {val_dataset}')
     train_dataset = dataset_map(train_dataset, preprocess_func)
     val_dataset = dataset_map(val_dataset, preprocess_func)
     if args.test_oom_error:

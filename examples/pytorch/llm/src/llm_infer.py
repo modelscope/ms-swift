@@ -26,7 +26,7 @@ class InferArguments:
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
-    eval_human: bool = False  # False: eval test_dataset
+    eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
     dtype: str = field(
