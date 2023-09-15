@@ -175,6 +175,54 @@ class LoRATM(NamedTuple):
     internlm = ['q_proj', 'k_proj', 'v_proj']
 
 
+class AdapterTM(NamedTuple):
+    # default adapter target modules.
+    baichuan = ['mlp']
+    chatglm2 = ['mlp']
+    llama2 = ['mlp']
+    qwen = ['mlp']
+    polylm = ['mlp']
+
+
+class ResTunerTM(NamedTuple):
+    # default res-tuning config.
+    baichuan = {
+        'root_modules': r'.*layers.0$',
+        'stem_modules': r'.*layers\.\d+$',
+        'target_modules': r'.*model.norm',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
+    }
+    chatglm2 = {
+        'root_modules': r'.*layers.0$',
+        'stem_modules': r'.*layers\.\d+$',
+        'target_modules': r'.*final_layernorm',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
+    }
+    llama2 = {
+        'root_modules': r'.*layers.0$',
+        'stem_modules': r'.*layers\.\d+$',
+        'target_modules': r'.*model.norm',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
+    }
+    qwen = {
+        'root_modules': r'.*transformer.h.0$',
+        'stem_modules': r'.*transformer.h\.\d+$',
+        'target_modules': r'.*transformer.ln_f',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
+    }
+    polylm = {
+        'root_modules': r'.*transformer.h.0$',
+        'stem_modules': r'.*transformer.h\.\d+$',
+        'target_modules': r'.*transformer.ln_f',
+        'target_modules_hook': 'input',
+        'tuner_cfg': 'res_adapter',
+    }
+
+
 # Model Home: 'https://modelscope.cn/models/{model_id}/summary'
 # keys: 'model_id', 'revision', 'get_function', 'template',
 #   'ignore_file_pattern', 'lora_TM'
@@ -184,6 +232,8 @@ MODEL_MAPPING = {
         'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
+        'adapter_TM': AdapterTM.qwen,
+        'restuner_TM': ResTunerTM.qwen,
     },
     'qwen-7b-chat': {
         'model_id': 'ccyh123/Qwen-7B-Chat',
@@ -191,12 +241,16 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
+        'adapter_TM': AdapterTM.qwen,
+        'restuner_TM': ResTunerTM.qwen,
     },
     'qwen-vl': {
         'model_id': 'ccyh123/Qwen-VL',
         'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen_vl,
         'lora_TM': LoRATM.qwen,
+        'adapter_TM': AdapterTM.qwen,
+        'restuner_TM': ResTunerTM.qwen,
     },
     'qwen-vl-chat': {
         'model_id': 'ccyh123/Qwen-VL-Chat',
@@ -204,23 +258,31 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_qwen_vl,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
+        'adapter_TM': AdapterTM.qwen,
+        'restuner_TM': ResTunerTM.qwen,
     },
     'baichuan-7b': {
         'model_id': 'baichuan-inc/baichuan-7B',
         'revision': 'v1.0.7',
         'lora_TM': LoRATM.baichuan,
+        'adapter_TM': AdapterTM.baichuan,
+        'restuner_TM': ResTunerTM.baichuan,
     },
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
         'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_baichuan13b,
         'lora_TM': LoRATM.baichuan,
+        'adapter_TM': AdapterTM.baichuan,
+        'restuner_TM': ResTunerTM.baichuan,
     },
     'baichuan-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan-13B-Chat',
         'revision': 'v1.0.8',
         'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
+        'adapter_TM': AdapterTM.baichuan,
+        'restuner_TM': ResTunerTM.baichuan,
     },
     'chatglm2-6b': {
         'model_id': 'ZhipuAI/chatglm2-6b',
@@ -228,18 +290,24 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_chatglm2,
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,
+        'adapter_TM': AdapterTM.chatglm2,
+        'restuner_TM': ResTunerTM.chatglm2,
     },
     'chatglm2-6b-32k': {
         'model_id': 'ZhipuAI/chatglm2-6b-32k',
         'revision': 'v1.0.1',
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,
+        'adapter_TM': AdapterTM.chatglm2,
+        'restuner_TM': ResTunerTM.chatglm2,
     },
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'llama2-13b': {
         'model_id': 'modelscope/Llama-2-13b-ms',
@@ -247,12 +315,16 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_llama2,
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'llama2-70b': {
         'model_id': 'modelscope/Llama-2-70b-ms',
         'revision': 'v1.0.0',
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'llama2-7b-chat': {
         'model_id': 'modelscope/Llama-2-7b-chat-ms',
@@ -260,6 +332,8 @@ MODEL_MAPPING = {
         'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'llama2-13b-chat': {
         'model_id': 'modelscope/Llama-2-13b-chat-ms',
@@ -268,6 +342,8 @@ MODEL_MAPPING = {
         'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'llama2-70b-chat': {
         'model_id': 'modelscope/Llama-2-70b-chat-ms',
@@ -276,12 +352,16 @@ MODEL_MAPPING = {
         'template': 'llama',
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'openbuddy-llama2-13b': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
         'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'openbuddy-llama-65b': {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
@@ -294,12 +374,16 @@ MODEL_MAPPING = {
         'revision': 'v1.0.0',
         'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
+        'adapter_TM': AdapterTM.llama2,
+        'restuner_TM': ResTunerTM.llama2,
     },
     'polylm-13b': {
         'model_id': 'damo/nlp_polylm_13b_text_generation',
         'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_polylm,
         'lora_TM': LoRATM.polylm,
+        'adapter_TM': AdapterTM.polylm,
+        'restuner_TM': ResTunerTM.polylm,
     },
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',

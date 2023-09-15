@@ -89,13 +89,24 @@ def print_model_info(model: Module, name: Optional[str] = None) -> None:
     n_params /= 1e6
     n_grads /= 1e6
     n_buffers /= 1e6
-    s = [
-        f'{name}: ',
-        f'{n_params:.4f}M Params ({n_grads:.4f}M Trainable), ',
-        f'{n_buffers:.4f}M Buffers',
-    ]
-    s += '.'
-    logger.info(''.join(s))
+    s = (f'{name}: '
+         f'{n_params:.4f}M Params ({n_grads:.4f}M Trainable '
+         f'[{100 * n_grads / n_params:.4f}%]), '
+         f'{n_buffers:.4f}M Buffers.')
+    logger.info(s)
+
+
+def find_sub_module(module: torch.nn.Module,
+                    module_name: str) -> List[torch.nn.Module]:
+    _modules = list()
+    for name, sub_module in module.named_modules():
+        if not name:
+            continue
+        if module_name == name:
+            _modules.append(sub_module)
+        else:
+            _modules.extend(find_sub_module(sub_module, module_name))
+    return _modules
 
 
 def get_seed(random_state: RandomState) -> int:

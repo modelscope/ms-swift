@@ -10,16 +10,17 @@ import json
 import numpy as np
 import torch
 import torch.distributed as dist
-from transformers import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format, dataset_map,
-                   find_all_linear_for_lora, get_dataset, get_dist_setting,
-                   get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
-                   is_dist, is_master, plot_images, select_bnb, select_dtype,
-                   show_layers, sort_by_max_length)
+                   broadcast_string, check_json_format, compute_nlg_metrics,
+                   dataset_map, find_all_linear_for_lora, get_dataset,
+                   get_dist_setting, get_model_tokenizer, get_preprocess,
+                   is_ddp_plus_mp, is_dist, is_master, plot_images,
+                   prepare_model, select_bnb, select_dtype, show_layers,
+                   sort_by_max_length)
 
-from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
-                   Seq2SeqTrainingArguments, Swift, get_logger)
+from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
+                   Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
@@ -73,6 +74,7 @@ class SftArguments:
 
     gradient_checkpointing: bool = False
     batch_size: int = 1
+    eval_batch_size: Optional[int] = None
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -81,6 +83,7 @@ class SftArguments:
     weight_decay: float = 0.01
     gradient_accumulation_steps: int = 16
     max_grad_norm: float = 1.
+    predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
 
@@ -118,6 +121,13 @@ class SftArguments:
             'help':
             "This parameter is used only when model_type.startswith('qwen')"
         })
+
+    # generation config, only useful when `predict_with_generate=True`
+    max_new_tokens: int = 1024
+    do_sample: bool = True
+    temperature: float = 0.9
+    top_k: int = 50
+    top_p: float = 0.9
 
     def __post_init__(self):
         if is_dist():
@@ -181,6 +191,11 @@ class SftArguments:
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
         self.train_sampler_random = not self.test_oom_error
+        if self.eval_batch_size is None:
+            if self.predict_with_generate:
+                self.eval_batch_size = 1
+            else:
+                self.eval_batch_size = self.batch_size
 
 
 def llm_sft(args: SftArguments) -> None:
@@ -211,37 +226,30 @@ def llm_sft(args: SftArguments) -> None:
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
-    # ### Preparing lora
-    if args.sft_type == 'lora':
-        if 'ALL' in args.lora_target_modules:
-            assert len(args.lora_target_modules) == 1
-            args.lora_target_modules = find_all_linear_for_lora(
-                model, args.quantization_bit, args.model_type)
-            logger.info(
-                f'Setting lora_target_modules: {args.lora_target_modules}')
-        if args.resume_from_ckpt is None:
-            lora_config = LoraConfig(
-                r=args.lora_rank,
-                target_modules=args.lora_target_modules,
-                lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout_p,
-                task_type='CAUSAL_LM')
-            logger.info(f'lora_config: {lora_config}')
-            model = Swift.prepare_model(model, lora_config)
-        else:
-            model = Swift.from_pretrained(
-                model, args.resume_from_ckpt, is_trainable=True)
+    if args.resume_from_ckpt is None:
+        if args.sft_type != 'full':
+            # lora
+            model = prepare_model(model, args)
+    else:
+        model = Swift.from_pretrained(
+            model, args.resume_from_ckpt, is_trainable=True)
 
     show_layers(model)
     print_model_info(model)
     logger.info(model)
 
     # ### Loading Dataset
+    generation_config = GenerationConfig(
+        do_sample=args.do_sample,
+        max_length=None,
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
+    )
     train_dataset, val_dataset = get_dataset(
         args.dataset.split(','), args.dataset_test_ratio,
         args.dataset_split_seed)
-    preprocess_func = get_preprocess(args.template_type, tokenizer,
-                                     args.system, args.max_length)
     if args.train_dataset_sample >= 0:
         val_dataset_sample = int(args.train_dataset_sample
                                  * args.dataset_test_ratio)
@@ -252,8 +260,20 @@ def llm_sft(args: SftArguments) -> None:
             val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    train_dataset = dataset_map(train_dataset, preprocess_func)
-    val_dataset = dataset_map(val_dataset, preprocess_func)
+    preprocess_func_train = get_preprocess(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        validate_generation=False)
+    preprocess_func_eval = get_preprocess(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        validate_generation=args.predict_with_generate)
+    train_dataset = dataset_map(train_dataset, preprocess_func_train)
+    val_dataset = dataset_map(val_dataset, preprocess_func_eval)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
@@ -287,7 +307,7 @@ def llm_sft(args: SftArguments) -> None:
         do_eval=True,
         evaluation_strategy='steps',
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -305,8 +325,9 @@ def llm_sft(args: SftArguments) -> None:
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
         load_best_model_at_end=True,
-        metric_for_best_model='loss',
-        greater_is_better=False,
+        metric_for_best_model='rouge-l'
+        if args.predict_with_generate else 'loss',
+        greater_is_better=args.predict_with_generate,
         sortish_sampler=True,
         optim=args.optim,
         hub_model_id=args.hub_model_id,
@@ -317,11 +338,12 @@ def llm_sft(args: SftArguments) -> None:
         resume_from_checkpoint=args.resume_from_ckpt,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
+        predict_with_generate=args.predict_with_generate,
+        generation_config=generation_config,
         local_rank=local_rank,
         **kwargs)
 
     if args.gradient_checkpointing:
-        model.config.use_cache = False
         model.enable_input_require_grads()
     if is_dist():
         # Compatible with https://github.com/huggingface/transformers/pull/25903
@@ -342,6 +364,8 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
+        compute_metrics=partial(compute_nlg_metrics, tokenizer=tokenizer)
+        if args.predict_with_generate else None,
     )
     if is_master():
         for args_obj, fname in zip([args, training_args],
@@ -354,6 +378,7 @@ def llm_sft(args: SftArguments) -> None:
                     ensure_ascii=False,
                     indent=2)
     trainer.train(training_args.resume_from_checkpoint)
+    logger.info(trainer.perf)
 
     # ### Visualization
     if is_master():

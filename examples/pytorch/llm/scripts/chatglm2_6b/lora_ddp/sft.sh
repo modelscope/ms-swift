@@ -1,5 +1,5 @@
-# Experimental environment: A100
-# 50GB GPU memory
+# Experimental environment: 2 * A100
+# 2 * 50GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \

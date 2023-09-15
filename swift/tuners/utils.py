@@ -2,8 +2,10 @@
 # Copyright 2023-present the HuggingFace Inc. team.
 
 import os
+import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
+from typing import Dict
 
 import json
 from peft.utils import CONFIG_NAME
@@ -109,10 +111,10 @@ class SwiftOutput:
             which is used to get the tuner's state dict among the model's state dict.
             This callback should receive a state dict, and returns a created state dict.
             Examples:
-                >>> def state_dict_callback(state_dict):
+                >>> def state_dict_callback(state_dict, adapter_name):
                 >>>     return {
                 >>>         key: value
-                >>>         for key, value in state_dict.items() if 'adapter' in key
+                >>>         for key, value in state_dict.items() if adapter_name in key
                 >>>     }
         mark_trainable_callback (`FunctionType`): A callback returned by the tuner
             which is used to mark the tuner's adapter's parameters to trainable.
@@ -125,3 +127,21 @@ class SwiftOutput:
     config: SwiftConfig = None
     state_dict_callback: FunctionType = None
     mark_trainable_callback: FunctionType = None
+
+
+class ActivationMixin:
+
+    USE_UNIQUE_THREAD = 'USE_UNIQUE_THREAD'
+
+    def __init__(self):
+        self._thread_inf: Dict[int, bool] = {}
+        self._unique_thread = bool(
+            int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '0')))
+
+    def set_activation(self, activate=True):
+        tid = 0 if self._unique_thread else threading.get_ident()
+        self._thread_inf[tid] = activate
+
+    def is_activated(self):
+        tid = 0 if self._unique_thread else threading.get_ident()
+        return self._thread_inf.get(tid, True)

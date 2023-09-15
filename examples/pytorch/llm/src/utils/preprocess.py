@@ -37,6 +37,11 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
+    'chatglm2-generation': {
+        'prefix': [[64790, 64792]],
+        'prompt': ['{{query}}'],
+        'suffix': [['eos_token_id']],
+    },
     'llama': {
         'prefix': [['bos_token_id'],
                    '[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
@@ -119,13 +124,15 @@ def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
 
 
 def _preprocess(
-    template_type: str,
-    tokenizer: PreTrainedTokenizer,
-    query: str,
-    response: Optional[str] = None,
-    history: Optional[History] = None,
-    system: Optional[str] = None,
-    max_length: Optional[int] = None,
+        template_type: str,
+        tokenizer: PreTrainedTokenizer,
+        query: str,
+        response: Optional[str] = None,
+        history: Optional[History] = None,
+        system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        validate_generation: Optional[
+            bool] = True,  # do cross-validation with `model.generate()`
 ) -> Dict[str, List[int]]:
     if history is None:
         history = []
@@ -159,11 +166,15 @@ def _preprocess(
 
     labels = None
     if response is not None:
-        labels = [-100] * len(input_ids)
         tgt_input_ids = _encode(tokenizer, [response], [])
         tgt_input_ids += _encode(tokenizer, template_config['suffix'], [])
-        input_ids += tgt_input_ids
-        labels += tgt_input_ids
+        if not validate_generation:
+            # train, or validate with `loss`
+            labels = [-100] * len(input_ids) + tgt_input_ids
+            input_ids += tgt_input_ids
+        else:
+            # validate with `model.generate()`
+            labels = tgt_input_ids
 
     if max_length is not None:
         input_ids = input_ids[-max_length:]
@@ -178,6 +189,7 @@ def get_preprocess(
     tokenizer: PreTrainedTokenizer,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
+    validate_generation: Optional[bool] = False,
 ) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
 
     def preprocess(example: Dict[str, Any]) -> Dict[str, List[int]]:
@@ -186,6 +198,6 @@ def get_preprocess(
         response: str = example.get('response', None)
         custom_system = example.get('system', system)
         return _preprocess(template_type, tokenizer, query, response, history,
-                           custom_system, max_length)
+                           custom_system, max_length, validate_generation)
 
     return preprocess

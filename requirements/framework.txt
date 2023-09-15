@@ -3,7 +3,7 @@ datasets
 diffusers>=0.18.0
 numpy
 pandas
-peft
+peft>=0.5.0
 requests
 safetensors
 tensorboard

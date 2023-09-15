@@ -28,20 +28,27 @@ class SwiftModel(nn.Module):
     """The Swift wrapper model.
 
     Args:
-        model (`torch.nn.Module`) A module to be tuned by Swift.
-        config (`Union[SwiftConfig, Dict[str, SwiftConfig]]`) A config or a dict of adapter_name: SwiftConfig.
+        model (`Union[nn.Module, 'SwiftModel']`) A module to be tuned by Swift.
+        config (`Union[SwiftConfig, Dict[str, SwiftConfig]]`) A config or a dict of {adapter_name: SwiftConfig}.
             If it's a config class, the adapter_name will be `default`
         extra_state_keys (`List[str]`, `optional`) A list of regex to match the extra state keys to be saved.
         inference_mode (bool, `optional`): Load model at inference mode, default False.
     """
 
     def __init__(self,
-                 model: nn.Module,
+                 model: Union[nn.Module, 'SwiftModel'],
                  config: Union[SwiftConfig, Dict[str, SwiftConfig]],
                  extra_state_keys: List[str] = None,
                  inference_mode: bool = False,
                  **kwargs):
         super().__init__()
+        self.adapters = {}
+        if isinstance(model, SwiftModel):
+            self.adapters = model.adapters
+            extra_state_keys = extra_state_keys or []
+            extra_state_keys.extend(model.extra_state_keys)
+            model = model.base_model
+
         if (getattr(model, 'hf_device_map', None) is not None) and (
                 len(set(model.hf_device_map.values()) & {'cpu', 'disk'}) > 0):
             from accelerate.hooks import remove_hook_from_submodules
@@ -50,14 +57,14 @@ class SwiftModel(nn.Module):
         for _, p in model.named_parameters():
             p.requires_grad = False
 
-        self.adapters = {}
         if isinstance(config, SwiftConfig):
-            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(model, config)
+            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
+                model, config, DEFAULT_ADAPTER)
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
-            for adapter_name, config in config.items():
+            for adapter_name, _config in config.items():
                 self.adapters[adapter_name] = self._prepare_model(
-                    model, config)
+                    model, _config, adapter_name)
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
@@ -151,7 +158,8 @@ class SwiftModel(nn.Module):
         if kwargs.get('save_adapter', True):
             for name, output in self.adapters.items():
                 if adapter_name == name or adapter_name is None:
-                    state_dicts.update(output.state_dict_callback(destination))
+                    state_dicts.update(
+                        output.state_dict_callback(destination, name))
         if kwargs.get('save_extra_states', True):
             state_dicts.update({
                 k: v
@@ -194,18 +202,20 @@ class SwiftModel(nn.Module):
 
     @classmethod
     def from_pretrained(cls,
-                        model: nn.Module,
+                        model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
-                        adapter_name: Union[str, List[str]] = 'default',
+                        adapter_name: Union[str, List[str]] = None,
                         inference_mode: bool = False,
                         revision: str = None,
                         **kwargs):
         """Load a set of tuners and corresponding weights by a model_id.
 
         Args:
-            model (`torch.nn.Module`): The model to be tuned.
-            model_id (`str`): The model_id or a local model dir to use to tune the model.
+            model (`Union[torch.nn.Module, 'SwiftModel']`): The model to be tuned,
+                if the model is already a `SwiftModel` it will be un-wrapped and re-wrapped..
+            model_id (`str`): The model_id or a local model dir of tuners to use to tune the model.
             adapter_name (`Union[str, List[str]]`): The adapter_names saved in the model repo to load.
+                Default `None`, means load all tuners saved in the model_id
             inference_mode (`bool`): Use in the inference mode or not.
             revision (`str`): The model revision to use.
             **kwargs:
@@ -228,10 +238,20 @@ class SwiftModel(nn.Module):
             )
         if not os.path.exists(model_id):
             model_dir = snapshot_download(model_id, revision=revision)
+        if adapter_name is None:
+            adapter_name = [
+                sub_dir for sub_dir in os.listdir(model_dir)
+                if os.path.isdir(os.path.join(model_dir, sub_dir)) and
+                os.path.isfile(os.path.join(model_dir, sub_dir, CONFIG_NAME))
+            ]
         for _name in adapter_name if isinstance(adapter_name,
                                                 list) else [adapter_name]:
             sub_folder = os.path.join(model_dir, _name)
             config_file = os.path.join(sub_folder, CONFIG_NAME)
+
+            if not os.path.isfile(config_file):
+                logger.warning(f'{_name} is not a valid tuner')
+                continue
 
             with open(config_file, 'r') as file:
                 json_object = json.load(file)
@@ -260,10 +280,12 @@ class SwiftModel(nn.Module):
         cls,
         model: nn.Module,
         config: SwiftConfig,
+        adapter_name: str,
     ):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
-        return SWIFT_MAPPING[config.swift_type][1].prepare_model(model, config)
+        return SWIFT_MAPPING[config.swift_type][1].prepare_model(
+            model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
@@ -299,7 +321,6 @@ class SwiftModel(nn.Module):
             lines.append(
                 f'{training_procedure_heading}\n{training_config_text}')
 
-        # Adds peft version
         framework_block_heading = '### Framework versions\n'
         from swift.version import __version__
         if framework_block_heading in lines:
@@ -310,6 +331,11 @@ class SwiftModel(nn.Module):
             lines.append(
                 f'{framework_block_heading}\n\n- SWIFT {__version__}\n')
 
+        base_model_heading = '### Base model information\n'
+        lines.append(
+            f'{base_model_heading}\n\n- BaseModel Class {self.base_model.__class__.__name__}\n'
+        )
+
         # write the lines back to README.md
         with open(os.path.join(output_dir, 'README.md'), 'w') as f:
             f.writelines(lines)
@@ -317,14 +343,14 @@ class SwiftModel(nn.Module):
     def save_pretrained(self,
                         save_directory: str,
                         safe_serialization: bool = False,
-                        adapter_name: Union[str, List[str]] = 'default',
+                        adapter_name: Union[str, List[str]] = None,
                         **kwargs):
         """Save the adapters to a local directory.
 
         Args:
             save_directory (`str`): The directory to use.
             safe_serialization (`bool`): Use safe tensors to save the weights, default False.
-            adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `default`.
+            adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `None` to save all.
         """
         if os.path.isfile(save_directory):
             raise ValueError(
@@ -333,10 +359,10 @@ class SwiftModel(nn.Module):
         os.makedirs(save_directory, exist_ok=True)
         self.create_or_update_model_card(save_directory)
 
-        adapter_names = adapter_name if isinstance(adapter_name,
-                                                   list) else [adapter_name]
+        adapter_names = adapter_name if isinstance(
+            adapter_name, list) or adapter_name is None else [adapter_name]
         for adapter_name, output in self.adapters.items():
-            if adapter_name not in adapter_names:
+            if adapter_names is not None and adapter_name not in adapter_names:
                 continue
 
             # save only the trainable weights
@@ -381,6 +407,37 @@ class SwiftModel(nn.Module):
     def base_model(self):
         return self.model
 
+    def set_active_adapters(self, adapter_names: List[str]):
+        if not adapter_names:
+            return
+
+        adapter_names = set(adapter_names)
+        for adapter_name in (adapter_names & set(self.adapters.keys())):
+            self.activate_adapter(adapter_name)
+
+        for adapter_name in (set(self.adapters.keys()) - adapter_names):
+            self.deactivate_adapter(adapter_name)
+
+    def activate_adapter(self, adapter_name):
+        if adapter_name not in self.adapters:
+            logger.warning(
+                f'{adapter_name} not in adapters: {self.adapters.keys()}')
+            return
+
+        from .mapping import SWIFT_MAPPING
+        SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
+            .activate_adapter(self.base_model, adapter_name, True)
+
+    def deactivate_adapter(self, adapter_name):
+        if adapter_name not in self.adapters:
+            logger.warning(
+                f'{adapter_name} not in adapters: {self.adapters.keys()}')
+            return
+
+        from .mapping import SWIFT_MAPPING
+        SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
+            .activate_adapter(self.base_model, adapter_name, False)
+
     def get_trainable_parameters(self):
         """
         Get the content of trainable parameters in the model.
@@ -397,20 +454,21 @@ class SwiftModel(nn.Module):
             if param.requires_grad:
                 trainable_params += num_params
         return f'trainable params: {trainable_params:,d} || all params: {all_param:,d} ' \
-               f'|| trainable%: {100 * trainable_params / all_param}'
+               f'|| trainable%: {100 * trainable_params / all_param}' \
+               f'|| cuda memory: {sum([torch.cuda.memory_allocated(i) for i in range(torch.cuda.device_count())])}'
 
 
 class Swift:
     """The Wrapper to use both Peft and Swift tuners."""
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: Union[SwiftConfig, PeftConfig,
-                                                      Dict[str, SwiftConfig]],
-                      **kwargs):
+    def prepare_model(model: Union[nn.Module, 'SwiftModel'],
+                      config: Union[SwiftConfig, PeftConfig,
+                                    Dict[str, SwiftConfig]], **kwargs):
         """Prepare a model by the input config.
 
         Args:
-            model(`nn.Module`): The model to be tuned.
+            model(`Union[nn.Module, 'SwiftModel']`): The model to be tuned.
             config(`Union[SwiftConfig, PeftConfig, Dict[str, SwiftConfig]]`): The config or config dict, can be either
                 SwiftConfigs or PeftConfigs
             **kwargs:
@@ -428,15 +486,15 @@ class Swift:
         raise ValueError(f'Unsupported swift config type: {config.__class__}')
 
     @staticmethod
-    def from_pretrained(model: nn.Module,
+    def from_pretrained(model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
-                        adapter_name: Union[str, List[str]] = 'default',
+                        adapter_name: Union[str, List[str]] = None,
                         revision: str = None,
                         **kwargs):
         """Prepare a model by a model_id in the ModelScope hub or a local dir.
 
         Args:
-            model(`nn.Module`): The model to be tuned.
+            model(`Union[nn.Module, 'SwiftModel']`): The model to be tuned.
             model_id(`str`): The model id of the modelhub or a local dir containing the configs/weights.
             adapter_name(`str`, `optional`): The adapter_name to use.
             revision(`str`, `optional`): The model revision if the model_id is a model id of the modelhub.
@@ -453,8 +511,9 @@ class Swift:
                 _json = json.load(f)
             is_peft_model = PEFT_TYPE_KEY in _json
 
-        _name = adapter_name if isinstance(adapter_name,
-                                           str) else adapter_name[0]
+        _name = adapter_name if isinstance(
+            adapter_name, str) or adapter_name is None else adapter_name[0]
+        _name = _name or ''
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
             with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
@@ -464,7 +523,7 @@ class Swift:
                 model,
                 model_id,
                 revision=revision,
-                adapter_name=adapter_name,
+                adapter_name=adapter_name or 'default',
                 **kwargs)
         else:
             return SwiftModel.from_pretrained(

@@ -42,8 +42,7 @@ class InferArguments:
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
 
-    quantization_bit: Optional[int] = field(
-        default=None, metadata={'choices': {4, 8}})
+    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
     bnb_4bit_comp_dtype: str = field(
         default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
     bnb_4bit_quant_type: str = field(
@@ -110,7 +109,8 @@ def llm_infer(args: InferArguments) -> None:
 
     # ### Preparing lora
     if args.sft_type == 'lora':
-        model = Swift.from_pretrained(model, args.ckpt_dir)
+        model = Swift.from_pretrained(
+            model, args.ckpt_dir, inference_mode=True)
 
     show_layers(model)
     print_model_info(model)

@@ -7,7 +7,9 @@ if TYPE_CHECKING:
     from .adapter import Adapter, AdapterConfig, AdapterModule
     from .base import SwiftModel, Swift
     from .lora import LoRA, LoRAConfig
-    from .mapping import SWIFT_MAPPING
+    from .mapping import SWIFT_MAPPING, SwiftTuners
+    from .side import Side, SideConfig, SideModule
+    from .restuning import ResTuning, ResTuningConfig, ResTuningBypassModule
     from .peft import (LoraConfig, PeftConfig, PeftModel, PeftModelForCausalLM,
                        PeftModelForSeq2SeqLM,
                        PeftModelForSequenceClassification,
@@ -22,7 +24,9 @@ else:
         'adapter': ['Adapter', 'AdapterConfig', 'AdapterModule'],
         'base': ['SwiftModel', 'Swift'],
         'lora': ['LoRA', 'LoRAConfig'],
-        'mapping': ['SWIFT_MAPPING'],
+        'mapping': ['SWIFT_MAPPING', 'SwiftTuners'],
+        'side': ['Side', 'SideConfig', 'SideModule'],
+        'restuning': ['ResTuning', 'ResTuningConfig', 'ResTuningBypassModule'],
         'peft': [
             'LoraConfig', 'PeftConfig', 'PeftModel', 'PeftModelForCausalLM',
             'PeftModelForSeq2SeqLM', 'PeftModelForSequenceClassification',
