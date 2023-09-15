@@ -20,8 +20,8 @@ jobs:
         with:
           python-version: '3.7'
       - name: Install wheel
-        run: pip install wheel && pip install -r requirements/framework.txt
-      - name: Build ModelScope
+        run: pip install wheel
+      - name: Build ModelScope Swift
         run: python setup.py sdist bdist_wheel
       - name: Publish package to PyPI
         run: |
