@@ -249,18 +249,6 @@ def download_files(url: str, local_path: str, cookies) -> None:
             f.write(data)
 
 
-def process_dataset(dataset: HfDataset, dataset_test_size: float,
-                    dataset_sample: int,
-                    dataset_seed: int) -> Tuple[HfDataset, HfDataset]:
-    random_state = np.random.RandomState(dataset_seed)
-    if dataset_sample >= 0:
-        index = random_state.permutation(len(dataset))[:dataset_sample]
-        dataset = dataset.select(index)
-    dataset = dataset.train_test_split(
-        dataset_test_size, seed=get_seed(random_state))
-    return dataset['train'], dataset['test']
-
-
 def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
     dataset_len = [len(d['input_ids']) for d in tqdm(dataset)]
     idx = heapq.nlargest(

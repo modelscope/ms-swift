@@ -3,7 +3,7 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import json
 import numpy as np
@@ -13,7 +13,7 @@ from modelscope import MsDataset
 from tqdm.auto import tqdm
 
 from .preprocess import History
-from .utils import download_dataset, process_dataset
+from .utils import download_dataset
 
 
 def _preprocess_alpaca_dataset(
@@ -332,7 +332,7 @@ def _preprocess_cls_dataset(dataset: HfDataset, cls_mapping: List[str],
     prompt = f"""Task: {task}
 {input_}
 Category: {category}
-Label: """
+Output: """
     query = []
     response = []
     for d in tqdm(dataset):
@@ -425,7 +425,7 @@ def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
 
 def get_medical_dataset(
         subset_name: str,
-        train_dataset_sample: int = -1) -> Tupe[HfDataset, HfDataset]:
+        train_dataset_sample: int = -1) -> Tuple[HfDataset, HfDataset]:
     """
     mode: Literal['en', zh]
     """
@@ -437,7 +437,7 @@ def get_medical_dataset(
     ])
     val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
     if train_dataset_sample != -1:
-        idxs = np.random.permutation(dataset_sample)
+        idxs = np.random.permutation(train_dataset_sample)
         train_dataset = train_dataset.select(idxs)
     return tuple(
         _preprocess_medical(dataset, subset_name)
@@ -597,29 +597,42 @@ DATASET_MAPPING = {
 def get_dataset(
         dataset_name_list: List[str],
         dataset_test_ratio: float = 0.,
-        dataset_sample: int = -1,
-        dataset_seed: int = 42) -> Tuple[HfDataset, Optional[HfDataset]]:
+        dataset_seed: int = 42,
+        train_dataset_sample: int = -1,
+        test_dataset_sample: int = -1
+) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
+    random_state = np.random.RandomState(dataset_seed)
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset = get_function()
         if isinstance(dataset, (list, tuple)):
-            train_dataset = dataset[0]
-            val_dataset = dataset[1]
+            train_d = dataset[0]
+            val_d = dataset[1]
         else:
             if dataset_test_ratio > 0:
-                train_dataset, val_dataset = process_dataset(
-                    dataset, dataset_test_ratio, dataset_sample, dataset_seed)
+                train_d, val_d = dataset.train_test_split(
+                    dataset_test_size, seed=get_seed(random_state))
             else:
-                train_dataset, val_dataset = dataset, None
-        train_dataset_list.append(train_dataset)
-        if val_dataset is not None:
-            val_dataset_list.append(val_dataset)
+                train_d, val_d = dataset, None
+        train_dataset_list.append(train_d)
+        if val_d is not None:
+            val_dataset_list.append(val_d)
 
-        train_dataset = concatenate_datasets(train_dataset_list)
-        val_dataset = None
-        if len(val_dataset_list) > 0:
-            val_dataset = concatenate_datasets(val_dataset_list)
-    return train_dataset, val_dataset
+    train_dataset = concatenate_datasets(train_dataset_list)
+    val_dataset = None
+    if len(val_dataset_list) > 0:
+        val_dataset = concatenate_datasets(val_dataset_list)
+
+    dataset_list = []
+    for dataset, dataset_sample in zip(
+        [train_dataset, val_dataset],
+        [train_dataset_sample, test_dataset_sample],
+    ):
+        if dataset_sample >= 0:
+            index = random_state.permutation(len(dataset))[:dataset_sample]
+            dataset = dataset.select(index)
+        dataset_list.append(dataset)
+    return tuple(dataset_list)

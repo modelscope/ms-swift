@@ -13,7 +13,7 @@ torchrun \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset code-python-zh \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 8192 \
     --lora_rank 8 \

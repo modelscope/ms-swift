@@ -7,7 +7,7 @@ python src/llm_infer.py \
     --ckpt_dir "runs/seqgpt-560m/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset ner-jave-zh \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --max_length 1024 \
     --max_new_tokens 1024 \
     --temperature 0.9 \

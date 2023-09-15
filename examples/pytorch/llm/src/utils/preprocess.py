@@ -8,51 +8,51 @@ History = List[Tuple[str, str]]
 
 TEMPLATE_MAPPING = {
     'default': {
-        'prefix': ['{{system}}\n\n'],
-        'prompt': ['### Human:\n', '{{query}}\n\n', '### Assistant:\n'],
+        'prefix': ['{{SYSTEM}}\n\n'],
+        'prompt': ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'],
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
     'default-generation': {
         'prefix': [],
-        'prompt': ['{{query}}'],
+        'prompt': ['{{QUERY}}'],
         'suffix': [['eos_token_id']],
     },
     'chatml': {
-        'prefix': ['<|im_start|>system\n{{system}}<|im_end|>\n'],
+        'prefix': ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
         'prompt':
-        ['<|im_start|>user\n{{query}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         'chat_sep': ['<|im_end|>\n'],
         'suffix': ['<|im_end|><|endoftext|>'],
     },
     'baichuan': {
         'prefix': [],
-        'prompt': [[195], '{{query}}', [196]],
+        'prompt': [[195], '{{QUERY}}', [196]],
         'chat_sep': [],
         'suffix': [['eos_token_id']],
     },
     'chatglm2': {
         'prefix': [[64790, 64792]],
-        'prompt': ['[Round {{round}}]\n\n问：{{query}}\n\n答：'],
+        'prompt': ['[Round {{ROUND}}]\n\n问：{{QUERY}}\n\n答：'],
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
     'llama': {
         'prefix': [['bos_token_id'],
-                   '[INST] <<SYS>>\n{{system}}\n<</SYS>>\n\n'],
-        'prompt': ['{{query}} [/INST] '],
+                   '[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
+        'prompt': ['{{QUERY}} [/INST] '],
         'chat_sep': [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
         'suffix': [['eos_token_id']],
     },
     'openbuddy-llama': {
-        'prefix': ['{{system}}\n\n'],
-        'prompt': ['User: {{query}}\nAssistant: '],
+        'prefix': ['{{SYSTEM}}\n\n'],
+        'prompt': ['User: {{QUERY}}\nAssistant: '],
         'chat_sep': ['\n'],
         'suffix': [['eos_token_id']],
     },
     'internlm': {
         'prefix': ['<s>'],
-        'prompt': ['<|User|>:{{query}}<eoh>\n<|Bot|>:'],
+        'prompt': ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'],
         'chat_sep': ['<eoa>\n'],
         'suffix': ['<eoa></s>'],
     }
@@ -87,7 +87,7 @@ def concat_context_list(
     for context in context_list:
         if isinstance(context, str):
             for (old_str,
-                 new_str) in zip(['{{system}}', '{{query}}', '{{round}}'],
+                 new_str) in zip(['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}'],
                                  [system, query, round]):
                 if new_str is not None and old_str in context:
                     placeholder_list.append(new_str)
@@ -108,7 +108,7 @@ def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
                     token = c
                 input_ids.append(token)
         elif isinstance(context, str):
-            for old_str in ['{{system}}', '{{query}}', '{{round}}']:
+            for old_str in ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}']:
                 if old_str in context:
                     new_str = next(placeholder_it)
                     context = context.replace(old_str, new_str)

@@ -7,7 +7,7 @@ python src/llm_infer.py \
     --ckpt_dir "runs/baichuan2-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset advertise-gen \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \

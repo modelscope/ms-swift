@@ -11,7 +11,7 @@ torchrun \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset dureader-robust-zh \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --lora_rank 8 \

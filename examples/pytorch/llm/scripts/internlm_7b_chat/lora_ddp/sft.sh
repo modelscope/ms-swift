@@ -10,8 +10,8 @@ torchrun \
     --dtype bf16 \
     --output_dir runs \
     --ddp_backend nccl \
-    --dataset alpaca-en,alpaca-zh \
-    --dataset_sample 20000 \
+    --dataset jd-zh \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --lora_rank 8 \

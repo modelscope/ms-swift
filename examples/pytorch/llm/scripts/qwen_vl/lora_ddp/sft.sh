@@ -11,7 +11,7 @@ torchrun \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset coco-en \
-    --dataset_sample 20000 \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --lora_rank 8 \

@@ -1,11 +1,12 @@
 # Experimental environment: 2 * 3090
+# not good at Chinese
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type llama2-70b-chat \
     --sft_type lora \
     --output_dir runs \
     --dataset alpaca-en \
-    --dataset_sample 20000 \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \

@@ -7,7 +7,7 @@ python src/llm_infer.py \
     --ckpt_dir "runs/qwen-vl/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset coco-en \
-    --dataset_sample 20000 \
+    --train_dataset_sample 20000 \
     --max_length 2048 \
     --use_flash_attn true \
     --max_new_tokens 1024 \

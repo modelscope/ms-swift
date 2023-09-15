@@ -13,7 +13,7 @@ torchrun \
     --output_dir runs \
     --ddp_backend nccl \
     --dataset advertise-gen \
-    --dataset_sample -1 \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \
@@ -22,7 +22,7 @@ torchrun \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules ALL \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

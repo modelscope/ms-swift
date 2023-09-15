@@ -14,8 +14,8 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, check_json_format, dataset_map,
                    find_all_linear_for_lora, get_dataset, get_dist_setting,
                    get_model_tokenizer, get_preprocess, is_ddp_plus_mp,
-                   is_dist, is_master, plot_images, process_dataset,
-                   select_bnb, select_dtype, show_layers, sort_by_max_length)
+                   is_dist, is_master, plot_images, select_bnb, select_dtype,
+                   show_layers, sort_by_max_length)
 
 from swift import (HubStrategy, LoraConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
@@ -50,7 +50,8 @@ class SftArguments:
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_sample: int = -1  # -1: all dataset
+    train_dataset_sample: int = -1  # -1: all dataset
+    test_dataset_sample: int = -1
     dataset_test_ratio: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
@@ -237,8 +238,8 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Loading Dataset
     train_dataset, val_dataset = get_dataset(
-        args.dataset.split(','), args.dataset_test_ratio, args.dataset_sample,
-        args.dataset_seed)
+        args.dataset.split(','), args.dataset_test_ratio, args.dataset_seed,
+        args.train_dataset_sample)
     preprocess_func = get_preprocess(args.template_type, tokenizer,
                                      args.system, args.max_length)
     train_dataset = dataset_map(train_dataset, preprocess_func)
