@@ -1,9 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import jieba
 import numpy as np
-from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-from rouge.rouge import Rouge
 
 from swift import get_logger
 
@@ -11,6 +8,9 @@ logger = get_logger()
 
 
 def compute_nlg_metrics(prediction, tokenizer):
+    import jieba
+    from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
+    from rouge.rouge import Rouge
     preds, labels = prediction[0], prediction[1]
 
     score_dict = {'rouge-1': [], 'rouge-2': [], 'rouge-l': [], 'bleu-4': []}

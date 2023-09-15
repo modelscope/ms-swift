@@ -14,7 +14,7 @@ from tqdm.auto import tqdm
 
 from swift.utils import get_seed
 from .preprocess import History
-from .utils import download_dataset, process_dataset
+from .utils import download_dataset
 
 
 def _preprocess_alpaca_dataset(
@@ -41,18 +41,6 @@ def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
-
-def _preprocess_advertise_gen_dataset(dataset: HfDataset) -> HfDataset:
-    for d in dataset:
-        pass
-
-def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
-    dataset_train: HfDataset = MsDataset.load(
-        'lvjianjin/AdvertiseGen',split='train').to_hf_dataset()
-    dataset_val: HfDataset = MsDataset.load(
-        'lvjianjin/AdvertiseGen', split='validation').to_hf_dataset()
-    return (_preprocess_advertise_gen_dataset(dataset_train), 
-            _preprocess_advertise_gen_dataset(dataset_val))
 
 
 def _preprocess_advertise_gen_dataset(dataset: HfDataset) -> HfDataset:
@@ -154,22 +142,6 @@ def get_instinwild_en_dataset() -> HfDataset:
         'wyj123456/instinwild', subset_name='subset',
         split='train').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
-
-
-def get_du_reader_dataset() -> Tuple[HfDataset, HfDataset]:
-    dataset_train: HfDataset = MsDataset.load(
-        'modelscope/DuReader_robust-QG',
-        split='train').to_hf_dataset().rename_columns({
-            'text1': 'query',
-            'text2': 'response',
-        })
-    dataset_val: HfDataset = MsDataset.load(
-        'modelscope/DuReader_robust-QG',
-        split='validation').to_hf_dataset().rename_columns({
-            'text1': 'query',
-            'text2': 'response',
-        })
-    return dataset_train, dataset_val
 
 
 def get_cot_en_dataset() -> HfDataset:

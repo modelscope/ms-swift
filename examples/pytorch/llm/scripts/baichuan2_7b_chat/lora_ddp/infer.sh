@@ -8,7 +8,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --max_length 4096 \
-    --max_new_tokens 1024 \
+    --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 50 \
     --top_p 0.9 \
