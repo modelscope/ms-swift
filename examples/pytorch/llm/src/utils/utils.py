@@ -29,7 +29,6 @@ from transformers import GenerationConfig, TextStreamer, trainer
 
 from swift import get_logger
 from swift.hub import ModelScopeConfig
-from swift.utils import get_seed
 from swift.utils.tb_utils import (TB_COLOR, TB_COLOR_SMOOTH,
                                   read_tensorboard_file, tensorboard_smoothing)
 from .callback import DefaultFlowCallbackNew, ProgressCallbackNew

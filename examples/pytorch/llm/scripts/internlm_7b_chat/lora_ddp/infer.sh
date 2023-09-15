@@ -7,7 +7,6 @@ python src/llm_infer.py \
     --ckpt_dir "runs/internlm-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset jd-zh \
-    --train_dataset_sample -1 \
     --max_length 2048 \
     --max_new_tokens 1024 \
     --temperature 0.9 \

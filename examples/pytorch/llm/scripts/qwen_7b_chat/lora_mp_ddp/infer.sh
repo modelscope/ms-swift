@@ -7,7 +7,6 @@ python src/llm_infer.py \
     --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset advertise-gen \
-    --train_dataset_sample -1 \
     --max_length 2048 \
     --use_flash_attn false \
     --max_new_tokens 1024 \

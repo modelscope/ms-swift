@@ -7,7 +7,6 @@ python src/llm_infer.py \
     --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset medical-en,medical-zh \
-    --train_dataset_sample 200000 \
     --max_length 8192 \
     --use_flash_attn true \
     --max_new_tokens 1024 \

@@ -7,7 +7,6 @@ python src/llm_infer.py \
     --ckpt_dir "runs/baichuan2-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset damo-agent-mini-zh \
-    --train_dataset_sample -1 \
     --max_length 4096 \
     --max_new_tokens 1024 \
     --temperature 0.9 \

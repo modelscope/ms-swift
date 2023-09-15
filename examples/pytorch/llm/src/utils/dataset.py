@@ -12,6 +12,7 @@ from datasets import concatenate_datasets
 from modelscope import MsDataset
 from tqdm.auto import tqdm
 
+from swift.utils import get_seed
 from .preprocess import History
 from .utils import download_dataset
 
@@ -436,7 +437,7 @@ def get_medical_dataset(
         dataset_dict['val'].to_hf_dataset(),
     ])
     val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
-    if train_dataset_sample != -1:
+    if train_dataset_sample >= 0:
         idxs = np.random.permutation(train_dataset_sample)
         train_dataset = train_dataset.select(idxs)
     return tuple(
@@ -595,16 +596,14 @@ DATASET_MAPPING = {
 
 
 def get_dataset(
-        dataset_name_list: List[str],
-        dataset_test_ratio: float = 0.,
-        dataset_seed: int = 42,
-        train_dataset_sample: int = -1,
-        test_dataset_sample: int = -1
+    dataset_name_list: List[str],
+    dataset_test_ratio: float = 0.,
+    dataset_split_seed: int = 42,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
-    random_state = np.random.RandomState(dataset_seed)
+    random_state = np.random.RandomState(dataset_split_seed)
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset = get_function()
@@ -613,8 +612,9 @@ def get_dataset(
             val_d = dataset[1]
         else:
             if dataset_test_ratio > 0:
-                train_d, val_d = dataset.train_test_split(
-                    dataset_test_size, seed=get_seed(random_state))
+                dataset_dict = dataset.train_test_split(
+                    dataset_test_ratio, seed=get_seed(random_state))
+                train_d, val_d = dataset_dict['train'], dataset_dict['test']
             else:
                 train_d, val_d = dataset, None
         train_dataset_list.append(train_d)
@@ -626,13 +626,4 @@ def get_dataset(
     if len(val_dataset_list) > 0:
         val_dataset = concatenate_datasets(val_dataset_list)
 
-    dataset_list = []
-    for dataset, dataset_sample in zip(
-        [train_dataset, val_dataset],
-        [train_dataset_sample, test_dataset_sample],
-    ):
-        if dataset_sample >= 0:
-            index = random_state.permutation(len(dataset))[:dataset_sample]
-            dataset = dataset.select(index)
-        dataset_list.append(dataset)
-    return tuple(dataset_list)
+    return train_dataset, val_dataset

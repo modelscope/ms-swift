@@ -49,9 +49,8 @@ class SftArguments:
     dataset: str = field(
         default='alpaca-en,alpaca-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
+    dataset_split_seed: int = 42
     train_dataset_sample: int = -1  # -1: all dataset
-    test_dataset_sample: int = -1
     dataset_test_ratio: float = 0.01
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
@@ -238,10 +237,17 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Loading Dataset
     train_dataset, val_dataset = get_dataset(
-        args.dataset.split(','), args.dataset_test_ratio, args.dataset_seed,
-        args.train_dataset_sample)
+        args.dataset.split(','), args.dataset_test_ratio,
+        args.dataset_split_seed)
     preprocess_func = get_preprocess(args.template_type, tokenizer,
                                      args.system, args.max_length)
+    if args.train_dataset_sample >= 0:
+        val_dataset_sample = args.train_dataset_sample * self.dataset_test_ratio
+        train_idxs = np.random.permutation(args.train_dataset_sample)
+        train_dataset = train_dataset.select(train_idxs)
+        if val_dataset.shape[0] > val_dataset_sample:
+            val_idxs = np.random.permutation(val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
     train_dataset = dataset_map(train_dataset, preprocess_func)
     val_dataset = dataset_map(val_dataset, preprocess_func)
     if args.test_oom_error:
