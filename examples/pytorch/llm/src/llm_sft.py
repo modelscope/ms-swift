@@ -15,12 +15,11 @@ from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
                    broadcast_string, check_json_format, compute_nlg_metrics,
                    dataset_map, find_all_linear_for_lora, get_dataset,
                    get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_ddp_plus_mp, is_dist, is_master, plot_images,
-                   prepare_model, select_bnb, select_dtype, show_layers,
-                   sort_by_max_length)
+                   is_ddp_plus_mp, is_dist, is_master, plot_images, select_bnb,
+                   select_dtype, show_layers, sort_by_max_length)
 
-from swift import (HubStrategy, Seq2SeqTrainer, Seq2SeqTrainingArguments,
-                   Swift, get_logger)
+from swift import (HubStrategy, LoraConfig, LoRAConfig, Seq2SeqTrainer,
+                   Seq2SeqTrainingArguments, Swift, get_logger)
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
@@ -36,6 +35,8 @@ class SftArguments:
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
+    tuner_bankend: str = field(
+        default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'runs'
@@ -49,7 +50,7 @@ class SftArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
-        default='alpaca-en,alpaca-zh',
+        default='advertise-gen',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     train_dataset_sample: int = 20000  # -1: all dataset
@@ -227,9 +228,26 @@ def llm_sft(args: SftArguments) -> None:
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     if args.resume_from_ckpt is None:
-        if args.sft_type != 'full':
-            # lora
-            model = prepare_model(model, args)
+        if args.sft_type == 'lora':
+            if 'ALL' in args.lora_target_modules:
+                assert len(args.lora_target_modules) == 1
+                args.lora_target_modules = find_all_linear_for_lora(
+                    model, args.quantization_bit, args.model_type)
+                logger.info(
+                    f'Setting lora_target_modules: {args.lora_target_modules}')
+            lora_kwargs = {}
+            if args.tuner_bankend == 'peft':
+                global LoRAConfig
+                LoRAConfig = LoraConfig
+                lora_kwargs['task_type'] = 'CAUSAL_LM'
+            lora_config = LoRAConfig(
+                r=args.lora_rank,
+                target_modules=args.lora_target_modules,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout_p,
+                **lora_kwargs)
+            model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
     else:
         model = Swift.from_pretrained(
             model, args.resume_from_ckpt, is_trainable=True)
@@ -266,14 +284,14 @@ def llm_sft(args: SftArguments) -> None:
         args.system,
         args.max_length,
         validate_generation=False)
-    preprocess_func_eval = get_preprocess(
+    preprocess_func_val = get_preprocess(
         args.template_type,
         tokenizer,
         args.system,
         args.max_length,
         validate_generation=args.predict_with_generate)
     train_dataset = dataset_map(train_dataset, preprocess_func_train)
-    val_dataset = dataset_map(val_dataset, preprocess_func_eval)
+    val_dataset = dataset_map(val_dataset, preprocess_func_val)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
