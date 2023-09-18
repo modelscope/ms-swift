@@ -114,9 +114,9 @@ class SftArguments:
     max_new_tokens: int = 1024
     do_sample: bool = True
     temperature: float = 0.9
-    top_k: int = 50
+    top_k: int = 20
     top_p: float = 0.9
-    repetition_penalty: float = 1.05
+    repetition_penalty: float = 1.
 
     def __post_init__(self):
         if is_dist():
@@ -225,7 +225,7 @@ class InferArguments:
     temperature: float = 0.9
     top_k: int = 20
     top_p: float = 0.9
-    repetition_penalty: float = 1.05
+    repetition_penalty: float = 1.
 
     # other
     use_flash_attn: Optional[bool] = field(

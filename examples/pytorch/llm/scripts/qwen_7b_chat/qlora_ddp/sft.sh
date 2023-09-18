@@ -10,7 +10,7 @@ torchrun \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dataset advertise-gen \
     --train_dataset_sample -1 \

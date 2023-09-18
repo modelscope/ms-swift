@@ -4,7 +4,7 @@ python src/llm_sft.py \
     --sft_type full \
     --template_type default-generation \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset ner-jave-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 3 \

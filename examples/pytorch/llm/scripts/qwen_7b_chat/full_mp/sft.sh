@@ -6,7 +6,7 @@ python src/llm_sft.py \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset damo-agent-zh \
     --train_dataset_sample 200000 \
     --num_train_epochs 1 \

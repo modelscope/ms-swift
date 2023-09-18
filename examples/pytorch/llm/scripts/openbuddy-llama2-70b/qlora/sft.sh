@@ -5,7 +5,7 @@ python src/llm_sft.py \
     --sft_type lora \
     --template_type openbuddy-llama \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset alpaca-en,alpaca-zh \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \

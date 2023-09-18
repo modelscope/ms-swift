@@ -8,7 +8,7 @@ torchrun \
     --sft_type lora \
     --template_type default \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dataset coco-en \
     --train_dataset_sample 20000 \

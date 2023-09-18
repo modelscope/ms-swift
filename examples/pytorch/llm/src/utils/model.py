@@ -394,6 +394,17 @@ MODEL_MAPPING = {
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
     },
+    'internlm-20b': {
+        'model_id': 'Shanghai_AI_Laboratory/internlm-20b',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.internlm,
+    },
+    'internlm-20b-chat': {
+        'model_id': 'Shanghai_AI_Laboratory/internlm-20b-chat',
+        'revision': 'v1.0.0',
+        'template': 'internlm',
+        'lora_TM': LoRATM.internlm,
+    }
 }
 
 

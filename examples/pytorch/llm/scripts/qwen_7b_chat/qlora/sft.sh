@@ -6,7 +6,7 @@ python src/llm_sft.py \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset advertise-gen \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
