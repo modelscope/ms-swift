@@ -120,8 +120,8 @@ def inference(input_ids: List[int],
               model,
               tokenizer,
               streamer: Optional[TextStreamer] = None,
-              generation_config: Optional[GenerationConfig] = None,
-              skip_prompt: bool = True) -> str:
+              skip_prompt: bool = False) -> str:
+    generation_config = getattr(model, 'generation_config', None)
     if not skip_prompt:
         print(f'[INFERENCE]{tokenizer.decode(input_ids)}', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
@@ -132,7 +132,9 @@ def inference(input_ids: List[int],
         attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config)
-    output_text = tokenizer.decode(generate_ids[0])
+    output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
+    if streamer is None:
+        print(output_text)
     return output_text
 
 

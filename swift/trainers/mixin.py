@@ -231,6 +231,7 @@ class SwiftMixin:
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
+        # configuration.json
         if is_instance_of_ms_model(self.model):
             model_dir = getattr(self.model, 'model_dir', None)
             if model_dir is not None:
@@ -242,7 +243,7 @@ class SwiftMixin:
             self._create_configuration_file(self.model, output_dir)
 
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
-        # save model, tokenizer, args
+        # model
         save_safetensors = getattr(self.args, 'save_safetensors', False)
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
@@ -276,9 +277,10 @@ class SwiftMixin:
                 output_dir,
                 state_dict=state_dict,
                 safe_serialization=save_safetensors)
-
+        # tokenizer
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
+        # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
 
     def _save_checkpoint(self, model, trial, metrics=None):

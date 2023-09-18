@@ -10,7 +10,7 @@ torchrun \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset medical-en,medical-zh \
     --train_dataset_sample 200000 \
     --num_train_epochs 1 \

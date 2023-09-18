@@ -330,7 +330,7 @@ class LoRA:
                         sub_module.forward = MethodType(_forward, sub_module)
                     modules[module_key] = adapter_name
 
-        logger.info(f'Lora modules(module_key -> adapter_name): {modules}')
+        logger.debug(f'Lora modules(module_key -> adapter_name): {modules}')
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig):

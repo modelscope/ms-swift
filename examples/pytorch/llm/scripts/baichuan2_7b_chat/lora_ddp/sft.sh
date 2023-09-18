@@ -10,7 +10,7 @@ torchrun \
     --sft_type lora \
     --template_type baichuan \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dataset damo-agent-mini-zh \
     --train_dataset_sample -1 \
