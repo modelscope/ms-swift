@@ -94,7 +94,7 @@ def llm_sft(args: SftArguments) -> None:
         train_idxs = np.random.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
         if val_dataset.shape[0] > val_dataset_sample:
-            val_idxs = np.random.permutation(val_dataset_sample)[:10]
+            val_idxs = np.random.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
