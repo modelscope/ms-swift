@@ -24,7 +24,7 @@
    4. chatglm2 系列: chatglm2-6b, chatglm2-6b-32k
    5. llama 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat
    6. openbuddy-llama 系列: openbuddy-llama2-13b, openbuddy-llama-65b, openbuddy-llama2-70b
-   7. internlm 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k
+   7. internlm 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20-chat
    8. other: polylm-13b, seqgpt-560m
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 4. 支持的数据集:
