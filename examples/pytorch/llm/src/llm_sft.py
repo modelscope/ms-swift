@@ -90,8 +90,8 @@ def llm_sft(args: SftArguments) -> None:
         args.dataset.split(','), args.dataset_test_ratio,
         args.dataset_split_seed)
     if args.train_dataset_sample >= 0:
-        val_dataset_sample = int(args.train_dataset_sample
-                                 * args.dataset_test_ratio)
+        val_dataset_sample = max(
+            int(args.train_dataset_sample * args.dataset_test_ratio), 1)
         train_idxs = np.random.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
         if val_dataset.shape[0] > val_dataset_sample:
