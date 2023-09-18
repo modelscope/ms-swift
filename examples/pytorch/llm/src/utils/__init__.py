@@ -1,3 +1,4 @@
+from .argument import InferArguments, SftArguments
 from .dataset import DATASET_MAPPING, get_dataset
 from .metric_utils import compute_nlg_metrics
 from .model import MODEL_MAPPING, get_model_tokenizer

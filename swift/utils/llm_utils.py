@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -49,20 +49,22 @@ def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
     }
 
 
-def _count_startswith(arr: List[int], val: int, lo: int = 0) -> int:
-    res = 0
-    for x in arr[lo:]:
-        if x != val:
-            break
-        res += 1
-    return res
+def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
+    # The lower bound satisfying the condition "cond".
+    while lo < hi:
+        mid = (lo + hi) >> 1
+        if cond(mid):
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo
 
 
 def print_example(example: Dict[str, Any], tokenizer) -> None:
     input_ids, labels = example['input_ids'], example['labels']
     logger.info(f'[INPUT_IDS] {input_ids}')
     logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
-    n_mask = _count_startswith(labels, -100)
+    n_mask = lower_bound(0, len(labels), lambda i: labels[i] != -100)
     logger.info(f'[LABLES_IDS] {labels}')
     logger.info(
         f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')

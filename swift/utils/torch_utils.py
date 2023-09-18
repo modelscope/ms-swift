@@ -123,7 +123,6 @@ def parse_args(class_type: Type[_T],
     parser = HfArgumentParser([class_type])
     args, remaining_args = parser.parse_args_into_dataclasses(
         argv, return_remaining_strings=True)
-    logger.info(f'args: {args}')
     return args, remaining_args
 
 

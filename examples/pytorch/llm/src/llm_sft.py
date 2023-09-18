@@ -11,16 +11,14 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import BitsAndBytesConfig, GenerationConfig
-from utils import (DATASET_MAPPING, MODEL_MAPPING, TEMPLATE_MAPPING,
-                   broadcast_string, check_json_format, compute_nlg_metrics,
-                   dataset_map, find_all_linear_for_lora, get_dataset,
-                   get_dist_setting, get_model_tokenizer, get_preprocess,
-                   is_ddp_plus_mp, is_dist, is_master, plot_images, select_bnb,
-                   select_dtype, show_layers, sort_by_max_length)
+from utils import (SftArguments, broadcast_string, check_json_format,
+                   compute_nlg_metrics, dataset_map, find_all_linear_for_lora,
+                   get_dataset, get_dist_setting, get_model_tokenizer,
+                   get_preprocess, is_ddp_plus_mp, is_dist, is_master,
+                   plot_images, show_layers, sort_by_max_length)
 
-from swift import (HubStrategy, LoraConfig, LoRAConfig, Seq2SeqTrainer,
+from swift import (LoraConfig, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
-from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
                          seed_everything)
 from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
@@ -28,178 +26,8 @@ from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
 logger = get_logger()
 
 
-@dataclass
-class SftArguments:
-    model_type: str = field(
-        default='qwen-7b-chat',
-        metadata={'choices': list(MODEL_MAPPING.keys())})
-    sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
-    tuner_bankend: str = field(
-        default='swift', metadata={'choices': ['swift', 'peft']})
-    template_type: str = field(
-        default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
-    output_dir: str = 'runs'
-    ddp_backend: Optional[str] = field(
-        default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
-
-    seed: int = 42
-    resume_from_ckpt: Optional[str] = None
-    dtype: str = field(
-        default='bf16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
-    ignore_args_error: bool = False  # True: notebook compatibility
-
-    dataset: str = field(
-        default='advertise-gen',
-        metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_split_seed: int = 42
-    train_dataset_sample: int = 20000  # -1: all dataset
-    dataset_test_ratio: float = 0.01
-    system: str = 'you are a helpful assistant!'
-    max_length: Optional[int] = 2048
-
-    # If you want to use qlora, set the quantization_bit to 8 or 4.
-    # And you need to install bitsandbytes: `pip install bitsandbytes -U`
-    # note: bf16 and quantization have requirements for gpu architecture
-    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
-    bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
-    bnb_4bit_quant_type: str = field(
-        default='nf4', metadata={'choices': {'fp4', 'nf4'}})
-    bnb_4bit_use_double_quant: bool = True
-
-    lora_target_modules: Optional[List[str]] = None
-    lora_rank: int = 8
-    lora_alpha: int = 32
-    lora_dropout_p: float = 0.
-
-    gradient_checkpointing: bool = False
-    batch_size: int = 1
-    eval_batch_size: Optional[int] = None
-    num_train_epochs: int = 1
-    # if max_steps >= 0, override num_train_epochs
-    max_steps: int = -1
-    optim: str = 'adamw_torch'
-    learning_rate: Optional[float] = None
-    weight_decay: float = 0.01
-    gradient_accumulation_steps: int = 16
-    max_grad_norm: float = 1.
-    predict_with_generate: bool = False
-    lr_scheduler_type: str = 'cosine'
-    warmup_ratio: float = 0.05
-
-    eval_steps: int = 50
-    save_steps: Optional[int] = None
-    only_save_model: Optional[bool] = None
-    save_total_limit: int = 2
-    logging_steps: int = 5
-    dataloader_num_workers: int = 1
-
-    push_to_hub: bool = False
-    # 'user_name/repo_name' or 'repo_name'
-    hub_model_id: Optional[str] = None
-    hub_private_repo: bool = True
-    hub_strategy: HubStrategy = HubStrategy.EVERY_SAVE
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None,
-        metadata={
-            'help':
-            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
-        })
-
-    # other
-    test_oom_error: bool = field(
-        default=False,
-        metadata={
-            'help':
-            'If set to True, the train_dataset will be sorted in descending order based on max_length, '
-            'enabling faster detection of OOM (Out of Memory) errors.'
-        })
-    use_flash_attn: Optional[bool] = field(
-        default=None,
-        metadata={
-            'help':
-            "This parameter is used only when model_type.startswith('qwen')"
-        })
-
-    # generation config, only useful when `predict_with_generate=True`
-    max_new_tokens: int = 1024
-    do_sample: bool = True
-    temperature: float = 0.9
-    top_k: int = 50
-    top_p: float = 0.9
-
-    def __post_init__(self):
-        if is_dist():
-            rank, local_rank, _, _ = get_dist_setting()
-            torch.cuda.set_device(local_rank)
-            self.seed += rank  # Avoid the same dropout
-            if self.ddp_backend is None:
-                self.ddp_backend = 'nccl'
-            if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
-                raise ValueError('not supported, please use `nccl`')
-
-            # Initialize in advance
-            dist.init_process_group(backend=self.ddp_backend)
-
-        if self.sft_type == 'lora':
-            if self.learning_rate is None:
-                self.learning_rate = 1e-4
-            if self.only_save_model is None:
-                self.only_save_model = False
-        elif self.sft_type == 'full':
-            assert self.quantization_bit == 0, 'not supported'
-            assert self.dtype != 'fp16', 'please use bf16 or fp32'
-            if self.learning_rate is None:
-                self.learning_rate = 2e-5
-            if self.only_save_model is None:
-                self.only_save_model = True
-        else:
-            raise ValueError(f'sft_type: {self.sft_type}')
-
-        if self.template_type is None:
-            self.template_type = MODEL_MAPPING[self.model_type].get(
-                'template', 'default')
-            logger.info(f'Setting template_type: {self.template_type}')
-        if self.save_steps is None:
-            self.save_steps = self.eval_steps
-        self.output_dir = os.path.join(self.output_dir, self.model_type)
-
-        if self.lora_target_modules is None:
-            self.lora_target_modules = MODEL_MAPPING[
-                self.model_type]['lora_TM']
-        self.torch_dtype, self.fp16, self.bf16 = select_dtype(self.dtype)
-        if self.bnb_4bit_comp_dtype is None:
-            self.bnb_4bit_comp_dtype = self.dtype
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
-            self.quantization_bit, self.bnb_4bit_comp_dtype)
-
-        if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
-            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-        if self.push_to_hub:
-            api = HubApi()
-            if self.hub_token is None:
-                self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-            if self.hub_token is not None:
-                api.login(self.hub_token)
-            else:
-                assert ModelScopeConfig.get_token(
-                ) is not None, 'Please enter hub_token'
-            logger.info('hub login successful!')
-
-        if self.use_flash_attn is None:
-            self.use_flash_attn = 'auto'
-        self.train_sampler_random = not self.test_oom_error
-        if self.eval_batch_size is None:
-            if self.predict_with_generate:
-                self.eval_batch_size = 1
-            else:
-                self.eval_batch_size = self.batch_size
-
-
 def llm_sft(args: SftArguments) -> None:
+    logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
@@ -257,14 +85,6 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(model)
 
     # ### Loading Dataset
-    generation_config = GenerationConfig(
-        do_sample=args.do_sample,
-        max_length=None,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        top_k=args.top_k,
-    )
     train_dataset, val_dataset = get_dataset(
         args.dataset.split(','), args.dataset_test_ratio,
         args.dataset_split_seed)
@@ -274,24 +94,17 @@ def llm_sft(args: SftArguments) -> None:
         train_idxs = np.random.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
         if val_dataset.shape[0] > val_dataset_sample:
-            val_idxs = np.random.permutation(val_dataset_sample)
+            val_idxs = np.random.permutation(val_dataset_sample)[:10]
             val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    preprocess_func_train = get_preprocess(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        validate_generation=False)
-    preprocess_func_val = get_preprocess(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        validate_generation=args.predict_with_generate)
-    train_dataset = dataset_map(train_dataset, preprocess_func_train)
-    val_dataset = dataset_map(val_dataset, preprocess_func_val)
+    preprocess_func = get_preprocess(args.template_type, tokenizer,
+                                     args.system, args.max_length)
+    train_dataset = dataset_map(train_dataset, preprocess_func)
+    val_preprocess_func = preprocess_func
+    if args.predict_with_generate:
+        val_preprocess_func = partial(preprocess_func, generation_mode=True)
+    val_dataset = dataset_map(val_dataset, val_preprocess_func)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
@@ -307,18 +120,25 @@ def llm_sft(args: SftArguments) -> None:
     if is_dist():
         # Make sure to set the same output_dir when using DDP.
         output_dir = broadcast_string(output_dir)
-
+    # check ms-swift version
     parameters = inspect.signature(
         Seq2SeqTrainingArguments.__init__).parameters
-    kwargs = {}
     for k in ['only_save_model', 'train_sampler_random']:
-        if k in parameters:
-            kwargs[k] = getattr(args, k)
-        else:
-            logger.warning(
+        if k not in parameters:
+            raise ValueError(
                 f'The `{k}` parameter is invalid. '
                 'You can resolve this warning by upgrading ms-swift or installing from source.'
             )
+    # training_args
+    generation_config = GenerationConfig(
+        do_sample=args.do_sample,
+        max_new_tokens=args.max_new_tokens,
+        max_length=None,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
+        repetition_penalty=args.repetition_penalty)
+    logger.info(f'generation_config: {generation_config}')
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         do_train=True,
@@ -359,7 +179,8 @@ def llm_sft(args: SftArguments) -> None:
         predict_with_generate=args.predict_with_generate,
         generation_config=generation_config,
         local_rank=local_rank,
-        **kwargs)
+        only_save_model=args.only_save_model,
+        train_sampler_random=args.train_sampler_random)
 
     if args.gradient_checkpointing:
         model.enable_input_require_grads()
