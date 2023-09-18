@@ -4,7 +4,7 @@ python src/llm_infer.py \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \
-    --ckpt_dir "runs/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset medical-en,medical-zh \
     --max_length 6144 \

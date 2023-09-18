@@ -16,6 +16,7 @@ logger = get_logger()
 
 
 def llm_infer(args: InferArguments) -> None:
+    args.init_argument()
     logger.info(f'args: {args}')
     if not os.path.isdir(args.ckpt_dir):
         raise ValueError(f'Please enter a valid ckpt_dir: {args.ckpt_dir}')

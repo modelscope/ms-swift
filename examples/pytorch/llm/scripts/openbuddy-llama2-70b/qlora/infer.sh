@@ -4,7 +4,7 @@ python src/llm_infer.py \
     --sft_type lora \
     --template_type openbuddy-llama \
     --dtype bf16 \
-    --ckpt_dir "runs/openbuddy-llama2-70b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/openbuddy-llama2-70b/vx_xxx/checkpoint-xxx" \
     --eval_human true \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \

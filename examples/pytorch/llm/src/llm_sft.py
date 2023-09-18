@@ -27,6 +27,7 @@ logger = get_logger()
 
 
 def llm_sft(args: SftArguments) -> None:
+    args.init_argument()
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()

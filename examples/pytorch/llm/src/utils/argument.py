@@ -118,7 +118,8 @@ class SftArguments:
     top_p: float = 0.9
     repetition_penalty: float = 1.
 
-    def __post_init__(self):
+    def init_argument(self):
+        # Can be manually initialized, unlike __post_init__
         if is_dist():
             rank, local_rank, _, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
@@ -236,7 +237,8 @@ class InferArguments:
         })
     use_streamer: bool = False
 
-    def __post_init__(self):
+    def init_argument(self):
+        # Can be manually initialized, unlike __post_init__
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', 'default')

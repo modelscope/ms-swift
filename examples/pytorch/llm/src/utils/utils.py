@@ -132,9 +132,9 @@ def inference(input_ids: List[int],
         attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config)
-    output_text = tokenizer.decode(generate_ids[0])
+    output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
     if streamer is None:
-        logger.info(output_text)
+        print(output_text)
     return output_text
 
 

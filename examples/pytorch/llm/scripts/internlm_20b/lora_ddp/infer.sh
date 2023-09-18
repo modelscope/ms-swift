@@ -4,7 +4,7 @@ python src/llm_infer.py \
     --sft_type lora \
     --template_type default-generation \
     --dtype bf16 \
-    --ckpt_dir "runs/internlm-20b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/internlm-20b/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset jd-zh \
     --max_length 2048 \
