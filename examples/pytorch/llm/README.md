@@ -53,13 +53,11 @@ pip install matplotlib scikit-learn tqdm tensorboard -U
 pip install transformers datasets -U
 pip install accelerate transformers_stream_generator -U
 
-pip install ms-swift modelscope -U
+pip install modelscope -U
 # Recommended installation from source code for faster bug fixes
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -r requirements.txt
 pip install .
-# same as modelscope...(git clone ...)
 ```
 
 ## Run SFT and Inference
@@ -108,6 +106,7 @@ bash scripts/qwen_7b_chat/full_mp/infer.sh
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
+
 # For more scripts, please see `scripts/` folder.
 ```
 

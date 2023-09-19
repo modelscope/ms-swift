@@ -55,13 +55,11 @@ pip install matplotlib scikit-learn tqdm tensorboard -U
 pip install transformers datasets -U
 pip install accelerate transformers_stream_generator -U
 
-pip install ms-swift modelscope -U
-# 推荐从源码安装swift和modelscope, 这具有更多的特性和更快的bug修复
+pip install modelscope -U
+# 推荐从源码安装swift, 这具有更多的特性和更快的bug修复
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -r requirements.txt
 pip install .
-# modelscope类似...(git clone ...)
 ```
 
 ## 微调和推理
