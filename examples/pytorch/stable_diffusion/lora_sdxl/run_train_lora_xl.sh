@@ -1,0 +1,15 @@
+PYTHONPATH=. torchrun examples/pytorch/stable_diffusion/lora_sdxl/finetune_stable_diffusion_xl_lora.py \
+    --model 'AI-ModelScope/stable-diffusion-xl-base-1.0' \
+    --model_revision 'v1.0.2' \
+    --prompt "a dog" \
+    --work_dir './tmp/lora_diffusion_xl' \
+    --train_dataset_name 'buptwq/lora-stable-diffusion-finetune' \
+    --max_epochs 100 \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --save_ckpt_strategy 'by_epoch' \
+    --logging_interval 1 \
+    --train.dataloader.workers_per_gpu 0 \
+    --evaluation.dataloader.workers_per_gpu 0 \
+    --train.optimizer.lr 1e-4 \
+    --use_model_config true

@@ -118,4 +118,4 @@ pipe = pipeline(task=Tasks.text_to_image_synthesis,
                 swift_lora_dir=os.path.join(training_args.work_dir, "unet"))
 for index in range(10):
     image = pipe({'text': args.prompt})
-    cv2.imwrite(f'./lora_result_{index}.png', image['output_imgs'][0])
+    cv2.imwrite(f'./lora_xl_result_{index}.png', image['output_imgs'][0])

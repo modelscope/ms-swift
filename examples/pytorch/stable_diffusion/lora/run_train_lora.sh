@@ -5,10 +5,11 @@ PYTHONPATH=. torchrun examples/pytorch/stable_diffusion/lora/finetune_stable_dif
     --work_dir './tmp/lora_diffusion' \
     --train_dataset_name 'buptwq/lora-stable-diffusion-finetune' \
     --max_epochs 100 \
-    --lora_rank 16 \
+    --lora_rank 4 \
+    --lora_alpha 16 \
     --save_ckpt_strategy 'by_epoch' \
     --logging_interval 1 \
     --train.dataloader.workers_per_gpu 0 \
     --evaluation.dataloader.workers_per_gpu 0 \
-    --train.optimizer.lr 1e-4 \
+    --train.optimizer.lr 1e-2 \
     --use_model_config true
