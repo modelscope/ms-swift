@@ -165,7 +165,7 @@ class LoRA:
         """Prepare a model with `LoRAConfig`"""
         LoRA._dynamic_patch_lora(
             model,
-            replace_modules=config.target_modules,
+            target_modules=config.target_modules,
             r=config.r,
             adapter_name=adapter_name,
             lora_alpha=config.lora_alpha,
@@ -195,14 +195,14 @@ class LoRA:
 
     @staticmethod
     def _dynamic_patch_lora(model: torch.nn.Module,
-                            replace_modules: Union[str, List[str]],
+                            target_modules: Union[str, List[str]],
                             use_merged_linear: bool, adapter_name: str,
                             **kwargs):
         """Dynamic patch lora to model
 
         Args:
             model(`torch.nn.Module`): The torch.nn.Module containing the target module to be patched.
-            replace_modules(`Union[str, List[str]]`): The module names to be replaced,
+            target_modules(`Union[str, List[str]]`): The module names to be replaced,
                 the replacing strategy is `end with`.
             use_merged_linear(bool): Whether to replace with merged linear layer.
             adapter_name(str): The adapter name.
@@ -210,17 +210,17 @@ class LoRA:
         """
         modules = {}
         module_keys = [key for key, _ in model.named_modules()]
-        assert isinstance(replace_modules, (str, list))
+        assert isinstance(target_modules, (str, list))
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             get_quantization_config(model, method='gptq'))
 
         for module_key in module_keys:
-            if isinstance(replace_modules, str):
-                target_module_found = re.fullmatch(replace_modules, module_key)
+            if isinstance(target_modules, str):
+                target_module_found = re.fullmatch(target_modules, module_key)
             else:
                 target_module_found = any(
                     module_key.endswith(target_key)
-                    for target_key in replace_modules)
+                    for target_key in target_modules)
             if target_module_found:  # noqa
                 sub_module = model.get_submodule(module_key)
 
@@ -333,7 +333,7 @@ class LoRA:
         logger.debug(f'Lora modules(module_key -> adapter_name): {modules}')
 
     @staticmethod
-    def unpatch_lora(model, config: LoRAConfig):
+    def unpatch_lora(model, config: LoRAConfig, adapter_name: str):
         """Unpatch lora modules and merge the weights to original modules.
 
         LoRA constructs an additional layer with low-rank decomposition matrices of the weights in the network.
@@ -341,63 +341,30 @@ class LoRA:
         See https://arxiv.org/abs/2106.09685
 
         Args:
-            model: The model called with `tune` function.
-            config: The `LoRAConfig` to use.
+            model(`torch.nn.Module`): The model called with `tune` function.
+            config(`LoRAConfig`): The `LoRAConfig` to use.
+            adapter_name(`str`): The adapter name
         """
         module_keys = [key for key, _ in model.named_modules()]
-        assert isinstance(config.replace_modules, (str, list))
-        replace_modules = config.replace_modules
+        assert isinstance(config.target_modules, (str, list))
+        target_modules = config.target_modules
 
         for module_key in module_keys:
-            if isinstance(replace_modules, str):
-                target_module_found = re.fullmatch(replace_modules, module_key)
+            if isinstance(target_modules, str):
+                target_module_found = re.fullmatch(target_modules, module_key)
             else:
                 target_module_found = any(
                     module_key.endswith(target_key)
-                    for target_key in replace_modules)
+                    for target_key in target_modules)
             if target_module_found:  # noqa
-                parts = module_key.split('.')
-                module = model.get_submodule('.'.join(parts[:-1]))
                 sub_module = model.get_submodule(module_key)
-                _key = parts[-1]
+                lora_module = getattr(sub_module, f'loramodule_{adapter_name}')
 
-                origin_module = None
-                if isinstance(sub_module, Linear):
-                    origin_module = torch.nn.Linear(
-                        sub_module.in_features,
-                        sub_module.out_features,
-                        bias=hasattr(sub_module, 'bias')
-                        and sub_module.bias is not None,
-                    )
-                elif isinstance(sub_module, Embedding):
-                    origin_module = torch.nn.Embedding(
-                        num_embeddings=sub_module.num_embeddings,
-                        embedding_dim=sub_module.embedding_dim,
-                        padding_idx=sub_module.padding_idx,
-                        max_norm=sub_module.max_norm,
-                        norm_type=sub_module.norm_type,
-                        scale_grad_by_freq=sub_module.scale_grad_by_freq,
-                        sparse=sub_module.sparse,
-                    )
-                elif isinstance(sub_module, Conv2d):
-                    origin_module = torch.nn.Conv2d(
-                        sub_module.in_channels,
-                        sub_module.out_channels,
-                        kernel_size=sub_module.kernel_size,
-                        stride=sub_module.stride,
-                        padding=sub_module.padding,
-                        dilation=sub_module.dilation,
-                        groups=sub_module.groups)
-
-                if origin_module is not None:
-                    sub_module.merge_weights = True
-                    sub_module.eval()
-                    origin_module.weight = sub_module.weight
-                    if getattr(sub_module, 'bias', None) is not None:
-                        origin_module.bias = sub_module.bias
-                    origin_module.to(sub_module.weight.device).to(
-                        sub_module.weight.dtype)
-                    setattr(module, _key, origin_module)
+                if lora_module is not None:
+                    if hasattr(lora_module, 'merge_weights'):
+                        lora_module.merge_weights = True
+                        lora_module.eval()
+                        delattr(sub_module, f'loramodule_{adapter_name}')
 
 
 class LoRALayer(ActivationMixin):
