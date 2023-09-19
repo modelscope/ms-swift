@@ -11,7 +11,7 @@ modelscope.hub
     :template: classtemplate.rst
 
     api.HubApi
-    check_model.Repository
+    check_model.check_local_model_is_latest
     push_to_hub.push_to_hub
     push_to_hub.push_to_hub_async
     snapshot_download.snapshot_download
