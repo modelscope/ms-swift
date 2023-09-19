@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple

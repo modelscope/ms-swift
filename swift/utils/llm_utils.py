@@ -113,11 +113,9 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
 def inference(input_ids: List[int],
               model,
               tokenizer,
-              streamer: Optional[TextStreamer] = None,
-              skip_prompt: bool = False) -> str:
+              streamer: Optional[TextStreamer] = None) -> str:
     generation_config = getattr(model, 'generation_config', None)
-    if not skip_prompt:
-        print(f'[INFERENCE]{tokenizer.decode(input_ids)}', end='')
+    print(f'[INFERENCE]{tokenizer.decode(input_ids)}', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()

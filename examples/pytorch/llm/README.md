@@ -15,7 +15,7 @@
 </p>
 
 ## Features
-1. supported SFT methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
+1. supported SFT methods: [LoRA](https://arxiv.org/abs/2106.09685), [QLoRA](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 2. supported models:
    1. qwen series: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B)
    2. qwen-vl series: qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL)

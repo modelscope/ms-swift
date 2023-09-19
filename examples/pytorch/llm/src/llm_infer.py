@@ -8,7 +8,8 @@ from utils import (InferArguments, get_dataset, get_model_tokenizer,
                    get_preprocess)
 
 from swift import Swift, get_logger
-from swift.utils import parse_args, print_model_info, seed_everything
+from swift.utils import (inference, parse_args, print_model_info,
+                         seed_everything, show_layers)
 
 logger = get_logger()
 
