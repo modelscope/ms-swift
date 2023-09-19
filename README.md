@@ -31,7 +31,7 @@ Key features:
 2. Tuners provided by SWIFT be combined together to allow exploration of multiple tuners on a model for best result.
 3. Support calling `activate_adapter`或`deactivate_adapter` to activate/deactivate a single tuner. User can use one model with multiple tuners in different threads.
 
-Users can check the [documentation of Swift](docs/GetStarted/1.Introduction.md) to get detail tutorials.
+Users can check the [documentation of Swift](docs/source/GetStarted/1.Introduction.md) to get detail tutorials.
 
 ## LLM SFT Example
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
