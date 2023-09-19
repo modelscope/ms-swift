@@ -485,7 +485,7 @@ class Embedding(nn.Embedding, LoRALayer):
                 self.weight.data += (self.lora_B @ self.lora_A) * self.scaling
             self.merged = True
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, **kwargs):
         if self.r > 0 and not self.merged and self.is_activated():
             result = nn.Embedding.forward(self, x)
             if self.r > 0:
@@ -572,7 +572,7 @@ class Linear(nn.Linear, LoRALayer):
                 self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
             self.merged = True
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, **kwargs):
 
         def T(w):
             return w.T if self.fan_in_fan_out else w
@@ -692,7 +692,7 @@ class MergedLinear(nn.Linear, LoRALayer):
                 self.weight.data += self.zero_pad(T(delta_w * self.scaling))
             self.merged = True
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, **kwargs):
 
         def T(w):
             return w.T if self.fan_in_fan_out else w
@@ -778,7 +778,7 @@ class Conv2d(nn.Conv2d, LoRALayer):
                 self.weight.shape) * self.scaling
             self.merged = True
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, **kwargs):
         if self.r > 0 and not self.merged and self.is_activated():
             return F.conv2d(
                 x,
