@@ -56,6 +56,7 @@ def llm_sft(args: SftArguments) -> None:
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
+    # ### Preparing LoRA
     if args.resume_from_ckpt is None:
         if args.sft_type == 'lora':
             if 'ALL' in args.lora_target_modules:

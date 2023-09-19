@@ -42,7 +42,7 @@ def llm_infer(args: InferArguments) -> None:
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
-    # ### Preparing lora
+    # ### Preparing LoRA
     if args.sft_type == 'lora':
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
