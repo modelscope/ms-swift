@@ -2,26 +2,23 @@
 import inspect
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-from dataclasses import dataclass, field
 from functools import partial
-from typing import List, Optional
 
 import json
 import numpy as np
 import torch
-import torch.distributed as dist
 from transformers import BitsAndBytesConfig, GenerationConfig
-from utils import (SftArguments, broadcast_string, check_json_format,
-                   compute_nlg_metrics, dataset_map, find_all_linear_for_lora,
-                   get_dataset, get_dist_setting, get_model_tokenizer,
-                   get_preprocess, is_ddp_plus_mp, is_dist, is_master,
-                   plot_images, show_layers, sort_by_max_length)
+from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
+                   get_preprocess)
 
 from swift import (LoraConfig, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
-from swift.utils import (add_version_to_work_dir, parse_args, print_model_info,
-                         seed_everything)
-from swift.utils.llm_utils import data_collate_fn, print_example, stat_dataset
+from swift.utils import (add_version_to_work_dir, broadcast_string,
+                         check_json_format, compute_nlg_metrics,
+                         data_collate_fn, get_dist_setting, is_ddp_plus_mp,
+                         is_dist, is_master, parse_args, plot_images,
+                         print_example, print_model_info, seed_everything,
+                         show_layers, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -56,6 +53,7 @@ def llm_sft(args: SftArguments) -> None:
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
+    # ### Preparing LoRA
     if args.resume_from_ckpt is None:
         if args.sft_type == 'lora':
             if 'ALL' in args.lora_target_modules:

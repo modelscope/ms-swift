@@ -1,16 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-from dataclasses import dataclass, field
-from typing import Optional
 
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
 from utils import (InferArguments, get_dataset, get_model_tokenizer,
-                   get_preprocess, inference, show_layers)
+                   get_preprocess)
 
 from swift import Swift, get_logger
-from swift.utils import parse_args, print_model_info, seed_everything
+from swift.utils import (inference, parse_args, print_model_info,
+                         seed_everything, show_layers)
 
 logger = get_logger()
 
@@ -42,7 +41,7 @@ def llm_infer(args: InferArguments) -> None:
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
-    # ### Preparing lora
+    # ### Preparing LoRA
     if args.sft_type == 'lora':
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
