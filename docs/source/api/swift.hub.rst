@@ -1,4 +1,4 @@
-modelscope.hub
+swift.hub
 ==============
 
 .. automodule:: swift.hub

@@ -1,4 +1,4 @@
-modelscope.hub
+swift.trainers
 ==============
 
 .. automodule:: swift.trainers

@@ -1,4 +1,4 @@
-modelscope.hub
+swift.tuners
 ==============
 
 .. automodule:: swift.tuners
