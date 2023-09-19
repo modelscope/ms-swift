@@ -23,3 +23,13 @@ Swift支持训练的绝大多数模型都可以在`A10`显卡上使用，用户�
 1. 进入[ModelScope](https://www.modelscope.cn)官方网站并登录
 2. 点击左侧的`我的Notebook`并开启一个免费GPU实例
 3. 愉快地薅A10显卡羊毛
+
+## Build文档
+
+Swift支持完整的API Doc文档，在swift根目录下执行：
+
+```shell
+make docs
+```
+
+等待执行完成后，查看`docs/build/html/index.html`即可。
