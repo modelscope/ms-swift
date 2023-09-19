@@ -9,10 +9,10 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Get Started
 
-   Get Started/Introduction.md
-   Get Started/Installation.md
-   Get Started/Use in train and infer.md
-   Get Started/Examples.md
+   GetStarted/Introduction.md
+   GetStarted/Installation.md
+   GetStarted/Use in train and infer.md
+   GetStarted/Examples.md
 
 .. toctree::
    :maxdepth: 2
