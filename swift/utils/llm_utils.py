@@ -1,12 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import heapq
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import torch
 from datasets import Dataset as HfDataset
-from torch.nn import Module
+from torch.nn import Linear, Module
 from torch.nn.utils.rnn import pad_sequence
+from tqdm.auto import tqdm
 from transformers import TextStreamer
 
 from .logger import get_logger

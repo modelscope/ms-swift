@@ -1,16 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import heapq
 import logging
 import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
-                    Tuple, Union)
+from typing import Any, Callable, Dict, List, Optional, Union
 
-import matplotlib.pyplot as plt
-import numpy as np
 import requests
 import torch
 import torch.distributed as dist
@@ -21,20 +17,26 @@ from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
-from torch import dtype as Dtype
-from torch.nn import Linear, Module
+from torch.nn import Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm.auto import tqdm
-from transformers import GenerationConfig, TextStreamer, trainer
+from transformers import trainer
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_logger, is_ddp_plus_mp, is_dist, is_local_master,
-                         is_master)
+from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
+                         is_local_master, is_master)
 
 logger = get_logger()
 ms_logger = get_ms_logger()
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
+
+
+def download_files(url: str, local_path: str, cookies) -> None:
+    resp = requests.get(url, cookies=cookies, stream=True)
+    with open(local_path, 'wb') as f:
+        for data in tqdm(resp.iter_lines()):
+            f.write(data)
 
 
 def download_dataset(model_id: str,
@@ -58,13 +60,6 @@ def download_dataset(model_id: str,
             shutil.copy2(temp_fpath, local_fpath)
 
     return local_dir
-
-
-def download_files(url: str, local_path: str, cookies) -> None:
-    resp = requests.get(url, cookies=cookies, stream=True)
-    with open(local_path, 'wb') as f:
-        for data in tqdm(resp.iter_lines()):
-            f.write(data)
 
 
 _old_msdataset_load = MsDataset.load

@@ -1,16 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import datetime as dt
 import os
 import random
-import re
 import socket
-from typing import List, Optional, Tuple, Type, TypeVar
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
-from numpy.random import RandomState
 from torch.nn import Module
 
 from .logger import get_logger, is_master

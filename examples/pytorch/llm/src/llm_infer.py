@@ -1,13 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-from dataclasses import dataclass, field
-from typing import Optional
 
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
 from utils import (InferArguments, get_dataset, get_model_tokenizer,
-                   get_preprocess, inference, show_layers)
+                   get_preprocess)
 
 from swift import Swift, get_logger
 from swift.utils import parse_args, print_model_info, seed_everything

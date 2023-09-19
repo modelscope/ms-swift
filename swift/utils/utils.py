@@ -1,9 +1,16 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import os
-from typing import Any, List, Optional, Tuple, Type, TypeVar
+import re
+from typing import Any, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
 
 import numpy as np
 from numpy.random import RandomState
 from transformers import HfArgumentParser
+
+from .logger import get_logger
+
+logger = get_logger()
 
 
 def check_json_format(obj: Any) -> Any:
