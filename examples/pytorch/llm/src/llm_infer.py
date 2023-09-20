@@ -24,15 +24,16 @@ def merge_lora(args: InferArguments) -> None:
     model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
     Swift.merge_and_unload(model)
 
+    ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
     merged_lora_path = os.path.abspath(
-        os.path.join(args.ckpt_dir, 'merged_ckpt'))
+        os.path.join(ckpt_dir, f'{ckpt_name}-merged'))
     logger.info(f'merged_lora_path: `{merged_lora_path}`')
     logger.info("Setting args.sft_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
     args.sft_type = 'full'
     args.ckpt_dir = merged_lora_path
     if not os.path.exists(args.ckpt_dir):
-        logger.info('Saving merged weights.')
+        logger.info('Saving merged weights...')
         model.model.save_pretrained(args.ckpt_dir)
         tokenizer.save_pretrained(args.ckpt_dir)
         logger.info('Successfully merged LoRA.')
@@ -93,6 +94,8 @@ def llm_infer(args: InferArguments) -> None:
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
+    if args.save_generation_config:
+        generation_config.save_pretrained(args.ckpt_dir)
     model.generation_config = generation_config
 
     if args.eval_human:

@@ -235,10 +235,11 @@ class InferArguments:
         default=None,
         metadata={
             'help':
-            "This parameter is used only when model_type.startswith('qwen-7b')"
+            "This parameter is used only when model_type.startswith('qwen')"
         })
     use_streamer: bool = True
     merge_lora_and_save: bool = False
+    save_generation_config: bool = True
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__

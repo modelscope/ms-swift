@@ -206,7 +206,6 @@ class SwiftModel(nn.Module):
                         adapter_name: Union[str, List[str]] = None,
                         inference_mode: bool = False,
                         revision: str = None,
-                        peft_weights: bool = False,
                         **kwargs):
         """Load a set of tuners and corresponding weights by a model_id.
 
@@ -218,7 +217,6 @@ class SwiftModel(nn.Module):
                 Default `None`, means load all tuners saved in the model_id
             inference_mode (`bool`): Use in the inference mode or not.
             revision (`str`): The model revision to use.
-            peft_weights (`bool`): Whether the weights file is from `peft`.
             **kwargs:
                 extra_state_keys (`List[str]`, `optional`) A list of regex to match the extra state keys to be saved.
                 Other parameters will be passed to the device_map.
@@ -269,10 +267,12 @@ class SwiftModel(nn.Module):
             sub_folder = os.path.join(model_dir, _name)
             state_dict = cls.load_state_file(sub_folder)
             if state_dict is not None:
-                if peft_weights:
+                model_is_qlora = len([k for k in self.state_dict().keys() if k.endswith('.default.weight')])
+                if not model_is_qlora:
+                    # model is lora, state_dict: qlora->lora
                     state_dict = {
-                        k[:k.rfind('.default.weight')]: v
-                        for k, v in state_dict.items()
+                        k[:-len('.default.weight')]: v
+                        for k, v in state_dict.items() if k.endswith('.default.weight')
                     }
                 self.model.load_state_dict(state_dict, strict=False)
         state_dict = cls.load_state_file(model_dir)
