@@ -7,10 +7,10 @@ python src/llm_sft.py \
     --template_type chatml \
     --dtype bf16 \
     --output_dir output \
-    --dataset cot-en,cot-zh \
-    --train_dataset_sample 50000 \
+    --dataset damo-agent-mini-zh \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 4096 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
