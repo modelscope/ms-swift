@@ -76,7 +76,7 @@ cd swift/examples/pytorch/llm
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
-bash scripts/qwen_7b_chat/lora/infer.sh
+bash scripts/qwen_7b_chat/lora/merge_lora_and_infer.sh
 
 # 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*38GB显存.
 # 推荐的实验环境: A100
@@ -92,7 +92,7 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
 # 推荐的实验环境: 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
-bash scripts/qwen_7b_chat/qlora/infer.sh
+bash scripts/qwen_7b_chat/qlora/merge_lora_and_infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
 # 推荐的实验环境: 3090, A10
