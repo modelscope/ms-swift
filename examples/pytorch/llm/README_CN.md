@@ -35,7 +35,7 @@
 5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## 准备实验环境
-实验环境: V100, A10, 3090, A100均可. (V100不支持bf16, 量化)
+实验环境: V100, A10, 3090, A100均可.
 ```bash
 # 安装miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -90,12 +90,12 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # 微调(qlora)+推理 qwen-7b-chat, 需要12GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
-# 推荐的实验环境: 3090, A10
+# 推荐的实验环境: V100, 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/merge_lora_and_infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
-# 推荐的实验环境: 3090, A10
+# 推荐的实验环境: V100, 3090, A10
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 

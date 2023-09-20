@@ -34,7 +34,7 @@
 5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## Prepare the Environment
-Experimental environment: V100, A10, 3090, A100, ... (V100 does not support bf16, quantization)
+Experimental environment: V100, A10, 3090, A100, ...
 ```bash
 # Installing miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -88,12 +88,12 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # sft(qlora) and infer qwen-7b-chat, Requires 12GB GPU memory.
 # If you want to use quantification, you need to `pip install bitsandbytes -U`
-# Recommended experimental environment: A10, 3090
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/merge_lora_and_infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
-# Recommended experimental environment: A10, 3090
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 
