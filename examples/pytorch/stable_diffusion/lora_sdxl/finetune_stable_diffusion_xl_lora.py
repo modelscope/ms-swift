@@ -4,19 +4,19 @@ from dataclasses import dataclass, field
 
 import cv2
 import torch
-
-from modelscope import snapshot_download
+from modelscope import get_logger, snapshot_download
 from modelscope.metainfo import Trainers
 from modelscope.models import Model
-from modelscope import get_logger
 from modelscope.msdatasets import MsDataset
 from modelscope.pipelines import pipeline
 from modelscope.trainers import build_trainer
 from modelscope.trainers.training_args import TrainingArgs
-from modelscope.utils.constant import Tasks, DownloadMode
-from swift import LoRAConfig, SwiftModel, Swift
+from modelscope.utils.constant import DownloadMode, Tasks
+
+from swift import LoRAConfig, Swift, SwiftModel
 
 logger = get_logger()
+
 
 # Load configuration file and dataset
 @dataclass(init=False)
@@ -33,17 +33,16 @@ class StableDiffusionXLLoraArguments(TrainingArgs):
         })
 
     lora_alpha: int = field(
-        default=1,
-        metadata={
+        default=1, metadata={
             'help': 'The factor to add the lora weights',
         })
-    
+
     lora_dropout: float = field(
         default=0.0,
         metadata={
             'help': 'The dropout rate of the lora module',
         })
-    
+
     bias: str = field(
         default='none',
         metadata={
@@ -51,16 +50,15 @@ class StableDiffusionXLLoraArguments(TrainingArgs):
         })
 
     sample_nums: int = field(
-        default=10,
-        metadata={
+        default=10, metadata={
             'help': 'The numbers of sample outputs',
         })
-    
+
     num_inference_steps: int = field(
-        default=50,
-        metadata={
+        default=50, metadata={
             'help': 'The number of denoising steps.',
         })
+
 
 training_args = StableDiffusionXLLoraArguments(
     task='text-to-image-synthesis').parse_cli()
@@ -81,6 +79,7 @@ else:
         split='validation',
         download_mode=DownloadMode.FORCE_REDOWNLOAD)
 
+
 def cfg_modify_fn(cfg):
     if args.use_model_config:
         cfg.merge_from_dict(config)
@@ -93,16 +92,17 @@ def cfg_modify_fn(cfg):
     }
     return cfg
 
+
 # build models
 model = Model.from_pretrained(
-    training_args.model,
-    revision=args.model_revision)
-model_dir = snapshot_download("AI-ModelScope/stable-diffusion-v2-1")
-lora_config = LoRAConfig(r=args.lora_rank,
-                         lora_alpha=args.lora_alpha,
-                         lora_dropout=args.lora_dropout,
-                         bias=args.bias,
-                         target_modules=['to_q', 'to_k', 'query', 'value'])
+    training_args.model, revision=args.model_revision)
+model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v2-1')
+lora_config = LoRAConfig(
+    r=args.lora_rank,
+    lora_alpha=args.lora_alpha,
+    lora_dropout=args.lora_dropout,
+    bias=args.bias,
+    target_modules=['to_q', 'to_k', 'query', 'value'])
 model.unet = Swift.prepare_model(model.unet, lora_config)
 
 # build trainer and training
@@ -119,14 +119,18 @@ trainer = build_trainer(name=Trainers.stable_diffusion, default_args=kwargs)
 trainer.train()
 
 # save models
-model.unet.save_pretrained(os.path.join(training_args.work_dir, "unet"))
-logger.info(f"model save pretrained {training_args.work_dir}")
+model.unet.save_pretrained(os.path.join(training_args.work_dir, 'unet'))
+logger.info(f'model save pretrained {training_args.work_dir}')
 
 # pipeline after training and save result
-pipe = pipeline(task=Tasks.text_to_image_synthesis,
-                model=training_args.model,
-                model_revision=args.model_revision,
-                swift_lora_dir=os.path.join(training_args.work_dir, "unet"))
+pipe = pipeline(
+    task=Tasks.text_to_image_synthesis,
+    model=training_args.model,
+    model_revision=args.model_revision,
+    swift_lora_dir=os.path.join(training_args.work_dir, 'unet'))
 for index in range(args.sample_nums):
-    image = pipe({'text': args.prompt, 'num_inference_steps': args.num_inference_steps})
+    image = pipe({
+        'text': args.prompt,
+        'num_inference_steps': args.num_inference_steps
+    })
     cv2.imwrite(f'./lora_xl_result_{index}.png', image['output_imgs'][0])
