@@ -3,10 +3,11 @@ import os
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
+from llm_infer import llm_infer
 from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
 from utils import (InferArguments, get_dataset, get_model_tokenizer,
                    get_preprocess)
-from llm_infer import llm_infer
+
 from swift import Swift, get_logger
 from swift.tuners import LoRA
 from swift.utils import inference, parse_args, seed_everything
