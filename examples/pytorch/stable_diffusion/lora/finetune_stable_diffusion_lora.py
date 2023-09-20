@@ -55,6 +55,12 @@ class StableDiffusionLoraArguments(TrainingArgs):
         metadata={
             'help': 'The numbers of sample outputs',
         })
+    
+    num_inference_steps: int = field(
+        default=50,
+        metadata={
+            'help': 'The number of denoising steps.',
+        })
 
 
 training_args = StableDiffusionLoraArguments(
@@ -97,7 +103,7 @@ lora_config = LoRAConfig(r=args.lora_rank,
                          lora_alpha=args.lora_alpha,
                          lora_dropout=args.lora_dropout,
                          bias=args.bias,
-                         target_modules=['to_q', 'to_k', 'query', 'value'])
+                         target_modules=['to_q', 'to_k', 'to_v', 'query', 'key', 'value', 'to_out.0'])
 model.unet = Swift.prepare_model(model.unet, lora_config)
 
 # build trainer and training
@@ -123,5 +129,5 @@ pipe = pipeline(task=Tasks.text_to_image_synthesis,
                 model_revision=args.model_revision,
                 swift_lora_dir=os.path.join(training_args.work_dir, "unet"))
 for index in range(args.sample_nums):
-    image = pipe({'text': args.prompt})
+    image = pipe({'text': args.prompt, 'num_inference_steps': args.num_inference_steps})
     cv2.imwrite(f'./lora_result_{index}.png', image['output_imgs'][0])

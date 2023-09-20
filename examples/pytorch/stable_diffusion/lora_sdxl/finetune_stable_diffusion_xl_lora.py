@@ -55,6 +55,12 @@ class StableDiffusionXLLoraArguments(TrainingArgs):
         metadata={
             'help': 'The numbers of sample outputs',
         })
+    
+    num_inference_steps: int = field(
+        default=50,
+        metadata={
+            'help': 'The number of denoising steps.',
+        })
 
 training_args = StableDiffusionXLLoraArguments(
     task='text-to-image-synthesis').parse_cli()
@@ -122,5 +128,5 @@ pipe = pipeline(task=Tasks.text_to_image_synthesis,
                 model_revision=args.model_revision,
                 swift_lora_dir=os.path.join(training_args.work_dir, "unet"))
 for index in range(args.sample_nums):
-    image = pipe({'text': args.prompt})
+    image = pipe({'text': args.prompt, 'num_inference_steps': args.num_inference_steps})
     cv2.imwrite(f'./lora_xl_result_{index}.png', image['output_imgs'][0])
