@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
-import functools
 import inspect
 import os
 import re
@@ -462,7 +461,7 @@ class Swift:
     """The Wrapper to use both Peft and Swift tuners."""
 
     @staticmethod
-    def prepare_model(model: Union[nn.Module, 'SwiftModel'],
+    def prepare_model(model: Union[nn.Module, SwiftModel],
                       config: Union[SwiftConfig, PeftConfig,
                                     Dict[str, SwiftConfig]], **kwargs):
         """Prepare a model by the input config.
@@ -486,7 +485,31 @@ class Swift:
         raise ValueError(f'Unsupported swift config type: {config.__class__}')
 
     @staticmethod
-    def from_pretrained(model: Union[nn.Module, 'SwiftModel'],
+    def merge_and_unload(model: Union[PeftModel, SwiftModel], **kwargs):
+        """Merge tuners into the base model and unload them.
+
+        Args:
+            model(`Union[PeftModel, SwiftModel]`): The model instance with tuners
+            kwargs:
+                adapter_name(`Union[str, List[str]]`): The adapter_name to unload, only supported in swift tuners.
+
+        """
+        if isinstance(model, PeftModel):
+            model.merge_and_unload()
+        elif isinstance(model, SwiftModel):
+            from swift import LoRAConfig
+            from swift.tuners import LoRA
+            adapter_name = kwargs.get('adapter_name', None)
+            if isinstance(adapter_name, str):
+                adapter_name = [adapter_name]
+            for adapter, output in model.adapters.items():
+                if isinstance(output.config,
+                              LoRAConfig) and (adapter_name is None
+                                               or adapter in adapter_name):
+                    LoRA.unpatch_lora(model, output.config, adapter)
+
+    @staticmethod
+    def from_pretrained(model: Union[nn.Module, SwiftModel],
                         model_id: str = None,
                         adapter_name: Union[str, List[str]] = None,
                         revision: str = None,
