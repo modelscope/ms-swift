@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -160,11 +160,11 @@ class SftArguments:
         if self.lora_target_modules is None:
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_TM']
-        self.torch_dtype, self.fp16, self.bf16 = select_dtype(self.dtype)
+        self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         if self.bnb_4bit_comp_dtype is None:
             self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
-            self.quantization_bit, self.bnb_4bit_comp_dtype)
+            self)
 
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-{self.sft_type}'
@@ -238,6 +238,7 @@ class InferArguments:
             "This parameter is used only when model_type.startswith('qwen-7b')"
         })
     use_streamer: bool = True
+    merge_lora_and_save: bool = False
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
@@ -246,11 +247,11 @@ class InferArguments:
                 'template', 'default')
             logger.info(f'Setting template_type: {self.template_type}')
 
-        self.torch_dtype, _, _ = select_dtype(self.dtype)
+        self.torch_dtype, _, _ = select_dtype(self)
         if self.bnb_4bit_comp_dtype is None:
             self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
-            self.quantization_bit, self.bnb_4bit_comp_dtype)
+            self)
 
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
@@ -263,10 +264,9 @@ DTYPE_MAPPING = {
 }
 
 
-def select_dtype(dtype: str) -> Tuple[Dtype, bool, bool]:
-    """
-    dtype: Literal['fp16', 'bf16', 'fp32']
-    """
+def select_dtype(
+        args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    dtype = args.dtype
     torch_dtype = DTYPE_MAPPING[dtype]
 
     assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
@@ -282,9 +282,10 @@ def select_dtype(dtype: str) -> Tuple[Dtype, bool, bool]:
     return torch_dtype, fp16, bf16
 
 
-def select_bnb(quantization_bit: int,
-               bnb_4bit_compute_dtype: str) -> Tuple[Dtype, bool, bool]:
-    bnb_4bit_compute_dtype = DTYPE_MAPPING[bnb_4bit_compute_dtype]
+def select_bnb(
+        args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    quantization_bit = args.quantization_bit
+    bnb_4bit_compute_dtype = DTYPE_MAPPING[args.bnb_4bit_comp_dtype]
     assert bnb_4bit_compute_dtype in {
         torch.float16, torch.bfloat16, torch.float32
     }

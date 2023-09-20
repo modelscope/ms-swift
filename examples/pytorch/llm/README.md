@@ -74,7 +74,7 @@ cd swift/examples/pytorch/llm
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
-bash scripts/qwen_7b_chat/lora/merge_lora_and_infer.sh
+bash scripts/qwen_7b_chat/lora/infer.sh
 
 # sft(lora+ddp) and infer qwen-7b-chat, Requires 2*38GB GPU memory.
 # Recommended experimental environment: A100
@@ -90,7 +90,7 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 # If you want to use quantification, you need to `pip install bitsandbytes -U`
 # Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
-bash scripts/qwen_7b_chat/qlora/merge_lora_and_infer.sh
+bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
 # Recommended experimental environment: V100, A10, 3090

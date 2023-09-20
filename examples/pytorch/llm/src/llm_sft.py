@@ -25,7 +25,6 @@ logger = get_logger()
 
 
 def llm_sft(args: SftArguments) -> None:
-    args.init_argument()
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -234,6 +233,7 @@ def llm_sft(args: SftArguments) -> None:
 
 if __name__ == '__main__':
     args, remaining_argv = parse_args(SftArguments)
+    args.init_argument()
     if len(remaining_argv) > 0:
         if args.ignore_args_error:
             logger.warning(f'remaining_argv: {remaining_argv}')

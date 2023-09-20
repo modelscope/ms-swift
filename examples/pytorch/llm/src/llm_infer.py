@@ -14,8 +14,36 @@ from swift.utils import (inference, parse_args, print_model_info,
 logger = get_logger()
 
 
+def merge_lora(args: InferArguments) -> None:
+    assert args.sft_type == 'lora'
+    # ### Loading Model and Tokenizer
+    model, tokenizer = get_model_tokenizer(
+        args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')
+
+    # ### Preparing LoRA
+    model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
+    Swift.merge_and_unload(model)
+
+    merged_lora_path = os.path.abspath(
+        os.path.join(args.ckpt_dir, 'merged_ckpt'))
+    logger.info(f'merged_lora_path: `{merged_lora_path}`')
+    logger.info("Setting args.sft_type: 'full'")
+    logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
+    args.sft_type = 'full'
+    args.ckpt_dir = merged_lora_path
+    if not os.path.exists(args.ckpt_dir):
+        logger.info('Saving merged weights.')
+        model.model.save_pretrained(args.ckpt_dir)
+        tokenizer.save_pretrained(args.ckpt_dir)
+        logger.info('Successfully merged LoRA.')
+    else:
+        logger.info('The weight directory for the merged LoRa already exists, '
+                    'skipping the saving process.')
+
+
 def llm_infer(args: InferArguments) -> None:
-    args.init_argument()
+    if args.merge_lora_and_save:
+        merge_lora(args)
     logger.info(f'args: {args}')
     if not os.path.isdir(args.ckpt_dir):
         raise ValueError(f'Please enter a valid ckpt_dir: {args.ckpt_dir}')
@@ -92,6 +120,7 @@ def llm_infer(args: InferArguments) -> None:
 
 if __name__ == '__main__':
     args, remaining_argv = parse_args(InferArguments)
+    args.init_argument()
     if len(remaining_argv) > 0:
         if args.ignore_args_error:
             logger.warning(f'remaining_argv: {remaining_argv}')
