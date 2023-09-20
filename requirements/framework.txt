@@ -1,11 +1,15 @@
 accelerate
 datasets
 diffusers>=0.18.0
+jieba
+matplotlib
+nltk
 numpy
 pandas
 peft>=0.5.0
 requests
+rouge
 safetensors
 tensorboard
 tqdm
-transformers>=4.12.0
+transformers>=4.30.0

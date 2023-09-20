@@ -1,16 +1,18 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
+from torch import dtype as Dtype
 
 from swift import HubStrategy, get_logger
 from swift.hub import HubApi, ModelScopeConfig
+from swift.utils import get_dist_setting, is_dist
 from .dataset import DATASET_MAPPING
 from .model import MODEL_MAPPING
 from .preprocess import TEMPLATE_MAPPING
-from .utils import get_dist_setting, is_dist, select_bnb, select_dtype
 
 logger = get_logger()
 
@@ -235,7 +237,7 @@ class InferArguments:
             'help':
             "This parameter is used only when model_type.startswith('qwen-7b')"
         })
-    use_streamer: bool = False
+    use_streamer: bool = True
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
@@ -252,3 +254,45 @@ class InferArguments:
 
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
+
+
+DTYPE_MAPPING = {
+    'fp16': torch.float16,
+    'bf16': torch.bfloat16,
+    'fp32': torch.float32
+}
+
+
+def select_dtype(dtype: str) -> Tuple[Dtype, bool, bool]:
+    """
+    dtype: Literal['fp16', 'bf16', 'fp32']
+    """
+    torch_dtype = DTYPE_MAPPING[dtype]
+
+    assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
+    if torch_dtype == torch.float16:
+        fp16, bf16 = True, False
+    elif torch_dtype == torch.bfloat16:
+        support_bf16 = torch.cuda.is_bf16_supported()
+        if not support_bf16:
+            logger.warning(f'support_bf16: {support_bf16}')
+        fp16, bf16 = False, True
+    else:
+        fp16, bf16 = False, False
+    return torch_dtype, fp16, bf16
+
+
+def select_bnb(quantization_bit: int,
+               bnb_4bit_compute_dtype: str) -> Tuple[Dtype, bool, bool]:
+    bnb_4bit_compute_dtype = DTYPE_MAPPING[bnb_4bit_compute_dtype]
+    assert bnb_4bit_compute_dtype in {
+        torch.float16, torch.bfloat16, torch.float32
+    }
+    if quantization_bit == 4:
+        load_in_4bit, load_in_8bit = True, False
+    elif quantization_bit == 8:
+        load_in_4bit, load_in_8bit = False, True
+    else:
+        load_in_4bit, load_in_8bit = False, False
+
+    return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit

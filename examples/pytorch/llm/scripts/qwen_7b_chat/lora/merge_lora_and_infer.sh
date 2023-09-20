@@ -1,5 +1,5 @@
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
+python src/merge_lora_and_infer.py \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
