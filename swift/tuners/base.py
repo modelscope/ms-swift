@@ -267,12 +267,16 @@ class SwiftModel(nn.Module):
             sub_folder = os.path.join(model_dir, _name)
             state_dict = cls.load_state_file(sub_folder)
             if state_dict is not None:
-                model_is_qlora = len([k for k in self.state_dict().keys() if k.endswith('.default.weight')])
+                model_is_qlora = len([
+                    k for k in self.state_dict().keys()
+                    if k.endswith('.default.weight')
+                ])
                 if not model_is_qlora:
                     # model is lora, state_dict: qlora->lora
                     state_dict = {
                         k[:-len('.default.weight')]: v
-                        for k, v in state_dict.items() if k.endswith('.default.weight')
+                        for k, v in state_dict.items()
+                        if k.endswith('.default.weight')
                     }
                 self.model.load_state_dict(state_dict, strict=False)
         state_dict = cls.load_state_file(model_dir)
@@ -501,6 +505,7 @@ class Swift:
                 adapter_name(`Union[str, List[str]]`): The adapter_name to unload, only supported in swift tuners.
 
         """
+        from peft import PeftModel
         if isinstance(model, PeftModel):
             model.merge_and_unload()
         elif isinstance(model, SwiftModel):
