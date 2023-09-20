@@ -2,9 +2,9 @@
 # 12GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
-    --model_type baichuan2-7b-chat \
+    --model_type baichuan2-7b \
     --sft_type lora \
-    --template_type baichuan \
+    --template_type default \
     --dtype bf16 \
     --output_dir output \
     --dataset advertise-gen \
@@ -29,6 +29,6 @@ python src/llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id baichuan2-7b-chat-qlora \
+    --hub_model_id baichuan2-7b-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

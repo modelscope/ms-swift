@@ -378,7 +378,7 @@ MODEL_MAPPING = {
     },
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },

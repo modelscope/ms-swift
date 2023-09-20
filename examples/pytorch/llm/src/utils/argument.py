@@ -80,7 +80,7 @@ class SftArguments:
     eval_steps: int = 50
     save_steps: Optional[int] = None
     only_save_model: Optional[bool] = None
-    save_total_limit: int = 2
+    save_total_limit: int = 2  # save last and best
     logging_steps: int = 5
     dataloader_num_workers: int = 1
 

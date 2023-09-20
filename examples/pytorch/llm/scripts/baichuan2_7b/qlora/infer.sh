@@ -1,10 +1,10 @@
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type baichuan2-7b-chat \
+    --model_type baichuan2-7b \
     --sft_type lora \
-    --template_type baichuan \
+    --template_type default \
     --dtype bf16 \
-    --ckpt_dir "output/baichuan2-7b-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/baichuan2-7b/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset advertise-gen \
     --max_length 2048 \
