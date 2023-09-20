@@ -505,8 +505,8 @@ class Swift:
                 adapter_name(`Union[str, List[str]]`): The adapter_name to unload, only supported in swift tuners.
 
         """
-        from peft import PeftModel
-        if isinstance(model, PeftModel):
+        from peft import PeftModel as _PeftModel
+        if isinstance(model, _PeftModel):
             model.merge_and_unload()
         elif isinstance(model, SwiftModel):
             from swift import LoRAConfig
