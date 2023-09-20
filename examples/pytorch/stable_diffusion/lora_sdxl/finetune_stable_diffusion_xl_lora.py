@@ -20,7 +20,7 @@ logger = get_logger()
 
 # Load configuration file and dataset
 @dataclass(init=False)
-class StableDiffusionLoraArguments(TrainingArgs):
+class StableDiffusionXLLoraArguments(TrainingArgs):
     prompt: str = field(
         default='dog', metadata={
             'help': 'The pipeline prompt.',
@@ -33,7 +33,7 @@ class StableDiffusionLoraArguments(TrainingArgs):
         })
 
     lora_alpha: int = field(
-        default=32,
+        default=1,
         metadata={
             'help': 'The factor to add the lora weights',
         })
@@ -50,8 +50,13 @@ class StableDiffusionLoraArguments(TrainingArgs):
             'help': 'Bias type. Values ca be "none", "all" or "lora_only"',
         })
 
+    sample_nums: int = field(
+        default=10,
+        metadata={
+            'help': 'The numbers of sample outputs',
+        })
 
-training_args = StableDiffusionLoraArguments(
+training_args = StableDiffusionXLLoraArguments(
     task='text-to-image-synthesis').parse_cli()
 config, args = training_args.to_config()
 
@@ -116,6 +121,6 @@ pipe = pipeline(task=Tasks.text_to_image_synthesis,
                 model=training_args.model,
                 model_revision=args.model_revision,
                 swift_lora_dir=os.path.join(training_args.work_dir, "unet"))
-for index in range(10):
+for index in range(args.sample_nums):
     image = pipe({'text': args.prompt})
     cv2.imwrite(f'./lora_xl_result_{index}.png', image['output_imgs'][0])

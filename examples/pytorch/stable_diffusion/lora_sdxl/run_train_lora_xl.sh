@@ -12,4 +12,5 @@ PYTHONPATH=. torchrun examples/pytorch/stable_diffusion/lora_sdxl/finetune_stabl
     --train.dataloader.workers_per_gpu 0 \
     --evaluation.dataloader.workers_per_gpu 0 \
     --train.optimizer.lr 1e-4 \
+    --sample_nums 10 \
     --use_model_config true
