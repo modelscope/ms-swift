@@ -129,7 +129,9 @@ pipe = pipeline(
     task=Tasks.text_to_image_synthesis,
     model=training_args.model,
     model_revision=args.model_revision,
-    swift_lora_dir=os.path.join(training_args.work_dir, 'unet'))
+    lora_dir=os.path.join(training_args.work_dir, 'unet'),
+    use_swift=True)
+
 for index in range(args.sample_nums):
     image = pipe({
         'text': args.prompt,
