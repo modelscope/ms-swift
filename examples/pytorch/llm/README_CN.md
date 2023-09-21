@@ -76,6 +76,7 @@ cd swift/examples/pytorch/llm
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
+# 如何你想要合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*38GB显存.

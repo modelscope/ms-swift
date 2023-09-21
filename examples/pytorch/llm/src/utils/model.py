@@ -299,7 +299,7 @@ MODEL_MAPPING = {
     },
     'chatglm2-6b': {
         'model_id': 'ZhipuAI/chatglm2-6b',
-        'revision': 'v1.0.9',
+        'revision': 'v1.0.11',
         'get_function': get_model_tokenizer_chatglm2,
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,
