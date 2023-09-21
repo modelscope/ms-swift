@@ -15,3 +15,4 @@ python src/llm_infer.py \
     --top_k 20 \
     --top_p 0.9 \
     --do_sample true \
+    --merge_lora_and_save false \
