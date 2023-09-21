@@ -28,13 +28,13 @@
 3. supported features: quantization, DDP, model parallelism(device map), gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 4. supported datasets:
    1. NLP: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary), medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh, [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary)
-   2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
-   3. multi-modal: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
-   4. other: [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
+   2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
+   3. Multi-Modal: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
+   4. Other: [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
 5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## Prepare the Environment
-Experimental environment: V100, A10, 3090, A100, ... (V100 does not support bf16, quantization)
+Experimental environment: V100, A10, 3090, A100, ...
 ```bash
 # Installing miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -74,7 +74,7 @@ cd swift/examples/pytorch/llm
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
-bash scripts/qwen_7b_chat/lora/merge_lora_and_infer.sh
+bash scripts/qwen_7b_chat/lora/infer.sh
 
 # sft(lora+ddp) and infer qwen-7b-chat, Requires 2*38GB GPU memory.
 # Recommended experimental environment: A100
@@ -88,12 +88,12 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # sft(qlora) and infer qwen-7b-chat, Requires 12GB GPU memory.
 # If you want to use quantification, you need to `pip install bitsandbytes -U`
-# Recommended experimental environment: A10, 3090
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
-bash scripts/qwen_7b_chat/qlora/merge_lora_and_infer.sh
+bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
-# Recommended experimental environment: A10, 3090
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 

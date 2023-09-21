@@ -183,7 +183,7 @@ class TestSwift(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
-        LoRA.unpatch_lora(model2, lora_config, 'default')
+        Swift.merge_and_unload(model2)
         output3 = model2(**input)
         self.assertTrue(torch.allclose(output1.logits, output3.logits))
 

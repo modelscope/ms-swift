@@ -5,6 +5,7 @@ from typing import NamedTuple, Optional
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
                         AutoTokenizer, Model, read_config, snapshot_download)
 from torch import dtype as Dtype
@@ -68,10 +69,10 @@ def get_model_tokenizer_from_sdk(config_class: type,
     return model, tokenizer
 
 
-def get_model_tokenizer_baichuan13b(model_dir: str,
-                                    torch_dtype: Dtype,
-                                    load_model: bool = True,
-                                    **model_kwargs):
+def get_model_tokenizer_baichuan_13b(model_dir: str,
+                                     torch_dtype: Dtype,
+                                     load_model: bool = True,
+                                     **model_kwargs):
     # baichuan-13b does not implement the `get_input_embeddings` function
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model,
@@ -80,6 +81,32 @@ def get_model_tokenizer_baichuan13b(model_dir: str,
     if not hasattr(model, 'get_input_embeddings'):
         model.get_input_embeddings = MethodType(
             lambda self: self.model.embed_tokens, model)
+    return model, tokenizer
+
+
+def patch_baichuan2_7b(self, hidden_states):
+    # patch: baichuan2_7b lm_head
+    if self.training:
+        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
+    elif self.first_flag:
+        self.first_flag = False
+        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
+        norm_weight = self.weight
+    else:
+        norm_weight = self.weight
+    return F.linear(hidden_states, norm_weight)
+
+
+def get_model_tokenizer_baichuan2_7b(model_dir: str,
+                                     torch_dtype: Dtype,
+                                     load_model: bool = True,
+                                     **model_kwargs):
+    # baichuan-13b does not implement the `get_input_embeddings` function
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     load_model,
+                                                     **model_kwargs)
+    model.lm_head.forward = MethodType(patch_baichuan2_7b, model.lm_head)
+
     return model, tokenizer
 
 
@@ -261,7 +288,7 @@ MODEL_MAPPING = {
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
         'revision': 'v1.0.5',
-        'get_function': get_model_tokenizer_baichuan13b,
+        'get_function': get_model_tokenizer_baichuan_13b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan-13b-chat': {
@@ -351,13 +378,15 @@ MODEL_MAPPING = {
     },
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
+        'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
         'revision': 'v1.0.1',
         'template': 'baichuan',
+        'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b': {

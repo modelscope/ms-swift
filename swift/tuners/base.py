@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
-import functools
 import inspect
 import os
 import re
@@ -268,6 +267,17 @@ class SwiftModel(nn.Module):
             sub_folder = os.path.join(model_dir, _name)
             state_dict = cls.load_state_file(sub_folder)
             if state_dict is not None:
+                model_is_qlora = len([
+                    k for k in self.state_dict().keys()
+                    if k.endswith('.default.weight')
+                ])
+                if not model_is_qlora:
+                    # model is lora, state_dict: qlora->lora
+                    state_dict = {
+                        k[:-len('.default.weight')]: v
+                        for k, v in state_dict.items()
+                        if k.endswith('.default.weight')
+                    }
                 self.model.load_state_dict(state_dict, strict=False)
         state_dict = cls.load_state_file(model_dir)
         if state_dict is not None:
@@ -464,7 +474,7 @@ class Swift:
     """The Wrapper to use both Peft and Swift tuners."""
 
     @staticmethod
-    def prepare_model(model: Union[nn.Module, 'SwiftModel'],
+    def prepare_model(model: Union[nn.Module, SwiftModel],
                       config: Union[SwiftConfig, PeftConfig,
                                     Dict[str, SwiftConfig]], **kwargs):
         """Prepare a model by the input config.
@@ -488,7 +498,32 @@ class Swift:
         raise ValueError(f'Unsupported swift config type: {config.__class__}')
 
     @staticmethod
-    def from_pretrained(model: Union[nn.Module, 'SwiftModel'],
+    def merge_and_unload(model: Union[PeftModel, SwiftModel], **kwargs):
+        """Merge tuners into the base model and unload them.
+
+        Args:
+            model(`Union[PeftModel, SwiftModel]`): The model instance with tuners
+            kwargs:
+                adapter_name(`Union[str, List[str]]`): The adapter_name to unload, only supported in swift tuners.
+
+        """
+        from peft import PeftModel as _PeftModel
+        if isinstance(model, _PeftModel):
+            model.merge_and_unload()
+        elif isinstance(model, SwiftModel):
+            from swift import LoRAConfig
+            from swift.tuners import LoRA
+            adapter_name = kwargs.get('adapter_name', None)
+            if isinstance(adapter_name, str):
+                adapter_name = [adapter_name]
+            for adapter, output in model.adapters.items():
+                if isinstance(output.config,
+                              LoRAConfig) and (adapter_name is None
+                                               or adapter in adapter_name):
+                    LoRA.unpatch_lora(model, output.config, adapter)
+
+    @staticmethod
+    def from_pretrained(model: Union[nn.Module, SwiftModel],
                         model_id: str = None,
                         adapter_name: Union[str, List[str]] = None,
                         revision: str = None,
