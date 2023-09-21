@@ -29,7 +29,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 2. 在单次训练或推理中可以使用多个tuners
 3. 支持调用`activate_adapter`或`deactivate_adapter`或`set_active_adapters`来使部分tuner激活或失活，用户可以在推理时同时加载多个独立的tuners在不同线程中并行使用。
 
-用户可以查看 [Swift官方文档](./docs/Get Started/1.Introduction.md) 来了解详细信息。
+用户可以查看 [Swift官方文档](docs/source/GetStarted/Introduction.md) 来了解详细信息。
 
 ## 大模型微调的例子
 [code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
