@@ -1,22 +1,22 @@
 # Experimental environment: A10
-# 14GB GPU memory
+# 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
-    --model_type internlm-20b \
+    --model_type internlm-20b-chat \
     --sft_type lora \
-    --template_type default-generation \
+    --template_type internlm \
     --dtype bf16 \
     --output_dir output \
-    --dataset advertise-gen \
-    --train_dataset_sample -1 \
+    --dataset damo-agent-mini-zh \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 4096 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
-    --lora_target_modules ALL \
+    --lora_target_modules q_proj v_proj \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
@@ -29,6 +29,6 @@ python src/llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id internlm-20b-qlora \
+    --hub_model_id internlm-20b-chat-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

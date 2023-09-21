@@ -74,6 +74,7 @@ cd swift/examples/pytorch/llm
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
+# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # sft(lora+ddp) and infer qwen-7b-chat, Requires 2*38GB GPU memory.
