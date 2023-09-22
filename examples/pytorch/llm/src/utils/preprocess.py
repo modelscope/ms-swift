@@ -13,6 +13,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
+    # You can set the query as '' to serve as a template for pre-training.
     'default-generation': {
         'prefix': [],
         'prompt': ['{{QUERY}}'],

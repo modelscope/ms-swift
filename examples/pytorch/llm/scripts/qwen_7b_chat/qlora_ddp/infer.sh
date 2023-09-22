@@ -1,3 +1,4 @@
+# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type qwen-7b-chat \
@@ -16,3 +17,4 @@ python src/llm_infer.py \
     --top_k 20 \
     --top_p 0.9 \
     --do_sample true \
+    --merge_lora_and_save false \

@@ -1,5 +1,5 @@
 # Experimental environment: A10
-# 20GB GPU memory
+# 14GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type internlm-20b \
@@ -17,7 +17,7 @@ python src/llm_sft.py \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules ALL \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

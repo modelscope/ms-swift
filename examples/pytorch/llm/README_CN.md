@@ -24,18 +24,18 @@
    4. chatglm2 系列: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), chatglm2-6b-32k
    5. llama 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
    6. openbuddy-llama 系列: openbuddy-llama2-13b, openbuddy-llama-65b, [openbuddy-llama2-70b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary)
-   7. internlm 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b-chat/summary)
+   7. internlm 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
    8. other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
 3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 4. 支持的数据集:
    1. NLP: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh, instruct-en, gpt4all-en, cmnli-zh, [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary), medical-en, medical-zh, medical-mini-zh, sharegpt-en, sharegpt-zh, [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary)
-   2. agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
+   2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), damo-agent-mini-zh
    3. 多模态: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
    4. 其他: [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
 5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, default-generation
 
 ## 准备实验环境
-实验环境: V100, A10, 3090, A100均可. (V100不支持bf16, 量化)
+实验环境: V100, A10, 3090, A100均可.
 ```bash
 # 安装miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -76,6 +76,7 @@ cd swift/examples/pytorch/llm
 # 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
+# 如何你想要合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*38GB显存.
@@ -88,14 +89,14 @@ bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# 微调(qlora)+推理 qwen-7b-chat, 需要12GB显存.
+# 微调(qlora)+推理 qwen-7b-chat, 需要10GB显存.
 # 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
-# 推荐的实验环境: 3090, A10
+# 推荐的实验环境: V100, 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
-# 推荐的实验环境: 3090, A10
+# 推荐的实验环境: V100, 3090, A10
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 

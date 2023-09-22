@@ -1,5 +1,7 @@
 # Experimental environment: 4 * A100
-# 4 * 75GB GPU memory
+# 4 * 75GB GPU memory (use flash_attn)
+# You need to install flash_attn or set gradient_checkpointing to True,
+# otherwise it may result in an OOM (Out of Memory) error.
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \

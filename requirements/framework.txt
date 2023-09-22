@@ -2,6 +2,7 @@ accelerate
 datasets
 diffusers>=0.18.0
 jieba
+loralib>=0.1.2
 matplotlib
 nltk
 numpy

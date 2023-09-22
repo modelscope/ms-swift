@@ -16,6 +16,7 @@ from torch import nn
 
 from swift import (AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig,
                    SideConfig, Swift, SwiftModel, push_to_hub)
+from swift.tuners import LoRA
 
 
 class TestSwift(unittest.TestCase):
@@ -181,6 +182,10 @@ class TestSwift(unittest.TestCase):
                 all(
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
+
+        Swift.merge_and_unload(model2)
+        output3 = model2(**input)
+        self.assertTrue(torch.allclose(output1.logits, output3.logits))
 
     def test_swift_multiple_adapters(self):
         model = SbertForSequenceClassification(SbertConfig())
