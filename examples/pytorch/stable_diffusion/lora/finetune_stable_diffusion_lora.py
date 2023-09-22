@@ -90,6 +90,9 @@ def cfg_modify_fn(cfg):
         'lr_lambda': lambda _: 1,
         'last_epoch': -1
     }
+    trainer_hook = cfg.train.hooks
+    trainer_hook.append({"type": "SwiftHook"})
+    cfg.train.hooks = trainer_hook
     return cfg
 
 
