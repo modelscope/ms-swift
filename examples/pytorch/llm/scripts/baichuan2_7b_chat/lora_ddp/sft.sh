@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 44GB GPU memory
+# 2 * 30GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
@@ -10,7 +10,7 @@ torchrun \
     --sft_type lora \
     --template_type baichuan \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dataset damo-agent-mini-zh \
     --train_dataset_sample -1 \
@@ -19,7 +19,7 @@ torchrun \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
-    --lora_target_modules W_pack o_proj \
+    --lora_target_modules ALL \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0. \

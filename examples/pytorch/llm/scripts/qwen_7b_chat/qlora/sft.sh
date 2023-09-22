@@ -1,12 +1,12 @@
 # Experimental environment: 3090
-# 12GB GPU memory
+# 10GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset advertise-gen \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
@@ -17,7 +17,7 @@ python src/llm_sft.py \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules ALL \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \

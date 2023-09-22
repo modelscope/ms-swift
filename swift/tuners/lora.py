@@ -9,7 +9,12 @@ from typing import Dict, List, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from loralib import Conv1d as _Conv1d
+from loralib import Conv2d as _Conv2d
+from loralib import Conv3d as _Conv3d
+from loralib import Embedding as _Embedding
+from loralib import Linear as _Linear
+from loralib import MergedLinear as _MergedLinear
 from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
@@ -18,12 +23,85 @@ from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
+
+class Linear(ActivationMixin, _Linear):
+
+    def __init__(self, *args, **kwargs):
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+        super(Linear, self).__init__()
+        if not self._unique_thread:
+            self.merge_weights = False
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        return super().forward(x)
+
+
+class MergedLinear(ActivationMixin, _MergedLinear):
+
+    def __init__(self, *args, **kwargs):
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+        super(MergedLinear, self).__init__()
+        if not self._unique_thread:
+            self.merge_weights = False
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        return super().forward(x)
+
+
+class Embedding(ActivationMixin, _Embedding):
+
+    def __init__(self, *args, **kwargs):
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+        super(Embedding, self).__init__()
+        if not self._unique_thread:
+            self.merge_weights = False
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        return super().forward(x)
+
+
+class Conv2d(ActivationMixin, _Conv2d):
+
+    def __init__(self, *args, **kwargs):
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+        super(Conv2d, self).__init__()
+        if not self._unique_thread:
+            self.merge_weights = False
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        return super().forward(x)
+
+
+class Conv1d(ActivationMixin, _Conv1d):
+
+    def __init__(self, *args, **kwargs):
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+        super(Conv1d, self).__init__()
+        if not self._unique_thread:
+            self.merge_weights = False
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        return super().forward(x)
+
+
+class Conv3d(ActivationMixin, _Conv3d):
+
+    def __init__(self, *args, **kwargs):
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+        super(Conv3d, self).__init__()
+        if not self._unique_thread:
+            self.merge_weights = False
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        return super().forward(x)
+
+
 if is_bnb_available():
     import bitsandbytes as bnb
 
-    from peft.tuners.lora import Linear8bitLt
+    from peft.tuners.lora import Linear8bitLt as _Linear8bitLt
 
-    class Linear8bitLtSwift(ActivationMixin, Linear8bitLt):
+    class Linear8bitLt(ActivationMixin, _Linear8bitLt):
 
         def __init__(
             self,
@@ -38,7 +116,7 @@ if is_bnb_available():
             super(ActivationMixin,
                   self).__init__(adapter_name, in_features, out_features, r,
                                  lora_alpha, lora_dropout, **kwargs)
-            super(Linear8bitLtSwift, self).__init__()
+            super(Linear8bitLt, self).__init__()
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             if not self.is_activated():
@@ -47,9 +125,9 @@ if is_bnb_available():
 
 
 if is_bnb_4bit_available():
-    from peft.tuners.lora import Linear4bit
+    from peft.tuners.lora import Linear4bit as _Linear4bit
 
-    class Linear4bitSwift(ActivationMixin, Linear4bit):
+    class Linear4bit(ActivationMixin, _Linear4bit):
 
         def __init__(
             self,
@@ -64,7 +142,7 @@ if is_bnb_4bit_available():
             super(ActivationMixin,
                   self).__init__(adapter_name, in_features, out_features, r,
                                  lora_alpha, lora_dropout, **kwargs)
-            super(Linear4bitSwift, self).__init__()
+            super(Linear4bit, self).__init__()
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             if not self.is_activated():
@@ -73,9 +151,9 @@ if is_bnb_4bit_available():
 
 
 if is_auto_gptq_available():
-    from peft.tuners.lora import QuantLinear
+    from peft.tuners.lora import QuantLinear as _QuantLinear
 
-    class QuantLinearSwift(ActivationMixin, QuantLinear):
+    class QuantLinear(ActivationMixin, _QuantLinear):
 
         def __init__(
             self,
@@ -89,7 +167,7 @@ if is_auto_gptq_available():
             super(ActivationMixin,
                   self).__init__(adapter_name, quant_linear_module, r,
                                  lora_alpha, lora_dropout, **kwargs)
-            super(QuantLinearSwift, self).__init__()
+            super(QuantLinear, self).__init__()
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             if not self.is_activated():
@@ -165,7 +243,7 @@ class LoRA:
         """Prepare a model with `LoRAConfig`"""
         LoRA._dynamic_patch_lora(
             model,
-            replace_modules=config.target_modules,
+            target_modules=config.target_modules,
             r=config.r,
             adapter_name=adapter_name,
             lora_alpha=config.lora_alpha,
@@ -195,14 +273,14 @@ class LoRA:
 
     @staticmethod
     def _dynamic_patch_lora(model: torch.nn.Module,
-                            replace_modules: Union[str, List[str]],
+                            target_modules: Union[str, List[str]],
                             use_merged_linear: bool, adapter_name: str,
                             **kwargs):
         """Dynamic patch lora to model
 
         Args:
             model(`torch.nn.Module`): The torch.nn.Module containing the target module to be patched.
-            replace_modules(`Union[str, List[str]]`): The module names to be replaced,
+            target_modules(`Union[str, List[str]]`): The module names to be replaced,
                 the replacing strategy is `end with`.
             use_merged_linear(bool): Whether to replace with merged linear layer.
             adapter_name(str): The adapter name.
@@ -210,17 +288,17 @@ class LoRA:
         """
         modules = {}
         module_keys = [key for key, _ in model.named_modules()]
-        assert isinstance(replace_modules, (str, list))
+        assert isinstance(target_modules, (str, list))
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             get_quantization_config(model, method='gptq'))
 
         for module_key in module_keys:
-            if isinstance(replace_modules, str):
-                target_module_found = re.fullmatch(replace_modules, module_key)
+            if isinstance(target_modules, str):
+                target_module_found = re.fullmatch(target_modules, module_key)
             else:
                 target_module_found = any(
                     module_key.endswith(target_key)
-                    for target_key in replace_modules)
+                    for target_key in target_modules)
             if target_module_found:  # noqa
                 sub_module = model.get_submodule(module_key)
 
@@ -238,7 +316,7 @@ class LoRA:
                         'index':
                         sub_module.index,
                     })
-                    lora_module = Linear8bitLtSwift(
+                    lora_module = Linear8bitLt(
                         'default',
                         sub_module.in_features,
                         sub_module.out_features,
@@ -257,7 +335,7 @@ class LoRA:
                         'quant_type':
                         sub_module.weight.quant_type,
                     })
-                    lora_module = Linear4bitSwift(
+                    lora_module = Linear4bit(
                         'default',
                         sub_module.in_features,
                         sub_module.out_features,
@@ -266,8 +344,7 @@ class LoRA:
                         **four_bit_kwargs)
                 elif AutoGPTQQuantLinear is not None and isinstance(
                         sub_module, AutoGPTQQuantLinear):
-                    lora_module = QuantLinearSwift('default', sub_module,
-                                                   **kwargs)
+                    lora_module = QuantLinear('default', sub_module, **kwargs)
                     sub_module.weight = sub_module.qweight
                 elif isinstance(sub_module, torch.nn.Linear):
                     if use_merged_linear:
@@ -330,10 +407,10 @@ class LoRA:
                         sub_module.forward = MethodType(_forward, sub_module)
                     modules[module_key] = adapter_name
 
-        logger.info(f'Lora modules(module_key -> adapter_name): {modules}')
+        logger.debug(f'Lora modules(module_key -> adapter_name): {modules}')
 
     @staticmethod
-    def unpatch_lora(model, config: LoRAConfig):
+    def unpatch_lora(model, config: LoRAConfig, adapter_name: str):
         """Unpatch lora modules and merge the weights to original modules.
 
         LoRA constructs an additional layer with low-rank decomposition matrices of the weights in the network.
@@ -341,456 +418,30 @@ class LoRA:
         See https://arxiv.org/abs/2106.09685
 
         Args:
-            model: The model called with `tune` function.
-            config: The `LoRAConfig` to use.
+            model(`torch.nn.Module`): The model called with `tune` function.
+            config(`LoRAConfig`): The `LoRAConfig` to use.
+            adapter_name(`str`): The adapter name
         """
         module_keys = [key for key, _ in model.named_modules()]
-        assert isinstance(config.replace_modules, (str, list))
-        replace_modules = config.replace_modules
+        assert isinstance(config.target_modules, (str, list))
+        target_modules = config.target_modules
 
         for module_key in module_keys:
-            if isinstance(replace_modules, str):
-                target_module_found = re.fullmatch(replace_modules, module_key)
+            if isinstance(target_modules, str):
+                target_module_found = re.fullmatch(target_modules, module_key)
             else:
                 target_module_found = any(
                     module_key.endswith(target_key)
-                    for target_key in replace_modules)
+                    for target_key in target_modules)
             if target_module_found:  # noqa
-                parts = module_key.split('.')
-                module = model.get_submodule('.'.join(parts[:-1]))
                 sub_module = model.get_submodule(module_key)
-                _key = parts[-1]
+                lora_module = getattr(sub_module, f'loramodule_{adapter_name}')
 
-                origin_module = None
-                if isinstance(sub_module, Linear):
-                    origin_module = torch.nn.Linear(
-                        sub_module.in_features,
-                        sub_module.out_features,
-                        bias=hasattr(sub_module, 'bias')
-                        and sub_module.bias is not None,
-                    )
-                elif isinstance(sub_module, Embedding):
-                    origin_module = torch.nn.Embedding(
-                        num_embeddings=sub_module.num_embeddings,
-                        embedding_dim=sub_module.embedding_dim,
-                        padding_idx=sub_module.padding_idx,
-                        max_norm=sub_module.max_norm,
-                        norm_type=sub_module.norm_type,
-                        scale_grad_by_freq=sub_module.scale_grad_by_freq,
-                        sparse=sub_module.sparse,
-                    )
-                elif isinstance(sub_module, Conv2d):
-                    origin_module = torch.nn.Conv2d(
-                        sub_module.in_channels,
-                        sub_module.out_channels,
-                        kernel_size=sub_module.kernel_size,
-                        stride=sub_module.stride,
-                        padding=sub_module.padding,
-                        dilation=sub_module.dilation,
-                        groups=sub_module.groups)
-
-                if origin_module is not None:
-                    sub_module.merge_weights = True
-                    sub_module.eval()
-                    origin_module.weight = sub_module.weight
-                    if getattr(sub_module, 'bias', None) is not None:
-                        origin_module.bias = sub_module.bias
-                    origin_module.to(sub_module.weight.device).to(
-                        sub_module.weight.dtype)
-                    setattr(module, _key, origin_module)
-
-
-class LoRALayer(ActivationMixin):
-
-    def __init__(
-        self,
-        r: int,
-        lora_alpha: int,
-        lora_dropout: float,
-        merge_weights: bool,
-    ):
-        super().__init__()
-        self.r = r
-        self.lora_alpha = lora_alpha
-        # Optional dropout
-        if lora_dropout > 0.:
-            self.lora_dropout = nn.Dropout(p=lora_dropout)
-        else:
-            self.lora_dropout = lambda x: x
-        # Mark the weight as unmerged
-        self.merged = False
-        self.merge_weights = merge_weights
-        if not self._unique_thread:
-            self.merge_weights = False
-
-
-class Embedding(nn.Embedding, LoRALayer):
-    # LoRA implemented in a dense layer
-    def __init__(self,
-                 num_embeddings: int,
-                 embedding_dim: int,
-                 r: int = 0,
-                 lora_alpha: int = 1,
-                 merge_weights: bool = True,
-                 **kwargs):
-        nn.Embedding.__init__(self, num_embeddings, embedding_dim, **kwargs)
-        LoRALayer.__init__(
-            self,
-            r=r,
-            lora_alpha=lora_alpha,
-            lora_dropout=0,
-            merge_weights=merge_weights)
-        # Actual trainable parameters
-        if r > 0:
-            self.lora_A = nn.Parameter(
-                self.weight.new_zeros((r, num_embeddings)))
-            self.lora_B = nn.Parameter(
-                self.weight.new_zeros((embedding_dim, r)))
-            self.scaling = self.lora_alpha / self.r
-            # Freezing the pre-trained weight matrix
-            self.weight.requires_grad = False
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.Embedding.reset_parameters(self)
-        if hasattr(self, 'lora_A'):
-            # initialize A the same way as the default for nn.Linear and B to zero
-            nn.init.zeros_(self.lora_A)
-            nn.init.normal_(self.lora_B)
-
-    def train(self, mode: bool = True):
-        nn.Embedding.train(self, mode)
-        self.lora_A.requires_grad = mode
-        self.lora_B.requires_grad = mode
-        if mode and self.merge_weights and self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0:
-                self.weight.data -= (self.lora_B
-                                     @ self.lora_A).T * self.scaling
-            self.merged = False
-        if not mode and self.merge_weights and not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                self.weight.data += (self.lora_B
-                                     @ self.lora_A).T * self.scaling
-            self.merged = True
-
-    def eval(self):
-        nn.Embedding.eval(self)
-        self.lora_A.requires_grad = False
-        self.lora_B.requires_grad = False
-        if self.merge_weights and not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                self.weight.data += (self.lora_B @ self.lora_A) * self.scaling
-            self.merged = True
-
-    def forward(self, x: torch.Tensor):
-        if self.r > 0 and not self.merged and self.is_activated():
-            result = nn.Embedding.forward(self, x)
-            if self.r > 0:
-                after_A = F.embedding(x, self.lora_A.T, self.padding_idx,
-                                      self.max_norm, self.norm_type,
-                                      self.scale_grad_by_freq, self.sparse)
-                result += (after_A @ self.lora_B.T) * self.scaling
-            return result
-        else:
-            return nn.Embedding.forward(self, x)
-
-
-class Linear(nn.Linear, LoRALayer):
-    # LoRA implemented in a dense layer
-    def __init__(
-            self,
-            in_features: int,
-            out_features: int,
-            r: int = 0,
-            lora_alpha: int = 1,
-            lora_dropout: float = 0.,
-            fan_in_fan_out: bool = False,
-            # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
-            merge_weights: bool = True,
-            **kwargs):
-        nn.Linear.__init__(self, in_features, out_features, **kwargs)
-        LoRALayer.__init__(
-            self,
-            r=r,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
-            merge_weights=merge_weights)
-
-        self.fan_in_fan_out = fan_in_fan_out
-        # Actual trainable parameters
-        if r > 0:
-            self.lora_A = nn.Parameter(self.weight.new_zeros((r, in_features)))
-            self.lora_B = nn.Parameter(
-                self.weight.new_zeros((out_features, r)))
-            self.scaling = self.lora_alpha / self.r
-            # Freezing the pre-trained weight matrix
-            self.weight.requires_grad = False
-        self.reset_parameters()
-        if fan_in_fan_out:
-            self.weight.data = self.weight.data.T
-
-    def reset_parameters(self):
-        nn.Linear.reset_parameters(self)
-        if hasattr(self, 'lora_A'):
-            # initialize A the same way as the default for nn.Linear and B to zero
-            nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-            nn.init.zeros_(self.lora_B)
-
-    def train(self, mode: bool = True):
-
-        def T(w):
-            return w.T if self.fan_in_fan_out else w
-
-        nn.Linear.train(self, mode)
-        self.lora_A.requires_grad = mode
-        self.lora_B.requires_grad = mode
-        if mode and self.merge_weights and self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0:
-                self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
-            self.merged = False
-        if not mode and self.merge_weights and not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
-            self.merged = True
-
-    def eval(self):
-
-        def T(w):
-            return w.T if self.fan_in_fan_out else w
-
-        nn.Linear.eval(self)
-        self.lora_A.requires_grad = False
-        self.lora_B.requires_grad = False
-        if self.merge_weights and not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
-            self.merged = True
-
-    def forward(self, x: torch.Tensor):
-
-        def T(w):
-            return w.T if self.fan_in_fan_out else w
-
-        if self.r > 0 and not self.merged and self.is_activated():
-            result = F.linear(x, T(self.weight), bias=self.bias)
-            if self.r > 0:
-                x_dtype = x.dtype
-                x = x.to(self.lora_A.dtype)
-                result += (self.lora_dropout(x) @ self.lora_A.T
-                           @ self.lora_B.T) * self.scaling
-                result = result.to(x_dtype)
-            return result
-        else:
-            return F.linear(x, T(self.weight), bias=self.bias)
-
-
-class MergedLinear(nn.Linear, LoRALayer):
-    # LoRA implemented in a dense layer
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 r: int = 0,
-                 lora_alpha: int = 1,
-                 lora_dropout: float = 0.,
-                 enable_lora: List[bool] = [False],
-                 fan_in_fan_out: bool = False,
-                 merge_weights: bool = True,
-                 **kwargs):
-        nn.Linear.__init__(self, in_features, out_features, **kwargs)
-        LoRALayer.__init__(
-            self,
-            r=r,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
-            merge_weights=merge_weights)
-        assert out_features % len(enable_lora) == 0, \
-            'The length of enable_lora must divide out_features'
-        self.enable_lora = enable_lora
-        self.fan_in_fan_out = fan_in_fan_out
-        # Actual trainable parameters
-        if r > 0 and any(enable_lora):
-            self.lora_A = nn.Parameter(
-                self.weight.new_zeros((r * sum(enable_lora), in_features)))
-            self.lora_B = nn.Parameter(
-                self.weight.new_zeros(
-                    (out_features // len(enable_lora) * sum(enable_lora),
-                     r)))  # weights for Conv1D with groups=sum(enable_lora)
-            self.scaling = self.lora_alpha / self.r
-            # Freezing the pre-trained weight matrix
-            self.weight.requires_grad = False
-            # Compute the indices
-            self.lora_ind = self.weight.new_zeros(
-                (out_features, ), dtype=torch.bool).view(len(enable_lora), -1)
-            self.lora_ind[enable_lora, :] = True
-            self.lora_ind = self.lora_ind.view(-1)
-        self.reset_parameters()
-        if fan_in_fan_out:
-            self.weight.data = self.weight.data.T
-
-    def reset_parameters(self):
-        nn.Linear.reset_parameters(self)
-        if hasattr(self, 'lora_A'):
-            # initialize A the same way as the default for nn.Linear and B to zero
-            nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-            nn.init.zeros_(self.lora_B)
-
-    def zero_pad(self, x):
-        result = x.new_zeros((*x.shape[:-1], self.out_features))
-        result = result.view(-1, self.out_features)
-        result[:, self.lora_ind] = x.reshape(
-            -1,
-            self.out_features // len(self.enable_lora) * sum(self.enable_lora))
-        return result.view((*x.shape[:-1], self.out_features))
-
-    def train(self, mode: bool = True):
-
-        def T(w):
-            return w.T if self.fan_in_fan_out else w
-
-        nn.Linear.train(self, mode)
-        self.lora_A.requires_grad = mode
-        self.lora_B.requires_grad = mode
-        if mode and self.merge_weights and self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0 and any(self.enable_lora):
-                delta_w = F.conv1d(
-                    self.lora_A.data.unsqueeze(0),
-                    self.lora_B.data.unsqueeze(-1),
-                    groups=sum(self.enable_lora)).squeeze(0)
-                self.weight.data -= self.zero_pad(T(delta_w * self.scaling))
-            self.merged = False
-        if not mode and self.merge_weights and not self.merged:
-            if self.r > 0 and any(self.enable_lora):
-                delta_w = F.conv1d(
-                    self.lora_A.data.unsqueeze(0),
-                    self.lora_B.data.unsqueeze(-1),
-                    groups=sum(self.enable_lora)).squeeze(0)
-                self.weight.data += self.zero_pad(T(delta_w * self.scaling))
-            self.merged = True
-
-    def eval(self):
-
-        def T(w):
-            return w.T if self.fan_in_fan_out else w
-
-        nn.Linear.eval(self)
-        self.lora_A.requires_grad = False
-        self.lora_B.requires_grad = False
-        if self.merge_weights and not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0 and any(self.enable_lora):
-                delta_w = F.conv1d(
-                    self.lora_A.data.unsqueeze(0),
-                    self.lora_B.data.unsqueeze(-1),
-                    groups=sum(self.enable_lora)).squeeze(0)
-                self.weight.data += self.zero_pad(T(delta_w * self.scaling))
-            self.merged = True
-
-    def forward(self, x: torch.Tensor):
-
-        def T(w):
-            return w.T if self.fan_in_fan_out else w
-
-        if self.merged or not self.is_activated():
-            return F.linear(x, T(self.weight), bias=self.bias)
-        else:
-            result = F.linear(x, T(self.weight), bias=self.bias)
-            if self.r > 0:
-                x_dtype = x.dtype
-                x = x.to(self.lora_A.dtype)
-                after_A = F.linear(self.lora_dropout(x), self.lora_A)
-                after_B = F.conv1d(
-                    after_A.transpose(-2, -1),
-                    self.lora_B.unsqueeze(-1),
-                    groups=sum(self.enable_lora)).transpose(-2, -1)
-                result += self.zero_pad(after_B) * self.scaling
-                result = result.to(x_dtype)
-            return result
-
-
-class Conv2d(nn.Conv2d, LoRALayer):
-    # LoRA implemented in a dense layer
-    def __init__(self,
-                 in_channels: int,
-                 out_channels: int,
-                 kernel_size: int,
-                 r: int = 0,
-                 lora_alpha: int = 1,
-                 lora_dropout: float = 0.,
-                 merge_weights: bool = True,
-                 **kwargs):
-        nn.Conv2d.__init__(self, in_channels, out_channels, kernel_size,
-                           **kwargs)
-        LoRALayer.__init__(
-            self,
-            r=r,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
-            merge_weights=merge_weights)
-        assert type(kernel_size) is int
-        # Actual trainable parameters
-        if r > 0:
-            self.lora_A = nn.Parameter(
-                self.weight.new_zeros(
-                    (r * kernel_size, in_channels * kernel_size)))
-            self.lora_B = nn.Parameter(
-                self.weight.new_zeros(
-                    (out_channels * kernel_size, r * kernel_size)))
-            self.scaling = self.lora_alpha / self.r
-            # Freezing the pre-trained weight matrix
-            self.weight.requires_grad = False
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.Conv2d.reset_parameters(self)
-        if hasattr(self, 'lora_A'):
-            # initialize A the same way as the default for nn.Linear and B to zero
-            nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-            nn.init.zeros_(self.lora_B)
-
-    def train(self, mode: bool = True):
-        nn.Conv2d.train(self, mode)
-        self.lora_A.requires_grad = mode
-        self.lora_B.requires_grad = mode
-        if mode and self.merge_weights and self.merged:
-            # Make sure that the weights are not merged
-            self.weight.data -= (self.lora_B @ self.lora_A).view(
-                self.weight.shape) * self.scaling
-            self.merged = False
-        if not mode and self.merge_weights and not self.merged:
-            self.weight.data += (self.lora_B @ self.lora_A).view(
-                self.weight.shape) * self.scaling
-            self.merged = True
-
-    def eval(self):
-        nn.Conv2d.eval(self)
-        self.lora_A.requires_grad = False
-        self.lora_B.requires_grad = False
-        if self.merge_weights and not self.merged:
-            # Merge the weights and mark it
-            self.weight.data += (self.lora_B @ self.lora_A).view(
-                self.weight.shape) * self.scaling
-            self.merged = True
-
-    def forward(self, x: torch.Tensor):
-        if self.r > 0 and not self.merged and self.is_activated():
-            return F.conv2d(
-                x,
-                self.weight +  # noqa
-                (self.lora_B @ self.lora_A).view(self.weight.shape)  # noqa
-                * self.scaling,
-                self.bias,
-                self.stride,
-                self.padding,
-                self.dilation,
-                self.groups)
-        return nn.Conv2d.forward(self, x)
+                if lora_module is not None:
+                    if hasattr(lora_module, 'merge_weights'):
+                        lora_module.merge_weights = True
+                        lora_module.eval()
+                        delattr(sub_module, f'loramodule_{adapter_name}')
 
 
 def mark_lora_as_trainable(model: nn.Module,

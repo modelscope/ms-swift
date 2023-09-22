@@ -9,7 +9,6 @@ from itertools import repeat
 from typing import List, Union
 
 import torch
-import torchvision
 from torch import nn
 
 from swift.utils.logger import get_logger
@@ -174,6 +173,7 @@ class SideModule(nn.Module, ActivationMixin):
         elif side_module_name == 'mlp':
             self.side_net = Mlp(dim)
         elif side_module_name == 'alexnet':
+            import torchvision
             mm = torchvision.models.alexnet(pretrained=True)
             self.side_net = nn.Sequential(
                 OrderedDict([('features', mm.features),

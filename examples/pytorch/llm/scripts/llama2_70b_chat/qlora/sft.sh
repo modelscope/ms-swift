@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type llama2-70b-chat \
     --sft_type lora \
-    --output_dir runs \
+    --output_dir output \
     --dataset alpaca-en \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \

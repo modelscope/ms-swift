@@ -6,7 +6,7 @@ torchrun \
     src/llm_sft.py \
     --model_type polylm-13b \
     --sft_type lora \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dtype bf16 \
     --dataset alpaca-en,alpaca-zh \

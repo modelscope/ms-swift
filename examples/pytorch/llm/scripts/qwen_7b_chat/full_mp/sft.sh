@@ -1,12 +1,14 @@
 # Experimental environment: 2 * A100
-# 2 * 75GB GPU memory
+# 2 * 75GB GPU memory (use flash_attn)
+# You need to install flash_attn or set gradient_checkpointing to True,
+# otherwise it may result in an OOM (Out of Memory) error.
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset damo-agent-zh \
     --train_dataset_sample 200000 \
     --num_train_epochs 1 \

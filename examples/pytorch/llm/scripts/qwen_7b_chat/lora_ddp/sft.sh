@@ -11,7 +11,7 @@ torchrun \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dataset sharegpt-en,sharegpt-zh \
     --train_dataset_sample 50000 \

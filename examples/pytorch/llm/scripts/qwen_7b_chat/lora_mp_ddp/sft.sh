@@ -1,4 +1,4 @@
-# Experimental environment: 4 * V100(16GB)
+# Experimental environment: 4 * 3090
 # 4 * 15GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -10,7 +10,7 @@ torchrun \
     --sft_type lora \
     --template_type chatml \
     --dtype fp16 \
-    --output_dir runs \
+    --output_dir output \
     --ddp_backend nccl \
     --dataset advertise-gen \
     --train_dataset_sample -1 \
@@ -20,7 +20,7 @@ torchrun \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules c_attn \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
