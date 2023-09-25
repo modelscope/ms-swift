@@ -272,13 +272,13 @@ class SwiftModel(nn.Module):
                     if k.endswith('.lora_A.default.weight')
                     or k.endswith('.lora_B.default.weight')
                 ])
-                if model_is_qlora:
+                if not model_is_qlora:
                     # model is lora, state_dict: qlora->lora
                     state_dict = {
-                        k[:-len('.default.weight')]: v
+                        k[:-len('.default.weight') if k.
+                          endswith('.lora_A.default.weight') or k.
+                          endswith('.lora_B.default.weight') else None]: v
                         for k, v in state_dict.items()
-                        if k.endswith('.lora_A.default.weight')
-                        or k.endswith('.lora_B.default.weight')
                     }
                 self.model.load_state_dict(state_dict, strict=False)
         state_dict = cls.load_state_file(model_dir)
