@@ -251,35 +251,48 @@ class ResTunerTM(NamedTuple):
 
 
 # Model Home: 'https://modelscope.cn/models/{model_id}/summary'
-# keys: 'model_id', 'revision', 'get_function', 'template',
-#   'ignore_file_pattern', 'lora_TM'
+# model_id: model id or model dir
 MODEL_MAPPING = {
+    # qwen series
     'qwen-7b': {
-        'model_id': 'ccyh123/Qwen-7B',  # model id or model dir
-        'revision': 'v1.0.0',
+        'model_id': 'qwen/Qwen-7B',
+        'revision': 'v1.1',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
     },
     'qwen-7b-chat': {
-        'model_id': 'ccyh123/Qwen-7B-Chat',
-        'revision': 'v1.0.0',
+        'model_id': 'qwen/Qwen-7B-Chat',
+        'revision': 'v1.1',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
+    'qwen-14b': {
+        'model_id': 'qwen/Qwen-14B',
+        'get_function': get_model_tokenizer_qwen,
+        'lora_TM': LoRATM.qwen,
+    },
+    'qwen-14b-chat': {
+        'model_id': 'qwen/Qwen-14B-Chat',
+        'get_function': get_model_tokenizer_qwen,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+    },
+    # qwen-vl series
     'qwen-vl': {
-        'model_id': 'ccyh123/Qwen-VL',
-        'revision': 'v1.0.0',
+        'model_id': 'qwen/Qwen-VL',
+        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_qwen_vl,
         'lora_TM': LoRATM.qwen,
     },
     'qwen-vl-chat': {
-        'model_id': 'ccyh123/Qwen-VL-Chat',
-        'revision': 'v1.0.0',
+        'model_id': 'qwen/Qwen-VL-Chat',
+        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_qwen_vl,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
+    # baichuan series
     'baichuan-7b': {
         'model_id': 'baichuan-inc/baichuan-7B',
         'revision': 'v1.0.7',
@@ -297,6 +310,32 @@ MODEL_MAPPING = {
         'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
     },
+    # baichuan2
+    'baichuan2-7b': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Base',
+        'revision': 'v1.0.1',
+        'get_function': get_model_tokenizer_baichuan2_7b,
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-7b-chat': {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
+        'revision': 'v1.0.1',
+        'template': 'baichuan',
+        'get_function': get_model_tokenizer_baichuan2_7b,
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-13b': {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Base',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.baichuan,
+    },
+    'baichuan2-13b-chat': {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
+        'revision': 'v1.0.0',
+        'template': 'baichuan',
+        'lora_TM': LoRATM.baichuan,
+    },
+    # chatglm2 series
     'chatglm2-6b': {
         'model_id': 'ZhipuAI/chatglm2-6b',
         'revision': 'v1.0.11',
@@ -310,6 +349,7 @@ MODEL_MAPPING = {
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,
     },
+    # llama series
     'llama2-7b': {
         'model_id': 'modelscope/Llama-2-7b-ms',
         'revision': 'v1.0.2',
@@ -352,6 +392,7 @@ MODEL_MAPPING = {
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
     },
+    # openbuddy-llama series
     'openbuddy-llama2-13b': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
@@ -370,42 +411,7 @@ MODEL_MAPPING = {
         'template': 'openbuddy-llama',
         'lora_TM': LoRATM.llama2,
     },
-    'polylm-13b': {
-        'model_id': 'damo/nlp_polylm_13b_text_generation',
-        'revision': 'v1.0.3',
-        'get_function': get_model_tokenizer_polylm,
-        'lora_TM': LoRATM.polylm,
-    },
-    'baichuan2-7b': {
-        'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'revision': 'v1.0.1',
-        'get_function': get_model_tokenizer_baichuan2_7b,
-        'lora_TM': LoRATM.baichuan,
-    },
-    'baichuan2-7b-chat': {
-        'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.1',
-        'template': 'baichuan',
-        'get_function': get_model_tokenizer_baichuan2_7b,
-        'lora_TM': LoRATM.baichuan,
-    },
-    'baichuan2-13b': {
-        'model_id': 'baichuan-inc/Baichuan2-13B-Base',
-        'revision': 'v1.0.0',
-        'lora_TM': LoRATM.baichuan,
-    },
-    'baichuan2-13b-chat': {
-        'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
-        'revision': 'v1.0.0',
-        'template': 'baichuan',
-        'lora_TM': LoRATM.baichuan,
-    },
-    'seqgpt-560m': {
-        'model_id': 'damo/nlp_seqgpt-560m',
-        'revision': 'v1.0.1',
-        'template': 'default-generation',
-        'lora_TM': LoRATM.bloom,
-    },
+    # internlm series
     'internlm-7b': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-7b',
         'revision': 'v1.0.0',
@@ -433,7 +439,20 @@ MODEL_MAPPING = {
         'revision': 'v1.0.0',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
-    }
+    },
+    # other
+    'polylm-13b': {
+        'model_id': 'damo/nlp_polylm_13b_text_generation',
+        'revision': 'v1.0.3',
+        'get_function': get_model_tokenizer_polylm,
+        'lora_TM': LoRATM.polylm,
+    },
+    'seqgpt-560m': {
+        'model_id': 'damo/nlp_seqgpt-560m',
+        'revision': 'v1.0.1',
+        'template': 'default-generation',
+        'lora_TM': LoRATM.bloom,
+    },
 }
 
 

@@ -9,6 +9,8 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --max_length 4096 \
+    --quantization_bit 4 \
+    --bnb_4bit_comp_dtype bf16 \
     --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \
