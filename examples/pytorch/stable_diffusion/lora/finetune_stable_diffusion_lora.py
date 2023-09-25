@@ -90,9 +90,6 @@ def cfg_modify_fn(cfg):
         'lr_lambda': lambda _: 1,
         'last_epoch': -1
     }
-    trainer_hook = cfg.train.hooks
-    trainer_hook.append({"type": "SwiftHook"})
-    cfg.train.hooks = trainer_hook
     return cfg
 
 
@@ -118,6 +115,7 @@ kwargs = dict(
     train_dataset=train_dataset,
     eval_dataset=validation_dataset,
     torch_type=torch.float32,
+    use_swift=True,
     cfg_modify_fn=cfg_modify_fn)
 
 trainer = build_trainer(name=Trainers.stable_diffusion, default_args=kwargs)
