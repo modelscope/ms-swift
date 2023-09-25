@@ -1,7 +1,6 @@
 charset_normalizer
 cpm_kernels
-modelscope
-scikit-learn
+modelscope>=1.9
 sentencepiece
 tiktoken
 transformers_stream_generator
