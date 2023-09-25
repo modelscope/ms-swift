@@ -196,8 +196,10 @@ class SwiftMixin:
             check_local_model_is_latest(
                 model.model_dir,
                 user_agent={
-                    Invoke.KEY: Invoke.LOCAL_TRAINER,
-                    Invoke.THIRD_PARTY: Invoke.SWIFT
+                    Invoke.KEY:
+                    Invoke.LOCAL_TRAINER,
+                    Invoke.THIRD_PARTY:
+                    kwargs.get(Invoke.THIRD_PARTY, Invoke.SWIFT),
                 })
         # mro
         super().__init__(model, args, data_collator, train_dataset,
