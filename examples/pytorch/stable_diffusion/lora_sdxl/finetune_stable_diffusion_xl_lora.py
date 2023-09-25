@@ -116,7 +116,7 @@ kwargs = dict(
     use_swift=True,
     cfg_modify_fn=cfg_modify_fn)
 
-trainer = build_trainer(name=Trainers.stable_diffusion_xl, default_args=kwargs)
+trainer = build_trainer(name=Trainers.stable_diffusion, default_args=kwargs)
 trainer.train()
 
 # save models
