@@ -142,8 +142,7 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(
             torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
-    def test_swift_lora_injection(self):
-
+    def lora_injection_with_dtype(self, dtype=torch.float32):
         from swift.tuners.lora import Linear
 
         def reset_parameters(self):
@@ -160,6 +159,7 @@ class TestSwift(unittest.TestCase):
         preprocessor = Preprocessor.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         input = preprocessor('this is a test')
+        model = model.to(dtype)
         model2 = copy.deepcopy(model)
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, config=lora_config)
@@ -183,9 +183,16 @@ class TestSwift(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
-        Swift.merge_and_unload(model2)
-        output3 = model2(**input)
-        self.assertTrue(torch.allclose(output1.logits, output3.logits))
+        if dtype == torch.float32:
+            Swift.merge_and_unload(model2)
+            output3 = model2(**input)
+            self.assertTrue(torch.allclose(output1.logits, output3.logits))
+
+    def test_swift_lora_injection(self):
+        self.lora_injection_with_dtype()
+
+    def test_swift_lora_injection_bf16(self):
+        self.lora_injection_with_dtype(torch.bfloat16)
 
     def test_swift_multiple_adapters(self):
         model = SbertForSequenceClassification(SbertConfig())
