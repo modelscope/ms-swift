@@ -89,6 +89,7 @@ def concat_context_list(
     query: Optional[str] = None,
     round: Optional[str] = None,
 ) -> None:
+    # concat context list and replace placeholder
     for context in context_list:
         if isinstance(context, str):
             for (old_str,
