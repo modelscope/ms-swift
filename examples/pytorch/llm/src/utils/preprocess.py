@@ -85,7 +85,6 @@ def simplify_context_list(context_list: List[Context]) -> List[Context]:
 def concat_context_list(
     context_list: List[Context],
     new_context_list: List[Context],
-    placeholder_list: List[str],
     system: Optional[str] = None,
     query: Optional[str] = None,
     round: Optional[str] = None,
@@ -96,23 +95,13 @@ def concat_context_list(
                  new_str) in zip(['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}'],
                                  [system, query, round]):
                 if new_str is not None and old_str in context:
-                    placeholder_list.append(new_str)
+                    context = context.replace(old_str, new_str)
         new_context_list.append(context)
 
 
-def _replace_placeholder(context: str, placeholder_it: Iterator[str]) -> str:
-    for new_str in placeholder_it:
-        for old_str in ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}']:
-            if old_str in context:
-                context = context.replace(old_str, new_str, 1)
-                break
-    return context
-
-
-def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
-            placeholder_list: List[str]) -> List[int]:
+def _encode(tokenizer: PreTrainedTokenizer,
+            context_list: List[Context]) -> List[int]:
     input_ids: List[int] = []
-    placeholder_it = iter(placeholder_list)
     for context in context_list:
         if isinstance(context, list):
             for c in context:
@@ -123,7 +112,6 @@ def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
                     token = c
                 input_ids.append(token)
         elif isinstance(context, str):
-            context = _replace_placeholder(context, placeholder_it)
             input_ids += tokenizer(
                 context, return_attention_mask=False,
                 add_special_tokens=False)['input_ids']
@@ -148,33 +136,27 @@ def _preprocess(
     if system is None:
         system = DEFAULT_SYSTEM
     total_context_list: List[Context] = []
-    placeholder_list: List[str] = []
     concat_context_list(
-        template_config['prefix'],
-        total_context_list,
-        placeholder_list,
-        system=system)
+        template_config['prefix'], total_context_list, system=system)
     for i, (q, r) in enumerate(history):
         assert 'chat_sep' in template_config, 'not support multi-round chat'
         concat_context_list(
             [*template_config['prompt'], r, *template_config['chat_sep']],
             total_context_list,
-            placeholder_list,
             query=q,
             round=str(i + 1))
     concat_context_list(
         template_config['prompt'],
         total_context_list,
-        placeholder_list,
         query=query,
         round=str(len(history) + 1))
     total_context_list = simplify_context_list(total_context_list)
-    input_ids = _encode(tokenizer, total_context_list, placeholder_list)
+    input_ids = _encode(tokenizer, total_context_list)
 
     labels = None
     if response is not None:
-        tgt_input_ids = _encode(tokenizer, [response], [])
-        tgt_input_ids += _encode(tokenizer, template_config['suffix'], [])
+        tgt_input_ids = _encode(tokenizer, [response])
+        tgt_input_ids += _encode(tokenizer, template_config['suffix'])
 
         if not generation_mode:
             # train, or validate with `loss`
