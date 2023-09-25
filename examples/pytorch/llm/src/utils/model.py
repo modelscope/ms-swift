@@ -269,11 +269,13 @@ MODEL_MAPPING = {
     },
     'qwen-14b': {
         'model_id': 'qwen/Qwen-14B',
+        'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
     },
     'qwen-14b-chat': {
         'model_id': 'qwen/Qwen-14B-Chat',
+        'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
