@@ -1,0 +1,13 @@
+accelerate
+charset_normalizer
+cpm_kernels
+datasets
+matplotlib
+modelscope
+scikit-learn
+sentencepiece
+tensorboard
+tiktoken
+tqdm
+transformers
+transformers_stream_generator

@@ -48,18 +48,8 @@ conda activate ms-sft
 
 # pip设置全局镜像与相关python包安装
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-
-pip install torch torchvision torchaudio -U
-pip install sentencepiece charset_normalizer cpm_kernels tiktoken -U
-pip install matplotlib scikit-learn tqdm tensorboard -U
-pip install transformers datasets -U
-pip install accelerate transformers_stream_generator -U
-
-pip install modelscope -U
-# 推荐从源码安装swift, 这具有更多的特性和更快的bug修复
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install .
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt -U
 ```
 
 ## 微调和推理
@@ -67,9 +57,11 @@ pip install .
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
 ```bash
-# clone仓库并进入代码目录
+# clone仓库, 安装ms-swift, 然后进入代码目录
 git clone https://github.com/modelscope/swift.git
-cd swift/examples/pytorch/llm
+cd swift
+pip install .
+cd examples/pytorch/llm
 
 # 微调(lora)+推理 qwen-7b-chat, 需要38GB显存.
 # 你可以通过设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
@@ -114,6 +106,8 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 ## 拓展数据集
-1. 如果你想要拓展模型, 你可以修改`utils/model.py`文件中的`MODEL_MAPPING`. `model_id`可以指定为本地路径, 这种情况下, `revision`参数不起作用.
-2. 如果你想要拓展或使用自定义数据集, 你可以修改`utils/dataset.py`文件中的`DATASET_MAPPING`. 你需要自定义`get_*_dataset`函数, 并返回包含`query`, `response`两列的数据集.
+1. 可以有两种方式来接入自己的数据集.
+   1. 第一种方法较为简单, 你需要自己构建一个和`data/train.jsonl`(或`data/val.jsonl`)相同数据集格式的jsonl文件, 并替换他们. 你可以不提供`val.jsnol`文件(需要删除), 这种情况下, train_dataset将会切分一部分出来作为val_dataset. 该文件必须包含`query`和`response`字段, 分别代表指令微调的用户询问和AI助手的回答. `history`和`system`字段是可选的, `history`字段用于支持多轮对话, 格式可以参考`data/train.jsonl`中的案例. 如果是单轮对话, 则可以不设置该字段或者设置为空List. `system`字段用于支持每一个数据集样例使用不同的system, 如果不进行设置, 默认使用`you are a helpful assistant!`. 最后, 你需要在`sft.sh`或者`infer.sh`中设置`--dataset custom`.
+   2. 第二种方法的灵活性较高, 你可以在`utils/dataset.py`中的`DATASET_MAPPING`中加入一组映射, key为数据集的名称, value为获取数据集的函数, 该函数需要返回一个`HfDataset`. 其中指令微调(单轮对话)需包含`query`, `response`字段, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例的具有不同的`system`, 则需要额外加上system字段.
+2. 如果你想要拓展模型, 你可以修改`utils/model.py`文件中的`MODEL_MAPPING`. `model_id`可以指定为本地路径, 这种情况下, `revision`参数不起作用.
 3. 如果你想要拓展template, 你可以修改`utils/preprocess.py`文件中的`TEMPLATE_MAPPING`.

@@ -3,7 +3,7 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -525,7 +525,45 @@ def get_code_python_zh_dataset() -> HfDataset:
     return _preprocess_code_python_dataset(dataset)
 
 
+def read_from_jsonl(
+        fpath: str,
+        to_dataset: bool = False) -> Union[List[Dict[str, Any]], HfDataset]:
+    res = []
+    keys = set()
+    with open(fpath, 'r', encoding='utf-8') as f:
+        for line in f:
+            obj = json.loads(line)
+            keys.update(obj.keys())
+            res.append(obj)
+    if to_dataset:
+        assert keys.issubset({'query', 'response', 'history', 'system'})
+        dataset = {k: [] for k in keys}
+        for d in res:
+            dataset['query'].append(d['query'])
+            dataset['response'].append(d['response'])
+            if 'history' in keys:
+                dataset['history'].append(d.get('history', []))
+            if 'system' in keys:
+                dataset['system'].append(d.get('system', ''))
+        return HfDataset.from_dict(dataset)
+    else:
+        return res
+
+
+def get_custom_dataset() -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
+    train_jsonl_path = 'data/train.jsonl'
+    val_jsonl_path = 'data/val.jsonl'
+    train_dataset = read_from_jsonl(train_jsonl_path, True)
+    if os.path.exists(val_jsonl_path):
+        val_dataset = read_from_jsonl(val_jsonl_path, True)
+        return train_dataset, val_dataset
+    else:
+        return train_dataset
+
+
 DATASET_MAPPING = {
+    'custom':
+    get_custom_dataset,
     # nlp chat
     'alpaca-en':
     get_alpaca_gpt4_en_dataset,

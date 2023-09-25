@@ -44,20 +44,10 @@ sh Miniconda3-latest-Linux-x86_64.sh
 conda create --name ms-sft python=3.10
 conda activate ms-sft
 
-# Setting up a global pip mirror for faster downloads
+# Setting up a global mirror for pip and installing related Python packages
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-
-pip install torch torchvision torchaudio -U
-pip install sentencepiece charset_normalizer cpm_kernels tiktoken -U
-pip install matplotlib scikit-learn tqdm tensorboard -U
-pip install transformers datasets -U
-pip install accelerate transformers_stream_generator -U
-
-pip install modelscope -U
-# Recommended installation from source code for faster bug fixes
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install .
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt -U
 ```
 
 ## Run SFT and Inference
@@ -65,9 +55,11 @@ Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 ```bash
-# Clone the repository and enter the code directory.
+# Clone the repository, install ms-swift from source code and enter the code directory.
 git clone https://github.com/modelscope/swift.git
-cd swift/examples/pytorch/llm
+cd swift
+pip install .
+cd examples/pytorch/llm
 
 # sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.
 # You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
@@ -112,6 +104,8 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 ## Extend Datasets
-1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/model.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
-2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/dataset.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `query`, `response`.
-3. If you need to extend the template, you can modify the `TEMPLATE_MAPPING` in `utils/preprocess.py`.
+1. There are two ways to incorporate your own dataset.
+   1. The first method is relatively simple. You need to construct a jsonl file with the same format as `data/train.jsonl` (or `data/val.jsonl`) and replace them. You can omit the `val.jsonl` file (delete it), in which case `train_dataset` will split a portion of the data as `val_dataset`. The file must contain `query` and `response` fields, representing the user inquiry and the assistant's answer for instruction fine-tuning, respectively. The `history` and `system` fields are optional. The `history` field is used to support multi-turn conversations, and the format can refer to examples in `data/train.jsonl`. If it's a single-turn conversation, you can either leave this field unset or set it as an empty list. The `system` field is used to support different systems for each dataset sample. If not set, it defaults to `you are a helpful assistant!`. Finally, you need to set `--dataset custom` in `sft.sh` or `infer.sh`.
+   2. The second method offers more flexibility. You can add a mapping in `utils/dataset.py` under `DATASET_MAPPING`, where the key is the dataset name and the value is a function that retrieves the dataset, which should return an `HfDataset`. For instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, similar to the `alpaca-zh` dataset. For multi-turn dialogue, you need to additionally include the `history` field, similar to the `damo-agent-mini-zh` dataset. If each dataset sample has a different `system`, you need to include the `system` field as well.
+2. If you want to expand the model, you can modify the `MODEL_MAPPING` in the `utils/model.py` file. The `model_id` can be specified as a local path, in which case the `revision` parameter is not used.
+3. If you want to expand the templates, you can modify the `TEMPLATE_MAPPING` in the `utils/preprocess.py` file.

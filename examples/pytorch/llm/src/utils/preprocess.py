@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 from transformers import PreTrainedTokenizer
 
@@ -100,6 +100,19 @@ def concat_context_list(
         new_context_list.append(context)
 
 
+def _replace_placeholder(context: str, placeholder_it: Iterator[str]) -> str:
+    while True:
+        found = False
+        for old_str in ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}']:
+            if old_str in context:
+                found = True
+                new_str = next(placeholder_it)
+                context = context.replace(old_str, new_str, 1)
+        if not found:
+            break
+    return context
+
+
 def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
             placeholder_list: List[str]) -> List[int]:
     input_ids: List[int] = []
@@ -114,10 +127,7 @@ def _encode(tokenizer: PreTrainedTokenizer, context_list: List[Context],
                     token = c
                 input_ids.append(token)
         elif isinstance(context, str):
-            for old_str in ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}']:
-                if old_str in context:
-                    new_str = next(placeholder_it)
-                    context = context.replace(old_str, new_str)
+            context = _replace_placeholder(context, placeholder_it)
             input_ids += tokenizer(
                 context, return_attention_mask=False,
                 add_special_tokens=False)['input_ids']
