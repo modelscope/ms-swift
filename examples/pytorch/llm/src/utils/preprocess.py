@@ -101,15 +101,11 @@ def concat_context_list(
 
 
 def _replace_placeholder(context: str, placeholder_it: Iterator[str]) -> str:
-    while True:
-        found = False
+    for new_str in placeholder_it:
         for old_str in ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}']:
             if old_str in context:
-                found = True
-                new_str = next(placeholder_it)
                 context = context.replace(old_str, new_str, 1)
-        if not found:
-            break
+                break
     return context
 
 
