@@ -5,7 +5,7 @@
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
 <a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.8.4-5D91D4.svg"></a>
-<a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-%E2%89%A51.0.0-6FEBB9.svg"></a>
+<a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-%E2%89%A51.1.0-6FEBB9.svg"></a>
 </p>
 
 <p align="center">
@@ -44,20 +44,10 @@ sh Miniconda3-latest-Linux-x86_64.sh
 conda create --name ms-sft python=3.10
 conda activate ms-sft
 
-# Setting up a global pip mirror for faster downloads
+# Setting up a global mirror for pip and installing related Python packages
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-
-pip install torch torchvision torchaudio -U
-pip install sentencepiece charset_normalizer cpm_kernels tiktoken -U
-pip install matplotlib scikit-learn tqdm tensorboard -U
-pip install transformers datasets -U
-pip install accelerate transformers_stream_generator -U
-
-pip install modelscope -U
-# Recommended installation from source code for faster bug fixes
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install .
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt -U
 ```
 
 ## Run SFT and Inference
@@ -65,9 +55,11 @@ Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 ```bash
-# Clone the repository and enter the code directory.
+# Clone the repository, install ms-swift from source code and enter the code directory.
 git clone https://github.com/modelscope/swift.git
-cd swift/examples/pytorch/llm
+cd swift
+pip install .
+cd examples/pytorch/llm
 
 # sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.
 # You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
@@ -112,6 +104,6 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 ## Extend Datasets
-1. If you need to extend the model, you can modify the `MODEL_MAPPING` in `utils/model.py`. `model_id` can be specified as a local path. In this case, `revision` doesn't work.
-2. If you need to extend or customize the dataset, you can modify the `DATASET_MAPPING` in `utils/dataset.py`. You need to customize the `get_*_dataset` function, which returns a dataset with two columns: `query`, `response`.
-3. If you need to extend the template, you can modify the `TEMPLATE_MAPPING` in `utils/preprocess.py`.
+1. If you want to expand the dataset, you can modify the `DATASET_MAPPING` in the `utils/dataset.py` file by adding a set of mappings. The key represents the name of the dataset, and the value represents the function to retrieve the dataset, which should return an `HfDataset`. For fine-tuning with single-turn conversations, the dataset should include the `query` and `response` fields, representing the user's query and the assistant's response for fine-tuning, respectively. You can refer to the `alpaca-zh` dataset for more details. If you're dealing with multi-turn conversations, you need to include an additional `history` field, which can be referenced from the `damo-agent-mini-zh` dataset. If each example in the dataset has a different `system` field, you'll need to include the `system` field as well.
+2. If you want to expand the model, you can modify the `MODEL_MAPPING` in the `utils/model.py` file. The `model_id` can be specified as a local path, in which case the `revision` parameter is not used.
+3. If you want to expand the templates, you can modify the `TEMPLATE_MAPPING` in the `utils/preprocess.py` file.
