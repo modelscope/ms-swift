@@ -39,7 +39,7 @@ concurrency:
 jobs:
   unittest:
     # The type of runner that the job will run on
-    runs-on: [modelscope-self-hosted-us]
+    runs-on: [self-hosted]
     timeout-minutes: 240
     steps:
       - name: ResetFileMode
