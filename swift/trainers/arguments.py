@@ -16,7 +16,7 @@ class SwiftArgumentsMixin:
         default='push_best',
         metadata={
             'choices':
-            {'push_best', 'push_last', 'end', 'checkpoint', 'all_checkpoints'}
+            {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}
         })
 
 
