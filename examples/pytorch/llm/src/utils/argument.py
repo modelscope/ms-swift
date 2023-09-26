@@ -35,7 +35,7 @@ class SftArguments:
     seed: int = 42
     resume_from_ckpt: Optional[str] = None
     dtype: str = field(
-        default='bf16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
+        default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
@@ -50,11 +50,11 @@ class SftArguments:
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
     # note: bf16 and quantization have requirements for gpu architecture
-    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
+    quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+        default=None, metadata={'choices': ['fp16', 'bf16', 'fp32']})
     bnb_4bit_quant_type: str = field(
-        default='nf4', metadata={'choices': {'fp4', 'nf4'}})
+        default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
 
     lora_target_modules: Optional[List[str]] = None
@@ -92,7 +92,7 @@ class SftArguments:
         default='push_best',
         metadata={
             'choices':
-            {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}
+            ['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints']
         })
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
@@ -209,7 +209,7 @@ class InferArguments:
 
     seed: int = 42
     dtype: str = field(
-        default='bf16', metadata={'choices': {'bf16', 'fp16', 'fp32'}})
+        default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
@@ -221,11 +221,11 @@ class InferArguments:
     system: str = 'you are a helpful assistant!'
     max_length: Optional[int] = 2048
 
-    quantization_bit: int = field(default=0, metadata={'choices': {0, 4, 8}})
+    quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': {'fp16', 'bf16', 'fp32'}})
+        default=None, metadata={'choices': ['fp16', 'bf16', 'fp32']})
     bnb_4bit_quant_type: str = field(
-        default='nf4', metadata={'choices': {'fp4', 'nf4'}})
+        default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
 
     max_new_tokens: int = 1024
