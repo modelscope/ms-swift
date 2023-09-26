@@ -1,3 +1,4 @@
+# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type internlm-20b-chat \

@@ -34,7 +34,7 @@ Key features:
 Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
 
 ## LLM SFT Example
-[code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
+Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) to view the detail documentation of these examples.
 
 1. supported SFT methods: [LoRA](https://arxiv.org/abs/2106.09685), [QLoRA](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 2. supported models:

@@ -88,7 +88,12 @@ class SftArguments:
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
     hub_private_repo: bool = True
-    hub_strategy: HubStrategy = HubStrategy.EVERY_SAVE
+    push_hub_strategy: str = field(
+        default='push_best',
+        metadata={
+            'choices':
+            {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}
+        })
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None,

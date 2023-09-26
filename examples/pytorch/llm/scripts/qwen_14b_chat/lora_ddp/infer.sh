@@ -1,11 +1,11 @@
 # If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type qwen-7b-chat \
+    --model_type qwen-14b-chat \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
-    --ckpt_dir "output/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/qwen-14b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --max_length 4096 \

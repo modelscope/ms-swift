@@ -16,7 +16,13 @@ from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME
+from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
+from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
+                                  ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
+                                  PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME,
+                                  TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
+                                  WEIGHTS_NAME, IntervalStrategy,
+                                  is_peft_available)
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction, HubStrategy
 from transformers.training_args import TrainingArguments
@@ -85,6 +91,10 @@ class PushToMsHubMixin:
                 f.write(content)
         self.repo.push(commit_message)
 
+    def init_hf_repo(self) -> None:
+        """init ms repo. Compatible with transformers>=v4.34"""
+        self.init_git_repo()
+
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
             return
@@ -127,7 +137,7 @@ class PushToMsHubMixin:
         _commit_message = 'Add `{}` patterns to .gitignore'
         if not os.path.exists(
                 os.path.join(self.args.output_dir, '.gitignore')
-        ) and self.args.hub_strategy != HubStrategy.ALL_CHECKPOINTS:
+        ) and self.args.push_hub_strategy != 'all_checkpoints':
             self._add_patterns_to_gitignores(
                 ['checkpoint-*/'], _commit_message.format('checkpoint-*/'))
 
@@ -170,6 +180,63 @@ class PushToMsHubMixin:
             self.create_model_card(model_name=model_name, **kwargs)
             self.repo.push_to_hub('update model card README.md', **kwargs)
 
+    def _push_from_checkpoint(self, checkpoint_folder: str) -> None:
+        """Compatible with transformers>=4.32"""
+        # Only push from one node.
+        if not self.is_world_process_zero(
+        ) or self.args.push_hub_strategy == 'end':
+            return
+        output_dir = self.args.output_dir
+        # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
+        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME]
+        if is_peft_available():
+            modeling_files.extend([
+                ADAPTER_CONFIG_NAME, ADAPTER_WEIGHTS_NAME,
+                ADAPTER_SAFE_WEIGHTS_NAME
+            ])
+        for modeling_file in modeling_files:
+            if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
+                shutil.copy(
+                    os.path.join(checkpoint_folder, modeling_file),
+                    os.path.join(output_dir, modeling_file))
+        # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
+        if self.tokenizer is not None:
+            self.tokenizer.save_pretrained(output_dir)
+        # Same for the training arguments
+        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
+        try:
+            if self.args.push_hub_strategy == 'checkpoint':
+                # Temporarily move the checkpoint just saved for the push
+                tmp_checkpoint = os.path.join(output_dir, 'last-checkpoint')
+                # We have to remove the "last-checkpoint" dir if it exists, otherwise the checkpoint is moved as a
+                # subfolder.
+                if os.path.isdir(tmp_checkpoint):
+                    shutil.rmtree(tmp_checkpoint)
+                shutil.move(checkpoint_folder, tmp_checkpoint)
+
+            if self.args.save_strategy == IntervalStrategy.STEPS:
+                commit_message = f'Training in progress, step {self.state.global_step}'
+            else:
+                commit_message = f'Training in progress, epoch {int(self.state.epoch)}'
+            if self.args.push_hub_strategy == 'push_best':
+                if checkpoint_folder == self.state.best_model_checkpoint:
+                    self.repo.push_to_hub(
+                        commit_message=commit_message,
+                        blocking=False,
+                        auto_lfs_prune=True)
+            else:
+                self.repo.push_to_hub(
+                    commit_message=commit_message,
+                    blocking=False,
+                    auto_lfs_prune=True)
+        except Exception as e:
+            logger.error(f'Error when pushing to hub: {e}')
+        finally:
+            if self.args.push_hub_strategy == 'checkpoint':
+                # Move back the checkpoint to its place
+                shutil.move(tmp_checkpoint, checkpoint_folder)
+
 
 class SwiftMixin:
 
@@ -196,8 +263,10 @@ class SwiftMixin:
             check_local_model_is_latest(
                 model.model_dir,
                 user_agent={
-                    Invoke.KEY: Invoke.LOCAL_TRAINER,
-                    Invoke.THIRD_PARTY: Invoke.SWIFT
+                    Invoke.KEY:
+                    Invoke.LOCAL_TRAINER,
+                    Invoke.THIRD_PARTY:
+                    kwargs.get(Invoke.THIRD_PARTY, Invoke.SWIFT),
                 })
         # mro
         super().__init__(model, args, data_collator, train_dataset,

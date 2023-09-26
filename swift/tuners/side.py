@@ -94,11 +94,11 @@ class Side:
                     else:
                         x = kwargs[config.source_hidden_pos]
 
-                    x_main = args_main[config.target_modules] \
+                    x_main = args_main[config.target_hidden_pos] \
                         if isinstance(args_main, (tuple, list, dict)) else args_main
                     out = getattr(self, f'side_{adapter_name}')(x, x_main)
                     if isinstance(args_main, (tuple, list, dict)):
-                        args_main[config.target_modules] = out
+                        args_main[config.target_hidden_pos] = out
                     else:
                         args_main = out
                     return args_main

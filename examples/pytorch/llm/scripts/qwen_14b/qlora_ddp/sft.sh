@@ -1,28 +1,28 @@
-# Experimental environment: 2 * A100
-# 2 * 60GB GPU memory (use flash_attn)
-# You need to install flash_attn or set gradient_checkpointing to True,
-# otherwise it may result in an OOM (Out of Memory) error.
+# Experimental environment: 2 * A10
+# 2 * 17GB GPU memory
 nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     src/llm_sft.py \
-    --model_type qwen-7b-chat \
+    --model_type qwen-14b \
     --sft_type lora \
-    --template_type chatml \
+    --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset damo-agent-mini-zh \
+    --dataset dureader-robust-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 2048 \
+    --quantization_bit 4 \
+    --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
     --lora_target_modules ALL \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
@@ -33,8 +33,8 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn true \
+    --use_flash_attn false \
     --push_to_hub false \
-    --hub_model_id qwen-7b-chat-lora \
+    --hub_model_id qwen-14b-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
