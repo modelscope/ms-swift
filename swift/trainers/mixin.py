@@ -206,7 +206,7 @@ class PushToMsHubMixin:
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
 
         try:
-            if self.args.push_hub_strategy == 'checkpoints':
+            if self.args.push_hub_strategy == 'checkpoint':
                 # Temporarily move the checkpoint just saved for the push
                 tmp_checkpoint = os.path.join(output_dir, 'last-checkpoint')
                 # We have to remove the "last-checkpoint" dir if it exists, otherwise the checkpoint is moved as a
