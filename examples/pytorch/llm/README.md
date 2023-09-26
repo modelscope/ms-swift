@@ -54,13 +54,16 @@ pip install -r requirements.txt -U
 Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
+
 ```bash
 # Clone the repository, install ms-swift from source code and enter the code directory.
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install .
 cd examples/pytorch/llm
+```
 
+```bash
 # sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.
 # You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
 # If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.

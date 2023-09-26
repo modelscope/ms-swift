@@ -169,7 +169,7 @@ def llm_sft(args: SftArguments) -> None:
         optim=args.optim,
         hub_model_id=args.hub_model_id,
         hub_private_repo=args.hub_private_repo,
-        hub_strategy=args.hub_strategy,
+        push_hub_strategy=args.push_hub_strategy,
         hub_token=args.hub_token,
         push_to_hub=args.push_to_hub,
         resume_from_checkpoint=args.resume_from_ckpt,
