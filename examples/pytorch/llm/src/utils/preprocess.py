@@ -61,6 +61,12 @@ TEMPLATE_MAPPING = {
         'prompt': ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'],
         'chat_sep': ['<eoa>\n'],
         'suffix': ['<eoa></s>'],
+    },
+    'xverse': {
+        'prefix': [],
+        'prompt': ['Human: {{QUERY}}\n\nAssistant: '],
+        'chat_sep': [['eos_token_id']],
+        'suffix': [['eos_token_id']],
     }
 }
 Context = Union[str, List[int]]

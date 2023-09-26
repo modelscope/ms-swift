@@ -97,6 +97,20 @@ def patch_baichuan2_7b(self, hidden_states):
     return F.linear(hidden_states, norm_weight)
 
 
+def get_model_tokenizer_xverse(model_dir: str,
+                               torch_dtype: Dtype,
+                               load_model: bool = True,
+                               **model_kwargs):
+    from transformers import AutoTokenizer as AutoTokenizerHF
+    tokenizer = AutoTokenizerHF.from_pretrained(model_dir)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        load_model,
+        tokenizer=tokenizer,
+        **model_kwargs)
+
+
 def get_model_tokenizer_baichuan2_7b(model_dir: str,
                                      torch_dtype: Dtype,
                                      load_model: bool = True,
@@ -200,6 +214,7 @@ class LoRATM(NamedTuple):
     polylm = ['c_attn']
     bloom = ['query_key_value']
     internlm = ['q_proj', 'k_proj', 'v_proj']
+    xverse = ['q_proj', 'k_proj', 'v_proj']
 
 
 class AdapterTM(NamedTuple):
@@ -441,6 +456,20 @@ MODEL_MAPPING = {
         'revision': 'v1.0.0',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
+    },
+    # xverse
+    'xverse-13b': {
+        'model_id': 'xverse/XVERSE-13B',
+        'revision': 'v1.0.0',
+        'get_function': get_model_tokenizer_xverse,
+        'lora_TM': LoRATM.xverse,
+    },
+    'xverse-7b-chat': {
+        'model_id': 'xverse/XVERSE-7B-Chat',
+        'revision': 'v1.0.0',
+        'template': 'xverse',
+        'get_function': get_model_tokenizer_xverse,
+        'lora_TM': LoRATM.xverse,
     },
     # other
     'polylm-13b': {
