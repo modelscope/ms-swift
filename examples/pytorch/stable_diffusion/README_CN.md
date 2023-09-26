@@ -22,10 +22,10 @@ pip install -r requirements.txt
 git clone https://github.com/modelscope/swift.git
 
 # LoRA方法微调和推理稳定扩散模型
-bash examples/pytorch/stable_diffusion/lora/run_train_lora.sh
+bash examples/pytorch/stable_diffusion/run_train_lora.sh
 
 # LoRA方法微调和推理XL版本的稳定扩散模型
-bash examples/pytorch/stable_diffusion/lora_sdxl/run_train_lora_xl.sh
+bash examples/pytorch/stable_diffusion/run_train_lora_xl.sh
 ```
 
 ## 数据集拓展

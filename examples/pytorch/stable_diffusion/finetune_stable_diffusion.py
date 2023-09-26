@@ -1,5 +1,4 @@
 import os
-import tempfile
 from dataclasses import dataclass, field
 
 import cv2
@@ -13,14 +12,14 @@ from modelscope.trainers import build_trainer
 from modelscope.trainers.training_args import TrainingArgs
 from modelscope.utils.constant import DownloadMode, Tasks
 
-from swift import LoRAConfig, Swift, SwiftModel
+from swift import LoRAConfig, Swift
 
 logger = get_logger()
 
 
 # Load configuration file and dataset
 @dataclass(init=False)
-class StableDiffusionXLLoraArguments(TrainingArgs):
+class StableDiffusionLoraArguments(TrainingArgs):
     prompt: str = field(
         default='dog', metadata={
             'help': 'The pipeline prompt.',
@@ -33,7 +32,7 @@ class StableDiffusionXLLoraArguments(TrainingArgs):
         })
 
     lora_alpha: int = field(
-        default=1, metadata={
+        default=32, metadata={
             'help': 'The factor to add the lora weights',
         })
 
@@ -60,7 +59,7 @@ class StableDiffusionXLLoraArguments(TrainingArgs):
         })
 
 
-training_args = StableDiffusionXLLoraArguments(
+training_args = StableDiffusionLoraArguments(
     task='text-to-image-synthesis').parse_cli()
 config, args = training_args.to_config()
 
@@ -96,13 +95,15 @@ def cfg_modify_fn(cfg):
 # build models
 model = Model.from_pretrained(
     training_args.model, revision=args.model_revision)
-model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v2-1')
+model_dir = snapshot_download(args.model)
 lora_config = LoRAConfig(
     r=args.lora_rank,
     lora_alpha=args.lora_alpha,
     lora_dropout=args.lora_dropout,
     bias=args.bias,
-    target_modules=['to_q', 'to_k', 'query', 'value'])
+    target_modules=[
+        'to_q', 'to_k', 'to_v', 'query', 'key', 'value', 'to_out.0'
+    ])
 model.unet = Swift.prepare_model(model.unet, lora_config)
 
 # build trainer and training
@@ -136,4 +137,4 @@ for index in range(args.sample_nums):
         'text': args.prompt,
         'num_inference_steps': args.num_inference_steps
     })
-    cv2.imwrite(f'./lora_xl_result_{index}.png', image['output_imgs'][0])
+    cv2.imwrite(f'./lora_result_{index}.png', image['output_imgs'][0])

@@ -21,10 +21,10 @@ pip install -r requirements.txt
 git clone https://github.com/modelscope/swift.git
 
 # Stable Diffusion LoRA
-bash examples/pytorch/stable_diffusion/lora/run_train_lora.sh
+bash examples/pytorch/stable_diffusion/run_train_lora.sh
 
 # Stable Diffusion XL LoRA
-bash examples/pytorch/stable_diffusion/lora_sdxl/run_train_lora_xl.sh
+bash examples/pytorch/stable_diffusion/run_train_lora_xl.sh
 ```
 
 ## Extend Datasets
