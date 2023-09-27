@@ -192,6 +192,7 @@ class TestSwift(unittest.TestCase):
         self.lora_injection_with_dtype()
 
     def test_swift_lora_injection_bf16(self):
+        print()
         self.lora_injection_with_dtype(torch.bfloat16)
 
     def test_swift_multiple_adapters(self):
