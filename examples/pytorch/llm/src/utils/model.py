@@ -119,7 +119,8 @@ def get_model_tokenizer_baichuan2_7b(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model,
                                                      **model_kwargs)
-    model.lm_head.forward = MethodType(patch_baichuan2_7b, model.lm_head)
+    if model is not None:
+        model.lm_head.forward = MethodType(patch_baichuan2_7b, model.lm_head)
 
     return model, tokenizer
 
