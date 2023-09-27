@@ -465,14 +465,27 @@ MODEL_MAPPING = {
         'lora_TM': LoRATM.internlm,
     },
     # xverse
-    'xverse-13b': {
-        'model_id': 'xverse/XVERSE-13B',
+    'xverse-7b': {
+        'model_id': 'xverse/XVERSE-7B',
         'revision': 'v1.0.0',
         'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
     'xverse-7b-chat': {
         'model_id': 'xverse/XVERSE-7B-Chat',
+        'revision': 'v1.0.0',
+        'template': 'xverse',
+        'get_function': get_model_tokenizer_xverse,
+        'lora_TM': LoRATM.xverse,
+    },
+    'xverse-13b': {
+        'model_id': 'xverse/XVERSE-13B',
+        'revision': 'v1.0.0',
+        'get_function': get_model_tokenizer_xverse,
+        'lora_TM': LoRATM.xverse,
+    },
+    'xverse-13b-chat': {
+        'model_id': 'xverse/XVERSE-13B-Chat',
         'revision': 'v1.0.0',
         'template': 'xverse',
         'get_function': get_model_tokenizer_xverse,
