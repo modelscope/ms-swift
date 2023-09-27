@@ -4,7 +4,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.8.4-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.1-5D91D4.svg"></a>
 <a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-%E2%89%A51.1.0-6FEBB9.svg"></a>
 </p>
 
@@ -63,13 +63,18 @@ pip install -r requirements.txt -U
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
 
+Note:
+1. 你可以通过设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
+2. 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
+3. 如何你想要在推理时合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
+4. 如果你想要使用量化, 你需要先安装bnb: `pip install bitsandbytes -U`.
+5. 如果你使用的是V100等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
+6. qwen推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(V100, 3090, A10等机器不支持flash-attn).
+7. 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
 ```bash
 # 微调(lora)+推理 qwen-7b-chat, 需要38GB显存.
-# 你可以通过设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
-# 如果你想在训练时, 将权重push到modelscope hub中, 你需要设置`--push_to_hub true`.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
-# 如何你想要合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*38GB显存.
@@ -83,7 +88,6 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # 微调(qlora)+推理 qwen-7b-chat, 需要10GB显存.
-# 如果你想要使用量化, 你需要`pip install bitsandbytes -U`
 # 推荐的实验环境: V100, 3090, A10
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
@@ -102,8 +106,6 @@ bash scripts/qwen_7b_chat/full_mp/infer.sh
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
-
-# 更多的scripts脚本, 可以看`scripts`文件夹.
 ```
 
 ## 拓展数据集

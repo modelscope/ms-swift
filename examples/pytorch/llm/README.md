@@ -4,7 +4,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.8.4-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.1-5D91D4.svg"></a>
 <a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-%E2%89%A51.1.0-6FEBB9.svg"></a>
 </p>
 
@@ -61,13 +61,18 @@ Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 
+Note:
+1. You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
+2. If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
+3. If you want to merge LoRA weights and save during inference, you need to set `--merge_lora_and_save true`.
+4. If you want to use quantization, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
+5. If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
+6. qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (V100, 3090, A10 machines do not support flash-attn).
+7. Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
 ```bash
 # sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.
-# You can save GPU memory by setting `--gradient_checkpointing true`, but this will slightly decrease the training speed.
-# If you want to push weights into modelscope hub during training, you need to set '--push_to_hub true'.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
-# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 bash scripts/qwen_7b_chat/lora/infer.sh
 
 # sft(lora+ddp) and infer qwen-7b-chat, Requires 2*38GB GPU memory.
@@ -81,7 +86,6 @@ bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # sft(qlora) and infer qwen-7b-chat, Requires 10GB GPU memory.
-# If you want to use quantification, you need to `pip install bitsandbytes -U`
 # Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
@@ -100,8 +104,6 @@ bash scripts/qwen_7b_chat/full_mp/infer.sh
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
-
-# For more scripts, please see `scripts/` folder.
 ```
 
 ## Extend Datasets
