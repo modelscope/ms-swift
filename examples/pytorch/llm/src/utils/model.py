@@ -188,6 +188,13 @@ def get_model_tokenizer_qwen(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model, model_config,
                                                      **kwargs)
+    try:
+        # fix mp+ddp bug
+        model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda(
+        )
+        logger.info('registered_causal_mask to cuda')
+    except AttributeError:
+        pass
     tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
