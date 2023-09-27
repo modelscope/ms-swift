@@ -1,3 +1,4 @@
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type chatglm2-6b \

@@ -1,3 +1,4 @@
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type seqgpt-560m \
