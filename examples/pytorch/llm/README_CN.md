@@ -49,6 +49,11 @@ conda activate ms-sft
 # pip设置全局镜像与相关python包安装
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install .
+cd examples/pytorch/llm
 pip install -r requirements.txt -U
 ```
 
@@ -56,14 +61,6 @@ pip install -r requirements.txt -U
 性能: full(优) > lora > qlora
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
-
-```bash
-# clone仓库, 安装ms-swift, 然后进入代码目录
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install .
-cd examples/pytorch/llm
-```
 
 ```bash
 # 微调(lora)+推理 qwen-7b-chat, 需要38GB显存.

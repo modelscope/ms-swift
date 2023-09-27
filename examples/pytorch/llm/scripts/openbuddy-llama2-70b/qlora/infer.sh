@@ -1,3 +1,4 @@
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_infer.py \
     --model_type openbuddy-llama2-70b \

@@ -1,5 +1,6 @@
 # Experimental environment: 3090
 # 10GB GPU memory
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-7b-chat \

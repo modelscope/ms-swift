@@ -3,6 +3,8 @@
 # You need to install flash_attn or set gradient_checkpointing to True,
 # otherwise it may result in an OOM (Out of Memory) error.
 nproc_per_node=2
+
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \

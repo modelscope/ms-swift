@@ -47,6 +47,11 @@ conda activate ms-sft
 # Setting up a global mirror for pip and installing related Python packages
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install .
+cd examples/pytorch/llm
 pip install -r requirements.txt -U
 ```
 
@@ -54,14 +59,6 @@ pip install -r requirements.txt -U
 Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
-
-```bash
-# Clone the repository, install ms-swift from source code and enter the code directory.
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install .
-cd examples/pytorch/llm
-```
 
 ```bash
 # sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.

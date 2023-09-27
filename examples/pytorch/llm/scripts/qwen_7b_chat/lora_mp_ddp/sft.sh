@@ -1,6 +1,8 @@
-# Experimental environment: 4 * 3090
+# Experimental environment: 4 * V100
 # 4 * 15GB GPU memory
 nproc_per_node=2
+
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
     --nproc_per_node=$nproc_per_node \

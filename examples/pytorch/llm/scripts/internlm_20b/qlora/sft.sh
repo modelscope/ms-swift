@@ -1,5 +1,6 @@
 # Experimental environment: A10
 # 14GB GPU memory
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type internlm-20b \
