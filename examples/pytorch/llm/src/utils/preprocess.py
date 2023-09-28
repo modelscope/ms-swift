@@ -180,7 +180,8 @@ def _preprocess(
     return {'input_ids': input_ids, 'labels': labels}
 
 
-def convert_chatml_to_query_response_history(example: Dict[str, Any]) -> Dict[str, Any]:
+def convert_chatml_to_query_response_history(
+        example: Dict[str, Any]) -> Dict[str, Any]:
     """Convert chatml format to query/response format.
         from:
         {"messages": [
@@ -213,10 +214,12 @@ def convert_chatml_to_query_response_history(example: Dict[str, Any]) -> Dict[st
     for i in range(0, len(messages), 2):
         assert messages[i]['role'] == 'user'
         if i + 1 == len(messages):
-            history.append((messages[i]['content'], None))  # last assistant might be missing
+            history.append((messages[i]['content'],
+                            None))  # last assistant might be missing
         else:
             assert messages[i + 1]['role'] == 'assistant'
-            history.append((messages[i]['content'], messages[i + 1]['content']))
+            history.append(
+                (messages[i]['content'], messages[i + 1]['content']))
 
     query, response = history.pop(len(history) - 1)
 
