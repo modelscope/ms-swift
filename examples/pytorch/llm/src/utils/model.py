@@ -209,8 +209,15 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
-    return get_model_tokenizer_qwen(model_dir, torch_dtype, load_model,
-                                    **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype,
+                                                load_model, **kwargs)
+    first_drop = model.transformer.drop
+    if first_drop.p == 0.:
+        # fix gradient_checkpointing bug
+        _old_forward = first_drop.forward
+        first_drop.forward = lambda *args, **kwargs: _old_forward(
+            *args, **kwargs).clone()
+    return model, tokenizer
 
 
 class LoRATM(NamedTuple):
@@ -279,26 +286,26 @@ MODEL_MAPPING = {
     # qwen series
     'qwen-7b': {
         'model_id': 'qwen/Qwen-7B',
-        'revision': 'v1.1',
+        'revision': 'v1.1.4',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
     },
     'qwen-7b-chat': {
         'model_id': 'qwen/Qwen-7B-Chat',
-        'revision': 'v1.1',
+        'revision': 'v1.1.4',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
     },
     'qwen-14b': {
         'model_id': 'qwen/Qwen-14B',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.4',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
     },
     'qwen-14b-chat': {
         'model_id': 'qwen/Qwen-14B-Chat',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.4',
         'get_function': get_model_tokenizer_qwen,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
@@ -312,7 +319,7 @@ MODEL_MAPPING = {
     },
     'qwen-vl-chat': {
         'model_id': 'qwen/Qwen-VL-Chat',
-        'revision': 'v1.0.3',
+        'revision': 'v1.1.0',
         'get_function': get_model_tokenizer_qwen_vl,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,

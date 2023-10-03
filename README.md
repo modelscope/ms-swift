@@ -53,6 +53,7 @@ Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch
    2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
    3. Multi-Modal: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
    4. Other: [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
+   5. Custom Dataset.
 5. supported templates:
    1. text generation: default-generation, chatglm2-generation
    2. chat: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
