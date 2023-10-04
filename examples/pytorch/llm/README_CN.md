@@ -50,6 +50,20 @@
 
 
 
+## 新闻
+
+- 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
+- 2023.9.26: 支持xverse系列模型: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat.
+- 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat
+- 2023.9.20: 支持在LoRA, QLoRA的方式训练后, 将其增量权重merge到基模型权重中, 并保存完整的模型权重, 方便用户的部署.
+- 2023.9.18: 支持internlm-20b系列模型: internlm-20b, internlm-20b-chat
+- 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
+- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题.
+- 2023.9.5: 支持openbuddy-llama2-70b模型.
+- 2023.9.3: 支持baichuan-13b系列模型: baichuan-13b, baichuan-13b-chat.
+
+
+
 ## 准备实验环境
 
 实验环境: V100, A10, 3090, A100均可.
