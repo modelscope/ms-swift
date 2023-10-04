@@ -104,6 +104,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         gen_kwargs['pad_token_id'] = self.tokenizer.pad_token_id
         gen_kwargs['eos_token_id'] = self.tokenizer.eos_token_id
+        if ('max_length' in gen_kwargs and 'max_new_tokens' in gen_kwargs
+                and gen_kwargs['max_length'] is None):
+            gen_kwargs.pop('max_length')
         gen_time = time.time()
         generated_tokens = self.model.generate(**inputs, **gen_kwargs)
         gen_time = time.time() - gen_time

@@ -7,7 +7,7 @@
 <p>
 
 <p align="center">
-<a href="https://modelscope.cn/home">Modelscope Hub</a>
+<a href="https://modelscope.cn/home">ModelScope Hub</a>
 <br>
         <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
 </p>
