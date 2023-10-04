@@ -1,4 +1,3 @@
-
 <h1 align="center">大模型微调的例子</h1>
 
 <p align="center">
@@ -17,7 +16,6 @@
 
 
 ## 特性
-
 1. 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 2. 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 3. 支持的模型
@@ -49,9 +47,7 @@
    2. 对话: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
 
 
-
 ## 新闻
-
 - 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 2023.9.26: 支持xverse系列模型: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat.
 - 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat
@@ -63,9 +59,7 @@
 - 2023.9.3: 支持baichuan-13b系列模型: baichuan-13b, baichuan-13b-chat.
 
 
-
 ## 准备实验环境
-
 实验环境: V100, A10, 3090, A100均可.
 ```bash
 # 安装miniconda
@@ -89,9 +83,7 @@ pip install -r requirements.txt -U
 ```
 
 
-
 ## 微调和推理
-
 性能: full(优) > lora > qlora
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
@@ -142,11 +134,8 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 
-
 ## 使用文档
-
 ### MODEL_MAPPING 介绍 (模型拓展)
-
 `MODEL_MAPPING`定义在`utils/model.py`中, 用于加载各种类型的基模型. 如果你需要**拓展模型**, 你可以在里面进行添加. 其中key表示模型的唯一id, value表示模型的配置. 配置内容如下.
 
 - `model_id`: 必填项. 表示模型在ModelScope Hub中的model_id, 或者是本地的模型目录.
@@ -157,17 +146,13 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `ignore_file_pattern`: 表示下载的时候需要忽略的文件内容, 该参数会传递给`snapshot_download`. 例如`r'.+\.bin$'`, `r'.+\.savetensors$'`等.
 
 
-
 ### DATASET_MAPPING 介绍 (数据集拓展)
-
 `DATASET_MAPPING`定义在`utils/dataset.py`中, 用于加载各种类型的数据, 例如: 单轮指令微调数据集, 多轮chat数据集, 多模态数据集等. 如果你需要**拓展数据集**, 你可以在这里面添加. 其中key表示dataset的唯一id, 例如: alpaca-en, alpaca-zh等. value是获取数据集的函数. 该函数不需要传入任何参数, 需要返回`HfDataset`或`Tuple[HfDataset, HfDataset]`. 第一种情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 第二种情况下, 返回的两个数据集分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
 
 函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
 
 
-
 ### TEMPLATE_MAPPING 介绍 (对话模板拓展)
-
 `TEMPLATE_MAPPING`定义在`utils/preprocess.py`中, 用于将文本信息预处理成token list. 如果你需要**拓展对话模板**, 可以在这里面添加. 其中key表示chat template的唯一id, 例如: 'default', 'chatml'等. value表示对话模板的配置, 分别是'prefix', 'prompt', 'chat_sep', 'suffix'. 此模块会根据这四个内容, 获取完整的chat template, 使其支持预训练, text generation式的SFT, 各种chat类型的SFT. 其中这四个配置内容的含义如下.
 
 - `prefix`: 表示对话模板中的前缀部分, 一般为system部分及其相关格式, 前缀token, bos token等内容. 我们使用`{{SYSTEM}}`作为system部分的占位符.
@@ -176,9 +161,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面. 只有最后一轮对话的reponse部分和`suffix`会计算loss并优化, 其余部分不计算损失.
 
 
-
 ### sft.sh 命令行参数
-
 - `--model_type`: 表示你选择的模型类型, 默认是`'qwen-7b-chat'`. 可以选择的`model_type`可以查看`MODEL_MAPPING.keys()`.
 - `--sft_type`: 表示微调的方式, 默认是`'lora'`. 你可以选择的值包括: 'lora', 'full'. 如果你要使用lora或qlora, 你需要选择`--sft_type lora`. qlora需额外设置`--quantization_bit 4`. 如果你要使用全参数微调, 则需选择`--sft_type full`.
 - `--tuner_bankend`: 表示lora, qlora的后端支持, 默认是`'swift'`. 你可以选择的值包括: 'swift', 'peft'.
@@ -237,9 +220,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `--repetition_penalty`: 默认为`1.`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 
 
-
 ### infer.sh 命令行参数
-
 - `--model_type`: 默认值为`'qwen-7b-chat'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--sft_type`: 默认值为`'lora'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--template_type`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.

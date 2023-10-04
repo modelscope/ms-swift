@@ -1,4 +1,3 @@
-
 <h1 align="center">LLM SFT Example</h1>
 
 <p align="center">
@@ -17,7 +16,6 @@
 
 
 ## Features
-
 1. Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 2. Supported Features: quantization, DDP, model parallelism, gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 3. Supported Models:
@@ -49,9 +47,7 @@
    2. Chat: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
 
 
-
 ## News
-
 - 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 2023.9.26: Supported xverse model series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat.
 - 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat.
@@ -63,9 +59,7 @@
 - 2023.9.3: Supported baichuan-13b model series: baichuan-13b, baichuan-13b-chat.
 
 
-
 ## Prepare the Environment
-
 Experimental environment: V100, A10, 3090, A100, ...
 ```bash
 # Installing miniconda
@@ -88,9 +82,7 @@ pip install -r requirements.txt -U
 ```
 
 
-
 ## Run SFT and Inference
-
 Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
@@ -141,11 +133,8 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 
-
 ## User Guide
-
 ### Introduction to MODEL_MAPPING (Model Expansion)
-
 `MODEL_MAPPING` is defined in `utils/model.py` and is used to load various types of base models. If you need to **expand the models**, you can add them here. The key represents the unique ID of the model, and the value represents the model configuration. The configuration includes the following:
 
 - `model_id`: Required. It represents the `model_id` in the ModelScope Hub or the local model directory.
@@ -156,18 +145,13 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `ignore_file_pattern`: Represents the file content to ignore when downloading. This parameter is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc.
 
 
-
 ### Introduction to DATASET_MAPPING (Dataset Expansion)
-
 `DATASET_MAPPING` is defined in `utils/dataset.py` and is used to load various types of data, such as single-turn instruction fine-tuning datasets, multi-turn chat datasets, multimodal datasets, etc. If you need to **expand the datasets**, you can add them here. The key represents the unique ID of the dataset, such as alpaca-en, alpaca-zh, etc. The value is the function to get the dataset. This function does not require any parameters and should return either `HfDataset` or `Tuple[HfDataset, HfDataset]`. In the first case, the dataset processing function will split a portion of the dataset as the validation set (based on the command-line hyperparameter `dataset_test_ratio`). In the second case, the two returned datasets are used as the training set and validation set, respectively. We support fine-tuning with multiple datasets. The training and validation parts of each sub-dataset are concatenated and the merged training set and validation set are returned.
 
 The returned `HfDataset` must comply with certain conventions. In the case of instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, representing the user's query for instruction fine-tuning and the assistant's response, respectively. You can refer to the `alpaca-zh` dataset for more details. In the case of multi-turn dialogue, an additional `history` field is required, representing the history of the dialogue. You can refer to the `damo-agent-mini-zh` dataset for more details. If each example in the dataset has a different `system`, an additional `system` field is required. You can also refer to the `damo-agent-mini-zh` dataset for more details. We only calculate and optimize the loss for the `response` part.
 
 
-
-
 ### Introduction to TEMPLATE_MAPPING (Dialogue Template Expansion)
-
 `TEMPLATE_MAPPING` is defined in `utils/preprocess.py` and is used to preprocess text information into token lists. If you need to **expand the dialogue templates**, you can add them here. The key represents the unique ID of the chat template, such as 'default', 'chatml', etc. The value represents the configuration of the chat template, including 'prefix', 'prompt', 'chat_sep', and 'suffix'. This module retrieves the complete chat template based on these four elements, enabling support for pre-training, text generation-style SFT, and various chat-type SFT. The meanings of these four configuration elements are as follows:
 
 - `prefix`: Represents the prefix part of the chat template, usually including the system part and relevant formats, prefix tokens, BOS token, etc. We use `{{SYSTEM}}` as a placeholder for the system part.
@@ -176,10 +160,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue. Only the response part of the last round will calculate the loss and be optimized, while the other parts will not calculate the loss.
 
 
-
-
 ### sft.sh Command Line Arguments
-
 - `--model_type`: Represents the chosen model type, default is `'qwen-7b-chat'`. Available `model_type` can be checked using `MODEL_MAPPING.keys()`.
 - `--sft_type`: Represents the fine-tuning method, default is `'lora'`. The possible values are: 'lora', 'full'. If you want to use lora or qlora, you need to select `--sft_type lora`. For qlora, an additional setting `--quantization_bit 4` is required. If you want to use full-parameter fine-tuning, you need to select `--sft_type full`.
 - `--tuner_backend`: Represents the backend support for lora and qlora, default is `'swift'`. The possible values are: 'swift', 'peft'.
@@ -238,10 +219,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--repetition_penalty`: The repetition penalty applied during generation. The default value is `1.0`. This parameter only takes effect when `predict_with_generate` is set to True.
 
 
-
-
 ### infer.sh Command Line Arguments
-
 - `--model_type`: Default value is `'qwen-7b-chat'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--sft_type`: Default value is `'lora'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--template_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
