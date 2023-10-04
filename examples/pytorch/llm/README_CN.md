@@ -88,7 +88,7 @@ pip install -r requirements.txt -U
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
 
-Note:
+提示:
 - 你可以在训练时设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
