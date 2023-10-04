@@ -31,14 +31,23 @@
    8. xverse 系列: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
    9. other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
 4. 支持的数据集:
-   1. NLP: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [code-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary), [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary)
-   2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
-   3. 多模态: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
-   4. 其他: [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
-   5. 自定义数据集.
+   1. NLP:
+      1. 通用: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
+      2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+      3. 代码: [code-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
+      4. 医疗: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
+      5. 法律: [lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
+      6. 数学: [blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
+      7. SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), [sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
+      8. 文本生成: [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
+      9. 分类: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+      10. 其他: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
+      2. 多模态: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
+      3. 自定义数据集
 5. 支持的对话模板:
    1. 文本生成: default-generation, chatglm2-generation
    2. 对话: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
+
 
 
 ## 准备实验环境
@@ -64,6 +73,8 @@ pip install .
 cd examples/pytorch/llm
 pip install -r requirements.txt -U
 ```
+
+
 
 ## 微调和推理
 
@@ -117,6 +128,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 
+
 ## 使用文档
 
 ### MODEL_MAPPING 介绍 (模型拓展)
@@ -131,11 +143,13 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `ignore_file_pattern`: 表示下载的时候需要忽略的文件内容, 该参数会传递给`snapshot_download`. 例如`r'.+\.bin$'`, `r'.+\.savetensors$'`等.
 
 
+
 ### DATASET_MAPPING 介绍 (数据集拓展)
 
 `DATASET_MAPPING`定义在`utils/dataset.py`中, 用于加载各种类型的数据, 例如: 单轮指令微调数据集, 多轮chat数据集, 多模态数据集等. 如果你需要**拓展数据集**, 你可以在这里面添加. 其中key表示dataset的唯一id, 例如: alpaca-en, alpaca-zh等. value是获取数据集的函数. 该函数不需要传入任何参数, 需要返回`HfDataset`或`Tuple[HfDataset, HfDataset]`. 第一种情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 第二种情况下, 返回的两个数据集分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
 
 函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
+
 
 
 ### TEMPLATE_MAPPING 介绍 (对话模板拓展)
@@ -146,6 +160,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `prompt`: 表示对话模板中的一轮对话. 我们使用`{{QUERY}}`作为每轮对话中, human询问部分的占位符, `{{ROUND}}`则表示本次对话是第几轮的占位符, 从1开始计数. AI助手的回复部分会拼接在`prompt`的后面, 因此我们没有设计其占位符.
 - `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等.
 - `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面. 只有最后一轮对话的reponse部分和`suffix`会计算loss并优化, 其余部分不计算损失.
+
 
 
 ### sft.sh 命令行参数
@@ -206,6 +221,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `--top_k`: 默认为`20`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--top_p`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--repetition_penalty`: 默认为`1.`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
+
 
 
 ### infer.sh 命令行参数

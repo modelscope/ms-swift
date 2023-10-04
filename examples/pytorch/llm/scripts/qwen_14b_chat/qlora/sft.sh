@@ -1,5 +1,5 @@
-# Experimental environment: A10
-# 17GB GPU memory
+# Experimental environment: A10 or 3090
+# 16GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
@@ -8,7 +8,7 @@ python src/llm_sft.py \
     --template_type chatml \
     --dtype bf16 \
     --output_dir output \
-    --dataset dureader-robust-zh \
+    --dataset blossom-math-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \

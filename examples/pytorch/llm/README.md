@@ -31,14 +31,24 @@
    8. xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
    9. other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
 4. supported datasets:
-   1. NLP: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [code-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary), [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary)
-   2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
-   3. Multi-Modal: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
-   4. Other: [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
-   5. Custom Dataset.
+   1. NLP:
+      1. General: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
+      2. Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+      3. Code: [code-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
+      4. Medical: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
+      5. Law: [lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
+      6. Math: [blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
+      7. SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), [sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
+      8. Text Generation: [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
+      9. Classification: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+      10. Other: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
+   2. Multi-Modal: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
+   3. Custom Dataset
 5. supported templates:
    1. text generation: default-generation, chatglm2-generation
    2. chat: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
+
+
 
 
 ## Prepare the Environment
@@ -63,6 +73,7 @@ pip install .
 cd examples/pytorch/llm
 pip install -r requirements.txt -U
 ```
+
 
 
 ## Run SFT and Inference
@@ -117,6 +128,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 
+
 ## User Guide
 
 ### Introduction to MODEL_MAPPING (Model Expansion)
@@ -131,11 +143,14 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `ignore_file_pattern`: Represents the file content to ignore when downloading. This parameter is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc.
 
 
+
 ### Introduction to DATASET_MAPPING (Dataset Expansion)
 
 `DATASET_MAPPING` is defined in `utils/dataset.py` and is used to load various types of data, such as single-turn instruction fine-tuning datasets, multi-turn chat datasets, multimodal datasets, etc. If you need to **expand the datasets**, you can add them here. The key represents the unique ID of the dataset, such as alpaca-en, alpaca-zh, etc. The value is the function to get the dataset. This function does not require any parameters and should return either `HfDataset` or `Tuple[HfDataset, HfDataset]`. In the first case, the dataset processing function will split a portion of the dataset as the validation set (based on the command-line hyperparameter `dataset_test_ratio`). In the second case, the two returned datasets are used as the training set and validation set, respectively. We support fine-tuning with multiple datasets. The training and validation parts of each sub-dataset are concatenated and the merged training set and validation set are returned.
 
 The returned `HfDataset` must comply with certain conventions. In the case of instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, representing the user's query for instruction fine-tuning and the assistant's response, respectively. You can refer to the `alpaca-zh` dataset for more details. In the case of multi-turn dialogue, an additional `history` field is required, representing the history of the dialogue. You can refer to the `damo-agent-mini-zh` dataset for more details. If each example in the dataset has a different `system`, an additional `system` field is required. You can also refer to the `damo-agent-mini-zh` dataset for more details. We only calculate and optimize the loss for the `response` part.
+
+
 
 
 ### Introduction to TEMPLATE_MAPPING (Dialogue Template Expansion)
@@ -146,6 +161,8 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `prompt`: Represents a round of dialogue in the chat template. We use `{{QUERY}}` as a placeholder for the human inquiry part in each round of dialogue, and `{{ROUND}}` represents the placeholder for the current round of dialogue, counting from 1. The assistant's reply is concatenated after the `prompt`, so we did not design a placeholder for it.
 - `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc.
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue. Only the response part of the last round will calculate the loss and be optimized, while the other parts will not calculate the loss.
+
+
 
 
 ### sft.sh Command Line Arguments
@@ -206,6 +223,8 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--top_k`: The value of k for top-k sampling during generation. The default value is `20`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--top_p`: The cumulative probability threshold for top-p sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--repetition_penalty`: The repetition penalty applied during generation. The default value is `1.0`. This parameter only takes effect when `predict_with_generate` is set to True.
+
+
 
 
 ### infer.sh Command Line Arguments
