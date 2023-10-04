@@ -216,7 +216,6 @@ def llm_sft(args: SftArguments) -> None:
                     ensure_ascii=False,
                     indent=2)
     trainer.train(training_args.resume_from_checkpoint)
-    logger.info(f'trainer.perf: {trainer.perf}')  # performace
 
     # ### Visualization
     if is_master():
