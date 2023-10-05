@@ -22,7 +22,7 @@ def _preprocess_alpaca_dataset(
         preprocess_input: Optional[Callable[[str], str]] = None) -> HfDataset:
     query: List[str] = []
     response = []
-    for d in dataset:
+    for d in tqdm(dataset):
         inst, inp, output = d['instruction'], d['input'], d['output']
         if output is None:
             continue
@@ -493,19 +493,17 @@ def get_sharegpt_all_en_dataset():
 def get_cls_fudan_news_zh() -> HfDataset:
     """Sequence Classification """
     dataset = MsDataset.load('damo/zh_cls_fudan-news').to_hf_dataset()
-    return HfDataset.from_dict({
-        'query': dataset['prompt'],
-        'response': dataset['answer']
-    })
+    dataset = dataset.rename_column('prompt', 'query')
+    dataset = dataset.rename_column('answer', 'response')
+    return dataset
 
 
 def get_ner_jave_zh() -> HfDataset:
     """Named Entity Recognition"""
     dataset = MsDataset.load('damo/zh_ner-JAVE').to_hf_dataset()
-    return HfDataset.from_dict({
-        'query': dataset['prompt'],
-        'response': dataset['answer']
-    })
+    dataset = dataset.rename_column('prompt', 'query')
+    dataset = dataset.rename_column('answer', 'response')
+    return dataset
 
 
 def _preprocess_code_python_dataset(dataset: HfDataset) -> HfDataset:
@@ -523,6 +521,93 @@ def get_code_python_zh_dataset() -> HfDataset:
     dataset = MsDataset.load(
         'codefuse-ai/CodeExercise-Python-27k').to_hf_dataset()
     return _preprocess_code_python_dataset(dataset)
+
+
+def get_blossom_math_v2_dataset() -> HfDataset:
+    dataset = MsDataset.load('AI-ModelScope/blossom-math-v2').to_hf_dataset()
+    query = []
+    response = []
+    for i, d in enumerate(dataset):
+        query.append(d['input'])
+        output, answer = d['output'], d['answer']
+        response.append(f'{output}\n\nAnswer: {answer}')
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_school_math_dataset() -> HfDataset:
+    dataset = MsDataset.load('AI-ModelScope/school_math_0.25M').to_hf_dataset()
+    return _preprocess_alpaca_dataset(dataset)
+
+
+def get_text2sql_v2_en_dataset() -> HfDataset:
+    dataset = MsDataset.load(
+        'AI-ModelScope/texttosqlv2_25000_v2').to_hf_dataset()
+    return _preprocess_alpaca_dataset(dataset)
+
+
+def get_sql_create_context_dataset() -> HfDataset:
+    dataset = MsDataset.load(
+        'AI-ModelScope/sql-create-context').to_hf_dataset()
+    dataset = dataset.rename_column('question', 'instruction')
+    dataset = dataset.rename_column('context', 'input')
+    dataset = dataset.rename_column('answer', 'output')
+    return _preprocess_alpaca_dataset(dataset)
+
+
+def get_lawyer_llama_dataset() -> HfDataset:
+    dataset = MsDataset.load('AI-ModelScope/lawyer_llama_data').to_hf_dataset()
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        h = d['history']
+        h = ast.literal_eval(h)
+        if len(h) > 0:
+            continue  # ignore dirty data
+        query.append(d['instruction'])
+        response.append(d['output'])
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+def get_tigerbot_law_plugin() -> HfDataset:
+    """Pretrain Fromat"""
+    dataset = MsDataset.load(
+        'AI-ModelScope/tigerbot-law-plugin').to_hf_dataset()
+    prompt = """Type: {type}
+Title: {title}
+"""
+    response = []
+    for d in tqdm(dataset):
+        cur_prompt = prompt.format(type=d['type'], title=d['title'])
+        for i in range(1, 4):
+            chapter = d[f'chapter{i}']
+            if chapter is not None:
+                cur_prompt += f'Chapter{i}: {chapter}'
+        cur_prompt += f'Content: {d["content"]}'
+        response.append(cur_prompt)
+    return HfDataset.from_dict({
+        'query': [''] * len(response),
+        'response': response,
+    })
+
+
+def get_leetcode_python_dataset() -> HfDataset:
+    dataset = MsDataset.load(
+        'AI-ModelScope/leetcode-solutions-python').to_hf_dataset()
+    query = []
+    response = []
+    for d in dataset:
+        code_with_problem = d['code_with_problem']
+        idx = code_with_problem.find('```python')
+        idx2 = code_with_problem.rfind('```python')
+        assert idx == idx2
+        problem = code_with_problem[:idx]
+        if problem.startswith('# '):
+            problem = problem[2:]
+        code = code_with_problem[idx:].strip()
+        explanation = d['explanation_only']
+        query.append(problem)
+        response.append(f'{code}\n\n{explanation}')
+    return HfDataset.from_dict({'query': query, 'response': response})
 
 
 DATASET_MAPPING = {
@@ -562,6 +647,20 @@ DATASET_MAPPING = {
         get_medical_dataset, subset_name='zh', train_dataset_sample=100000),
     'code-python-zh':
     get_code_python_zh_dataset,
+    'blossom-math-zh':
+    get_blossom_math_v2_dataset,
+    'school-math-zh':
+    get_school_math_dataset,
+    'text2sql-en':
+    get_text2sql_v2_en_dataset,
+    'sql-create-context-en':
+    get_sql_create_context_dataset,
+    'lawyer-llama-zh':
+    get_lawyer_llama_dataset,
+    'tigerbot-law-zh':
+    get_tigerbot_law_plugin,
+    'leetcode-python-en':
+    get_leetcode_python_dataset,
 
     # multi-round chat
     'damo-agent-mini-zh':

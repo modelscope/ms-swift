@@ -1,17 +1,17 @@
 # Experimental environment: A10 or 3090
-# 20GB GPU memory
+# 16GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
-    --model_type qwen-7b-chat \
+    --model_type qwen-14b-chat \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
     --output_dir output \
-    --dataset leetcode-python-en \
+    --dataset blossom-math-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
@@ -31,6 +31,6 @@ python src/llm_sft.py \
     --logging_steps 10 \
     --use_flash_attn false \
     --push_to_hub false \
-    --hub_model_id qwen-7b-chat-qlora \
+    --hub_model_id qwen-14b-chat-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

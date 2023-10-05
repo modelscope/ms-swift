@@ -80,7 +80,7 @@ class SftArguments:
     eval_steps: int = 50
     save_steps: Optional[int] = None
     only_save_model: Optional[bool] = None
-    save_total_limit: int = 2  # save last and best
+    save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     dataloader_num_workers: int = 1
 
@@ -193,6 +193,8 @@ class SftArguments:
                 self.eval_batch_size = 1
             else:
                 self.eval_batch_size = self.batch_size
+        if self.save_total_limit == -1:
+            self.save_total_limit = None
 
 
 @dataclass
