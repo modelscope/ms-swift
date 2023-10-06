@@ -114,7 +114,7 @@ class TestTrainer(unittest.TestCase):
             push_to_hub=True,
             hub_token=None,  # use env var
             hub_private_repo=True,
-            hub_strategy='every_save',
+            push_hub_strategy='push_best',
             hub_model_id=self.hub_model_id,
             overwrite_output_dir=True,
             save_steps=10,

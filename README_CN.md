@@ -13,42 +13,69 @@
 </p>
 
 # 简介
-SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的框架，旨在促进轻量级模型的微调。它集成了各种高效的微调方法的实现，采用了参数高效、内存高效和时间高效的方法。SWIFT可以无缝地集成到ModelScope生态系统中，并提供微调各种模型的能力，主要侧重于LLMs和视觉模型。此外，SWIFT与[Peft](https://github.com/huggingface/peft)完全兼容，使用户能够利用熟悉的Peft接口对ModelScope模型进行微调。
+SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的轻量级一站式训练、推理深度学习框架。它集成了各种高效的微调方法，如LoRA、QLoRA、阿里云自研的ResTuning-Bypass等，以及开箱即用的训练推理脚本，使开发者可以在单张商业级显卡上微调推理LLM&AIGC模型。此外，SWIFT与[PEFT](https://github.com/huggingface/peft)完全兼容，使开发者可以在ModelScope模型体系中使用PEFT的能力。
 
-目前支持的方法（数量持续增加）：
+目前支持的方法：
 
 1. LoRA：[LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. Adapter：[Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
-3. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-4. 所有在[Peft](https://github.com/huggingface/peft)上提供的tuners。
+3. Prompt: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
+4. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+5. ResTuning-Bypass
+6. 所有在[PEFT](https://github.com/huggingface/peft)上提供的tuners
 
-关键特点：
-1. 通过集成ModelScope库，可以通过model id轻松获取模型。
-2. SWIFT提供的tuners可以组合在一起，以便在模型上探索多个tuners，以获得最佳结果。
+主要能力：
+1. 可以通过model-id使SWIFT或PEFT的方法使用ModelScope Hub中的模型
+2. 在单次训练或推理中可以使用多个tuners
+3. 支持调用`activate_adapter`或`deactivate_adapter`或`set_active_adapters`来使部分tuner激活或失活，用户可以在推理时同时加载多个独立的tuners在不同线程中并行使用。
+
+用户可以查看 [Swift官方文档](docs/source/GetStarted/Introduction.md) 来了解详细信息。
 
 ## 大模型微调的例子
-[code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
+可以[在这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) 查看LLM微调的使用文档。
 
-1. 支持的sft方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调, ...
-2. 支持的模型: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B), qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL), baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b
-3. 支持的特性: 模型量化, DDP, 模型并行(device_map), gradient checkpoint, 梯度累加, 支持推送modelscope hub, 自定义数据集, 多模态和agent sft, 多轮对话, ...
-4. 支持的数据集:
-   1. nlp: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh
-   2. agent: damo-agent-zh, damo-agent-mini-zh
-   3. multi-modal: coco-en
-5. 支持的对话模板: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default
+- 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
+- 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
+- 支持的模型
+  - qwen 系列: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary)
+  - qwen-vl 系列: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary)
+  - baichuan 系列: [baichuan-7b](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary), [baichuan-13b](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary), [baichuan-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary), [baichuan2-7b](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary), [baichuan2-7b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary), [baichuan2-13b](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary), [baichuan2-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary)
+  - chatglm2 系列: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), [chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary)
+  - llama 系列: [llama2-7b](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary), [llama2-7b-chat](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary), [llama2-13b](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary), [llama2-13b-chat](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary), [llama2-70b](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary), [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
+  - openbuddy-llama 系列: [openbuddy-llama2-13b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary)
+  - internlm 系列: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
+  - xverse 系列: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
+  - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
+- 支持的数据集:
+  - NLP:
+    - 通用: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
+    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+    - 代码: [code-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
+    - 医疗: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
+    - 法律: [lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
+    - 数学: [blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
+    - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), [sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
+    - 文本生成: [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
+    - 分类: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+    - 其他: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
+  - 多模态: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
+  - 自定义数据集
+- 支持的对话模板:
+  - 文本生成: default-generation, chatglm2-generation
+  - 对话: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
+
 
 # 安装
 
 SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 
-请使用pip命令安装SWIFT：
+- 方法1：使用pip命令安装SWIFT：
 
 ```shell
 pip install ms-swift -U
 ```
 
-如果您想通过源代码安装SWIFT，请运行以下命令：
+- 方法2：通过源代码安装SWIFT（方便运行训练推理脚本），请运行以下命令：
 
 ```shell
 git clone https://github.com/modelscope/swift.git
@@ -56,25 +83,22 @@ cd swift
 pip install -e .
 ```
 
-如果您在使用源代码，请记得通过以下方式安装所需的依赖项：
-```shell
-pip install -r requirements/framework.txt
-```
+SWIFT依赖torch>=1.13。
 
-SWIFT requires torch>=1.13.
+- 方法3：在我们的Docker镜像中使用SWIFT
 
-我们还建议在我们的Docker镜像中使用SWIFT
 ```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
 ```
 
 # 快速开始
-SWIFT支持多个tuners，包括由[Peft](https://github.com/huggingface/peft)提供的调谐器。要使用这些调谐器，只需调用:
+SWIFT支持多个tuners，包括由[PEFT](https://github.com/huggingface/peft)提供的tuners。要使用这些tuners，只需调用:
 ```python
-from swift import Swift
+from swift import Swift, LoRAConfig
+config = LoRAConfig(...)
 model = Swift.prepare_model(model, config, extra_state_keys=['...'])
 ```
-上面的代码片段随机初始化了tuner。输入模型是torch.nn.Module的一个实例，配置是SwiftConfig或PeftConfig的子类实例。extra_state_keys是要训练并存储在输出目录中的额外模块权重（如linear head）。
+上面的代码片段随机初始化了tuner。输入model是torch.nn.Module的一个实例，config是SwiftConfig或PeftConfig的子类实例。extra_state_keys是要训练并存储在输出目录中的额外模块权重（如linear head）。
 
 您可以通过以下方式组合多个tuners：
 ```python
@@ -91,7 +115,7 @@ push_to_hub('my-group/some-repo-id-modelscope', 'some-output-folder', token='som
 ```
 假设`my-group/some-repo-id-modelscope`是Hub中的model-id，而`some-ms-token`是用于上传的令牌。
 
-使用model-id进行后续推断：
+使用model-id进行后续推理：
 
 ```python
 from swift import Swift
@@ -125,7 +149,7 @@ model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto')
 model = SwiftModel.from_pretrained(model, 'my-group/swift_llama2', device_map='auto')
 ```
 
-这是一个使用transformers库创建模型，并使用SWIFT进行高效微调的示例。
+这是一个使用transformers库实例化模型，并使用SWIFT进行高效微调的示例。
 
 ```python
 from swift import Swift, LoRAConfig, AdapterConfig, PromptConfig
@@ -166,7 +190,7 @@ model.get_trainable_parameters()
 # 'trainable params: 838,776 || all params: 87,406,432 || trainable%: 0.9596273189597764'
 ```
 
-您可以在SWIFT中使用Peft提供的功能：
+可以在SWIFT中使用PEFT提供的功能：
 
 ```python
 from swift import LoraConfig, Swift
@@ -178,26 +202,14 @@ model_wrapped = Swift.prepare_model(model, lora_config)
 model_wrapped = Swift.from_pretrained(model, 'some-id-in-the-modelscope-modelhub')
 ```
 
-或者：
-
-```python
-from swift import LoraConfig, get_peft_model, PeftModel
-from peft import TaskType
-lora_config = LoraConfig(target_modules=['query', 'key', 'value'], task_type=TaskType.CAUSAL_LM)
-model_wrapped = get_peft_model(model, lora_config)
-
-# 或者使用from_pretrained从modelscope hub中加载权重。
-model_wrapped = PeftModel.from_pretrained(model, 'some-id-in-the-modelscope-modelhub')
-```
-
-Swift tuners和Peft tuners之间的保存策略略有不同。您可以通过以下方式为Swift tuners命名：
+Swift tuners和Peft tuners之间的保存策略略有不同。可以通过以下方式为Swift tuners命名：
 
 ```python
 model = Swift.prepare_model(model, {'default': LoRAConfig(...)})
 model.save_pretrained('./output')
 ```
 
-在输出目录中，您将会得到以下类似的目录结构：
+在output目录中将会得到以下类似的目录结构：
 
 ```text
 output
@@ -208,14 +220,14 @@ output
     |-- adapter_model.bin
 ```
 
-存储在输出目录中的config/weights是extra_state_keys的配置和权重。这与Peft不同，Peft存储了default调谐器的权重和配置。
+存储在output目录中的config/weights是extra_state_keys的配置和权重。这与Peft不同，Peft存储了`default` tuner的config/weights。
 
 
 # Learn More
 
 - [ModelScope库](https://github.com/modelscope/modelscope/)
 
-  ModelScope库是ModelScope项目的模型库，包含大量热门模型。
+  ModelScope库是ModelScope项目的模型库，包含了各模态热门的深度学习模型。
 
 - [将自己的模型贡献给ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
 

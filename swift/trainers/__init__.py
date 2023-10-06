@@ -4,7 +4,6 @@ from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
                                         HPSearchBackend, HubStrategy,
                                         IntervalStrategy, SchedulerType,
                                         ShardedDDPOption)
-from transformers.training_args import TrainingArguments
-from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
 
+from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .trainers import Seq2SeqTrainer, Trainer

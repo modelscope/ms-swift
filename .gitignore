@@ -124,7 +124,7 @@ replace.sh
 result.png
 result.jpg
 result.mp4
-runs/
+output/
 *.out
 
 # Pytorch

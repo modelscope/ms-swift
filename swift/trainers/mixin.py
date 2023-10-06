@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
+# Part of the implementation is borrowed from huggingface/transformers.
 import os
 import shutil
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import json
+import numpy as np
 import safetensors
 import torch
 from datasets import Dataset as HfDataset
@@ -15,6 +16,13 @@ from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
+from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
+from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
+                                  ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
+                                  PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME,
+                                  TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
+                                  WEIGHTS_NAME, IntervalStrategy,
+                                  is_peft_available)
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import EvalPrediction, HubStrategy
 from transformers.training_args import TrainingArguments
@@ -26,7 +34,7 @@ from swift.tuners import SwiftModel
 from swift.utils.constants import Invoke
 from swift.utils.logger import get_logger
 from .utils import (can_return_loss, find_labels, get_function,
-                    is_instance_of_ms_Model)
+                    is_instance_of_ms_model)
 
 logger = get_logger()
 
@@ -83,6 +91,10 @@ class PushToMsHubMixin:
                 f.write(content)
         self.repo.push(commit_message)
 
+    def init_hf_repo(self) -> None:
+        """init ms repo. Compatible with transformers>=v4.34"""
+        self.init_git_repo()
+
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
             return
@@ -125,7 +137,7 @@ class PushToMsHubMixin:
         _commit_message = 'Add `{}` patterns to .gitignore'
         if not os.path.exists(
                 os.path.join(self.args.output_dir, '.gitignore')
-        ) and self.args.hub_strategy != HubStrategy.ALL_CHECKPOINTS:
+        ) and self.args.push_hub_strategy != 'all_checkpoints':
             self._add_patterns_to_gitignores(
                 ['checkpoint-*/'], _commit_message.format('checkpoint-*/'))
 
@@ -168,6 +180,63 @@ class PushToMsHubMixin:
             self.create_model_card(model_name=model_name, **kwargs)
             self.repo.push_to_hub('update model card README.md', **kwargs)
 
+    def _push_from_checkpoint(self, checkpoint_folder: str) -> None:
+        """Compatible with transformers>=4.32"""
+        # Only push from one node.
+        if not self.is_world_process_zero(
+        ) or self.args.push_hub_strategy == 'end':
+            return
+        output_dir = self.args.output_dir
+        # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
+        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME]
+        if is_peft_available():
+            modeling_files.extend([
+                ADAPTER_CONFIG_NAME, ADAPTER_WEIGHTS_NAME,
+                ADAPTER_SAFE_WEIGHTS_NAME
+            ])
+        for modeling_file in modeling_files:
+            if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
+                shutil.copy(
+                    os.path.join(checkpoint_folder, modeling_file),
+                    os.path.join(output_dir, modeling_file))
+        # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
+        if self.tokenizer is not None:
+            self.tokenizer.save_pretrained(output_dir)
+        # Same for the training arguments
+        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
+        try:
+            if self.args.push_hub_strategy == 'checkpoint':
+                # Temporarily move the checkpoint just saved for the push
+                tmp_checkpoint = os.path.join(output_dir, 'last-checkpoint')
+                # We have to remove the "last-checkpoint" dir if it exists, otherwise the checkpoint is moved as a
+                # subfolder.
+                if os.path.isdir(tmp_checkpoint):
+                    shutil.rmtree(tmp_checkpoint)
+                shutil.move(checkpoint_folder, tmp_checkpoint)
+
+            if self.args.save_strategy == IntervalStrategy.STEPS:
+                commit_message = f'Training in progress, step {self.state.global_step}'
+            else:
+                commit_message = f'Training in progress, epoch {int(self.state.epoch)}'
+            if self.args.push_hub_strategy == 'push_best':
+                if checkpoint_folder == self.state.best_model_checkpoint:
+                    self.repo.push_to_hub(
+                        commit_message=commit_message,
+                        blocking=False,
+                        auto_lfs_prune=True)
+            else:
+                self.repo.push_to_hub(
+                    commit_message=commit_message,
+                    blocking=False,
+                    auto_lfs_prune=True)
+        except Exception as e:
+            logger.error(f'Error when pushing to hub: {e}')
+        finally:
+            if self.args.push_hub_strategy == 'checkpoint':
+                # Move back the checkpoint to its place
+                shutil.move(tmp_checkpoint, checkpoint_folder)
+
 
 class SwiftMixin:
 
@@ -194,8 +263,10 @@ class SwiftMixin:
             check_local_model_is_latest(
                 model.model_dir,
                 user_agent={
-                    Invoke.KEY: Invoke.LOCAL_TRAINER,
-                    Invoke.THIRD_PARTY: Invoke.SWIFT
+                    Invoke.KEY:
+                    Invoke.LOCAL_TRAINER,
+                    Invoke.THIRD_PARTY:
+                    kwargs.get(Invoke.THIRD_PARTY, Invoke.SWIFT),
                 })
         # mro
         super().__init__(model, args, data_collator, train_dataset,
@@ -229,7 +300,8 @@ class SwiftMixin:
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
-        if is_instance_of_ms_Model(self.model):
+        # configuration.json
+        if is_instance_of_ms_model(self.model):
             model_dir = getattr(self.model, 'model_dir', None)
             if model_dir is not None:
                 src_path = os.path.join(model_dir, 'configuration.json')
@@ -240,7 +312,7 @@ class SwiftMixin:
             self._create_configuration_file(self.model, output_dir)
 
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
-        # save model, tokenizer, args
+        # model
         save_safetensors = getattr(self.args, 'save_safetensors', False)
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
@@ -263,7 +335,7 @@ class SwiftMixin:
                 else:
                     torch.save(state_dict,
                                os.path.join(output_dir, 'pytorch_model.bin'))
-        elif is_instance_of_ms_Model(self.model):
+        elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model,
                 output_dir,
@@ -274,7 +346,64 @@ class SwiftMixin:
                 output_dir,
                 state_dict=state_dict,
                 safe_serialization=save_safetensors)
-
+        # tokenizer
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
+        # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
+
+    def _save_checkpoint(self, model, trial, metrics=None):
+        only_save_model = self.args.only_save_model
+        if only_save_model:
+            return self._only_save_model(model, trial, metrics)
+        else:
+            return super()._save_checkpoint(model, trial, metrics)
+
+    def _only_save_model(self, model, trial, metrics=None):
+        # Save model checkpoint
+        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
+
+        if self.hp_search_backend is None and trial is None:
+            self.store_flos()
+
+        run_dir = self._get_output_dir(trial=trial)
+        output_dir = os.path.join(run_dir, checkpoint_folder)
+        self.save_model(output_dir, _internal_call=True)
+        if self.is_deepspeed_enabled:
+            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
+            # config `stage3_gather_16bit_weights_on_model_save` is True
+            self.model_wrapped.save_checkpoint(output_dir)
+
+        # Determine the new best metric / best model checkpoint
+        if metrics is not None and self.args.metric_for_best_model is not None:
+            metric_to_check = self.args.metric_for_best_model
+            if not metric_to_check.startswith('eval_'):
+                metric_to_check = f'eval_{metric_to_check}'
+            metric_value = metrics[metric_to_check]
+
+            operator = np.greater if self.args.greater_is_better else np.less
+            if (self.state.best_metric is None
+                    or self.state.best_model_checkpoint is None
+                    or operator(metric_value, self.state.best_metric)):
+                self.state.best_metric = metric_value
+                self.state.best_model_checkpoint = output_dir
+
+        # Save the Trainer state
+        if self.args.should_save:
+            self.state.save_to_json(
+                os.path.join(output_dir, TRAINER_STATE_NAME))
+
+        # push to hub
+        if self.args.push_to_hub:
+            self._push_from_checkpoint(output_dir)
+
+        # Maybe delete some older checkpoints.
+        if self.args.should_save:
+            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
+
+    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+        train_sampler_random = self.args.train_sampler_random
+        if train_sampler_random:
+            return super()._get_train_sampler()
+        else:
+            return self._get_eval_sampler(self.train_dataset)

@@ -7,50 +7,76 @@
 <p>
 
 <p align="center">
-<a href="https://modelscope.cn/home">Modelscope Hub</a>
+<a href="https://modelscope.cn/home">ModelScope Hub</a>
 <br>
         <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
 </p>
 
 # Introduction
 
-SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various modles, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [Peft](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
+SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
 
 Currently supported approches (and counting):
 
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
 3. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-4. All tuners offered on [Peft](https://github.com/huggingface/peft).
+4. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+5. ResTuning-Bypass
+7. All tuners offered on [PEFT](https://github.com/huggingface/peft)
 
 Key features:
 
 1. By integrating the ModelScope library, models can be readily obatined via a model-id.
-2. Tuners provided by SWIFT be combined together to allow exploration of multiple tuners on a model for best result.
+2. Tuners provided by SWIFT can be combined together to allow exploration of multiple tuners on a model for best result.
+3. Support calling `activate_adapter` or `deactivate_adapter` or `set_active_adapters`  to activate/deactivate tuners. User can inference with one model and multiple tuners in different threads independently.
+
+Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
 
 ## LLM SFT Example
-[code link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)
+Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) to view the detail documentation of these examples.
 
-1. supported sft method: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine tuning), ...
-2. supported models: qwen-7b, [qwen-7b-chat](https://github.com/QwenLM/Qwen-7B), qwen-vl, [qwen-vl-chat](https://github.com/QwenLM/Qwen-VL), baichuan-7b, baichuan-13b, baichuan-13b-chat, chatglm2-6b, chatglm2-6b-32k, llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat, openbuddy-llama2-13b, openbuddy-llama-65b, polylm-13b
-3. supported feature: quantization, ddp, model parallelism(device map), gradient checkpoint, gradient accumulation steps, push to modelscope hub, custom datasets, multimodal and agent sft, mutli-round chat, ...
-4. supported datasets:
-   1. nlp: alpaca-en(gpt4), alpaca-zh(gpt4), finance-en, multi-alpaca-all, code-en, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, poetry-zh
-   2. agent: damo-agent-zh, damo-agent-mini-zh
-   3. multi-modal: coco-en
-5. supported templates: chatml(qwen), baichuan, chatglm2, llama, openbuddy_llama, default
+- Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
+- Supported Features: quantization, DDP, model parallelism, gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
+- Supported Models:
+  - qwen series: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary)
+  - qwen-vl series: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary)
+  - baichuan series: [baichuan-7b](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary), [baichuan-13b](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary), [baichuan-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary), [baichuan2-7b](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary), [baichuan2-7b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary), [baichuan2-13b](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary), [baichuan2-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary)
+  - chatglm2 series: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), [chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary)
+  - llama series: [llama2-7b](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary), [llama2-7b-chat](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary), [llama2-13b](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary), [llama2-13b-chat](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary), [llama2-70b](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary), [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
+  - openbuddy-llama series: [openbuddy-llama2-13b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary)
+  - internlm series: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
+  - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
+  - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
+- Supported Datasets:
+  - NLP:
+    - General: [alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), [alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
+    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), [damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+    - Coding: [code-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), [leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
+    - Medical: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
+    - Law: [lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
+    - Math: [blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
+    - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), [sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
+    - Text Generation: [advertise-gen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), [dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
+    - Classification: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+    - Other: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/files), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
+  - Multi-Modal: [coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
+  - Custom Dataset
+- Supported Templates:
+  - Text Generation: default-generation, chatglm2-generation
+  - Chat: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
 
 # Installation
 
 SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
 
-Please install SWIFT by the `pip` command:
+- Install SWIFT by the `pip` command:
 
 ```shell
 pip install ms-swift -U
 ```
 
-If you want to install SWIFT by source code, please run:
+- Install SWIFT by source code(for running sft/infer examples), please run:
 
 ```shell
 git clone https://github.com/modelscope/swift.git
@@ -58,28 +84,25 @@ cd swift
 pip install -e .
 ```
 
-If you are using source code, please remember install requirements by:
-```shell
-pip install -r requirements/framework.txt
-```
-
 SWIFT requires torch>=1.13.
 
-We also recommend to use SWIFT in our docker image:
+- Use SWIFT in our docker image:
+
 ```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.7.1-py38-torch2.0.1-tf1.15.5-1.8.0
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
 ```
 
 # Getting Started
 
-SWIFT supports multiple tuners, as well as tuners provided by [Peft](https://github.com/huggingface/peft). To use the these tuners, simply call:
+SWIFT supports multiple tuners, as well as tuners provided by [PEFT](https://github.com/huggingface/peft). To use these tuners, simply call:
 
 ```python
-from swift import Swift
+from swift import Swift, LoRAConfig
+config = LoRAConfig(...)
 model = Swift.prepare_model(model, config, extra_state_keys=['...'])
 ```
 
-The code snippet above initialized the tuner randomly. The input model is an instance of `torch.nn.Module`, config is a subclass instance of `SwiftConfig` or `PeftConfig`. extra_state_keys is
+The code snippet above initialized the tuner randomly. The input model is an instance of `torch.nn.Module`, the config is a subclass instance of `SwiftConfig` or `PeftConfig`. extra_state_keys is
 the extra module weights(like the linear head) to be trained and stored in the output dir.
 
 You may combine multiple tuners by:
@@ -89,7 +112,7 @@ from swift import Swift, LoRAConfig, PromptConfig
 model = Swift.prepare_model(model, {'lora': LoRAConfig(...), 'prompt': PromptConfig(...)})
 ```
 
-You can all `save_pretrained` and `push_to_hub` after finetuning:
+Call `save_pretrained` and `push_to_hub` after finetuning:
 
 ```python
 from swift import push_to_hub
@@ -185,20 +208,8 @@ model_wrapped = Swift.prepare_model(model, lora_config)
 model_wrapped = Swift.from_pretrained(model, 'some-id-in-the-modelscope-modelhub')
 ```
 
-or:
 
-```python
-from swift import LoraConfig, get_peft_model, PeftModel
-from peft import TaskType
-lora_config = LoraConfig(target_modules=['query', 'key', 'value'], task_type=TaskType.CAUSAL_LM)
-model_wrapped = get_peft_model(model, lora_config)
-
-# or call from_pretrained to load weights in the modelhub
-model_wrapped = PeftModel.from_pretrained(model, 'some-id-in-the-modelscope-modelhub')
-```
-
-
-The saving strategy between Swift tuners and Peft tuners are slightly different. You can name a tuner of a SWIFT by:
+The saving strategy between Swift tuners and Peft tuners are slightly different. You can name a tuner by:
 
 ```python
 model = Swift.prepare_model(model, {'default': LoRAConfig(...)})
@@ -216,7 +227,7 @@ output
     |-- adapter_model.bin
 ```
 
-The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from Peft, which stores the weights and config of the `default` tuner.
+The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from PEFT, which stores the weights and config of the `default` tuner.
 
 
 # Learn More
