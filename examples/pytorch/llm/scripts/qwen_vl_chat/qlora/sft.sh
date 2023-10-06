@@ -1,21 +1,23 @@
-# 19GB GPU memory
+# Experimental environment: A10
+# 10GB GPU memory
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type qwen-vl-chat \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \
-    --output_dir runs \
+    --output_dir output \
     --dataset coco-en \
-    --dataset_sample 20000 \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 1024 \
+    --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
-    --lora_rank 64 \
-    --lora_alpha 16 \
-    --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --lora_dropout_p 0. \
+    --lora_target_modules c_attn attn.c_proj \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
@@ -23,8 +25,8 @@ python src/llm_sft.py \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
