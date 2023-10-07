@@ -3,6 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Union
 
+import json
 import torch
 import torch.distributed as dist
 from torch import dtype as Dtype
@@ -63,7 +64,7 @@ class SftArguments:
     lora_dropout_p: float = 0.
 
     gradient_checkpointing: bool = False
-    deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config.json'
+    deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
     num_train_epochs: int = 1

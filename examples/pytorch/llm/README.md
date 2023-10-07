@@ -107,6 +107,11 @@ bash scripts/qwen_7b_chat/lora/infer.sh
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
+# sft(lora+ddp+deepspeed) and infer qwen-7b-chat, Requires 2*18GB GPU memory.
+# Recommended experimental environment: A10, 3090
+bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
+
 # sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*15GB GPU memory.
 # Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh

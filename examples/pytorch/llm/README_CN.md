@@ -108,6 +108,11 @@ bash scripts/qwen_7b_chat/lora/infer.sh
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
+# 微调(lora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*18GB显存.
+# 推荐的实验环境: A10, 3090
+bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
+
 # 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*15GB显存.
 # 推荐的实验环境: V100, 3090, A10
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
