@@ -93,6 +93,7 @@ pip install -r requirements.txt -U
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
 - 如果你想要使用量化, 你需要先安装bnb: `pip install bitsandbytes -U`.
+- 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`.
 - 如果你使用的是V100等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(V100, 3090, A10等显卡不支持flash-attn进行训练).
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
@@ -106,6 +107,11 @@ bash scripts/qwen_7b_chat/lora/infer.sh
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
+
+# 微调(lora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*18GB显存.
+# 推荐的实验环境: A10, 3090
+bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
 # 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*15GB显存.
 # 推荐的实验环境: V100, 3090, A10

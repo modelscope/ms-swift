@@ -92,6 +92,7 @@ Tips:
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save during inference, you need to set `--merge_lora_and_save true`.
 - If you want to use quantization, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
+- If you want to use deepspeed, you need to `pip install deepspeed -U`.
 - If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (V100, 3090, A10 machines do not support flash-attn).
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
@@ -105,6 +106,11 @@ bash scripts/qwen_7b_chat/lora/infer.sh
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
+
+# sft(lora+ddp+deepspeed) and infer qwen-7b-chat, Requires 2*18GB GPU memory.
+# Recommended experimental environment: A10, 3090
+bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
 # sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*15GB GPU memory.
 # Recommended experimental environment: V100, A10, 3090
