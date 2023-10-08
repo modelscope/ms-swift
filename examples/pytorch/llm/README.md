@@ -50,14 +50,14 @@
 ## News
 - 2023.10.7: Supported DeepSpeed ZeRO-2, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`, `scripts/baichuan2_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 2023.9.26: Supported xverse model series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat.
-- 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat.
+- 2023.9.26: Supported xverse model series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat. The corresponding shell script can be found at `scripts/xverse_13b`.
+- 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
 - 2023.9.20: Supported incremental weight merging from LoRA and QLoRA training methods into base model weights, and saved the complete model weights for easy deployment by users. You can check the command-line parameter `--merge_lora_and_save` in the `infer.sh` script.
-- 2023.9.18: Supported internlm-20b model series: internlm-20b, internlm-20b-chat.
+- 2023.9.18: Supported internlm-20b model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
 - 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 - 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
-- 2023.9.5: Supported openbuddy-llama2-70b model.
-- 2023.9.3: Supported baichuan-13b model series: baichuan-13b, baichuan-13b-chat.
+- 2023.9.5: Supported openbuddy-llama2-70b model. The corresponding shell script can be found at `scripts/openbuddy-llama2-70b`.
+- 2023.9.3: Supported baichuan2 model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`.
 
 
 ## Prepare the Environment
@@ -89,11 +89,11 @@ Performace: full(nice) > lora > qlora
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 
 Tips:
-- You can set `--gradient_checkpointing true` during training to save GPU memory, but this will slightly decrease the training speed.
+- You can set `--gradient_checkpointing true` during training to save GPU memory, but this will slightly decrease the training speed. This is useful if you need to train LLM on consumer-grade GPU, e.g. 3090.
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save during inference, you need to set `--merge_lora_and_save true`.
 - If you want to use quantization, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
-- If you want to use deepspeed, you need to `pip install deepspeed -U`.
+- If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can save GPU memory, but this may slightly decrease the training speed.
 - If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.

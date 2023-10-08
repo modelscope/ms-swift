@@ -133,12 +133,8 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        load_model,
-        automodel_class=AutoModel,
-        **model_kwargs)
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
+                                         **model_kwargs)
 
 
 def get_model_tokenizer_llama2(model_dir: str,
