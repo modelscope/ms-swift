@@ -61,7 +61,7 @@
 
 
 ## Prepare the Environment
-Experimental environment: V100, A10, 3090, A100, ...
+Experimental environment: A10, 3090, V100, A100, ...
 ```bash
 # Installing miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -95,7 +95,7 @@ Tips:
 - If you want to use quantization, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
 - If you want to use deepspeed, you need to `pip install deepspeed -U`.
 - If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
-- qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (V100, 3090, A10 machines do not support flash-attn).
+- qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
 ```bash
 # sft lora and infer qwen-7b-chat, Requires 38GB GPU memory.
@@ -114,19 +114,24 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
 # sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*15GB GPU memory.
-# Recommended experimental environment: V100, A10, 3090
+# Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # sft(qlora) and infer qwen-7b-chat, Requires 10GB GPU memory.
-# Recommended experimental environment: V100, A10, 3090
+# Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
-# Recommended experimental environment: V100, A10, 3090
+# Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
+
+# sft(qlora+ddp+deepspeed) and infer qwen-7b-chat, Requires 2*16GB GPU memory.
+# Recommended experimental environment: A10, 3090
+bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 # sft(full+mp) and infer qwen-7b-chat, Requires 2*75GB GPU memory.
 # Recommended experimental environment: A100

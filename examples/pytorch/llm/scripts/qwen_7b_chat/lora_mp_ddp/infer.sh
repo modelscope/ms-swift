@@ -5,7 +5,7 @@ python src/llm_infer.py \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
-    --dtype fp16 \
+    --dtype bf16 \
     --ckpt_dir "output/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset advertise-gen \

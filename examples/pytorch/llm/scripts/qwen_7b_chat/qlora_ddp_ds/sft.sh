@@ -1,4 +1,4 @@
-# Experimental environment: 2 * 3090
+# Experimental environment: 2 * A10
 # 2 * 16GB GPU memory
 nproc_per_node=2
 
