@@ -10,7 +10,7 @@ python src/llm_infer.py \
     --eval_human false \
     --dataset dureader-robust-zh \
     --max_length 2048 \
-    --use_flash_attn true \
+    --use_flash_attn false \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 20 \

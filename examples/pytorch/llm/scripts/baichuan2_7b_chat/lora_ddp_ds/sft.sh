@@ -37,4 +37,4 @@ torchrun \
     --hub_model_id baichuan2-7b-chat-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
-    --deepspeed_config_path ds_config/zero2.json
+    --deepspeed_config_path 'ds_config/zero2.json' \
