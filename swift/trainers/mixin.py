@@ -92,7 +92,7 @@ class PushToMsHubMixin:
         self.repo.push(commit_message)
 
     def init_hf_repo(self) -> None:
-        """init ms repo. Compatible with transformers>=v4.34"""
+        """init ms repo. Compatible with transformers>=4.34"""
         self.init_git_repo()
 
     def init_git_repo(self, at_init: bool = False) -> None:
@@ -268,10 +268,21 @@ class SwiftMixin:
                     Invoke.THIRD_PARTY:
                     kwargs.get(Invoke.THIRD_PARTY, Invoke.SWIFT),
                 })
+
+        # Compatible with transformers>=4.34
+        from swift.tuners import SwiftModel, PeftModel
+        is_quantized = getattr(model, 'is_quantized', False)
+        _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded',
+                                         False)
+        use_swift = isinstance(model, (SwiftModel, PeftModel))
+        if is_quantized and use_swift:
+            model._hf_peft_config_loaded = True
         # mro
         super().__init__(model, args, data_collator, train_dataset,
                          eval_dataset, tokenizer, model_init, compute_metrics,
                          callbacks, optimizers, preprocess_logits_for_metrics)
+        if is_quantized and use_swift:
+            model._hf_peft_config_loaded = _hf_peft_config_loaded
 
         if get_function(model.__class__.forward) is not get_function(
                 model.forward):
