@@ -84,6 +84,20 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     return model, tokenizer
 
 
+def get_model_tokenizer_baichuan2_13b(model_dir: str,
+                                      torch_dtype: Dtype,
+                                      load_model: bool = True,
+                                      **model_kwargs):
+    # patch: baichuan2_13b configuration_baichuan.py bug
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    gradient_checkpointing = model_config.gradient_checkpointing
+    if isinstance(gradient_checkpointing, (tuple, list)):
+        model_config.gradient_checkpointing = gradient_checkpointing[0]
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
+                                         model_config, **model_kwargs)
+
+
 def patch_baichuan2_7b(self, hidden_states):
     # patch: baichuan2_7b lm_head
     if self.training:
@@ -115,7 +129,6 @@ def get_model_tokenizer_baichuan2_7b(model_dir: str,
                                      torch_dtype: Dtype,
                                      load_model: bool = True,
                                      **model_kwargs):
-    # baichuan-13b does not implement the `get_input_embeddings` function
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model,
                                                      **model_kwargs)
@@ -354,13 +367,15 @@ MODEL_MAPPING = {
     },
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.2',
         'template': 'baichuan',
+        'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
     },
     # chatglm2 series

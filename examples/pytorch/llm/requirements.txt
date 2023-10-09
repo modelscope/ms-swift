@@ -2,7 +2,7 @@ accelerate
 charset_normalizer
 cpm_kernels
 matplotlib
-modelscope>=1.9
+modelscope>=1.9.2
 sentencepiece
 tensorboard
 tiktoken
