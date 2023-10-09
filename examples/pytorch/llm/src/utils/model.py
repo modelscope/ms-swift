@@ -133,12 +133,8 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        load_model,
-        automodel_class=AutoModel,
-        **model_kwargs)
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
+                                         **model_kwargs)
 
 
 def get_model_tokenizer_llama2(model_dir: str,
@@ -172,13 +168,13 @@ def get_model_tokenizer_qwen(model_dir: str,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
-    mapper = {
+    dtype_mapping = {
         torch.float16: 'fp16',
         torch.bfloat16: 'bf16',
         torch.float32: 'fp32'
     }
-    k_true = mapper[torch_dtype]
-    for k in mapper.values():
+    k_true = dtype_mapping[torch_dtype]
+    for k in dtype_mapping.values():
         v = False
         if k == k_true:
             v = True
@@ -370,7 +366,7 @@ MODEL_MAPPING = {
     # chatglm2 series
     'chatglm2-6b': {
         'model_id': 'ZhipuAI/chatglm2-6b',
-        'revision': 'v1.0.11',
+        'revision': 'v1.0.12',
         'get_function': get_model_tokenizer_chatglm2,
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,

@@ -1,5 +1,5 @@
-# Experimental environment: 4 * V100
-# 4 * 15GB GPU memory
+# Experimental environment: 4 * 3090
+# 4 * 15GB GPU memory (not use flash_attn)
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -11,7 +11,7 @@ torchrun \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
-    --dtype fp16 \
+    --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
     --dataset advertise-gen \

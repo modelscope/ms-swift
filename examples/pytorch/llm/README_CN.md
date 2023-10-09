@@ -48,19 +48,20 @@
 
 
 ## 新闻
+- 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`, `scripts/baichuan2_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 2023.9.26: 支持xverse系列模型: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat.
-- 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat
-- 2023.9.20: 支持在LoRA, QLoRA的方式训练后, 将其增量权重merge到基模型权重中, 并保存完整的模型权重, 方便用户的部署.
-- 2023.9.18: 支持internlm-20b系列模型: internlm-20b, internlm-20b-chat
+- 2023.9.26: 支持xverse系列模型: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat. 对应的sh脚本可以查看`scripts/xverse_13b`.
+- 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat. 对应的sh脚本可以查看`scripts/qwen_14b`, `scripts/qwen_14b_chat`.
+- 2023.9.20: 支持在LoRA, QLoRA的方式训练后, 将其增量权重merge到基模型权重中, 并保存完整的模型权重, 方便用户的部署. 可以查看`infer.sh`中的命令行参数: `--merge_lora_and_save`.
+- 2023.9.18: 支持internlm-20b系列模型: internlm-20b, internlm-20b-chat. 对应的sh脚本可以查看`scripts/internlm_20b`, `scripts/internlm_20b_chat`.
 - 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
-- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题.
-- 2023.9.5: 支持openbuddy-llama2-70b模型.
-- 2023.9.3: 支持baichuan-13b系列模型: baichuan-13b, baichuan-13b-chat.
+- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
+- 2023.9.5: 支持openbuddy-llama2-70b模型. 对应的sh脚本可以查看`scripts/openbuddy_llama2_70b`.
+- 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`.
 
 
 ## 准备实验环境
-实验环境: V100, A10, 3090, A100均可.
+实验环境: A10, 3090, V100, A100均可.
 ```bash
 # 安装miniconda
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
@@ -89,13 +90,13 @@ pip install -r requirements.txt -U
 训练显存: qlora(低,3090) > lora > full(2*A100)
 
 提示:
-- 你可以在训练时设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度.
+- 你可以在训练时设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度. 如果你需要在消费级显卡中训练大模型, 这很有用, 例如: 3090.
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
 - 如果你想要使用量化, 你需要先安装bnb: `pip install bitsandbytes -U`.
-- 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`.
+- 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以节约显存, 但可能会略微降低训练速度.
 - 如果你使用的是V100等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
-- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(V100, 3090, A10等显卡不支持flash-attn进行训练).
+- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练).
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
 ```bash
 # 微调(lora)+推理 qwen-7b-chat, 需要38GB显存.
@@ -114,19 +115,24 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
 # 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*15GB显存.
-# 推荐的实验环境: V100, 3090, A10
+# 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
 # 微调(qlora)+推理 qwen-7b-chat, 需要10GB显存.
-# 推荐的实验环境: V100, 3090, A10
+# 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
 # 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
-# 推荐的实验环境: V100, 3090, A10
+# 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
+
+# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*16GB显存.
+# 推荐的实验环境: A10, 3090
+bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 # 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*75G显存.
 # 推荐的实验环境: A100

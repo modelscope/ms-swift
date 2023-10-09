@@ -438,7 +438,8 @@ def get_medical_dataset(
     ])
     val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
     if train_dataset_sample >= 0:
-        idxs = np.random.permutation(train_dataset_sample)
+        random_state = np.random.RandomState(42)
+        idxs = random_state.permutation(train_dataset_sample)
         train_dataset = train_dataset.select(idxs)
     return tuple(
         _preprocess_medical(dataset, subset_name)

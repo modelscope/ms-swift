@@ -1,11 +1,11 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type chatglm2-6b \
+    --model_type baichuan2-7b-chat \
     --sft_type lora \
-    --template_type chatglm2 \
+    --template_type baichuan \
     --dtype bf16 \
-    --ckpt_dir "output/chatglm2-6b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/baichuan2-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --max_length 4096 \
