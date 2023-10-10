@@ -145,7 +145,7 @@ class SftArguments:
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
-                if self.deepspeed_config_path is not None:
+                if self.deepspeed_config_path is None:
                     self.only_save_model = False
                 else:
                     self.only_save_model = True
