@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A10
-# 2 * 21GB GPU memory
+# 2 * 12GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -18,6 +18,8 @@ torchrun \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \
+    --quantization_bit 4 \
+    --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \

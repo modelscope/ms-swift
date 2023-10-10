@@ -3,7 +3,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.1-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.2-5D91D4.svg"></a>
 <a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-Build from source-6FEBB9.svg"></a>
 </p>
 
@@ -198,6 +198,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--lora_alpha`: Default is `32`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--lora_dropout_p`: Default is `0.0`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--gradient_checkpointing`: Whether to enable gradient checkpointing, default is `False`. This parameter can be used to save GPU memory, although it slightly slows down the training speed. This parameter is particularly effective when `max_length` and `batch_size` are large.
+- `--deepspeed_config_path`: Used to specify the path to the DeepSpeed configuration file. Default is `None`, which means DeepSpeed is not enabled. DeepSpeed can help save GPU memory. We have provided a default configuration file for ZeRO-2: `ds_config/zero2.json`.
 - `--batch_size`: Batch size during training, default is `1`. Increasing the batch size can improve GPU utilization but may not necessarily speed up training because within a batch, padding is applied to shorter sentences based on the length of the longest sentence in the batch, introducing unnecessary computations.
 - `--eval_batch_size`: Batch size during evaluation, default is `None`. If `predict_with_generate` is set to `True`, it is set to `1`; if `predict_with_generate` is `False`, it is set to `batch_size`.
 - `--num_train_epochs`: Number of training epochs, default is `1`. If `max_steps >= 0`, it overrides `num_train_epochs`.
@@ -212,9 +213,9 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--warmup_ratio`: Ratio of warmup steps to the total training steps, default is `0.05`.
 - `--eval_steps`: Perform evaluation every specified number of steps, default is `50`.
 - `--save_steps`: Save the model every specified number of steps, default is `None`, which sets it to `eval_steps`.
-- `--only_save_model`: Whether to only save the model parameters without storing the intermediate states required for resuming training. The default value is `None`. If `sft_type` is 'lora', set it to False. If `sft_type` is 'full', set it to True.
+- `--only_save_model`: Whether to only save the model parameters without storing the intermediate states required for resuming training. The default value is `None`. If `sft_type` is 'lora' and DeepSpeed is not used (deepspeed_config_path is None), it is set to False; otherwise, it is set to True (e.g., when using full parameter fine-tuning or DeepSpeed).
 - `--save_total_limit`: The number of checkpoints to save. The default value is `2`, which saves the best and last checkpoints. If set to -1, it saves all checkpoints.
-- `--logging_steps`: Print training information (e.g., loss, learning rate) every specified number of steps. The default value is `5`.
+- `--logging_steps`: Number of training steps to print training information (e.g., loss, learning_rate, etc.). Default is `5`.
 - `--dataloader_num_workers`: The number of worker processes to use for data loading. The default value is `1`.
 - `--push_to_hub`: Whether to synchronize the training checkpoints to the ModelScope Hub. The default value is `False`.
 - `--hub_model_id`: The model id of the ModelScope Hub to push to. The default value is `None`, which is set to `f'{model_type}-{sft_type}'`. You can set it to a specific model id or repository name. The user name will be inferred from the `hub_token`. If the remote repository does not exist, a new repository will be created. If it exists, the previous repository will be reused. This parameter only takes effect when `push_to_hub` is set to True.

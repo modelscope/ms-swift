@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python src/llm_sft.py \
     --model_type baichuan2-7b \
     --sft_type lora \
-    --template_type default \
+    --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
     --dataset advertise-gen \

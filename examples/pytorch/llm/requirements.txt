@@ -2,9 +2,9 @@ accelerate
 charset_normalizer
 cpm_kernels
 matplotlib
-modelscope>=1.9
+modelscope>=1.9.2
 sentencepiece
 tensorboard
 tiktoken
-transformers
+transformers>=4.31,<4.34
 transformers_stream_generator

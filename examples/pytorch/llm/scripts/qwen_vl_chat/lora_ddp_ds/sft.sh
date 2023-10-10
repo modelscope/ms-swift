@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A10
-# 2 * 17GB GPU memory
+# 2 * 21GB GPU memory (not use flash_attn)
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -8,22 +8,20 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     src/llm_sft.py \
-    --model_type qwen-14b \
+    --model_type qwen-vl-chat \
     --sft_type lora \
-    --template_type default-generation \
+    --template_type chatml \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset dureader-robust-zh \
-    --train_dataset_sample -1 \
+    --dataset coco-en \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
-    --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
-    --lora_target_modules ALL \
+    --lora_target_modules c_attn attn.c_proj \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
@@ -37,6 +35,8 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn false \
     --push_to_hub false \
-    --hub_model_id qwen-14b-qlora \
+    --hub_model_id qwen-vl-chat-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --deepspeed_config_path 'ds_config/zero2.json' \
+    --only_save_model true \

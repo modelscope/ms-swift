@@ -1,16 +1,15 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type baichuan2-7b \
+    --model_type qwen-vl \
     --sft_type lora \
-    --template_type default-generation \
+    --template_type default \
     --dtype bf16 \
-    --ckpt_dir "output/baichuan2-7b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/qwen-vl/vx_xxx/checkpoint-xxx" \
     --eval_human false \
-    --dataset advertise-gen \
+    --dataset coco-en \
     --max_length 2048 \
-    --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --use_flash_attn false \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 20 \

@@ -3,7 +3,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.1-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.2-5D91D4.svg"></a>
 <a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-Build from source-6FEBB9.svg"></a>
 </p>
 
@@ -199,6 +199,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `--lora_alpha`: 默认为`32`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_dropout_p`: 默认为`0.`, 只有当`sft_type`指定为'lora'时才生效.
 - `--gradient_checkpointing`: 是否开启gradient checkpointing, 默认为`False`. 该参数可以用于节约显存, 虽然这会略微降低训练速度. 该参数在max_length较大, batch_size较大时作用显著.
+- `--deepspeed_config_path`: 用于指定deepspeed的配置文件的路径, 默认为`None`, 即不开启deepspeed. deepspeed可以节约显存. 我们书写了默认的ZeRO-2的配置文件: `ds_config/zero2.json`.
 - `--batch_size`: 训练时的batch_size, 默认为`1`. 增大batch_size可以增加GPU的利用率, 但不一定会增加训练速度, 因为在一个batch中, 需要对较短的句子按该batch中最长句子的长度进行padding, 从而引入无效的计算量.
 - `--eval_batch_size`: 评估时的batch_size, 默认为`None`, 即当`predict_with_generate`为True时, 设置为1, 为False时, 设置为`batch_size`.
 - `--num_train_epochs`: 训练的epoch数, 默认为`1`. 如果`max_steps >= 0`, 则覆盖`num_train_epochs`.
@@ -213,9 +214,9 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `--warmup_ratio`: warmup占用总的训练steps的比例, 默认为`0.05`.
 - `--eval_steps`: 每训练多少steps进行评估, 默认为`50`.
 - `--save_steps`: 每训练多少个steps进行保存, 默认为`None`, 即设置为`eval_steps`.
-- `--only_save_model`: 是否只保存模型参数, 而不存储断点续训所需的中间状态, 默认为`None`, 即如果`sft_type`为'lora', 设置为False, 如果`sft_type`为'full', 则设置为True.
+- `--only_save_model`: 是否只保存模型参数, 而不存储断点续训所需的中间状态, 默认为`None`, 即如果`sft_type`为'lora'并且不使用deepspeed(`deepspeed_config_path`为None), 设置为False, 否则设置为True(e.g. 使用了全参数微调或者使用了deepspeed).
 - `--save_total_limit`: 保存的checkpoint的数量, 默认为`2`, 即保存best和last的checkpoint. 如果设置为-1, 则保存所有的checkpoint.
-- `--logging_steps`: 每训练多少步进行打印 (e.g. loss, learning_rate等), 默认为`5`.
+- `--logging_steps`: 每训练多少步打印训练信息(e.g. loss, learning_rate等), 默认为`5`.
 - `--dataloader_num_workers`: 默认值为`1`.
 - `--push_to_hub`: 是否将训练的checkpoint同步推送到ModelScope Hub中, 默认为`False`.
 - `--hub_model_id`: 推送到的ModelScope Hub的model_id, 默认为`None`, 即设置为`f'{model_type}-{sft_type}'`. 你可以将其设置为model_id, 也可以设置为repo_name. 我们会根据hub_token推断出user_name. 推送的远程仓库如果不存在, 则会创建一个新的仓库, 如果存在, 则复用之前的仓库. 该参数只有在`push_to_hub`设置为True时才生效.

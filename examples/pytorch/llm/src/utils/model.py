@@ -84,8 +84,8 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     return model, tokenizer
 
 
-def patch_baichuan2_7b(self, hidden_states):
-    # patch: baichuan2_7b lm_head
+def patch_baichuan2(self, hidden_states):
+    # patch: baichuan2 lm_head
     if self.training:
         norm_weight = F.normalize(self.weight).to(self.weight.dtype)
     elif self.first_flag:
@@ -97,30 +97,34 @@ def patch_baichuan2_7b(self, hidden_states):
     return F.linear(hidden_states, norm_weight)
 
 
-def get_model_tokenizer_xverse(model_dir: str,
-                               torch_dtype: Dtype,
-                               load_model: bool = True,
-                               **model_kwargs):
-    from transformers import AutoTokenizer as AutoTokenizerHF
-    tokenizer = AutoTokenizerHF.from_pretrained(model_dir)
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        load_model,
-        tokenizer=tokenizer,
-        **model_kwargs)
+def get_model_tokenizer_baichuan2_13b(model_dir: str,
+                                      torch_dtype: Dtype,
+                                      load_model: bool = True,
+                                      **model_kwargs):
+    # patch: baichuan2_13b configuration_baichuan.py bug
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    gradient_checkpointing = model_config.gradient_checkpointing
+    if isinstance(gradient_checkpointing, (tuple, list)):
+        model_config.gradient_checkpointing = gradient_checkpointing[0]
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     load_model, model_config,
+                                                     **model_kwargs)
+    if model is not None:
+        model.lm_head.forward = MethodType(patch_baichuan2, model.lm_head)
+
+    return model, tokenizer
 
 
 def get_model_tokenizer_baichuan2_7b(model_dir: str,
                                      torch_dtype: Dtype,
                                      load_model: bool = True,
                                      **model_kwargs):
-    # baichuan-13b does not implement the `get_input_embeddings` function
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model,
                                                      **model_kwargs)
     if model is not None:
-        model.lm_head.forward = MethodType(patch_baichuan2_7b, model.lm_head)
+        model.lm_head.forward = MethodType(patch_baichuan2, model.lm_head)
 
     return model, tokenizer
 
@@ -146,6 +150,20 @@ def get_model_tokenizer_llama2(model_dir: str,
     model_config.pretraining_tp = 1
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
                                          model_config, **model_kwargs)
+
+
+def get_model_tokenizer_xverse(model_dir: str,
+                               torch_dtype: Dtype,
+                               load_model: bool = True,
+                               **model_kwargs):
+    from transformers import AutoTokenizer as AutoTokenizerHF
+    tokenizer = AutoTokenizerHF.from_pretrained(model_dir)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        load_model,
+        tokenizer=tokenizer,
+        **model_kwargs)
 
 
 def get_model_tokenizer_polylm(model_dir: str,
@@ -347,20 +365,22 @@ MODEL_MAPPING = {
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.1',
+        'revision': 'v1.0.2',
         'template': 'baichuan',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.2',
+        'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.2',
         'template': 'baichuan',
+        'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
     },
     # chatglm2 series
