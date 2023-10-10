@@ -144,7 +144,7 @@ class SftArguments:
         if self.sft_type == 'lora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.only_save_model is None:
+            if self.only_save_model is None and self.deepspeed_config_path is not None:
                 self.only_save_model = False
         elif self.sft_type == 'full':
             assert self.quantization_bit == 0, 'not supported'

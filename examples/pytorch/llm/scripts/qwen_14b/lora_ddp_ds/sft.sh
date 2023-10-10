@@ -39,3 +39,4 @@ torchrun \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
+    --only_save_model true \

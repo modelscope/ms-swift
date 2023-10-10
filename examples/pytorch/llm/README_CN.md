@@ -214,9 +214,9 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 - `--warmup_ratio`: warmup占用总的训练steps的比例, 默认为`0.05`.
 - `--eval_steps`: 每训练多少steps进行评估, 默认为`50`.
 - `--save_steps`: 每训练多少个steps进行保存, 默认为`None`, 即设置为`eval_steps`.
-- `--only_save_model`: 是否只保存模型参数, 而不存储断点续训所需的中间状态, 默认为`None`, 即如果`sft_type`为'lora', 设置为False, 如果`sft_type`为'full', 则设置为True.
+- `--only_save_model`: 是否只保存模型参数, 而不存储断点续训所需的中间状态, 默认为`None`, 即如果`sft_type`为'lora'并且不使用deepspeed(`deepspeed_config_path`为None), 设置为False, 否则设置为True(e.g. 使用了全参数微调或者使用了deepspeed).
 - `--save_total_limit`: 保存的checkpoint的数量, 默认为`2`, 即保存best和last的checkpoint. 如果设置为-1, 则保存所有的checkpoint.
-- `--logging_steps`: 每训练多少步进行打印 (e.g. loss, learning_rate等), 默认为`5`.
+- `--logging_steps`: 每训练多少步打印训练信息(e.g. loss, learning_rate等), 默认为`5`.
 - `--dataloader_num_workers`: 默认值为`1`.
 - `--push_to_hub`: 是否将训练的checkpoint同步推送到ModelScope Hub中, 默认为`False`.
 - `--hub_model_id`: 推送到的ModelScope Hub的model_id, 默认为`None`, 即设置为`f'{model_type}-{sft_type}'`. 你可以将其设置为model_id, 也可以设置为repo_name. 我们会根据hub_token推断出user_name. 推送的远程仓库如果不存在, 则会创建一个新的仓库, 如果存在, 则复用之前的仓库. 该参数只有在`push_to_hub`设置为True时才生效.

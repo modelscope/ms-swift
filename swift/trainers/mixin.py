@@ -380,10 +380,6 @@ class SwiftMixin:
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
-        if self.is_deepspeed_enabled:
-            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
-            # config `stage3_gather_16bit_weights_on_model_save` is True
-            self.model_wrapped.save_checkpoint(output_dir)
 
         # Determine the new best metric / best model checkpoint
         if metrics is not None and self.args.metric_for_best_model is not None:
