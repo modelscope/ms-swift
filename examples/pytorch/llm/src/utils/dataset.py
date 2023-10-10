@@ -426,7 +426,7 @@ def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
 
 def get_medical_dataset(
         subset_name: str,
-        train_dataset_sample: int = -1) -> Tuple[HfDataset, HfDataset]:
+        dataset_sample: int = -1) -> Tuple[HfDataset, HfDataset]:
     """
     mode: Literal['en', zh]
     """
@@ -437,9 +437,9 @@ def get_medical_dataset(
         dataset_dict['val'].to_hf_dataset(),
     ])
     val_dataset: HfDataset = dataset_dict['test'].to_hf_dataset()
-    if train_dataset_sample >= 0:
+    if dataset_sample >= 0:
         random_state = np.random.RandomState(42)
-        idxs = random_state.permutation(train_dataset_sample)
+        idxs = random_state.permutation(dataset_sample)
         train_dataset = train_dataset.select(idxs)
     return tuple(
         _preprocess_medical(dataset, subset_name)
@@ -644,8 +644,7 @@ DATASET_MAPPING = {
     'medical-zh':
     partial(get_medical_dataset, subset_name='zh'),
     'medical-mini-zh':
-    partial(
-        get_medical_dataset, subset_name='zh', train_dataset_sample=100000),
+    partial(get_medical_dataset, subset_name='zh', dataset_sample=100000),
     'code-python-zh':
     get_code_python_zh_dataset,
     'blossom-math-zh':

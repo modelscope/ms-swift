@@ -198,6 +198,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--lora_alpha`: Default is `32`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--lora_dropout_p`: Default is `0.0`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--gradient_checkpointing`: Whether to enable gradient checkpointing, default is `False`. This parameter can be used to save GPU memory, although it slightly slows down the training speed. This parameter is particularly effective when `max_length` and `batch_size` are large.
+- `--deepspeed_config_path`: Used to specify the path to the DeepSpeed configuration file. Default is `None`, which means DeepSpeed is not enabled. DeepSpeed can help save GPU memory. We have provided a default configuration file for ZeRO-2: `ds_config/zero2.json`.
 - `--batch_size`: Batch size during training, default is `1`. Increasing the batch size can improve GPU utilization but may not necessarily speed up training because within a batch, padding is applied to shorter sentences based on the length of the longest sentence in the batch, introducing unnecessary computations.
 - `--eval_batch_size`: Batch size during evaluation, default is `None`. If `predict_with_generate` is set to `True`, it is set to `1`; if `predict_with_generate` is `False`, it is set to `batch_size`.
 - `--num_train_epochs`: Number of training epochs, default is `1`. If `max_steps >= 0`, it overrides `num_train_epochs`.
