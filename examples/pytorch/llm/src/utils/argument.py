@@ -144,8 +144,11 @@ class SftArguments:
         if self.sft_type == 'lora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.only_save_model is None and self.deepspeed_config_path is not None:
-                self.only_save_model = False
+            if self.only_save_model is None:
+                if self.deepspeed_config_path is not None:
+                    self.only_save_model = False
+                else:
+                    self.only_save_model = True
         elif self.sft_type == 'full':
             assert self.quantization_bit == 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
