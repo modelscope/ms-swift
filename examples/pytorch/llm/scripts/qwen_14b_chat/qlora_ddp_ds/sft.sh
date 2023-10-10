@@ -1,5 +1,5 @@
-# Experimental environment: 2 * A100
-# 2 * 55GB GPU memory
+# Experimental environment: 2 * A10
+# 2 * 16GB GPU memory (not use flash_attn)
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -13,10 +13,13 @@ torchrun \
     --template_type chatml \
     --dtype bf16 \
     --output_dir output \
-    --dataset damo-agent-mini-zh \
+    --ddp_backend nccl \
+    --dataset blossom-math-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 2048 \
+    --quantization_bit 4 \
+    --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
@@ -32,8 +35,10 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn true \
+    --use_flash_attn false \
     --push_to_hub false \
     --hub_model_id qwen-14b-chat-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --deepspeed_config_path 'ds_config/zero2.json' \
+    --only_save_model true \
