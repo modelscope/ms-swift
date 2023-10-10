@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A10
-# 2 * 17GB GPU memory
+# 2 * 14GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -40,3 +40,4 @@ torchrun \
     --hub_model_id qwen-14b-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --deepspeed_config_path 'ds_config/zero2.json' \
