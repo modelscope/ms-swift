@@ -7,7 +7,7 @@ import torch
 from modelscope import Model
 from peft.utils import WEIGHTS_NAME
 
-from swift import LoRAConfig, SwiftModel, push_to_hub
+from swift import LoRAConfig, SwiftModel
 
 
 @unittest.skip
@@ -36,15 +36,10 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'lora')))
         self.assertTrue(
             os.path.exists(os.path.join(self.tmp_dir, 'lora', WEIGHTS_NAME)))
-
-        push_to_hub('damo/test_swift_llama', output_dir=self.tmp_dir)
         model = Model.from_pretrained(
             'modelscope/Llama-2-7b-ms', device_map='auto')
         model = SwiftModel.from_pretrained(
-            model,
-            'damo/test_swift_llama',
-            adapter_name=['lora'],
-            device_map='auto')
+            model, self.tmp_dir, adapter_name=['lora'], device_map='auto')
 
         state_dict2 = model.state_dict()
         for key in state_dict:
