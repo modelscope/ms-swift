@@ -10,7 +10,7 @@ from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
 from peft.utils import WEIGHTS_NAME
 
-from swift import LoraConfig, Swift, push_to_hub
+from swift import LoraConfig, Swift
 
 
 class TestPeft(unittest.TestCase):
@@ -35,14 +35,7 @@ class TestPeft(unittest.TestCase):
             f.write('{}')
         self.assertTrue(
             os.path.exists(os.path.join(self.tmp_dir, WEIGHTS_NAME)))
-
-        revision = str(int(time()))
-        push_to_hub(
-            'damo/test_swift_peft_model',
-            output_dir=self.tmp_dir,
-            tag=revision)
-        model2 = Swift.from_pretrained(
-            model2, 'damo/test_swift_peft_model', revision=revision)
+        model2 = Swift.from_pretrained(model2, self.tmp_dir)
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:
