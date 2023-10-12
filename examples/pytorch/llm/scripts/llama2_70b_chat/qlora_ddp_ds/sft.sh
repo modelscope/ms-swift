@@ -1,18 +1,23 @@
-# Experimental environment: 2 * 3090
-# 2 * 23GB GPU memory
+# Experimental environment: 2 * A100
+# 2 * 50GB GPU memory
+nproc_per_node=2
 
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-python src/llm_sft.py \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    src/llm_sft.py \
     --model_type llama2-70b-chat \
     --sft_type lora \
     --template_type llama \
     --dtype bf16 \
     --output_dir output \
-    --dataset sql-create-context-en \
-    --train_dataset_sample 20000 \
+    --ddp_backend nccl \
+    --dataset leetcode-python-en \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 4096 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
@@ -34,3 +39,5 @@ python src/llm_sft.py \
     --hub_model_id llama2-70b-chat-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --deepspeed_config_path 'ds_config/zero2.json' \
+    --only_save_model true \
