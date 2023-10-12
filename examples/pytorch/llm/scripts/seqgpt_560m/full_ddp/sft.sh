@@ -1,13 +1,19 @@
-# Experimental environment: A10
-# 12GB GPU memory
+# Experimental environment: 2 * A10
+# 2 * 13GB GPU memory
+nproc_per_node=2
+
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
-python src/llm_sft.py \
+CUDA_VISIBLE_DEVICES=0,1 \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    src/llm_sft.py \
     --model_type seqgpt-560m \
     --sft_type full \
     --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
+    --ddp_backend nccl \
     --dataset ner-jave-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 3 \
@@ -16,7 +22,7 @@ python src/llm_sft.py \
     --batch_size 4 \
     --weight_decay 0.01 \
     --learning_rate 2e-5 \
-    --gradient_accumulation_steps 8 \
+    --gradient_accumulation_steps $(expr 32 / $nproc_per_node / 4) \
     --max_grad_norm 1 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \

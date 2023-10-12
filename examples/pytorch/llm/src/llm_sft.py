@@ -54,8 +54,8 @@ def llm_sft(args: SftArguments) -> None:
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     # ### Preparing LoRA
-    if args.resume_from_ckpt is None:
-        if args.sft_type == 'lora':
+    if args.sft_type == 'lora':
+        if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
                 args.lora_target_modules = find_all_linear_for_lora(
@@ -75,9 +75,9 @@ def llm_sft(args: SftArguments) -> None:
                 **lora_kwargs)
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
-    else:
-        model = Swift.from_pretrained(
-            model, args.resume_from_ckpt, is_trainable=True)
+        else:
+            model = Swift.from_pretrained(
+                model, args.resume_from_checkpoint, is_trainable=True)
 
     show_layers(model)
     print_model_info(model)
@@ -88,6 +88,8 @@ def llm_sft(args: SftArguments) -> None:
         args.dataset.split(','), args.dataset_test_ratio,
         args.dataset_split_seed)
     if args.train_dataset_sample >= 0:
+        args.train_dataset_sample = min(args.train_dataset_sample,
+                                        len(train_dataset))
         val_dataset_sample = max(
             int(args.train_dataset_sample * args.dataset_test_ratio), 1)
         train_idxs = np.random.permutation(args.train_dataset_sample)
@@ -172,7 +174,7 @@ def llm_sft(args: SftArguments) -> None:
         push_hub_strategy=args.push_hub_strategy,
         hub_token=args.hub_token,
         push_to_hub=args.push_to_hub,
-        resume_from_checkpoint=args.resume_from_ckpt,
+        resume_from_checkpoint=args.resume_from_checkpoint,
         ddp_backend=args.ddp_backend,
         gradient_checkpointing=args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
@@ -217,6 +219,8 @@ def llm_sft(args: SftArguments) -> None:
                     ensure_ascii=False,
                     indent=2)
     trainer.train(training_args.resume_from_checkpoint)
+    logger.info(
+        f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
 
     # ### Visualization
     if is_master():
