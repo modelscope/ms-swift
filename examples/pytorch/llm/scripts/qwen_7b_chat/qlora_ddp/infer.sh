@@ -8,7 +8,7 @@ python src/llm_infer.py \
     --dtype bf16 \
     --ckpt_dir "output/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
-    --dataset advertise-gen \
+    --dataset advertise-gen-zh \
     --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \

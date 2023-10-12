@@ -1,14 +1,15 @@
 # Experimental environment: 2 * 3090
+# 2 * 23GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
-    --model_type openbuddy-llama2-70b \
+    --model_type openbuddy-llama2-70b-chat \
     --sft_type lora \
     --template_type openbuddy-llama \
     --dtype bf16 \
     --output_dir output \
-    --dataset alpaca-en,alpaca-zh \
-    --train_dataset_sample 20000 \
+    --dataset blossom-math-zh \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \
@@ -16,7 +17,8 @@ python src/llm_sft.py \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0. \
-    --gradient_checkpointing false \
+    --lora_target_modules q_proj v_proj \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0. \
     --learning_rate 1e-4 \
@@ -28,6 +30,6 @@ python src/llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id openbuddy-llama2-70b-qlora \
+    --hub_model_id openbuddy-llama2-70b-chat-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

@@ -2,15 +2,14 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type qwen-7b-chat \
+    --model_type openbuddy-mistral-7b-chat \
     --sft_type lora \
-    --template_type chatml \
+    --template_type llama \
     --dtype bf16 \
-    --ckpt_dir "output/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/openbuddy-mistral-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
-    --dataset advertise-gen-zh \
+    --dataset blossom-math-zh \
     --max_length 2048 \
-    --use_flash_attn false \
     --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 20 \
