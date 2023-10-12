@@ -116,7 +116,7 @@ def inference(input_ids: List[int],
               streamer: Optional[TextStreamer] = None) -> str:
     generation_config = getattr(model, 'generation_config', None)
     streamer.skip_prompt = True
-    print(f'[INFERENCE]{tokenizer.decode(input_ids)}', end='')
+    print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()
