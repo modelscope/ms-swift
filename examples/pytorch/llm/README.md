@@ -24,7 +24,7 @@
   - baichuan series: [baichuan-7b](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary), [baichuan-13b](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary), [baichuan-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary), [baichuan2-7b](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary), [baichuan2-7b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary), [baichuan2-13b](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary), [baichuan2-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary)
   - chatglm2 series: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), [chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary)
   - llama series: [llama2-7b](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary), [llama2-7b-chat](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary), [llama2-13b](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary), [llama2-13b-chat](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary), [llama2-70b](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary), [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
-  - openbuddy-llama series: [openbuddy-llama2-13b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary)
+  - openbuddy series: [openbuddy-llama2-13b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary), [openbuddy-mistral-7b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-mistral-7b-v13.1/summary)
   - internlm series: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
   - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
@@ -48,6 +48,7 @@
 
 
 ## News
+- 2023.10.12: Supported openbuddy-mistral-7b-chat model. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`.
 - 2023.10.7: Supported DeepSpeed ZeRO-2, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 2023.9.26: Supported xverse model series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat. The corresponding shell script can be found at `scripts/xverse_13b`.
@@ -56,8 +57,8 @@
 - 2023.9.18: Supported internlm-20b model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
 - 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 - 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
-- 2023.9.5: Supported openbuddy-llama2-70b model. The corresponding shell script can be found at `scripts/openbuddy-llama2-70b`.
-- 2023.9.3: Supported baichuan2 model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`.
+- 2023.9.5: Supported openbuddy-llama2-70b-chat model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
+- 2023.9.3: Supported baichuan2 model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
 
 
 ## Prepare the Environment

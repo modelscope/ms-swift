@@ -43,6 +43,7 @@ TEMPLATE_MAPPING = {
         'prompt': ['{{query}}'],
         'suffix': [['eos_token_id']],
     },
+    # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
     'llama': {
         'prefix': [['bos_token_id'],
                    '[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
