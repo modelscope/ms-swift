@@ -364,32 +364,29 @@ MODEL_MAPPING = {
     # baichuan2
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'revision': 'v1.0.1',
+        'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
-        'requires': ['transformers<4.34']
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.3',
+        'revision': 'v1.0.4',
         'template': 'baichuan',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
-        'revision': 'v1.0.2',
+        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
-        'requires': ['transformers<4.34']
     },
     'baichuan2-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
-        'revision': 'v1.0.2',
+        'revision': 'v1.0.3',
         'template': 'baichuan',
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
-        'requires': ['transformers<4.34']
     },
     # chatglm2 series
     'chatglm2-6b': {
@@ -477,36 +474,31 @@ MODEL_MAPPING = {
     # internlm series
     'internlm-7b': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-7b',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'lora_TM': LoRATM.internlm,
-        'requires': ['transformers<4.34']
     },
     'internlm-7b-chat': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
-        'requires': ['transformers<4.34']
     },
     'internlm-7b-chat-8k': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-8k',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
-        'requires': ['transformers<4.34']
     },
     'internlm-20b': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-20b',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'lora_TM': LoRATM.internlm,
-        'requires': ['transformers<4.34']
     },
     'internlm-20b-chat': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-20b',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
-        'requires': ['transformers<4.34']
     },
     # xverse
     'xverse-7b': {
