@@ -527,6 +527,21 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
+    # mistral
+    'mistral-7b': {
+        'model_id': 'AI-ModelScope/Mistral-7B-v0.1',
+        'revision': 'v1.0.0',
+        'template': 'llama',
+        'lora_TM': LoRATM.mistral,
+        'requires': ['transformers>=4.34']
+    },
+    'mistral-7b-chat': {
+        'model_id': 'AI-ModelScope/Mistral-7B-Instruct-v0.1',
+        'revision': 'v1.0.0',
+        'template': 'llama',
+        'lora_TM': LoRATM.mistral,
+        'requires': ['transformers>=4.34']
+    },
     # other
     'polylm-13b': {
         'model_id': 'damo/nlp_polylm_13b_text_generation',
