@@ -371,11 +371,10 @@ MODEL_MAPPING = {
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.2',
+        'revision': 'v1.0.3',
         'template': 'baichuan',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
-        'requires': ['transformers<4.34']
     },
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
@@ -402,10 +401,9 @@ MODEL_MAPPING = {
     },
     'chatglm2-6b-32k': {
         'model_id': 'ZhipuAI/chatglm2-6b-32k',
-        'revision': 'v1.0.1',
+        'revision': 'v1.0.2',
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,
-        'requires': ['transformers<4.34']
     },
     # llama series
     'llama2-7b': {
