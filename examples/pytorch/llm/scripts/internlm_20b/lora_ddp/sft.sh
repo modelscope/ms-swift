@@ -1,3 +1,4 @@
+# Experimental environment: A100
 nproc_per_node=2
 
 PYTHONPATH=../../.. \

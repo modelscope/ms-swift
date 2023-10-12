@@ -1,6 +1,7 @@
+# Experimental environment: A100
 # If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type llama2-70b-chat \
     --sft_type lora \
