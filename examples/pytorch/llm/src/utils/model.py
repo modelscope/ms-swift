@@ -157,8 +157,7 @@ def get_model_tokenizer_xverse(model_dir: str,
                                torch_dtype: Dtype,
                                load_model: bool = True,
                                **model_kwargs):
-    from transformers import AutoTokenizer as AutoTokenizerHF
-    tokenizer = AutoTokenizerHF.from_pretrained(model_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
     return get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -449,25 +448,25 @@ MODEL_MAPPING = {
     'openbuddy-llama2-13b-chat': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy-llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.llama2,
     },
     'openbuddy-llama-65b-chat': {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy-llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.llama2,
     },
     'openbuddy-llama2-70b-chat': {
         'model_id': 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy-llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.llama2,
     },
     'openbuddy-mistral-7b-chat': {
         'model_id': 'OpenBuddy/openbuddy-mistral-7b-v13.1',
         'revision': 'v1.0.0',
-        'template': 'llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.mistral,
         'requires': ['transformers>=4.34']
     },
@@ -531,7 +530,6 @@ MODEL_MAPPING = {
     'mistral-7b': {
         'model_id': 'AI-ModelScope/Mistral-7B-v0.1',
         'revision': 'v1.0.0',
-        'template': 'llama',
         'lora_TM': LoRATM.mistral,
         'requires': ['transformers>=4.34']
     },

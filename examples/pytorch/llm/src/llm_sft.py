@@ -7,7 +7,7 @@ from functools import partial
 import json
 import numpy as np
 import torch
-from transformers import BitsAndBytesConfig, GenerationConfig
+from modelscope import BitsAndBytesConfig, GenerationConfig
 from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
                    get_preprocess)
 

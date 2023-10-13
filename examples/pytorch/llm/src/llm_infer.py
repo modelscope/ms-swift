@@ -3,7 +3,8 @@ import os
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
-from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
+from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import TextStreamer
 from utils import (InferArguments, get_dataset, get_model_tokenizer,
                    get_preprocess)
 

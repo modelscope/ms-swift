@@ -51,7 +51,7 @@ TEMPLATE_MAPPING = {
         'chat_sep': [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
         'suffix': [['eos_token_id']],
     },
-    'openbuddy-llama': {
+    'openbuddy': {
         'prefix': ['{{SYSTEM}}\n\n'],
         'prompt': ['User: {{QUERY}}\nAssistant: '],
         'chat_sep': ['\n'],
