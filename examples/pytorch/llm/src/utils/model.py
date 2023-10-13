@@ -157,7 +157,7 @@ def get_model_tokenizer_xverse(model_dir: str,
                                torch_dtype: Dtype,
                                load_model: bool = True,
                                **model_kwargs):
-    tokenizer = AutoTokenizerHF.from_pretrained(model_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
     return get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
