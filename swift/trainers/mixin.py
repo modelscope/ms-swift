@@ -462,3 +462,10 @@ class SwiftMixin:
                 checkpoints_sorted[i], checkpoints_sorted[
                     i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
         return checkpoints_sorted
+
+    def _load_best_model(self):
+        # Compatible with transformers>=4.35 (deepspeed)
+        try:
+            super()._load_best_model()
+        except ValueError as e:
+            logger.warning(e)
