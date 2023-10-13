@@ -237,7 +237,6 @@ def llm_sft(args: SftArguments) -> None:
 
 if __name__ == '__main__':
     args, remaining_argv = parse_args(SftArguments)
-    args.model_type = 'qwen-7b-chat-int4'
     args.init_argument()
     if len(remaining_argv) > 0:
         if args.ignore_args_error:
