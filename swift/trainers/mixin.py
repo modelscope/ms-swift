@@ -272,11 +272,11 @@ class SwiftMixin:
                 })
 
         # Compatible with transformers>=4.34
-        from swift.tuners import SwiftModel, PeftModel
+        from swift.tuners import SwiftModel
         is_quantized = getattr(model, 'is_quantized', False)
         _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded',
                                          False)
-        use_swift = isinstance(model, (SwiftModel, PeftModel))
+        use_swift = isinstance(model, SwiftModel)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
         # mro
@@ -462,3 +462,10 @@ class SwiftMixin:
                 checkpoints_sorted[i], checkpoints_sorted[
                     i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
         return checkpoints_sorted
+
+    def _load_best_model(self):
+        # Compatible with transformers>=4.35 (deepspeed)
+        try:
+            super()._load_best_model()
+        except ValueError as e:
+            logger.warning(e)

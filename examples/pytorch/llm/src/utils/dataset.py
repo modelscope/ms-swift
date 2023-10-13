@@ -679,7 +679,7 @@ DATASET_MAPPING = {
     get_jd_zh_dataset,
     'dureader-robust-zh':
     get_dureader_robust_qg_zh_dataset,
-    'advertise-gen':
+    'advertise-gen-zh':
     get_advertise_gen_dataset,
 
     # multi-modal chat

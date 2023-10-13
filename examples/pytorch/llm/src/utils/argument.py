@@ -40,7 +40,7 @@ class SftArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
-        default='advertise-gen',
+        default='advertise-gen-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01
@@ -226,7 +226,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
-        default='advertise-gen',
+        default='advertise-gen-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01

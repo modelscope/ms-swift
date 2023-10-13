@@ -6,5 +6,5 @@ modelscope>=1.9.2
 sentencepiece
 tensorboard
 tiktoken
-transformers>=4.31,<4.34
+transformers>=4.31
 transformers_stream_generator

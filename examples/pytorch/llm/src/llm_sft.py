@@ -109,10 +109,10 @@ def llm_sft(args: SftArguments) -> None:
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
-    stat_dataset(train_dataset)
-    stat_dataset(val_dataset)
     data_collator = partial(data_collate_fn, tokenizer=tokenizer)
     print_example(train_dataset[0], tokenizer)
+    stat_dataset(train_dataset)
+    stat_dataset(val_dataset)
 
     # ### Setting training_args
     output_dir = None
