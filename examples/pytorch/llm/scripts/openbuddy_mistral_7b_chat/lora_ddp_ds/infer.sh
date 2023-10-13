@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type openbuddy-mistral-7b-chat \
     --sft_type lora \
-    --template_type llama \
+    --template_type openbuddy \
     --dtype bf16 \
     --ckpt_dir "output/openbuddy-mistral-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \

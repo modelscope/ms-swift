@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 python src/llm_sft.py \
     --model_type openbuddy-llama2-70b-chat \
     --sft_type lora \
-    --template_type openbuddy-llama \
+    --template_type openbuddy \
     --dtype bf16 \
     --output_dir output \
     --dataset blossom-math-zh \

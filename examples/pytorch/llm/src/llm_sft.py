@@ -7,7 +7,7 @@ from functools import partial
 import json
 import numpy as np
 import torch
-from transformers import BitsAndBytesConfig, GenerationConfig
+from modelscope import BitsAndBytesConfig, GenerationConfig
 from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
                    get_preprocess)
 
@@ -237,6 +237,7 @@ def llm_sft(args: SftArguments) -> None:
 
 if __name__ == '__main__':
     args, remaining_argv = parse_args(SftArguments)
+    args.model_type = 'qwen-7b-chat-int4'
     args.init_argument()
     if len(remaining_argv) > 0:
         if args.ignore_args_error:

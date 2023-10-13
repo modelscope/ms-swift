@@ -10,7 +10,7 @@ torchrun \
     src/llm_sft.py \
     --model_type openbuddy-mistral-7b-chat \
     --sft_type lora \
-    --template_type llama \
+    --template_type openbuddy \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
