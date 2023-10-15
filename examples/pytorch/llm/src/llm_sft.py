@@ -11,8 +11,8 @@ from transformers import BitsAndBytesConfig, GenerationConfig
 from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
                    get_preprocess)
 
-from swift import (LoraConfig, LoRAConfig, Seq2SeqTrainer,
-                   Seq2SeqTrainingArguments, Swift, get_logger)
+from swift import (LongLoRAConfig, LongLoRAModelType, LoraConfig, LoRAConfig,
+                   Seq2SeqTrainer, Seq2SeqTrainingArguments, Swift, get_logger)
 from swift.utils import (add_version_to_work_dir, broadcast_string,
                          check_json_format, compute_nlg_metrics,
                          data_collate_fn, find_all_linear_for_lora,
@@ -75,6 +75,24 @@ def llm_sft(args: SftArguments) -> None:
                 **lora_kwargs)
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
+        elif args.sft_type == 'longlora':
+            if 'ALL' in args.lora_target_modules:
+                assert len(args.lora_target_modules) == 1
+                args.lora_target_modules = find_all_linear_for_lora(
+                    model, args.quantization_bit, args.model_type)
+                logger.info(
+                    f'Setting lora_target_modules: {args.lora_target_modules}')
+            assert args.tuner_bankend != 'peft'
+            assert LongLoRAModelType.LLAMA in args.model_type
+            longlora_config = LongLoRAConfig(
+                r=args.lora_rank,
+                target_modules=args.lora_target_modules,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout_p,
+                model_type=LongLoRAModelType.LLAMA,
+                use_flash_attn=args.use_flash_attn)
+            model = Swift.prepare_model(model, longlora_config)
+            logger.info(f'longlora_config: {longlora_config}')
     else:
         model = Swift.from_pretrained(
             model, args.resume_from_ckpt, is_trainable=True)

@@ -13,7 +13,8 @@ if TYPE_CHECKING:
         PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig,
         PromptTuningConfig, get_peft_config, get_peft_model,
         get_peft_model_state_dict, Prompt, PromptConfig, PromptModule,
-        SwiftConfig, SwiftOutput, Swift, SwiftTuners)
+        SwiftConfig, SwiftOutput, Swift, SwiftTuners, LongLoRAConfig, LongLoRA,
+        LongLoRAModelType)
     from .hub import snapshot_download, push_to_hub, push_to_hub_async, push_to_hub_in_queue
     from .trainers import (EvaluationStrategy, FSDPOption, HPSearchBackend,
                            HubStrategy, IntervalStrategy, SchedulerType,

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 from .adapter import Adapter, AdapterConfig
+from .longlora.longlora import LongLoRA, LongLoRAConfig
 from .lora import LoRA, LoRAConfig
 from .prompt import Prompt, PromptConfig
 from .restuning import ResTuning, ResTuningConfig
@@ -13,6 +14,7 @@ class SwiftTuners:
     LORA = 'LORA'
     SIDE = 'SIDE'
     RESTUNING = 'RESTUNING'
+    LONGLORA = 'longlora'
 
 
 SWIFT_MAPPING = {
@@ -21,4 +23,5 @@ SWIFT_MAPPING = {
     SwiftTuners.LORA: (LoRAConfig, LoRA),
     SwiftTuners.SIDE: (SideConfig, Side),
     SwiftTuners.RESTUNING: (ResTuningConfig, ResTuning),
+    SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
 }

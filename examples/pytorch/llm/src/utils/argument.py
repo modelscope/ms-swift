@@ -24,7 +24,7 @@ class SftArguments:
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
     tuner_bankend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: str = field(
@@ -214,7 +214,7 @@ class InferArguments:
         default='qwen-7b-chat',
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
     template_type: str = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
