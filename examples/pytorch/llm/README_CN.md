@@ -28,6 +28,7 @@
   - internlm 系列: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
   - xverse 系列: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
   - mistral 系列: [mistral-7b](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary), [mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)
+  - ziya 系列: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
 - 支持的数据集:
   - NLP:
@@ -49,7 +50,8 @@
 
 
 ## 新闻
-- 2023.10.12: 支持mistral系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
+- 2023.10.15: 支持ziya2-13b系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
+- 2023.10.12: 支持mistral-7b系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
 - 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 2023.9.26: 支持xverse系列模型: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat. 对应的sh脚本可以查看`scripts/xverse_13b`.

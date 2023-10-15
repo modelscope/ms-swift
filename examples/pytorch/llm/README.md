@@ -28,6 +28,7 @@
   - internlm series: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
   - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
   - mistral series: [mistral-7b](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary), [mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)
+  - ziya series: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
 - Supported Datasets:
   - NLP:
@@ -49,7 +50,8 @@
 
 
 ## News
-- 2023.10.12: Supported mistral model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
+- 2023.10.15: Supported ziya2-13b model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
+- 2023.10.12: Supported mistral-7b model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
 - 2023.10.7: Supported DeepSpeed ZeRO-2, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 2023.9.26: Supported xverse model series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat. The corresponding shell script can be found at `scripts/xverse_13b`.

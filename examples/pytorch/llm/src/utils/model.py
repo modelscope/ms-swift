@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from types import MethodType
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -9,10 +9,11 @@ import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
                         AutoTokenizer, Model, read_config, snapshot_download)
 from torch import dtype as Dtype
+from transformers import PreTrainedModel, PreTrainedTokenizer
 from transformers.utils.versions import require_version
 
 from swift import get_logger
-from .utils import is_dist, is_local_master
+from swift.utils import is_dist, is_local_master
 
 logger = get_logger()
 
@@ -245,6 +246,7 @@ class LoRATM(NamedTuple):
     internlm = ['q_proj', 'k_proj', 'v_proj']
     xverse = ['q_proj', 'k_proj', 'v_proj']
     mistral = ['q_proj', 'k_proj', 'v_proj']
+    ziya = ['q_proj', 'k_proj', 'v_proj']
 
 
 class AdapterTM(NamedTuple):
@@ -540,6 +542,18 @@ MODEL_MAPPING = {
         'lora_TM': LoRATM.mistral,
         'requires': ['transformers>=4.34']
     },
+    # ziya
+    'ziya2-13b': {
+        'model_id': 'Fengshenbang/Ziya2-13B-Base',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.ziya,
+    },
+    'ziya2-13b-chat': {
+        'model_id': 'Fengshenbang/Ziya2-13B-Chat',
+        'revision': 'v1.0.0',
+        'template': 'ziya',
+        'lora_TM': LoRATM.ziya,
+    },
     # other
     'polylm-13b': {
         'model_id': 'damo/nlp_polylm_13b_text_generation',
@@ -556,10 +570,11 @@ MODEL_MAPPING = {
 }
 
 
-def get_model_tokenizer(model_type: str,
-                        torch_dtype: Optional[Dtype] = None,
-                        load_model: bool = True,
-                        **kwargs):
+def get_model_tokenizer(
+        model_type: str,
+        torch_dtype: Optional[Dtype] = None,
+        load_model: bool = True,
+        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizer]:
     data = MODEL_MAPPING.get(model_type)
     requires = data.get('requires', [])
     for require in requires:
