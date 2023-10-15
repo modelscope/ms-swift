@@ -39,7 +39,7 @@ class LongLoRAConfig(LoRAConfig):
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
-        self.swift_type = SwiftTuners.LORA
+        self.swift_type = SwiftTuners.LONGLORA
 
 
 class LongLoRA(LoRA):
@@ -84,7 +84,7 @@ class LongLoRA(LoRA):
             from .llama import replace_llama_attn
             replace_llama_attn(
                 use_flash_attn=config.use_flash_attn,
-                inference=config.is_trainable)
+                inference=not config.is_trainable)
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)

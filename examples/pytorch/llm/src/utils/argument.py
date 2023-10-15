@@ -141,7 +141,7 @@ class SftArguments:
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
-        if self.sft_type == 'lora':
+        if self.sft_type == 'lora' or self.sft_type == 'longlora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:

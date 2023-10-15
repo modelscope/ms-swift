@@ -39,7 +39,7 @@ else:
             'PromptTuningConfig', 'get_peft_config', 'get_peft_model',
             'get_peft_model_state_dict', 'Prompt', 'PromptConfig',
             'PromptModule', 'SwiftConfig', 'SwiftOutput', 'Swift',
-            'SwiftTuners'
+            'SwiftTuners', 'LongLoRAConfig', 'LongLoRA', 'LongLoRAModelType'
         ],
         'trainers': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend',

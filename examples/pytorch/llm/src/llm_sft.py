@@ -54,7 +54,7 @@ def llm_sft(args: SftArguments) -> None:
         args.model_type, torch_dtype=args.torch_dtype, **kwargs)
 
     # ### Preparing LoRA
-    if args.sft_type == 'lora':
+    if args.sft_type == 'lora' or args.sft_type == 'longlora':
         if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
@@ -62,37 +62,32 @@ def llm_sft(args: SftArguments) -> None:
                     model, args.quantization_bit, args.model_type)
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
-            lora_kwargs = {}
-            if args.tuner_bankend == 'peft':
-                global LoRAConfig
-                LoRAConfig = LoraConfig
-                lora_kwargs['task_type'] = 'CAUSAL_LM'
-            lora_config = LoRAConfig(
-                r=args.lora_rank,
-                target_modules=args.lora_target_modules,
-                lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout_p,
-                **lora_kwargs)
-            model = Swift.prepare_model(model, lora_config)
-            logger.info(f'lora_config: {lora_config}')
-        elif args.sft_type == 'longlora':
-            if 'ALL' in args.lora_target_modules:
-                assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linear_for_lora(
-                    model, args.quantization_bit, args.model_type)
-                logger.info(
-                    f'Setting lora_target_modules: {args.lora_target_modules}')
-            assert args.tuner_bankend != 'peft'
-            assert LongLoRAModelType.LLAMA in args.model_type
-            longlora_config = LongLoRAConfig(
-                r=args.lora_rank,
-                target_modules=args.lora_target_modules,
-                lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout_p,
-                model_type=LongLoRAModelType.LLAMA,
-                use_flash_attn=args.use_flash_attn)
-            model = Swift.prepare_model(model, longlora_config)
-            logger.info(f'longlora_config: {longlora_config}')
+            if args.sft_type == 'lora':
+                lora_kwargs = {}
+                if args.tuner_bankend == 'peft':
+                    global LoRAConfig
+                    LoRAConfig = LoraConfig
+                    lora_kwargs['task_type'] = 'CAUSAL_LM'
+                lora_config = LoRAConfig(
+                    r=args.lora_rank,
+                    target_modules=args.lora_target_modules,
+                    lora_alpha=args.lora_alpha,
+                    lora_dropout=args.lora_dropout_p,
+                    **lora_kwargs)
+                model = Swift.prepare_model(model, lora_config)
+                logger.info(f'lora_config: {lora_config}')
+            elif args.sft_type == 'longlora':
+                assert args.tuner_bankend != 'peft'
+                assert LongLoRAModelType.LLAMA in args.model_type
+                longlora_config = LongLoRAConfig(
+                    r=args.lora_rank,
+                    target_modules=args.lora_target_modules,
+                    lora_alpha=args.lora_alpha,
+                    lora_dropout=args.lora_dropout_p,
+                    model_type=LongLoRAModelType.LLAMA,
+                    use_flash_attn=args.use_flash_attn)
+                model = Swift.prepare_model(model, longlora_config)
+                logger.info(f'longlora_config: {longlora_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
