@@ -14,8 +14,8 @@ torchrun \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset advertise-gen \
-    --train_dataset_sample -1 \
+    --dataset advertise-gen-zh \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \

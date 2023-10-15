@@ -8,8 +8,8 @@ python src/llm_sft.py \
     --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
-    --dataset advertise-gen \
-    --train_dataset_sample -1 \
+    --dataset advertise-gen-zh \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \

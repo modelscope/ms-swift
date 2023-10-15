@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import os
+import re
 import shutil
+from pathlib import Path
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -270,11 +272,11 @@ class SwiftMixin:
                 })
 
         # Compatible with transformers>=4.34
-        from swift.tuners import SwiftModel, PeftModel
+        from swift.tuners import SwiftModel
         is_quantized = getattr(model, 'is_quantized', False)
         _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded',
                                          False)
-        use_swift = isinstance(model, (SwiftModel, PeftModel))
+        use_swift = isinstance(model, SwiftModel)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
         # mro
@@ -414,3 +416,56 @@ class SwiftMixin:
             return super()._get_train_sampler()
         else:
             return self._get_eval_sampler(self.train_dataset)
+
+    def _load_from_checkpoint(self,
+                              resume_from_checkpoint: str,
+                              model=None) -> None:
+        if model is None:
+            model = self.model
+        if not isinstance(model, SwiftModel):
+            # Avoid throwing exceptions
+            return super()._load_from_checkpoint(resume_from_checkpoint, model)
+
+    def _sorted_checkpoints(self,
+                            output_dir=None,
+                            checkpoint_prefix=PREFIX_CHECKPOINT_DIR,
+                            use_mtime=False) -> List[str]:
+        ordering_and_checkpoint_path = []
+
+        glob_checkpoints = [
+            str(x) for x in Path(output_dir).glob(f'{checkpoint_prefix}-*')
+            if os.path.isdir(x)
+        ]
+
+        for path in glob_checkpoints:
+            if use_mtime:
+                ordering_and_checkpoint_path.append(
+                    (os.path.getmtime(path), path))
+            else:
+                regex_match = re.match(f'.*{checkpoint_prefix}-([0-9]+)', path)
+                if regex_match is not None and regex_match.groups(
+                ) is not None:
+                    ordering_and_checkpoint_path.append(
+                        (int(regex_match.groups()[0]), path))
+
+        checkpoints_sorted = sorted(ordering_and_checkpoint_path)
+        checkpoints_sorted = [
+            checkpoint[1] for checkpoint in checkpoints_sorted
+        ]
+        # Make sure we don't delete the best model.
+        # fix resume_from_checkpointing bug
+        if self.state.best_model_checkpoint is not None and (str(
+                Path(self.state.best_model_checkpoint)) in checkpoints_sorted):
+            best_model_index = checkpoints_sorted.index(
+                str(Path(self.state.best_model_checkpoint)))
+            for i in range(best_model_index, len(checkpoints_sorted) - 2):
+                checkpoints_sorted[i], checkpoints_sorted[
+                    i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
+        return checkpoints_sorted
+
+    def _load_best_model(self):
+        # Compatible with transformers>=4.35 (deepspeed)
+        try:
+            super()._load_best_model()
+        except ValueError as e:
+            logger.warning(e)

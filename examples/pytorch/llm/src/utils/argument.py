@@ -34,13 +34,13 @@ class SftArguments:
         default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
     seed: int = 42
-    resume_from_ckpt: Optional[str] = None
+    resume_from_checkpoint: Optional[str] = None
     dtype: str = field(
         default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
-        default='advertise-gen',
+        default='advertise-gen-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01
@@ -226,7 +226,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: str = field(
-        default='advertise-gen',
+        default='advertise-gen-zh',
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01

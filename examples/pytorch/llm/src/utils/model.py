@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
                         AutoTokenizer, Model, read_config, snapshot_download)
 from torch import dtype as Dtype
+from transformers.utils.versions import require_version
 
 from swift import get_logger
 from .utils import is_dist, is_local_master
@@ -156,8 +157,7 @@ def get_model_tokenizer_xverse(model_dir: str,
                                torch_dtype: Dtype,
                                load_model: bool = True,
                                **model_kwargs):
-    from transformers import AutoTokenizer as AutoTokenizerHF
-    tokenizer = AutoTokenizerHF.from_pretrained(model_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
     return get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -171,7 +171,7 @@ def get_model_tokenizer_polylm(model_dir: str,
                                load_model: bool = True,
                                **model_kwargs):
     tokenizer = AutoTokenizer.from_pretrained(
-        model_dir, trust_remote_code=True, use_fast=False)
+        model_dir, trust_remote_code=True, use_fast=False, legacy=True)
     return get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -244,6 +244,7 @@ class LoRATM(NamedTuple):
     bloom = ['query_key_value']
     internlm = ['q_proj', 'k_proj', 'v_proj']
     xverse = ['q_proj', 'k_proj', 'v_proj']
+    mistral = ['q_proj', 'k_proj', 'v_proj']
 
 
 class AdapterTM(NamedTuple):
@@ -343,42 +344,45 @@ MODEL_MAPPING = {
         'model_id': 'baichuan-inc/baichuan-7B',
         'revision': 'v1.0.7',
         'lora_TM': LoRATM.baichuan,
+        'requires': ['transformers<4.34']
     },
     'baichuan-13b': {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
         'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_baichuan_13b,
         'lora_TM': LoRATM.baichuan,
+        'requires': ['transformers<4.34']
     },
     'baichuan-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan-13B-Chat',
         'revision': 'v1.0.8',
         'template': 'baichuan',
         'lora_TM': LoRATM.baichuan,
+        'requires': ['transformers<4.34']
     },
     # baichuan2
     'baichuan2-7b': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'revision': 'v1.0.1',
+        'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-7b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.2',
+        'revision': 'v1.0.4',
         'template': 'baichuan',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
-        'revision': 'v1.0.2',
+        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
     },
     'baichuan2-13b-chat': {
         'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
-        'revision': 'v1.0.2',
+        'revision': 'v1.0.3',
         'template': 'baichuan',
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
@@ -393,7 +397,7 @@ MODEL_MAPPING = {
     },
     'chatglm2-6b-32k': {
         'model_id': 'ZhipuAI/chatglm2-6b-32k',
-        'revision': 'v1.0.1',
+        'revision': 'v1.0.2',
         'template': 'chatglm2',
         'lora_TM': LoRATM.chatglm2,
     },
@@ -440,51 +444,58 @@ MODEL_MAPPING = {
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
     },
-    # openbuddy-llama series
-    'openbuddy-llama2-13b': {
+    # openbuddy series
+    'openbuddy-llama2-13b-chat': {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy-llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.llama2,
     },
-    'openbuddy-llama-65b': {
+    'openbuddy-llama-65b-chat': {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy-llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.llama2,
     },
-    'openbuddy-llama2-70b': {
+    'openbuddy-llama2-70b-chat': {
         'model_id': 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
         'revision': 'v1.0.0',
-        'template': 'openbuddy-llama',
+        'template': 'openbuddy',
         'lora_TM': LoRATM.llama2,
+    },
+    'openbuddy-mistral-7b-chat': {
+        'model_id': 'OpenBuddy/openbuddy-mistral-7b-v13.1',
+        'revision': 'v1.0.0',
+        'template': 'openbuddy',
+        'lora_TM': LoRATM.mistral,
+        'requires': ['transformers>=4.34']
     },
     # internlm series
     'internlm-7b': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-7b',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'lora_TM': LoRATM.internlm,
     },
     'internlm-7b-chat': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
     },
     'internlm-7b-chat-8k': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-8k',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
     },
     'internlm-20b': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-20b',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'lora_TM': LoRATM.internlm,
     },
     'internlm-20b-chat': {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-20b',
-        'revision': 'v1.0.0',
+        'revision': 'v1.0.1',
         'template': 'internlm',
         'lora_TM': LoRATM.internlm,
     },
@@ -515,6 +526,20 @@ MODEL_MAPPING = {
         'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
+    # mistral
+    'mistral-7b': {
+        'model_id': 'AI-ModelScope/Mistral-7B-v0.1',
+        'revision': 'v1.0.0',
+        'lora_TM': LoRATM.mistral,
+        'requires': ['transformers>=4.34']
+    },
+    'mistral-7b-chat': {
+        'model_id': 'AI-ModelScope/Mistral-7B-Instruct-v0.1',
+        'revision': 'v1.0.0',
+        'template': 'llama',
+        'lora_TM': LoRATM.mistral,
+        'requires': ['transformers>=4.34']
+    },
     # other
     'polylm-13b': {
         'model_id': 'damo/nlp_polylm_13b_text_generation',
@@ -536,6 +561,9 @@ def get_model_tokenizer(model_type: str,
                         load_model: bool = True,
                         **kwargs):
     data = MODEL_MAPPING.get(model_type)
+    requires = data.get('requires', [])
+    for require in requires:
+        require_version(require)
     if data is None:
         raise ValueError(f'model_type: {model_type}')
 
