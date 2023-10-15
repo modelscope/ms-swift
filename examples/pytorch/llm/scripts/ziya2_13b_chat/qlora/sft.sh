@@ -1,5 +1,5 @@
 # Experimental environment: A10
-# 13GB GPU memory
+# 12GB GPU memory
 
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
