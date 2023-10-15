@@ -40,7 +40,7 @@ TEMPLATE_MAPPING = {
     },
     'chatglm2-generation': {
         'prefix': [[64790, 64792]],
-        'prompt': ['{{query}}'],
+        'prompt': ['{{QUERY}}'],
         'suffix': [['eos_token_id']],
     },
     # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
@@ -67,6 +67,12 @@ TEMPLATE_MAPPING = {
         'prefix': [],
         'prompt': ['Human: {{QUERY}}\n\nAssistant: '],
         'chat_sep': [['eos_token_id']],
+        'suffix': [['eos_token_id']],
+    },
+    'ziya': {
+        'prefix': [['bos_token_id']],
+        'prompt': ['<human>:{{QUERY}}\n<bot>:'],
+        'chat_sep': ['\n'],
         'suffix': [['eos_token_id']],
     }
 }
@@ -136,7 +142,7 @@ def _preprocess(
     max_length: Optional[int] = None,
     # do cross-validation with `model.generate()`
     generation_mode: bool = False,
-) -> Dict[str, List[int]]:
+) -> Dict[str, Optional[List[int]]]:
     if history is None:
         history = []
 
@@ -186,10 +192,11 @@ def get_preprocess(
     tokenizer: PreTrainedTokenizer,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
-) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
+) -> Callable[[Dict[str, Any]], Dict[str, Optional[List[int]]]]:
 
-    def preprocess(example: Dict[str, Any],
-                   generation_mode: bool = False) -> Dict[str, List[int]]:
+    def preprocess(
+            example: Dict[str, Any],
+            generation_mode: bool = False) -> Dict[str, Optional[List[int]]]:
         history: Optional[History] = example.get('history', None)
         query: str = example['query']
         response: str = example.get('response', None)
