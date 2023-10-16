@@ -106,9 +106,8 @@ def llm_infer(args: InferArguments) -> None:
             input_ids = preprocess_func(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer)
     else:
-        _, val_dataset = get_dataset(
-            args.dataset.split(','), args.dataset_test_ratio,
-            args.dataset_split_seed)
+        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
+                                     args.dataset_split_seed)
         mini_val_dataset = val_dataset.select(
             range(min(args.show_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:

@@ -74,9 +74,8 @@ def print_example(example: Dict[str, Any], tokenizer) -> None:
         f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
 
 
-def find_all_linear_for_lora(model: Module,
-                             quantization_bit: int,
-                             model_type: Optional[str] = None) -> List[str]:
+def find_all_linear_for_lora(model: Module, quantization_bit: int,
+                             model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm2-6b'):
