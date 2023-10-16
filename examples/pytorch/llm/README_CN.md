@@ -19,7 +19,7 @@
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 - 支持的模型
-  - qwen 系列: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary)
+  - qwen 系列: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary), [qwen-7b-chat-int4](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int4/summary), [qwen-14b-chat-int4](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int4/summary)
   - qwen-vl 系列: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary)
   - baichuan 系列: [baichuan-7b](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary), [baichuan-13b](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary), [baichuan-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary), [baichuan2-7b](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary), [baichuan2-7b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary), [baichuan2-13b](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary), [baichuan2-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary)
   - chatglm2 系列: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), [chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary)
@@ -50,6 +50,7 @@
 
 
 ## 新闻
+- 2023.10.16: 支持int4模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`.
 - 2023.10.15: 支持ziya2-13b系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
 - 2023.10.12: 支持mistral-7b系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
 - 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
@@ -95,20 +96,30 @@ pip install -r requirements.txt -U
 
 提示:
 - 你可以在训练时设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度. 如果你需要在消费级显卡中训练大模型, 这很有用, 例如: 3090.
-- 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
-- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
-- 如果你想要使用量化, 你需要先安装bnb: `pip install bitsandbytes -U`.
+- 如果你想要使用量化参数`quantization_bit`, 你需要先安装bnb: `pip install bitsandbytes -U`.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以节约显存, 但可能会略微降低训练速度.
 - 如果你使用的是V100等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练).
+- 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
+- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
 ```bash
-# 微调(lora)+推理 qwen-7b-chat, 需要38GB显存.
+# 微调(qlora)+推理 qwen-7b-chat-int4, 需要13GB显存.
+# 推荐的实验环境: V100, A10, 3090
+bash scripts/qwen_7b_chat_int4/qlora/sft.sh
+bash scripts/qwen_7b_chat_int4/qlora/infer.sh
+
+# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat-int4, 需要2卡*16GB显存.
+# 推荐的实验环境: V100, A10, 3090
+bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
+
+# 微调(lora)+推理 qwen-7b-chat, 需要60GB显存.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*38GB显存.
+# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*60GB显存.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
@@ -123,7 +134,18 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# 微调(qlora)+推理 qwen-7b-chat, 需要10GB显存.
+# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*75G显存.
+# 推荐的实验环境: A100
+bash scripts/qwen_7b_chat/full_mp/sft.sh
+bash scripts/qwen_7b_chat/full_mp/infer.sh
+
+# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*75G显存.
+# 推荐的实验环境: A100
+bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
+bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
+
+# 以下qlora基于`bitsandbytes`库, 已废弃, 推荐直接使用基于`auto_gptq`的`qwen_7b_chat_int4`的qlora.
+# 微调(qlora)+推理 qwen-7b-chat, 需要13GB显存.
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
@@ -137,16 +159,6 @@ bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
-
-# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*75G显存.
-# 推荐的实验环境: A100
-bash scripts/qwen_7b_chat/full_mp/sft.sh
-bash scripts/qwen_7b_chat/full_mp/infer.sh
-
-# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*75G显存.
-# 推荐的实验环境: A100
-bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
-bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 ```
 
 
@@ -155,7 +167,7 @@ bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 `MODEL_MAPPING`定义在`utils/model.py`中, 用于加载各种类型的基模型. 如果你需要**拓展模型**, 你可以在里面进行添加. 其中key表示模型的唯一id, value表示模型的配置. 配置内容如下.
 
 - `model_id`: 必填项. 表示模型在ModelScope Hub中的model_id, 或者是本地的模型目录.
-- `revision`: 用于指定模型的版本号. 如果model_id是本地的模型目录, 则该参数失效, 否则为必填项.
+- `revision`: 用于指定模型的版本号, 默认使用'master'. 如果model_id是本地的模型目录, 则该参数失效.
 - `get_function`: 获取model和tokenizer的函数, 默认使用`get_model_tokenizer_from_repo`, 返回model和tokenizer. 如果需要设置flash_attn或对模型代码打补丁等, 则可以通过自定义来实现它.
 - `lora_TM`: 默认使用的lora_target_modules, 在我们的设置中, 会将其设置qkv.
 - `template`: 默认使用的chat template, 例如: chatml, baichuan等. 如果未设置, 则使用`default`的chat template.

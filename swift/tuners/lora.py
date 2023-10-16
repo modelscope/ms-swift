@@ -91,10 +91,36 @@ if is_auto_gptq_available():
                                  lora_alpha, lora_dropout, **kwargs)
             super(QuantLinear, self).__init__()
 
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            if not self.is_activated():
-                return self.quant_linear_module(x)
-            return super().forward(x)
+            def call_quant_linear_module(*args, **kwargs):
+                return quant_linear_module.forward_origin(*args, **kwargs)
+
+            self.call_quant_linear_module = call_quant_linear_module
+            self.quant_linear_module = None
+
+        def forward(self, x: torch.Tensor):
+            result = self.call_quant_linear_module(x)
+            if not self.is_activated(
+            ) or self.disable_adapters or self.active_adapter not in self.lora_A.keys(
+            ):
+                return result
+            elif self.r[self.active_adapter] > 0:
+                result = result.clone()
+                if not torch.is_autocast_enabled():
+                    expected_dtype = result.dtype
+                    x = x.to(self.lora_A[self.active_adapter].weight.dtype)
+                    output = (
+                        self.lora_B[self.active_adapter](
+                            self.lora_A[self.active_adapter](self.lora_dropout[
+                                self.active_adapter](x))).to(expected_dtype)
+                        * self.scaling[self.active_adapter])
+                else:
+                    output = (
+                        self.lora_B[self.active_adapter](
+                            self.lora_A[self.active_adapter](
+                                self.lora_dropout[self.active_adapter](x)))
+                        * self.scaling[self.active_adapter])
+                result += output
+            return result
 
 
 logger = get_logger()

@@ -130,6 +130,11 @@ class SftArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
+        if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
+            logger.info(
+                'Your machine does not support bf16, automatically using fp16.'
+            )
+            self.dtype = 'fp16'
         if is_dist():
             rank, local_rank, _, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
@@ -266,6 +271,11 @@ class InferArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
+        if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
+            logger.info(
+                'Your machine does not support bf16, automatically using fp16.'
+            )
+            self.dtype = 'fp16'
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', TemplateType.default)

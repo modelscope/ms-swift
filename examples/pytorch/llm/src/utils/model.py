@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from functools import partial
 from types import MethodType
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
@@ -7,7 +8,8 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                        AutoTokenizer, Model, read_config, snapshot_download)
+                        AutoTokenizer, GPTQConfig, Model, read_config,
+                        snapshot_download)
 from torch import dtype as Dtype
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from transformers.utils.versions import require_version
@@ -155,19 +157,6 @@ def get_model_tokenizer_llama2(model_dir: str,
                                          model_config, **model_kwargs)
 
 
-def get_model_tokenizer_xverse(model_dir: str,
-                               torch_dtype: Dtype,
-                               load_model: bool = True,
-                               **model_kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        load_model,
-        tokenizer=tokenizer,
-        **model_kwargs)
-
-
 def get_model_tokenizer_polylm(model_dir: str,
                                torch_dtype: Dtype,
                                load_model: bool = True,
@@ -225,14 +214,41 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
+    get_qwen_function = kwargs.pop('get_qwen_function',
+                                   get_model_tokenizer_qwen)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, load_model,
+                                         **kwargs)
+    if model is not None:
+        first_drop = model.transformer.drop
+        if first_drop.p == 0.:
+            # fix gradient_checkpointing bug
+            _old_forward = first_drop.forward
+            if not hasattr(_old_forward, '_patching'):
+                first_drop.forward = lambda *args, **kwargs: _old_forward(
+                    *args, **kwargs).clone()
+                first_drop.forward._patching = True
+    return model, tokenizer
+
+
+def get_model_tokenizer_qwen_int4(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  load_model: bool = True,
+                                  **kwargs):
+
+    logger.info('use gptq, ignore bnb arguments')
+    kwargs['quantization_config'] = GPTQConfig(bits=4, disable_exllama=True)
+    assert torch_dtype != torch.bfloat16, 'please use torch.float16'
+
+    # fix quantlinear bug
+    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
+    _old_qlinear_init = QuantLinear.__init__
+    if not hasattr(_old_qlinear_init, '_patching'):
+        QuantLinear.__init__ = (lambda *args, **kwargs: _old_qlinear_init(
+            *args, kernel_switch_threshold=1, **kwargs))
+        QuantLinear.__init__._patching = True
     model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype,
                                                 load_model, **kwargs)
-    first_drop = model.transformer.drop
-    if first_drop.p == 0.:
-        # fix gradient_checkpointing bug
-        _old_forward = first_drop.forward
-        first_drop.forward = lambda *args, **kwargs: _old_forward(
-            *args, **kwargs).clone()
+    tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
 
@@ -242,9 +258,12 @@ class ModelType:
     qwen_7b_chat = 'qwen-7b-chat'
     qwen_14b = 'qwen-14b'
     qwen_14b_chat = 'qwen-14b-chat'
+    qwen_7b_chat_int4 = 'qwen-7b-chat-int4'
+    qwen_14b_chat_int4 = 'qwen-14b-chat-int4'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
+    qwen_vl_chat_int4 = 'qwen-vl-chat-int4'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -304,141 +323,106 @@ class LoRATM(NamedTuple):
     ziya = ['q_proj', 'k_proj', 'v_proj']
 
 
-class AdapterTM(NamedTuple):
-    # default adapter target modules.
-    baichuan = ['mlp']
-    chatglm2 = ['mlp']
-    llama2 = ['mlp']
-    qwen = ['mlp']
-    polylm = ['mlp']
-
-
-class ResTunerTM(NamedTuple):
-    # default res-tuning config.
-    baichuan = {
-        'root_modules': r'.*layers.0$',
-        'stem_modules': r'.*layers\.\d+$',
-        'target_modules': r'.*model.norm',
-        'target_modules_hook': 'input',
-        'tuner_cfg': 'res_adapter',
-    }
-    chatglm2 = {
-        'root_modules': r'.*layers.0$',
-        'stem_modules': r'.*layers\.\d+$',
-        'target_modules': r'.*final_layernorm',
-        'target_modules_hook': 'input',
-        'tuner_cfg': 'res_adapter',
-    }
-    llama2 = {
-        'root_modules': r'.*layers.0$',
-        'stem_modules': r'.*layers\.\d+$',
-        'target_modules': r'.*model.norm',
-        'target_modules_hook': 'input',
-        'tuner_cfg': 'res_adapter',
-    }
-    qwen = {
-        'root_modules': r'.*transformer.h.0$',
-        'stem_modules': r'.*transformer.h\.\d+$',
-        'target_modules': r'.*transformer.ln_f',
-        'target_modules_hook': 'input',
-        'tuner_cfg': 'res_adapter',
-    }
-    polylm = {
-        'root_modules': r'.*transformer.h.0$',
-        'stem_modules': r'.*transformer.h\.\d+$',
-        'target_modules': r'.*transformer.ln_f',
-        'target_modules_hook': 'input',
-        'tuner_cfg': 'res_adapter',
-    }
-
-
 # Model Home: 'https://modelscope.cn/models/{model_id}/summary'
 # model_id: model id or model dir
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     # qwen
     ModelType.qwen_7b: {
         'model_id': 'qwen/Qwen-7B',
-        'revision': 'v1.1.4',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
     },
     ModelType.qwen_7b_chat: {
         'model_id': 'qwen/Qwen-7B-Chat',
-        'revision': 'v1.1.4',
         'get_function': get_model_tokenizer_qwen,
         'template': TemplateType.chatml,
         'lora_TM': LoRATM.qwen,
     },
     ModelType.qwen_14b: {
         'model_id': 'qwen/Qwen-14B',
-        'revision': 'v1.0.4',
         'get_function': get_model_tokenizer_qwen,
         'lora_TM': LoRATM.qwen,
     },
     ModelType.qwen_14b_chat: {
         'model_id': 'qwen/Qwen-14B-Chat',
-        'revision': 'v1.0.4',
         'get_function': get_model_tokenizer_qwen,
         'template': TemplateType.chatml,
         'lora_TM': LoRATM.qwen,
     },
+    ModelType.qwen_7b_chat_int4: {
+        'model_id': 'qwen/Qwen-7B-Chat-Int4',
+        'get_function': get_model_tokenizer_qwen_int4,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+        'requires': ['auto_gptq>=0.4.2']
+    },
+    ModelType.qwen_14b_chat_int4: {
+        'model_id': 'qwen/Qwen-14B-Chat-Int4',
+        'get_function': get_model_tokenizer_qwen_int4,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+        'requires': ['auto_gptq>=0.4.2']
+    },
     # qwen-vl
     ModelType.qwen_vl: {
         'model_id': 'qwen/Qwen-VL',
-        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_qwen_vl,
         'lora_TM': LoRATM.qwen,
     },
-    ModelType.qwen_14b_chat: {
+    ModelType.qwen_vl_chat: {
         'model_id': 'qwen/Qwen-VL-Chat',
-        'revision': 'v1.1.0',
         'get_function': get_model_tokenizer_qwen_vl,
         'template': TemplateType.chatml,
         'lora_TM': LoRATM.qwen,
     },
+    ModelType.qwen_vl_chat_int4: {
+        'model_id':
+        'qwen/Qwen-VL-Chat-Int4',
+        'get_function':
+        partial(
+            get_model_tokenizer_qwen_vl,
+            get_qwen_function=get_model_tokenizer_qwen_int4),
+        'template':
+        TemplateType.chatml,
+        'lora_TM':
+        LoRATM.qwen,
+    },
     # baichuan
     ModelType.baichuan_7b: {
         'model_id': 'baichuan-inc/baichuan-7B',
-        'revision': 'v1.0.7',
         'lora_TM': LoRATM.baichuan,
         'requires': ['transformers<4.34']
     },
     ModelType.baichuan_13b: {
         'model_id': 'baichuan-inc/Baichuan-13B-Base',
-        'revision': 'v1.0.5',
         'get_function': get_model_tokenizer_baichuan_13b,
         'lora_TM': LoRATM.baichuan,
         'requires': ['transformers<4.34']
     },
     ModelType.baichuan_13b_chat: {
         'model_id': 'baichuan-inc/Baichuan-13B-Chat',
-        'revision': 'v1.0.8',
         'template': TemplateType.baichuan,
         'lora_TM': LoRATM.baichuan,
         'requires': ['transformers<4.34']
     },
     ModelType.baichuan2_7b: {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     ModelType.baichuan2_7b_chat: {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
-        'revision': 'v1.0.4',
         'template': TemplateType.baichuan,
         'get_function': get_model_tokenizer_baichuan2_7b,
         'lora_TM': LoRATM.baichuan,
     },
     ModelType.baichuan2_13b: {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
-        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
     },
     ModelType.baichuan2_13b_chat: {
         'model_id': 'baichuan-inc/Baichuan2-13B-Chat',
-        'revision': 'v1.0.3',
         'template': TemplateType.baichuan,
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
@@ -446,47 +430,40 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     # chatglm2
     ModelType.chatglm2_6b: {
         'model_id': 'ZhipuAI/chatglm2-6b',
-        'revision': 'v1.0.12',
         'get_function': get_model_tokenizer_chatglm2,
         'template': TemplateType.chatglm2,
         'lora_TM': LoRATM.chatglm2,
     },
     ModelType.chatglm2_6b_32k: {
         'model_id': 'ZhipuAI/chatglm2-6b-32k',
-        'revision': 'v1.0.2',
         'template': TemplateType.chatglm2,
         'lora_TM': LoRATM.chatglm2,
     },
     # llama
     ModelType.llama2_7b: {
         'model_id': 'modelscope/Llama-2-7b-ms',
-        'revision': 'v1.0.2',
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2,
     },
     ModelType.llama2_13b: {
         'model_id': 'modelscope/Llama-2-13b-ms',
-        'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_llama2,
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
     },
     ModelType.llama2_70b: {
         'model_id': 'modelscope/Llama-2-70b-ms',
-        'revision': 'v1.0.0',
         'ignore_file_pattern': [r'.+\.bin$'],
         'lora_TM': LoRATM.llama2,
     },
     ModelType.llama2_7b_chat: {
         'model_id': 'modelscope/Llama-2-7b-chat-ms',
-        'revision': 'v1.0.2',
         'template': TemplateType.llama,
         'ignore_file_pattern': [r'.+\.bin$'],  # use safetensors
         'lora_TM': LoRATM.llama2,
     },
     ModelType.llama2_13b_chat: {
         'model_id': 'modelscope/Llama-2-13b-chat-ms',
-        'revision': 'v1.0.2',
         'get_function': get_model_tokenizer_llama2,
         'template': TemplateType.llama,
         'ignore_file_pattern': [r'.+\.bin$'],
@@ -494,7 +471,6 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     },
     ModelType.llama2_70b_chat: {
         'model_id': 'modelscope/Llama-2-70b-chat-ms',
-        'revision': 'v1.0.1',
         'get_function': get_model_tokenizer_llama2,
         'template': TemplateType.llama,
         'ignore_file_pattern': [r'.+\.bin$'],
@@ -503,25 +479,21 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     # openbuddy
     ModelType.openbuddy_llama2_13b_chat: {
         'model_id': 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
-        'revision': 'v1.0.0',
         'template': TemplateType.openbuddy,
         'lora_TM': LoRATM.llama2,
     },
     ModelType.openbuddy_llama2_65b_chat: {
         'model_id': 'OpenBuddy/openbuddy-llama-65b-v8-bf16',
-        'revision': 'v1.0.0',
         'template': TemplateType.openbuddy,
         'lora_TM': LoRATM.llama2,
     },
     ModelType.openbuddy_llama2_70b_chat: {
         'model_id': 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
-        'revision': 'v1.0.0',
         'template': TemplateType.openbuddy,
         'lora_TM': LoRATM.llama2,
     },
     ModelType.openbuddy_mistral_7b_chat: {
         'model_id': 'OpenBuddy/openbuddy-mistral-7b-v13.1',
-        'revision': 'v1.0.0',
         'template': TemplateType.openbuddy,
         'lora_TM': LoRATM.mistral,
         'requires': ['transformers>=4.34']
@@ -529,69 +501,54 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     # internlm
     ModelType.internlm_7b: {
         'model_id': 'Shanghai_AI_Laboratory/internlm-7b',
-        'revision': 'v1.0.1',
         'lora_TM': LoRATM.internlm,
     },
     ModelType.internlm_7b_chat: {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
-        'revision': 'v1.0.1',
         'template': TemplateType.internlm,
         'lora_TM': LoRATM.internlm,
     },
     ModelType.internlm_7b_chat_8k: {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-7b-8k',
-        'revision': 'v1.0.1',
         'template': TemplateType.internlm,
         'lora_TM': LoRATM.internlm,
     },
     ModelType.internlm_20b: {
         'model_id': 'Shanghai_AI_Laboratory/internlm-20b',
-        'revision': 'v1.0.1',
         'lora_TM': LoRATM.internlm,
     },
     ModelType.internlm_20b_chat: {
         'model_id': 'Shanghai_AI_Laboratory/internlm-chat-20b',
-        'revision': 'v1.0.1',
         'template': TemplateType.internlm,
         'lora_TM': LoRATM.internlm,
     },
     # xverse
     ModelType.xverse_7b: {
         'model_id': 'xverse/XVERSE-7B',
-        'revision': 'v1.0.0',
-        'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
     ModelType.xverse_7b_chat: {
         'model_id': 'xverse/XVERSE-7B-Chat',
-        'revision': 'v1.0.0',
         'template': TemplateType.xverse,
-        'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
     ModelType.xverse_13b: {
         'model_id': 'xverse/XVERSE-13B',
-        'revision': 'v1.0.0',
-        'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
     ModelType.xverse_13b_chat: {
         'model_id': 'xverse/XVERSE-13B-Chat',
-        'revision': 'v1.0.0',
         'template': TemplateType.xverse,
-        'get_function': get_model_tokenizer_xverse,
         'lora_TM': LoRATM.xverse,
     },
     # mistral
     ModelType.mistral_7b: {
         'model_id': 'AI-ModelScope/Mistral-7B-v0.1',
-        'revision': 'v1.0.0',
         'lora_TM': LoRATM.mistral,
         'requires': ['transformers>=4.34']
     },
     ModelType.mistral_7b_chat: {
         'model_id': 'AI-ModelScope/Mistral-7B-Instruct-v0.1',
-        'revision': 'v1.0.0',
         'template': TemplateType.llama,
         'lora_TM': LoRATM.mistral,
         'requires': ['transformers>=4.34']
@@ -599,25 +556,21 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     # ziya
     ModelType.ziya2_13b: {
         'model_id': 'Fengshenbang/Ziya2-13B-Base',
-        'revision': 'v1.0.0',
         'lora_TM': LoRATM.ziya,
     },
     ModelType.ziya2_13b_chat: {
         'model_id': 'Fengshenbang/Ziya2-13B-Chat',
-        'revision': 'v1.0.0',
         'template': TemplateType.ziya,
         'lora_TM': LoRATM.ziya,
     },
     # other
     ModelType.polylm_13b: {
         'model_id': 'damo/nlp_polylm_13b_text_generation',
-        'revision': 'v1.0.3',
         'get_function': get_model_tokenizer_polylm,
         'lora_TM': LoRATM.polylm,
     },
     ModelType.seqgpt_560m: {
         'model_id': 'damo/nlp_seqgpt-560m',
-        'revision': 'v1.0.1',
         'template': TemplateType.default_generation,
         'lora_TM': LoRATM.bloom,
     },
