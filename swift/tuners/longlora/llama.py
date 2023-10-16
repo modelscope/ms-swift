@@ -239,9 +239,10 @@ def forward_noflashattn(
 
     group_size = int(q_len * group_size_ratio)
 
-    if q_len % group_size > 0:
-        raise ValueError('q_len %d should be divisible by group size %d.' %
-                         (q_len, group_size))
+    if q_len % group_size == 0:
+        group_size = int(q_len * group_size_ratio)
+    else:
+        group_size = sft_group_size
     num_group = q_len // group_size
 
     if self.config.pretraining_tp > 1:

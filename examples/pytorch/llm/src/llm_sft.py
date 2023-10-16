@@ -85,7 +85,7 @@ def llm_sft(args: SftArguments) -> None:
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
                     model_type=LongLoRAModelType.LLAMA,
-                    use_flash_attn=args.use_flash_attn)
+                    use_flash_attn=False)
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
         else:
@@ -122,7 +122,7 @@ def llm_sft(args: SftArguments) -> None:
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
-    data_collator = partial(data_collate_fn, tokenizer=tokenizer)
+    data_collator = partial(data_collate_fn, tokenizer=tokenizer, padding_to=args.max_length)
     print_example(train_dataset[0], tokenizer)
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)
