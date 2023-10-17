@@ -84,9 +84,9 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(model)
 
     # ### Loading Dataset
-    train_dataset, val_dataset = get_dataset(
-        args.dataset.split(','), args.dataset_test_ratio,
-        args.dataset_split_seed)
+    train_dataset, val_dataset = get_dataset(args.dataset,
+                                             args.dataset_test_ratio,
+                                             args.dataset_split_seed)
     if args.train_dataset_sample >= 0:
         args.train_dataset_sample = min(args.train_dataset_sample,
                                         len(train_dataset))

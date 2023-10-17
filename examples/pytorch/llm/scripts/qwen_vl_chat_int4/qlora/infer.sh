@@ -3,11 +3,11 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
-    --model_type qwen-vl-chat \
+    --model_type qwen-vl-chat-int4 \
     --sft_type lora \
     --template_type chatml \
-    --dtype bf16 \
-    --ckpt_dir "output/qwen-vl-chat/vx_xxx/checkpoint-xxx" \
+    --dtype fp16 \
+    --ckpt_dir "output/qwen-vl-chat-int4/vx_xxx/checkpoint-xxx" \
     --eval_human false \
     --dataset coco-en \
     --max_length 2048 \
