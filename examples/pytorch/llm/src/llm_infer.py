@@ -17,6 +17,7 @@ logger = get_logger()
 
 def merge_lora(args: InferArguments) -> None:
     assert args.sft_type == 'lora'
+    assert not args.model_type.endswith('int4'), 'int4 model is not supported'
     # ### Loading Model and Tokenizer
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')
