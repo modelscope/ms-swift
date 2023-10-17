@@ -82,7 +82,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model,
                                                      **model_kwargs)
-
+    # fix gradient_checkpointing bug
     if not hasattr(model, 'get_input_embeddings'):
         model.get_input_embeddings = MethodType(
             lambda self: self.model.embed_tokens, model)
@@ -90,7 +90,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 
 
 def patch_baichuan2(self, hidden_states):
-    # patch: baichuan2 lm_head
+    # patch: baichuan2 lm_head (fp32 bug)
     if self.training:
         norm_weight = F.normalize(self.weight).to(self.weight.dtype)
     elif self.first_flag:
