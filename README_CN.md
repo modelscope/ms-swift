@@ -75,14 +75,10 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.10.12: 支持mistral-7b系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
 - 🔥 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 2023.9.26: 支持xverse系列模型: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat. 对应的sh脚本可以查看`scripts/xverse_13b`.
 - 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat. 对应的sh脚本可以查看`scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.20: 支持在LoRA, QLoRA的方式训练后, 将其增量权重merge到基模型权重中, 并保存完整的模型权重, 方便用户的部署. 可以查看`infer.sh`中的命令行参数: `--merge_lora_and_save`.
 - 2023.9.18: 支持internlm-20b系列模型: internlm-20b, internlm-20b-chat. 对应的sh脚本可以查看`scripts/internlm_20b`, `scripts/internlm_20b_chat`.
 - 🔥 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
-- 🔥 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
-- 2023.9.5: 支持openbuddy-llama2-70b-chat模型. 对应的sh脚本可以查看`scripts/openbuddy_llama2_70b_chat`.
-- 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
+- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
 
 
 # 安装
