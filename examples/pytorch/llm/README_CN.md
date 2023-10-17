@@ -104,8 +104,18 @@ pip install -r requirements.txt -U
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
-- 如果脚本提供了非量化模型和int4模型的两个版本的qlora SFT版本, 推荐使用int4模型版本的脚本. 这可以节约磁盘空间, 甚至可以提高训练效果(如果int4模型使用`auto_gptq`量化).
+- 如果脚本提供了非量化模型和int4/int8模型的多个版本的qlora SFT版本, 推荐使用int4/int8模型版本的脚本. 这可以节约磁盘空间, 甚至可以提高训练效果(如果int4/int8模型使用`auto_gptq`量化).
 ```bash
+# 微调(qlora)+推理 qwen-7b-chat-int8, 需要16GB显存.
+# 推荐的实验环境: V100, A10, 3090
+bash scripts/qwen_7b_chat_int8/qlora/sft.sh
+bash scripts/qwen_7b_chat_int8/qlora/infer.sh
+
+# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat-int8, 需要2卡*19GB显存.
+# 推荐的实验环境: V100, A10, 3090
+bash scripts/qwen_7b_chat_int8/qlora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat_int8/qlora_ddp_ds/infer.sh
+
 # 微调(qlora)+推理 qwen-7b-chat-int4, 需要13GB显存.
 # 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat_int4/qlora/sft.sh

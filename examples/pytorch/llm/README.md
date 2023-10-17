@@ -103,19 +103,29 @@ Tips:
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save during inference, you need to set `--merge_lora_and_save true`.
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
-- If there are two versions of the qlora SFT script available, one with a non-quantized model and another with an int4 model, it is recommended to use the int4 model version. This can save disk space and even improve training effectiveness, especially if the int4 model uses `auto_gptq` quantization.
+- If the script provides multiple versions of qlora SFT with non-quantized models and int4/int8 models, it is recommended to use the script with the int4/int8 model version. This can save disk space and even improve training performance (if the int4/int8 models use auto_gptq quantization).
 ```bash
-# 微调(qlora)+推理 qwen-7b-chat-int4, 需要13GB显存.
-# 推荐的实验环境: V100, A10, 3090
+# sft(qlora) and infer qwen-7b-chat-int8, Requires 16GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
+bash scripts/qwen_7b_chat_int8/qlora/sft.sh
+bash scripts/qwen_7b_chat_int8/qlora/infer.sh
+
+# sft(qlora+ddp+deepspeed) and infer qwen-7b-chat-int8, Requires 2*19GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
+bash scripts/qwen_7b_chat_int8/qlora_ddp_ds/sft.sh
+bash scripts/qwen_7b_chat_int8/qlora_ddp_ds/infer.sh
+
+# sft(qlora) and infer qwen-7b-chat-int4, Requires 13GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat_int4/qlora/sft.sh
 bash scripts/qwen_7b_chat_int4/qlora/infer.sh
 
-# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat-int4, 需要2卡*16GB显存.
-# 推荐的实验环境: V100, A10, 3090
+# sft(qlora+ddp+deepspeed) and infer qwen-7b-chat-int4, Requires 2*16GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
 
-# sft lora and infer qwen-7b-chat, Requires 60GB GPU memory.
+# sft(lora) and infer qwen-7b-chat, Requires 60GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
