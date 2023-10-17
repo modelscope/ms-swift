@@ -94,7 +94,9 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
         gptq_quantization_config = get_quantization_config(model, 'gptq')
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             gptq_quantization_config)
-        linear_cls = (Linear4bit, AutoGPTQQuantLinear)
+        linear_cls = Linear4bit
+        if AutoGPTQQuantLinear is not None:
+            linear_cls = (Linear4bit, AutoGPTQQuantLinear)
     lora_module_names = set()
     for name, module in model.named_modules():
         if isinstance(module, linear_cls):

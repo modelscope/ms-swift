@@ -8,8 +8,8 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                        AutoTokenizer, GPTQConfig, Model, read_config,
-                        snapshot_download)
+                        AutoTokenizer, BitsAndBytesConfig, GPTQConfig, Model,
+                        read_config, snapshot_download)
 from torch import dtype as Dtype
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from transformers.utils.versions import require_version
@@ -112,6 +112,15 @@ def get_model_tokenizer_baichuan2_13b(model_dir: str,
     gradient_checkpointing = model_config.gradient_checkpointing
     if isinstance(gradient_checkpointing, (tuple, list)):
         model_config.gradient_checkpointing = gradient_checkpointing[0]
+    return get_model_tokenizer_baichuan2(model_dir, torch_dtype, load_model,
+                                         model_config, **model_kwargs)
+
+
+def get_model_tokenizer_baichuan2(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  load_model: bool = True,
+                                  model_config=None,
+                                  **model_kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      load_model, model_config,
                                                      **model_kwargs)
@@ -121,16 +130,26 @@ def get_model_tokenizer_baichuan2_13b(model_dir: str,
     return model, tokenizer
 
 
-def get_model_tokenizer_baichuan2_7b(model_dir: str,
-                                     torch_dtype: Dtype,
-                                     load_model: bool = True,
-                                     **model_kwargs):
-    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     load_model,
-                                                     **model_kwargs)
-    if model is not None:
-        model.lm_head.forward = MethodType(patch_baichuan2, model.lm_head)
+def get_model_tokenizer_baichuan2_int4(model_dir: str,
+                                       torch_dtype: Dtype,
+                                       load_model: bool = True,
+                                       **kwargs):
+    logger.info('use `model_config.quantization_config`, ignore bnb arguments')
+    kwargs.pop('quantization_config', None)
 
+    # fix device_map bug
+    import accelerate
+    _old_infer_auto_device_map = accelerate.infer_auto_device_map
+    device_map = kwargs.pop('device_map', None)
+    if device_map != 'auto':
+        accelerate.infer_auto_device_map = lambda *args, **kwargs: device_map
+    model, tokenizer = get_model_tokenizer_baichuan2(
+        model_dir, torch_dtype, load_model, device_map=device_map, **kwargs)
+    if device_map != 'auto':
+        accelerate.infer_auto_device_map = _old_infer_auto_device_map
+    model.train()
+    model._is_quantized_training_enabled = True
+    model.is_loaded_in_4bit = True
     return model, tokenizer
 
 
@@ -209,15 +228,14 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 load_model: bool = True,
                                 **kwargs):
-    if 'quantization_config' in kwargs:
+    if ('quantization_config' in kwargs
+            and isinstance(kwargs['quantization_config'], BitsAndBytesConfig)):
         # https://github.com/pytorch/pytorch/issues/58969
         kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
-    get_qwen_function = kwargs.pop('get_qwen_function',
-                                   get_model_tokenizer_qwen)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, load_model,
-                                         **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype,
+                                                load_model, **kwargs)
     if model is not None:
         first_drop = model.transformer.drop
         if first_drop.p == 0.:
@@ -237,7 +255,6 @@ def get_model_tokenizer_qwen_int4(model_dir: str,
 
     logger.info('use gptq, ignore bnb arguments')
     kwargs['quantization_config'] = GPTQConfig(bits=4, disable_exllama=True)
-    assert torch_dtype != torch.bfloat16, 'please use torch.float16'
 
     # fix quantlinear bug
     from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
@@ -246,8 +263,10 @@ def get_model_tokenizer_qwen_int4(model_dir: str,
         QuantLinear.__init__ = (lambda *args, **kwargs: _old_qlinear_init(
             *args, kernel_switch_threshold=1, **kwargs))
         QuantLinear.__init__._patching = True
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype,
-                                                load_model, **kwargs)
+    get_qwen_function = kwargs.pop('get_qwen_function',
+                                   get_model_tokenizer_qwen)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, load_model,
+                                         **kwargs)
     tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
@@ -272,6 +291,8 @@ class ModelType:
     baichuan2_7b_chat = 'baichuan2-7b-chat'
     baichuan2_13b = 'baichuan2-13b'
     baichuan2_13b_chat = 'baichuan2-13b-chat'
+    baichuan2_7b_chat_int4 = 'baichuan2-7b-chat-int4'
+    baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
     # chatglm2
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
@@ -354,14 +375,16 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
         'get_function': get_model_tokenizer_qwen_int4,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
-        'requires': ['auto_gptq>=0.4.2']
+        'requires': ['auto_gptq>=0.4.2'],
+        'torch_dtype': torch.float16,
     },
     ModelType.qwen_14b_chat_int4: {
         'model_id': 'qwen/Qwen-14B-Chat-Int4',
         'get_function': get_model_tokenizer_qwen_int4,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
-        'requires': ['auto_gptq>=0.4.2']
+        'requires': ['auto_gptq>=0.4.2'],
+        'torch_dtype': torch.float16,
     },
     # qwen-vl
     ModelType.qwen_vl: {
@@ -380,12 +403,14 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
         'qwen/Qwen-VL-Chat-Int4',
         'get_function':
         partial(
-            get_model_tokenizer_qwen_vl,
-            get_qwen_function=get_model_tokenizer_qwen_int4),
+            get_model_tokenizer_qwen_int4,
+            get_qwen_function=get_model_tokenizer_qwen_vl),
         'template':
         TemplateType.chatml,
         'lora_TM':
         LoRATM.qwen,
+        'torch_dtype':
+        torch.float16,
     },
     # baichuan
     ModelType.baichuan_7b: {
@@ -407,14 +432,21 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     },
     ModelType.baichuan2_7b: {
         'model_id': 'baichuan-inc/Baichuan2-7B-Base',
-        'get_function': get_model_tokenizer_baichuan2_7b,
+        'get_function': get_model_tokenizer_baichuan2,
         'lora_TM': LoRATM.baichuan,
     },
     ModelType.baichuan2_7b_chat: {
         'model_id': 'baichuan-inc/Baichuan2-7B-Chat',
         'template': TemplateType.baichuan,
-        'get_function': get_model_tokenizer_baichuan2_7b,
+        'get_function': get_model_tokenizer_baichuan2,
         'lora_TM': LoRATM.baichuan,
+    },
+    ModelType.baichuan2_7b_chat_int4: {
+        'model_id': 'baichuan-inc/Baichuan2-7B-Chat-4bits',
+        'template': TemplateType.baichuan,
+        'get_function': get_model_tokenizer_baichuan2_int4,
+        'lora_TM': LoRATM.baichuan,
+        'torch_dtype': torch.bfloat16,
     },
     ModelType.baichuan2_13b: {
         'model_id': 'baichuan-inc/Baichuan2-13B-Base',
@@ -426,6 +458,13 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
         'template': TemplateType.baichuan,
         'get_function': get_model_tokenizer_baichuan2_13b,
         'lora_TM': LoRATM.baichuan,
+    },
+    ModelType.baichuan2_13b_chat_int4: {
+        'model_id': 'baichuan-inc/Baichuan2-13B-Chat-4bits',
+        'template': TemplateType.baichuan,
+        'get_function': get_model_tokenizer_baichuan2_int4,
+        'lora_TM': LoRATM.baichuan,
+        'torch_dtype': torch.bfloat16,
     },
     # chatglm2
     ModelType.chatglm2_6b: {
@@ -582,18 +621,26 @@ def get_model_tokenizer(
         torch_dtype: Optional[Dtype] = None,
         load_model: bool = True,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizer]:
-    data = MODEL_MAPPING.get(model_type)
-    requires = data.get('requires', [])
+    model_info = MODEL_MAPPING.get(model_type)
+    requires = model_info.get('requires', [])
     for require in requires:
         require_version(require)
-    if data is None:
+    if model_info is None:
         raise ValueError(f'model_type: {model_type}')
 
-    model_id = data['model_id']
-    get_function = data.get('get_function', get_model_tokenizer_from_repo)
-    ignore_file_pattern = data.get('ignore_file_pattern', [])
-    if torch_dtype is None:
-        torch_dtype = data.get('torch_dtype', torch.float16)
+    model_id = model_info['model_id']
+    get_function = model_info.get('get_function',
+                                  get_model_tokenizer_from_repo)
+    ignore_file_pattern = model_info.get('ignore_file_pattern', [])
+    if 'torch_dtype' in model_info:
+        model_torch_dtype = model_info['torch_dtype']
+        if torch_dtype is None:
+            torch_dtype = model_torch_dtype
+        else:
+            assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
+    elif torch_dtype is None:
+        torch_dtype = torch.float16
+
     if 'device_map' not in kwargs:
         kwargs['device_map'] = 'auto'
 
@@ -603,12 +650,11 @@ def get_model_tokenizer(
             dist.barrier()
         model_dir = model_id
         if not os.path.exists(model_id):
-            revision = data.get('revision', 'master')
+            revision = model_info.get('revision', 'master')
             model_dir = snapshot_download(
                 model_id, revision, ignore_file_pattern=ignore_file_pattern)
         if is_dist() and is_local_master():
             dist.barrier()
-
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)
     assert tokenizer.eos_token is not None
