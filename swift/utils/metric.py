@@ -1,9 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from typing import Dict
+
 import jieba
 import numpy as np
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge.rouge import Rouge
+from torch import Tensor
+from transformers.trainer_utils import EvalPrediction
 
 from .logger import get_logger
 
@@ -52,3 +56,19 @@ def compute_nlg_metrics(prediction, tokenizer):
     for k, v in score_dict.items():
         score_dict[k] = float(np.mean(v))
     return score_dict
+
+
+def compute_acc_metrics(eval_prediction: EvalPrediction) -> Dict[str, Tensor]:
+    labels = eval_prediction.label_ids[..., 1:]
+    predictions = eval_prediction.predictions[..., :-1]
+    masks = labels != -100
+    predictions = predictions[masks]
+    labels = labels[masks]
+    acc = np.mean((predictions == labels).astype(np.float64))
+    return {'acc': acc}
+
+
+def preprocess_logits_for_acc_metrics(logits: Tensor,
+                                      labels: Tensor) -> Tensor:
+    preds = logits.argmax(dim=2)
+    return preds

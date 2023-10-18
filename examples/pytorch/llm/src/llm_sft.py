@@ -12,12 +12,13 @@ from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
 
 from swift import (LoraConfig, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
-from swift.utils import (check_json_format, compute_nlg_metrics,
-                         data_collate_fn, find_all_linear_for_lora,
-                         get_dist_setting, is_ddp_plus_mp, is_dist, is_master,
-                         parse_args, plot_images, print_example,
-                         print_model_info, seed_everything, show_layers,
-                         sort_by_max_length, stat_dataset)
+from swift.utils import (check_json_format, compute_acc_metrics,
+                         compute_nlg_metrics, data_collate_fn,
+                         find_all_linear_for_lora, get_dist_setting,
+                         is_ddp_plus_mp, is_dist, is_master, parse_args,
+                         plot_images, preprocess_logits_for_acc_metrics,
+                         print_example, print_model_info, seed_everything,
+                         show_layers, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -181,6 +182,15 @@ def llm_sft(args: SftArguments) -> None:
 
     logger.info(f'training_args: {training_args}')
 
+    trainer_kwargs = {}
+    if args.predict_with_generate:
+        trainer_kwargs['compute_metrics'] = partial(
+            compute_nlg_metrics, tokenizer=tokenizer)
+    else:
+        trainer_kwargs['compute_metrics'] = compute_acc_metrics
+        trainer_kwargs[
+            'preprocess_logits_for_metrics'] = preprocess_logits_for_acc_metrics
+
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
@@ -188,9 +198,7 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        compute_metrics=partial(compute_nlg_metrics, tokenizer=tokenizer)
-        if args.predict_with_generate else None,
-    )
+        **trainer_kwargs)
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):

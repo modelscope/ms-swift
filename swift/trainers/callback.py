@@ -36,10 +36,9 @@ class ProgressCallbackNew(ProgressCallback):
                logs=None,
                **kwargs):
         logs['global_step'] = state.global_step
-        if 'learning_rate' in logs:
-            logs['learning_rate'] = round(logs['learning_rate'], 8)
-        if 'eval_loss' in logs:
-            logs['eval_loss'] = round(logs['eval_loss'], 6)
+        for k, v in logs.items():
+            if isinstance(v, float):
+                logs[k] = round(logs[k], 8)
         if state.is_local_process_zero and self.training_bar is not None:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             with open(jsonl_path, 'a') as f:

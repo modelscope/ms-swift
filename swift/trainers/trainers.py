@@ -4,7 +4,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
@@ -153,6 +153,44 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             labels = None
 
         return None, generated_tokens, labels
+
+    def compute_loss(self, model, inputs, return_outputs=None):
+        if not hasattr(self, '_metrics_log'):
+            self._metrics_log = {}
+        loss, outputs = super().compute_loss(model, inputs, True)
+        preds = outputs.logits.argmax(dim=2)[..., :-1]
+        labels = inputs['labels'][..., 1:]
+        masks = labels != -100
+        acc: Tensor = (preds[masks] == labels[masks]).float().mean()
+        if 'acc' not in self._metrics_log:
+            self._metrics_log['acc'] = torch.tensor(0.).to(self.args.device)
+        self._metrics_log['acc'] += acc / self.args.gradient_accumulation_steps
+        return (loss, outputs) if return_outputs else loss
+
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,
+                                 ignore_keys_for_eval):
+        if self.control.should_log:
+            self.control.should_log = False
+            logs: Dict[str, float] = {}
+            metrics_log = {'loss': tr_loss}  # loss first
+            metrics_log.update(self._metrics_log)
+            self._metrics_log = {}
+            for k, v in metrics_log.items():
+                # all_gather + mean() to get average loss over all processes
+                v_scalar = self._nested_gather(v).mean().item()
+                if k == 'loss':
+                    self._total_loss_scalar += v_scalar
+                logs[k] = round(
+                    v_scalar /
+                    (self.state.global_step - self._globalstep_last_logged), 8)
+            logs['learning_rate'] = self._get_learning_rate()
+
+            tr_loss -= tr_loss
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+            self.log(logs)
+        super()._maybe_log_save_evaluate(tr_loss, model, trial, epoch,
+                                         ignore_keys_for_eval)
 
 
 # monkey patching
