@@ -124,7 +124,7 @@ def llm_sft(args: SftArguments) -> None:
         repetition_penalty=args.repetition_penalty)
     logger.info(f'generation_config: {generation_config}')
     training_args = Seq2SeqTrainingArguments(
-        output_dir=output_dir,
+        output_dir=args.output_dir,
         do_train=True,
         do_eval=True,
         evaluation_strategy='steps',
@@ -194,7 +194,7 @@ def llm_sft(args: SftArguments) -> None:
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
-            fpath = os.path.join(output_dir, fname)
+            fpath = os.path.join(args.output_dir, fname)
             with open(fpath, 'w') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),
