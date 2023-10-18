@@ -42,7 +42,6 @@ class SftArguments:
     resume_from_checkpoint: Optional[str] = None
     dtype: Optional[str] = field(
         default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
-    ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -123,6 +122,7 @@ class SftArguments:
             'help':
             "This parameter is used only when model_type.startswith('qwen')"
         })
+    ignore_args_error: bool = False  # True: notebook compatibility
 
     # generation config
     max_new_tokens: int = 2048
@@ -226,7 +226,6 @@ class InferArguments:
     seed: int = 42
     dtype: Optional[str] = field(
         default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
-    ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -258,6 +257,7 @@ class InferArguments:
             'help':
             "This parameter is used only when model_type.startswith('qwen')"
         })
+    ignore_args_error: bool = False  # True: notebook compatibility
     use_streamer: bool = True
     merge_lora_and_save: bool = False
     save_generation_config: bool = True

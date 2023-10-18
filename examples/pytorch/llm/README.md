@@ -196,7 +196,9 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 
 
 ### sft.sh Command Line Arguments
-- `--model_type`: Represents the chosen model type, default is `'qwen-7b-chat'`. Available `model_type` can be checked using `MODEL_MAPPING.keys()`.
+- `--model_type`: Indicates the selected model type. The default value is `None`, which means that if `model_id_or_path` is not specified, `'qwen-7b-chat'` will be chosen. If `model_id_or_path` is specified, the `model_type` will be inferred based on its content and `MODEL_MAPPING`. These two parameters cannot be specified simultaneously. Available `model_type` options can be found in `MODEL_MAPPING.keys()`.
+- `--model_id_or_path`: Represents the `model_id` of the model in the ModelScope Hub or the local model directory (`model_dir`). The default value is `None`. It is recommended to use the `model_type` option to specify the model.
+- `--model_revision`: Represents the version number of the `model_id` corresponding to the model in the ModelScope Hub. The default value is `'master'`. This parameter is ignored if `model_id_or_path` is None or it refers to a local model directory.
 - `--sft_type`: Represents the fine-tuning method, default is `'lora'`. The possible values are: 'lora', 'full'. If you want to use lora or qlora, you need to select `--sft_type lora`. For qlora, an additional setting `--quantization_bit 4` is required. If you want to use full-parameter fine-tuning, you need to select `--sft_type full`.
 - `--tuner_backend`: Represents the backend support for lora and qlora, default is `'swift'`. The possible values are: 'swift', 'peft'.
 - `--template_type`: Represents the type of dialogue template used, default is `None`, which means it retrieves the template based on `model_type` from `MODEL_MAPPING`. Available `template_type` can be checked using `TEMPLATE_MAPPING.keys()` in `utils/preprocess.py`. By modifying it, you can support pretrain, text-generation-style SFT, and various chat-type SFT.
@@ -204,8 +206,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--ddp_backend`: Represents the backend support for distributed training, default is `'nccl'`. The possible values are: 'nccl', 'gloo', 'mpi', 'ccl'.
 - `--seed`: Global seed value, default is 42. In distributed training, to avoid each process using the same dropout, etc., we set `seed=seed+rank`.
 - `--resume_from_checkpoint`: Used for resuming training from a checkpoint, default is `None`. You can set it to the path of the checkpoint, for example: `'output/qwen-7b-chat/vx_xxx/checkpoint-xxx'`, to resume training from that checkpoint.
-- `--dtype`: torch_dtype when loading the base model, default is `'bf16'`. The possible values are: 'bf16', 'fp16', 'fp32'.
-- `--ignore_args_error`: Whether to ignore errors raised by command-line argument mismatch, default is `False`. If you need to copy the code to a notebook for execution, you should set it to True.
+- `--dtype`: The torch_dtype used when loading the base model, default is `None`, which means automatic selection of the dtype: if the machine does not support bf16, fp16 will be used instead. If the `MODEL_MAPPING` specifies a torch_dtype for the corresponding model, it will be used; otherwise, bf16 will be used. The available values are: 'bf16', 'fp16', 'fp32'.
 - `--dataset`: Used to select the training dataset, default is `'blossom-math-zh'`. Available datasets can be checked using `DATASET_MAPPING.keys()`. If you want to use multiple datasets for training, you can separate them using ',' or ' ', for example: `alpaca-en,alpaca-zh` or `alpaca-en alpaca-zh`.
 - `--dataset_seed`: Used to specify the seed for dataset processing. The default value is `42`. It is present in the form of `random_state` and does not affect the global seed.
 - `--dataset_test_ratio`: Specifies the ratio for splitting the sub-dataset into training and validation sets, default is `0.01`. This parameter is ignored if the sub-dataset has already been split into training and validation sets. When multiple sub-datasets are specified in `dataset` and the function for retrieving the sub-dataset does not perform the split (i.e., returns `HfDataset` instead of `Tuple[HfDataset, HfDataset]`), we need to split the sub-dataset. Finally, we concatenate the training and validation parts of these sub-datasets to generate the training and validation sets for the complete fine-tuning dataset.
@@ -247,6 +248,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--hub_token`: The SDK token required for pushing to the ModelScope Hub. You can obtain it from https://modelscope.cn/my/myaccesstoken. The default value is `None`, which retrieves the token from the environment variable `MODELSCOPE_API_TOKEN`. This parameter only takes effect when `push_to_hub` is set to True.
 - `--test_oom_error`: Used to check if training will encounter an out-of-memory (OOM) error. The default value is `False`. If set to True, the training set will be sorted in reverse order of `max_length` to facilitate OOM testing. This parameter is generally used for testing, so please use it with caution.
 - `--use_flash_attn`: Whether to use flash attention. The default value is `None`, which is set to 'auto'. This parameter only takes effect when `model_type.startswith('qwen')` is True. For installation steps of flash attention, please refer to https://github.com/Dao-AILab/flash-attention.
+- `--ignore_args_error`: Whether to ignore errors raised by command-line argument mismatch, default is `False`. If you need to copy the code to a notebook for execution, you should set it to True.
 - `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Whether to use sampling during generation. The default value is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
@@ -256,14 +258,16 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 
 
 ### infer.sh Command Line Arguments
+- `--model_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--model_id_or_path`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. It is recommended to use the `model_type` approach for specification.
+- `--model_revision`: Default value is `'master'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `model_id_or_path` is `None` or if it refers to a local model directory.
 - `--model_type`: Default value is `'qwen-7b-chat'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--sft_type`: Default value is `'lora'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--template_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--ckpt_dir`: Required field, value is the checkpoint path saved during the SFT phase, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx'`.
 - `--eval_human`: Whether to evaluate using the validation set from the dataset or manually evaluate the model. Default value is `False`. This allows us to get an intuitive understanding of the model's performance after fine-tuning.
 - `--seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
-- `--dtype`: Default value is `'bf16'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
-- `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--dataset`: Default value is `'blossom-math-zh'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
@@ -281,6 +285,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--top_p`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
 - `--repetition_penalty`: Default value is `1.0`.
 - `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--use_streamer`: Whether to use streaming output. Default value is `True`.
 - `--merge_lora_and_save`: Whether to merge the lora weights into the base model and save the complete weights. Default value is `False`. The weights will be saved in a directory named `checkpoint-xxx-merged` at the same level as `ckpt_dir`, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`.
 - `--save_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file. Default value is `True`.
