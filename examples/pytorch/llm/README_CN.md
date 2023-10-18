@@ -208,8 +208,8 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--dtype`: 基模型载入时的torch_dtype, 默认为`'bf16'`. 你可以选择的值包括: 'bf16', 'fp16', 'fp32'.
 - `--ignore_args_error`: 是否忽略命令行传参错误抛出的Error, 默认为`False`. 如果需要拷贝代码到notebook中运行, 需要设置成True.
 - `--dataset`: 用于选择训练的数据集, 默认为`'blossom-math-zh'`. 可以选择的数据集可以查看`DATASET_MAPPING.keys()`. 如果需要使用多个数据集进行训练, 你可以使用','或者' '进行分割, 例如: `alpaca-en,alpaca-zh` or `alpaca-en alpaca-zh`.
-- `--dataset_split_seed`: 用于指定子数据集切分成训练集和验证集的seed, 默认为`42`. 如果子数据集已经进行了训练集和验证集的切分, 则此参数无效. 当`dataset`中指定了多个子数据集时, 且获取子数据集的函数没有进行训练集和验证集的切分(即返回的是`HfDataset`而不是`Tuple[HfDataset, HfDataset]`), 则我们需要对该子数据集进行切分. 最后, 我们会将这些子数据集的训练集和验证集部分分别进行拼接, 生成完整微调数据集的训练集和验证集.
-- `--dataset_test_ratio`: 用于指定子数据集切分成训练集和验证集的比例, 默认为`0.01`. 如果子数据集已经进行了训练集和验证集的切分, 则此参数无效. 更多的介绍可以参考`dataset_split_seed`的部分.
+- `--dataset_seed`: 用于指定数据集处理的seed, 默认为`42`. 以random_state形式存在, 不影响全局seed.
+- `--dataset_test_ratio`: 用于指定子数据集切分成训练集和验证集的比例, 默认为`0.01`. 如果子数据集已经进行了训练集和验证集的切分, 则此参数无效. 当`dataset`中指定了多个子数据集时, 且获取子数据集的函数没有进行训练集和验证集的切分(即返回的是`HfDataset`而不是`Tuple[HfDataset, HfDataset]`), 则我们需要对该子数据集进行切分. 最后, 我们会将这些子数据集的训练集和验证集部分分别进行拼接, 生成完整微调数据集的训练集和验证集.
 - `--train_dataset_sample`: 对完整训练集进行采样, 默认是`20000`, 用于加快训练的速度. 该参数是为了避免数据集过大, 单个epoch训练时间过长的问题. LoRA的收敛通常较快, 不需要过多数据样本的微调. 如果你指定为`-1`, 则使用完整的训练集进行训练, 该情况一般出现在全参数微调的设置下.
 - `--system`: 对话模板中使用的system, 默认为`'you are a helpful assistant!'`.
 - `--max_length`: token的最大长度, 默认为`2048`. 可以避免个别过长的数据样本造成OOM的问题. 如果某数据样本长度超过max_length, 我们会切除最前面的token: `input_ids[-max_length:]`.
@@ -248,7 +248,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--hub_token`: 推送时需要的SDK token. 可以从[https://modelscope.cn/my/myaccesstoken](https://modelscope.cn/my/myaccesstoken)获取, 默认为`None`, 即从环境变量`MODELSCOPE_API_TOKEN`中获取. 该参数只有在`push_to_hub`设置为True时才生效.
 - `--test_oom_error`: 用于检测训练是否会发生OOM, 默认为`False`. 如果设置为True, 则会将训练集按max_length倒序进行排列, 方便OOM的测试. 该参数一般用于测试, 请谨慎设置.
 - `--use_flash_attn`: 是否使用flash attn, 默认为`None`, 即为'auto'. 该参数只在`model_type.startswith('qwen')`的情况下才生效. 安装flash_attn的步骤可以查看[https://github.com/Dao-AILab/flash-attention](https://github.com/Dao-AILab/flash-attention)
-- `--max_new_tokens`: 默认为`1024`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
+- `--max_new_tokens`: 默认为`2048`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--do_sample`: 默认为`True`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--temperature`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--top_k`: 默认为`20`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
@@ -266,7 +266,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--dtype`: 默认值为`'bf16'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--ignore_args_error`: 默认值为`False`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--dataset`: 默认值为`'blossom-math-zh'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
-- `--dataset_split_seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
+- `--dataset_seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_test_ratio`: 默认值为`0.01`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--show_dataset_sample`: 表示想要评估和展示的验证集的数量, 默认值为`20`. 该参数只有在`eval_human`设置为False时才生效.
 - `--system`: 默认值为`'you are a helpful assistant!'`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
@@ -275,7 +275,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--bnb_4bit_comp_dtype`: 默认值为`None`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_quant_type`: 默认值为`'nf4'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_use_double_quant`: 默认值为`True`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
-- `--max_new_tokens`: 生成新token的最大数量, 默认值为`1024`.
+- `--max_new_tokens`: 生成新token的最大数量, 默认值为`2048`.
 - `--do_sample`: 是使用贪婪生成的方式还是采样生成的方式, 默认值为`True`.
 - `--temperature`: 默认值为`0.9`. 该参数只有在`do_sample`设置为True时才生效.
 - `--top_k`: 默认值为`20`. 该参数只有在`do_sample`设置为True时才生效.

@@ -42,7 +42,7 @@ class SftArguments:
     dataset: Optional[List[str]] = field(
         default=None,
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_split_seed: int = 42
+    dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
@@ -120,7 +120,7 @@ class SftArguments:
         })
 
     # generation config
-    max_new_tokens: int = 1024
+    max_new_tokens: int = 2048
     do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 20
@@ -237,7 +237,7 @@ class InferArguments:
     dataset: Optional[List[str]] = field(
         default=None,
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_split_seed: int = 42
+    dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 20
     system: str = 'you are a helpful assistant!'
@@ -250,7 +250,7 @@ class InferArguments:
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
 
-    max_new_tokens: int = 1024
+    max_new_tokens: int = 2048
     do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 20
