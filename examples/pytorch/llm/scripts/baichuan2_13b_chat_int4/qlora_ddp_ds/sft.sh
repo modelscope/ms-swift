@@ -34,7 +34,7 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id baichuan2-13b-chat-int4-lora \
+    --hub_model_id baichuan2-13b-chat-int4-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \

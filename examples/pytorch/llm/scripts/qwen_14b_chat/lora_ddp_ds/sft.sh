@@ -35,7 +35,7 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn true \
     --push_to_hub false \
-    --hub_model_id qwen-14b-chat-qlora \
+    --hub_model_id qwen-14b-chat-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
