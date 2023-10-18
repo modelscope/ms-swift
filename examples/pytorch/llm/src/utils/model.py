@@ -190,17 +190,19 @@ def get_model_tokenizer_polylm(model_dir: str,
         **model_kwargs)
 
 
+dtype_mapping = {
+    torch.float16: 'fp16',
+    torch.bfloat16: 'bf16',
+    torch.float32: 'fp32'
+}
+
+
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              load_model: bool = True,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
-    dtype_mapping = {
-        torch.float16: 'fp16',
-        torch.bfloat16: 'bf16',
-        torch.float32: 'fp32'
-    }
     k_true = dtype_mapping[torch_dtype]
     for k in dtype_mapping.values():
         v = False

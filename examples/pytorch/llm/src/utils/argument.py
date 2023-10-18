@@ -10,9 +10,10 @@ from torch import dtype as Dtype
 
 from swift import HubStrategy, get_logger
 from swift.hub import HubApi, ModelScopeConfig
-from swift.utils import get_dist_setting, is_dist
+from swift.utils import (add_version_to_work_dir, broadcast_string,
+                         get_dist_setting, is_dist, is_master)
 from .dataset import DATASET_MAPPING, DatasetName
-from .model import MODEL_MAPPING, ModelType
+from .model import MODEL_MAPPING, ModelType, dtype_mapping
 from .preprocess import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
@@ -38,8 +39,8 @@ class SftArguments:
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
-    dtype: str = field(
-        default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: Optional[str] = field(
+        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: Optional[List[str]] = field(
@@ -139,12 +140,7 @@ class SftArguments:
         if self.model_type is None:
             self.model_type = ModelType.qwen_7b_chat_int4
 
-        if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
-            logger.info(
-                'Your machine does not support bf16, automatically using fp16.'
-            )
-            self.dtype = 'fp16'
-
+        self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         if is_dist():
             rank, local_rank, _, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
@@ -194,7 +190,6 @@ class SftArguments:
         if self.lora_target_modules is None:
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_TM']
-        self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         if self.bnb_4bit_comp_dtype is None:
             self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
@@ -248,8 +243,8 @@ class InferArguments:
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
-    dtype: str = field(
-        default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: Optional[str] = field(
+        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
     dataset: Optional[List[str]] = field(
@@ -295,11 +290,7 @@ class InferArguments:
         if self.model_type is None:
             self.model_type = ModelType.qwen_7b_chat_int4
 
-        if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
-            logger.info(
-                'Your machine does not support bf16, automatically using fp16.'
-            )
-            self.dtype = 'fp16'
+        self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
                 'template', TemplateType.default)
@@ -307,7 +298,6 @@ class InferArguments:
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
 
-        self.torch_dtype, _, _ = select_dtype(self)
         if self.bnb_4bit_comp_dtype is None:
             self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
@@ -317,21 +307,27 @@ class InferArguments:
             self.use_flash_attn = 'auto'
 
 
-DTYPE_MAPPING = {
-    'fp16': torch.float16,
-    'bf16': torch.bfloat16,
-    'fp32': torch.float32
-}
+dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    dtype = args.dtype
-    torch_dtype = DTYPE_MAPPING[dtype]
+    if args.dtype is None and not torch.cuda.is_bf16_supported():
+        args.dtype = 'fp16'
+    if args.dtype is None and (args.model_type.endswith('int4')
+                               or args.model_type.endswith('int8')):
+        model_torch_dtype = MODEL_MAPPING[args.model_type].get(
+            'torch_dtype', None)
+        if model_torch_dtype is not None:
+            args.dtype = dtype_mapping[model_torch_dtype]
+    if args.dtype is None:
+        args.dtype = 'bf16'
+
+    torch_dtype = dtype_mapping_reversed[args.dtype]
 
     assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
     if torch_dtype == torch.float16:
-        if isinstance(args, TrainArguments) and args.sft_type == 'full':
+        if isinstance(args, SftArguments) and args.sft_type == 'full':
             torch_dtype = torch.float32
             logger.warning('Setting torch_dtype: torch.float32')
         fp16, bf16 = True, False
@@ -348,7 +344,7 @@ def select_dtype(
 def select_bnb(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
     quantization_bit = args.quantization_bit
-    bnb_4bit_compute_dtype = DTYPE_MAPPING[args.bnb_4bit_comp_dtype]
+    bnb_4bit_compute_dtype = dtype_mapping_reversed[args.bnb_4bit_comp_dtype]
     assert bnb_4bit_compute_dtype in {
         torch.float16, torch.bfloat16, torch.float32
     }

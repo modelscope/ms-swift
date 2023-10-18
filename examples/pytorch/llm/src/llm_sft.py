@@ -12,8 +12,7 @@ from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
 
 from swift import (LoraConfig, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
-from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         check_json_format, compute_nlg_metrics,
+from swift.utils import (check_json_format, compute_nlg_metrics,
                          data_collate_fn, find_all_linear_for_lora,
                          get_dist_setting, is_ddp_plus_mp, is_dist, is_master,
                          parse_args, plot_images, print_example,
