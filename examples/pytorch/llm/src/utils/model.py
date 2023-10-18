@@ -645,8 +645,6 @@ def get_model_tokenizer(
     requires = model_info.get('requires', [])
     for require in requires:
         require_version(require)
-    if model_info is None:
-        raise ValueError(f'model_type: {model_type}')
 
     model_id_or_path = model_info['model_id_or_path']
     get_function = model_info.get('get_function',

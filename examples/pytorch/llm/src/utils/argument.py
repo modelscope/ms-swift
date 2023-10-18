@@ -7,6 +7,7 @@ import json
 import torch
 import torch.distributed as dist
 from torch import dtype as Dtype
+from transformers.utils.versions import require_version
 
 from swift import HubStrategy, get_logger
 from swift.hub import HubApi, ModelScopeConfig
@@ -134,11 +135,11 @@ class SftArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
-        assert self.model_type is None or self.model_id_or_path is None
-        if self.model_id_or_path is not None:
-            set_model_type(self)
-        if self.model_type is None:
-            self.model_type = ModelType.qwen_7b_chat_int4
+        set_model_type(self)
+
+        self.output_dir = os.path.join(self.output_dir, self.model_type)
+        if is_master():
+            self.output_dir = add_version_to_work_dir(self.output_dir)
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         if is_dist():
@@ -152,6 +153,8 @@ class SftArguments:
 
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
+            # Make sure to set the same output_dir when using DDP.
+            self.output_dir = broadcast_string(self.output_dir)
 
         if self.sft_type == 'lora':
             if self.learning_rate is None:
@@ -180,35 +183,13 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        self.output_dir = os.path.join(self.output_dir, self.model_type)
-        if is_master():
-            self.output_dir = add_version_to_work_dir(self.output_dir)
-        if is_dist():
-            # Make sure to set the same output_dir when using DDP.
-            self.output_dir = broadcast_string(self.output_dir)
-
         if self.lora_target_modules is None:
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_TM']
-        if self.bnb_4bit_comp_dtype is None:
-            self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
-        if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
-            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-        if self.push_to_hub:
-            api = HubApi()
-            if self.hub_token is None:
-                self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-            if self.hub_token is not None:
-                api.login(self.hub_token)
-            else:
-                assert ModelScopeConfig.get_token(
-                ) is not None, 'Please enter hub_token'
-            logger.info('hub login successful!')
-
+        prepare_push_ms_hub(self)
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
         self.train_sampler_random = not self.test_oom_error
@@ -284,11 +265,7 @@ class InferArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
-        assert self.model_type is None or self.model_id_or_path is None
-        if self.model_id_or_path is not None:
-            set_model_type(self)
-        if self.model_type is None:
-            self.model_type = ModelType.qwen_7b_chat_int4
+        set_model_type(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
@@ -298,8 +275,6 @@ class InferArguments:
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
 
-        if self.bnb_4bit_comp_dtype is None:
-            self.bnb_4bit_comp_dtype = self.dtype
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
@@ -343,6 +318,9 @@ def select_dtype(
 
 def select_bnb(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    if args.bnb_4bit_comp_dtype is None:
+        args.bnb_4bit_comp_dtype = args.dtype
+
     quantization_bit = args.quantization_bit
     bnb_4bit_compute_dtype = dtype_mapping_reversed[args.bnb_4bit_comp_dtype]
     assert bnb_4bit_compute_dtype in {
@@ -365,19 +343,45 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
-    model_mapping_reversed = {
-        v['model_id_or_path']: k
-        for k, v in MODEL_MAPPING.items()
-    }
-    model_id_or_path = args.model_id_or_path
-    if model_id_or_path in model_mapping_reversed:
-        args.model_type = model_mapping_reversed[model_id_or_path]
-    else:
-        args.model_type = 'custom'
-        MODEL_MAPPING['custom'] = {
-            'model_id_or_path': model_id_or_path,
-            'lora_TM': ['ALL']
+    assert args.model_type is None or args.model_id_or_path is None
+    if args.model_id_or_path is not None:
+        model_mapping_reversed = {
+            v['model_id_or_path']: k
+            for k, v in MODEL_MAPPING.items()
         }
-        logger.info("Setting args.model_type: 'custom'")
-        logger.info(
-            f"Setting MODEL_MAPPING['custom']: {MODEL_MAPPING['custom']}")
+        model_id_or_path = args.model_id_or_path
+        if model_id_or_path in model_mapping_reversed:
+            args.model_type = model_mapping_reversed[model_id_or_path]
+            MODEL_MAPPING[args.model_type]['revision'] = model_revision
+        else:
+            args.model_type = 'custom'
+            MODEL_MAPPING['custom'] = {
+                'model_id_or_path': model_id_or_path,
+                'lora_TM': ['ALL']
+            }
+            logger.info("Setting args.model_type: 'custom'")
+            logger.info(
+                f"Setting MODEL_MAPPING['custom']: {MODEL_MAPPING['custom']}")
+
+    if args.model_type is None:
+        args.model_type = ModelType.qwen_7b_chat
+    model_info = MODEL_MAPPING.get(args.model_type)
+    requires = model_info.get('requires', [])
+    for require in requires:
+        require_version(require)
+
+
+def prepare_push_ms_hub(args: SftArguments) -> None:
+    if args.hub_model_id is None:
+        args.hub_model_id = f'{args.model_type}-{args.sft_type}'
+        logger.info(f'Setting hub_model_id: {args.hub_model_id}')
+    if args.push_to_hub:
+        api = HubApi()
+        if args.hub_token is None:
+            args.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+        if args.hub_token is not None:
+            api.login(args.hub_token)
+        else:
+            assert ModelScopeConfig.get_token(
+            ) is not None, 'Please enter hub_token'
+        logger.info('hub login successful!')
