@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import TextStreamer

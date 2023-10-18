@@ -172,8 +172,8 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ### Introduction to MODEL_MAPPING (Model Expansion)
 `MODEL_MAPPING` is defined in `utils/model.py` and is used to load various types of base models. If you need to **expand the models**, you can add them here. The key represents the unique ID of the model, and the value represents the model configuration. The configuration includes the following:
 
-- `model_id`: Required. It represents the `model_id` in the ModelScope Hub or the local model directory.
-- `revision`: Used to specify the version number of the model, default is 'master'. This parameter is ignored if the model_id is a local model directory.
+- `model_id_or_path`: Required. It represents the `model_id` in the ModelScope Hub or the local model directory (`model_dir`).
+- `revision`: Used to specify the version number of the model, default is 'master'. This parameter is ignored if the `model_id_or_path` is a local model directory.
 - `get_function`: A function to get the model and tokenizer. By default, it uses `get_model_tokenizer_from_repo` to return the model and tokenizer. If you need to set `flash_attn` or patch the model code, etc., you can customize it.
 - `lora_TM`: The default `lora_target_modules` used. In our settings, it is set to `qkv`.
 - `template`: The default chat template used, such as chatml, baichuan, etc. If not set, the `default` chat template is used.

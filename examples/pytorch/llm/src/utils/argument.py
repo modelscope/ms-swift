@@ -20,9 +20,12 @@ logger = get_logger()
 
 @dataclass
 class SftArguments:
-    model_type: str = field(
-        default=ModelType.qwen_7b_chat,
-        metadata={'choices': list(MODEL_MAPPING.keys())})
+    # You can specify the model by either using the model_type or model_id_or_path.
+    model_type: Optional[str] = field(
+        default=None, metadata={'choices': list(MODEL_MAPPING.keys())})
+    model_id_or_path: Optional[str] = None
+    model_revision: str = 'master'
+
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     tuner_bankend: str = field(
@@ -130,11 +133,18 @@ class SftArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
+        assert self.model_type is None or self.model_id_or_path is None
+        if self.model_id_or_path is not None:
+            set_model_type(self)
+        if self.model_type is None:
+            self.model_type = ModelType.qwen_7b_chat_int4
+
         if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
             logger.info(
                 'Your machine does not support bf16, automatically using fp16.'
             )
             self.dtype = 'fp16'
+
         if is_dist():
             rank, local_rank, _, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
@@ -175,6 +185,11 @@ class SftArguments:
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         self.output_dir = os.path.join(self.output_dir, self.model_type)
+        if is_master():
+            self.output_dir = add_version_to_work_dir(self.output_dir)
+        if is_dist():
+            # Make sure to set the same output_dir when using DDP.
+            self.output_dir = broadcast_string(self.output_dir)
 
         if self.lora_target_modules is None:
             self.lora_target_modules = MODEL_MAPPING[
@@ -219,9 +234,12 @@ class SftArguments:
 
 @dataclass
 class InferArguments:
-    model_type: str = field(
-        default=ModelType.qwen_7b_chat,
-        metadata={'choices': list(MODEL_MAPPING.keys())})
+    # You can specify the model by either using the model_type or model_id_or_path.
+    model_type: Optional[str] = field(
+        default=None, metadata={'choices': list(MODEL_MAPPING.keys())})
+    model_id_or_path: Optional[str] = None
+    model_revision: str = 'master'
+
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     template_type: Optional[str] = field(
@@ -271,6 +289,12 @@ class InferArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
+        assert self.model_type is None or self.model_id_or_path is None
+        if self.model_id_or_path is not None:
+            set_model_type(self)
+        if self.model_type is None:
+            self.model_type = ModelType.qwen_7b_chat_int4
+
         if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
             logger.info(
                 'Your machine does not support bf16, automatically using fp16.'
@@ -307,6 +331,9 @@ def select_dtype(
 
     assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
     if torch_dtype == torch.float16:
+        if isinstance(args, TrainArguments) and args.sft_type == 'full':
+            torch_dtype = torch.float32
+            logger.warning('Setting torch_dtype: torch.float32')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
         support_bf16 = torch.cuda.is_bf16_supported()
@@ -335,7 +362,26 @@ def select_bnb(
     return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
 
 
-def handle_compatibility(args: Union[SftArguments, InferArguments]):
+def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
     if args.dataset is not None and len(
             args.dataset) == 1 and ',' in args.dataset[0]:
         args.dataset = args.dataset[0].split(',')
+
+
+def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
+    model_mapping_reversed = {
+        v['model_id_or_path']: k
+        for k, v in MODEL_MAPPING.items()
+    }
+    model_id_or_path = args.model_id_or_path
+    if model_id_or_path in model_mapping_reversed:
+        args.model_type = model_mapping_reversed[model_id_or_path]
+    else:
+        args.model_type = 'custom'
+        MODEL_MAPPING['custom'] = {
+            'model_id_or_path': model_id_or_path,
+            'lora_TM': ['ALL']
+        }
+        logger.info("Setting args.model_type: 'custom'")
+        logger.info(
+            f"Setting MODEL_MAPPING['custom']: {MODEL_MAPPING['custom']}")

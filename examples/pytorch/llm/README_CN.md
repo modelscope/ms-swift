@@ -173,7 +173,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ### MODEL_MAPPING 介绍 (模型拓展)
 `MODEL_MAPPING`定义在`utils/model.py`中, 用于加载各种类型的基模型. 如果你需要**拓展模型**, 你可以在里面进行添加. 其中key表示模型的唯一id, value表示模型的配置. 配置内容如下.
 
-- `model_id`: 必填项. 表示模型在ModelScope Hub中的model_id, 或者是本地的模型目录.
+- `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录(`model_dir`).
 - `revision`: 用于指定模型的版本号, 默认使用'master'. 如果model_id是本地的模型目录, 则该参数失效.
 - `get_function`: 获取model和tokenizer的函数, 默认使用`get_model_tokenizer_from_repo`, 返回model和tokenizer. 如果需要设置flash_attn或对模型代码打补丁等, 则可以通过自定义来实现它.
 - `lora_TM`: 默认使用的lora_target_modules, 在我们的设置中, 会将其设置qkv.

@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from functools import partial
 
 import json
@@ -116,22 +115,6 @@ def llm_sft(args: SftArguments) -> None:
     stat_dataset(val_dataset)
 
     # ### Setting training_args
-    output_dir = None
-    if is_master():
-        output_dir = add_version_to_work_dir(args.output_dir)
-    if is_dist():
-        # Make sure to set the same output_dir when using DDP.
-        output_dir = broadcast_string(output_dir)
-    # check ms-swift version
-    parameters = inspect.signature(
-        Seq2SeqTrainingArguments.__init__).parameters
-    for k in ['only_save_model', 'train_sampler_random']:
-        if k not in parameters:
-            raise ValueError(
-                f'The `{k}` parameter is invalid. '
-                'You can resolve this warning by upgrading ms-swift or installing from source.'
-            )
-    # training_args
     generation_config = GenerationConfig(
         do_sample=args.do_sample,
         max_new_tokens=args.max_new_tokens,
