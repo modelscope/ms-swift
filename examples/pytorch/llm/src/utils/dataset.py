@@ -10,6 +10,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
+from numpy.random import RandomState
 from tqdm.auto import tqdm
 
 from swift.utils import get_seed
@@ -751,12 +752,14 @@ DATASET_MAPPING: Dict[str, GetDatasetFunction] = {
 def get_dataset(
     dataset_name_list: List[str],
     dataset_test_ratio: float = 0.,
-    dataset_split_seed: int = 42,
+    dataset_seed: Union[RandomState, int] = 42,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
-    random_state = np.random.RandomState(dataset_split_seed)
+    random_state = dataset_seed
+    if isinstance(dataset_seed, int):
+        random_state = RandomState(dataset_seed)
     for dataset_name in dataset_name_list:
         get_function = DATASET_MAPPING[dataset_name]
         dataset = get_function()

@@ -84,18 +84,19 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(model)
 
     # ### Loading Dataset
+    random_state = np.random.RandomState(args.dataset_seed)
     train_dataset, val_dataset = get_dataset(args.dataset,
                                              args.dataset_test_ratio,
-                                             args.dataset_split_seed)
+                                             random_state)
     if args.train_dataset_sample >= 0:
         args.train_dataset_sample = min(args.train_dataset_sample,
                                         len(train_dataset))
         val_dataset_sample = max(
             int(args.train_dataset_sample * args.dataset_test_ratio), 1)
-        train_idxs = np.random.permutation(args.train_dataset_sample)
+        train_idxs = random_state.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
         if val_dataset.shape[0] > val_dataset_sample:
-            val_idxs = np.random.permutation(val_dataset_sample)
+            val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
