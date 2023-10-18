@@ -88,7 +88,7 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
         linear_cls = Linear8bitLt
     else:
         linear_cls = Linear
-    if model_type.endswith('int4'):
+    if model_type.endswith('int4') or model_type.endswith('int8'):
         from bitsandbytes.nn import Linear4bit
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')

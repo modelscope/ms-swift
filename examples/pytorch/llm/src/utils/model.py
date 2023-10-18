@@ -248,7 +248,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     return model, tokenizer
 
 
-def get_model_tokenizer_qwen_int4(model_dir: str,
+def get_model_tokenizer_qwen_intx(model_dir: str,
                                   torch_dtype: Dtype,
                                   load_model: bool = True,
                                   **kwargs):
@@ -279,6 +279,8 @@ class ModelType:
     qwen_14b_chat = 'qwen-14b-chat'
     qwen_7b_chat_int4 = 'qwen-7b-chat-int4'
     qwen_14b_chat_int4 = 'qwen-14b-chat-int4'
+    qwen_7b_chat_int8 = 'qwen-7b-chat-int8'
+    qwen_14b_chat_int8 = 'qwen-14b-chat-int8'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -372,7 +374,7 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     },
     ModelType.qwen_7b_chat_int4: {
         'model_id': 'qwen/Qwen-7B-Chat-Int4',
-        'get_function': get_model_tokenizer_qwen_int4,
+        'get_function': get_model_tokenizer_qwen_intx,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
         'requires': ['auto_gptq>=0.4.2'],
@@ -380,7 +382,23 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
     },
     ModelType.qwen_14b_chat_int4: {
         'model_id': 'qwen/Qwen-14B-Chat-Int4',
-        'get_function': get_model_tokenizer_qwen_int4,
+        'get_function': get_model_tokenizer_qwen_intx,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+        'requires': ['auto_gptq>=0.4.2'],
+        'torch_dtype': torch.float16,
+    },
+    ModelType.qwen_7b_chat_int8: {
+        'model_id': 'qwen/Qwen-7B-Chat-Int8',
+        'get_function': get_model_tokenizer_qwen_intx,
+        'template': 'chatml',
+        'lora_TM': LoRATM.qwen,
+        'requires': ['auto_gptq>=0.4.2'],
+        'torch_dtype': torch.float16,
+    },
+    ModelType.qwen_14b_chat_int8: {
+        'model_id': 'qwen/Qwen-14B-Chat-Int8',
+        'get_function': get_model_tokenizer_qwen_intx,
         'template': 'chatml',
         'lora_TM': LoRATM.qwen,
         'requires': ['auto_gptq>=0.4.2'],
@@ -403,7 +421,7 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {
         'qwen/Qwen-VL-Chat-Int4',
         'get_function':
         partial(
-            get_model_tokenizer_qwen_int4,
+            get_model_tokenizer_qwen_intx,
             get_qwen_function=get_model_tokenizer_qwen_vl),
         'template':
         TemplateType.chatml,
