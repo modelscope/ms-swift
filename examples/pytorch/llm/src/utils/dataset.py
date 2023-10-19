@@ -2,8 +2,9 @@
 import ast
 import os
 import re
+from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -17,31 +18,117 @@ from swift.utils import get_seed
 from .preprocess import History
 from .utils import download_dataset
 
+GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
+                                                         HfDataset]]]
+
+DATASET_MAPPING = {}
+
+
+class DatasetName:
+    # general
+    alpaca_en = 'alpaca-en'
+    alpaca_zh = 'alpaca-zh'
+    multi_alpaca_all = 'multi-alpaca-all'
+    instinwild_en = 'instinwild-en'
+    instinwild_zh = 'instinwild-zh'
+    cot_en = 'cot-en'
+    cot_zh = 'cot-zh'
+    firefly_all_zh = 'firefly-all-zh'
+    instruct_en = 'instruct-en'
+    gpt4all_en = 'gpt4all-en'
+    sharegpt_en = 'sharegpt-en'
+    sharegpt_zh = 'sharegpt_zh'
+    # agent
+    damo_agent_zh = 'damo-agent-zh'
+    damo_agent_mini_zh = 'damo-agent-mini-zh'
+    # coding
+    code_en = 'code-en'
+    code_python_zh = 'code-python-zh'
+    leetcode_python_en = 'leetcode-python-en'
+    # medical
+    medical_en = 'medical-en'
+    medical_zh = 'medical-zh'
+    medical_mini_zh = 'medical-mini-zh'
+    # law
+    lawyer_llama_zh = 'lawyer-llama-zh'
+    tigerbot_law_zh = 'tigerbot-law-zh'
+    # math
+    blossom_math_zh = 'blossom-math-zh'
+    school_math_zh = 'school-math-zh'
+    # sql
+    text2sql_en = 'text2sql-en'
+    sql_create_context_en = 'sql-create-context-en'
+    # text-generation
+    advertise_gen_zh = 'advertise-gen-zh'
+    dureader_robust_zh = 'dureader-robust-zh'
+    # classification
+    cmnli_zh = 'cmnli-zh'
+    jd_zh = 'jd-zh'
+    # other (e.g. example dataset for specific model)
+    finance_en = 'finance-en'
+    poetry_zh = 'poetry-zh'
+    cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
+    ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
+    # multi-modal
+    coco_en = 'coco-en'
+
+
+def register_dataset(
+    dataset_name: str,
+    get_dataset_function: Optional[GetDatasetFunction] = None
+) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
+    """tasks: exists only as a comment. (not use)"""
+    if get_dataset_function is not None:
+        DATASET_MAPPING[dataset_name] = get_dataset_function
+
+    def _register_dataset(
+            get_dataset_function: GetDatasetFunction) -> GetDatasetFunction:
+        DATASET_MAPPING[dataset_name] = get_dataset_function
+        return get_dataset_function
+
+    return _register_dataset
+
 
 def _preprocess_alpaca_dataset(
         dataset: HfDataset,
-        preprocess_input: Optional[Callable[[str], str]] = None) -> HfDataset:
+        concat_inst_inp: Optional[Callable[[str, str],
+                                           str]] = None) -> HfDataset:
     query: List[str] = []
     response = []
     for d in tqdm(dataset):
         inst, inp, output = d['instruction'], d['input'], d['output']
         if output is None:
             continue
-        if inp is None:
-            inp = ''
-        if preprocess_input is not None:
-            inp = preprocess_input(inp)
-        q = f'{inst}\n{inp}'
+        if inp is None or len(inp) == 0:
+            q = inst
+        elif concat_inst_inp is not None:
+            q = concat_inst_inp(inst, inp)
+        else:
+            q = f'{inst}\n{inp}'
         query.append(q)
         response.append(output)
     dataset = HfDataset.from_dict({'query': query, 'response': response})
     return dataset
 
 
+@register_dataset(DatasetName.alpaca_en)
 def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
+
+
+@register_dataset(DatasetName.alpaca_zh)
+def get_alpaca_gpt4_zh_dataset() -> HfDataset:
+    dataset: HfDataset = MsDataset.load(
+        'AI-ModelScope/alpaca-gpt4-data-zh', split='train').to_hf_dataset()
+
+    def concat_inst_inp(inst: str, inp: str) -> str:
+        if inp.startswith('输入：'):
+            inp = inp[3:]
+        return f'{inst}\n{inp}'
+
+    return _preprocess_alpaca_dataset(dataset, concat_inst_inp)
 
 
 def _preprocess_advertise_gen_dataset(dataset: HfDataset) -> HfDataset:
@@ -56,6 +143,7 @@ Advertisements: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.advertise_gen_zh)
 def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_train: HfDataset = MsDataset.load(
         'lvjianjin/AdvertiseGen', split='train').to_hf_dataset()
@@ -67,18 +155,7 @@ def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
     ]
 
 
-def get_alpaca_gpt4_zh_dataset() -> HfDataset:
-    dataset: HfDataset = MsDataset.load(
-        'AI-ModelScope/alpaca-gpt4-data-zh', split='train').to_hf_dataset()
-
-    def _preprocess_input(inp: str) -> str:
-        if inp.startswith('输入：'):
-            inp = inp[3:]
-        return inp
-
-    return _preprocess_alpaca_dataset(dataset, _preprocess_input)
-
-
+@register_dataset(DatasetName.finance_en)
 def get_finance_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/finance_en', split='train').to_hf_dataset()
@@ -121,16 +198,19 @@ def get_multi_alpaca(language_list: List[str]) -> HfDataset:
     return dataset
 
 
+@register_dataset(DatasetName.multi_alpaca_all)
 def get_multi_alpaca_all() -> HfDataset:
     return get_multi_alpaca(_multi_alpaca_language_list)
 
 
+@register_dataset(DatasetName.code_en)
 def get_code_alpaca_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/code_alpaca_en', split='train').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.instinwild_zh)
 def get_instinwild_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='default',
@@ -138,6 +218,7 @@ def get_instinwild_zh_dataset() -> HfDataset:
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.instinwild_en)
 def get_instinwild_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='subset',
@@ -145,12 +226,14 @@ def get_instinwild_en_dataset() -> HfDataset:
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.cot_en)
 def get_cot_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT', split='train').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.cot_zh)
 def get_cot_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT_zh', split='train').to_hf_dataset()
@@ -173,6 +256,7 @@ def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
     return dataset
 
 
+@register_dataset(DatasetName.coco_en)
 def get_coco_en_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('modelscope/coco_2014_caption')
     train_dataset = dataset_dict['train'].to_hf_dataset()
@@ -233,6 +317,7 @@ def _preprocess_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
     return dataset
 
 
+@register_dataset(DatasetName.damo_agent_zh)
 def get_damo_agent_zh_dataset(
         use_mini: bool = False) -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('damo/MSAgent-Bench')
@@ -245,6 +330,9 @@ def get_damo_agent_zh_dataset(
         dataset_list.append(dataset)
     return tuple(dataset_list)
 
+
+register_dataset(DatasetName.damo_agent_mini_zh,
+                 partial(get_damo_agent_zh_dataset, use_mini=True))
 
 _firefly_kind_list = [
     'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection',
@@ -285,10 +373,12 @@ def get_firefly_zh_dataset(kind_list: List[str]) -> HfDataset:
     return _preprocess_firefly(dataset, kind_list)
 
 
+@register_dataset(DatasetName.firefly_all_zh)
 def get_firefly_all_zh_dataset() -> HfDataset:
     return get_firefly_zh_dataset(_firefly_kind_list)
 
 
+@register_dataset(DatasetName.poetry_zh)
 def get_poetry_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('modelscope/chinese-poetry-collection')
     train_dataset: HfDataset = dataset_dict['train'].to_hf_dataset()
@@ -303,6 +393,7 @@ def get_poetry_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     return tuple(dataset_list)
 
 
+@register_dataset(DatasetName.instruct_en)
 def get_instruct_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instruct', split='train').to_hf_dataset()
@@ -318,6 +409,7 @@ def get_instruct_en_dataset() -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.gpt4all_en)
 def get_gpt4all_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/GPT4all', split='train').to_hf_dataset()
@@ -351,6 +443,7 @@ Output: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.cmnli_zh)
 def get_cmnli_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Natural Language Inference"""
     dataset_dict = MsDataset.load('clue', subset_name='cmnli')
@@ -366,6 +459,7 @@ def get_cmnli_zh_dataset() -> Tuple[HfDataset, HfDataset]:
         for dataset in (train_dataset, val_dataset))
 
 
+@register_dataset(DatasetName.jd_zh)
 def get_jd_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Sentiment classification"""
     dataset_dict = MsDataset.load('DAMO_NLP/jd')
@@ -394,6 +488,7 @@ Question: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.dureader_robust_zh)
 def get_dureader_robust_qg_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Question Generation"""
     dataset_dict = MsDataset.load('modelscope/DuReader_robust-QG')
@@ -426,11 +521,8 @@ def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
 
 
 def get_medical_dataset(
-        subset_name: str,
+        subset_name: Literal['en', 'zh'],
         train_dataset_sample: int = -1) -> Tuple[HfDataset, HfDataset]:
-    """
-    mode: Literal['en', zh]
-    """
     dataset_dict = MsDataset.load(
         'huangjintao/medical_zh', subset_name=subset_name)
     train_dataset: HfDataset = concatenate_datasets([
@@ -445,6 +537,16 @@ def get_medical_dataset(
     return tuple(
         _preprocess_medical(dataset, subset_name)
         for dataset in (train_dataset, val_dataset))
+
+
+register_dataset(DatasetName.medical_en,
+                 partial(get_medical_dataset, subset_name='en'))
+register_dataset(DatasetName.medical_zh,
+                 partial(get_medical_dataset, subset_name='zh'))
+register_dataset(
+    DatasetName.medical_mini_zh,
+    partial(
+        get_medical_dataset, subset_name='zh', train_dataset_sample=100000))
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
@@ -482,16 +584,19 @@ _sharegpt_zh_subset_list = ['common-zh', 'computer-zh', 'unknow-zh']
 _sharegpt_en_subset_list = ['common-en', 'computer-en']
 
 
+@register_dataset(DatasetName.sharegpt_zh)
 def get_sharegpt_all_zh_dataset():
     """multi-round chat"""
     return get_sharegpt_dataset(_sharegpt_zh_subset_list)
 
 
+@register_dataset(DatasetName.sharegpt_en)
 def get_sharegpt_all_en_dataset():
     """multi-round chat"""
     return get_sharegpt_dataset(_sharegpt_en_subset_list)
 
 
+@register_dataset(DatasetName.cls_fudan_news_zh)
 def get_cls_fudan_news_zh() -> HfDataset:
     """Sequence Classification """
     dataset = MsDataset.load('damo/zh_cls_fudan-news').to_hf_dataset()
@@ -500,6 +605,7 @@ def get_cls_fudan_news_zh() -> HfDataset:
     return dataset
 
 
+@register_dataset(DatasetName.ner_java_zh)
 def get_ner_jave_zh() -> HfDataset:
     """Named Entity Recognition"""
     dataset = MsDataset.load('damo/zh_ner-JAVE').to_hf_dataset()
@@ -519,12 +625,14 @@ def _preprocess_code_python_dataset(dataset: HfDataset) -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.code_python_zh)
 def get_code_python_zh_dataset() -> HfDataset:
     dataset = MsDataset.load(
         'codefuse-ai/CodeExercise-Python-27k').to_hf_dataset()
     return _preprocess_code_python_dataset(dataset)
 
 
+@register_dataset(DatasetName.blossom_math_zh)
 def get_blossom_math_v2_dataset() -> HfDataset:
     dataset = MsDataset.load('AI-ModelScope/blossom-math-v2').to_hf_dataset()
     query = []
@@ -536,17 +644,20 @@ def get_blossom_math_v2_dataset() -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.school_math_zh)
 def get_school_math_dataset() -> HfDataset:
     dataset = MsDataset.load('AI-ModelScope/school_math_0.25M').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.text2sql_en)
 def get_text2sql_v2_en_dataset() -> HfDataset:
     dataset = MsDataset.load(
         'AI-ModelScope/texttosqlv2_25000_v2').to_hf_dataset()
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.sql_create_context_en)
 def get_sql_create_context_dataset() -> HfDataset:
     dataset = MsDataset.load(
         'AI-ModelScope/sql-create-context').to_hf_dataset()
@@ -556,6 +667,7 @@ def get_sql_create_context_dataset() -> HfDataset:
     return _preprocess_alpaca_dataset(dataset)
 
 
+@register_dataset(DatasetName.lawyer_llama_zh)
 def get_lawyer_llama_dataset() -> HfDataset:
     dataset = MsDataset.load('AI-ModelScope/lawyer_llama_data').to_hf_dataset()
     query = []
@@ -570,6 +682,7 @@ def get_lawyer_llama_dataset() -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
+@register_dataset(DatasetName.tigerbot_law_zh)
 def get_tigerbot_law_plugin() -> HfDataset:
     """Pretrain Fromat"""
     dataset = MsDataset.load(
@@ -592,6 +705,7 @@ Title: {title}
     })
 
 
+@register_dataset(DatasetName.leetcode_python_en)
 def get_leetcode_python_dataset() -> HfDataset:
     dataset = MsDataset.load(
         'AI-ModelScope/leetcode-solutions-python').to_hf_dataset()
@@ -610,143 +724,6 @@ def get_leetcode_python_dataset() -> HfDataset:
         query.append(problem)
         response.append(f'{code}\n\n{explanation}')
     return HfDataset.from_dict({'query': query, 'response': response})
-
-
-class DatasetName:
-    # general
-    alpaca_en = 'alpaca-en'
-    alpaca_zh = 'alpaca-zh'
-    multi_alpaca_all = 'multi-alpaca-all'
-    instinwild_en = 'instinwild-en'
-    instinwild_zh = 'instinwild-zh'
-    cot_en = 'cot-en'
-    cot_zh = 'cot-zh'
-    firefly_all_zh = 'firefly-all-zh'
-    instruct_en = 'instruct-en'
-    gpt4all_en = 'gpt4all-en'
-    sharegpt_en = 'sharegpt-en'
-    sharegpt_zh = 'sharegpt_zh'
-    # agent
-    damo_agent_zh = 'damo-agent-zh'
-    damo_agent_mini_zh = 'damo-agent-mini-zh'
-    # coding
-    code_en = 'code-en'
-    code_python_zh = 'code-python-zh'
-    leetcode_python_en = 'leetcode-python-en'
-    # medical
-    medical_en = 'medical-en'
-    medical_zh = 'medical-zh'
-    medical_mini_zh = 'medical-mini-zh'
-    # law
-    layer_llama_zh = 'lawyer-llama-zh'
-    tigerbot_law_zh = 'tigerbot-law-zh'
-    # math
-    blossom_math_zh = 'blossom-math-zh'
-    school_math_zh = 'school-math-zh'
-    # sql
-    text2sql_en = 'text2sql-en'
-    sql_create_context_en = 'sql-create-context-en'
-    # text-generation
-    advertise_gen_zh = 'advertise-gen-zh'
-    dureader_robust_zh = 'dureader-robust-zh'
-    # classification
-    cmnli_zh = 'cmnli-zh'
-    jd_zh = 'jd-zh'
-    # other (e.g. example dataset for specific model)
-    finance_en = 'finance-en'
-    poetry_zh = 'poetry-zh'
-    cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
-    ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
-    # multi-modal
-    coco_en = 'coco-en'
-
-
-GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
-                                                         HfDataset]]]
-DATASET_MAPPING: Dict[str, GetDatasetFunction] = {
-    # general
-    DatasetName.alpaca_en:
-    get_alpaca_gpt4_en_dataset,
-    DatasetName.alpaca_zh:
-    get_alpaca_gpt4_zh_dataset,
-    DatasetName.multi_alpaca_all:
-    get_multi_alpaca_all,
-    DatasetName.instinwild_en:
-    get_instinwild_en_dataset,
-    DatasetName.instinwild_zh:
-    get_instinwild_zh_dataset,
-    DatasetName.cot_en:
-    get_cot_en_dataset,
-    DatasetName.cot_zh:
-    get_cot_zh_dataset,
-    DatasetName.firefly_all_zh:
-    get_firefly_all_zh_dataset,
-    DatasetName.instruct_en:
-    get_instruct_en_dataset,
-    DatasetName.gpt4all_en:
-    get_gpt4all_en_dataset,
-    DatasetName.sharegpt_en:
-    get_sharegpt_all_en_dataset,
-    DatasetName.sharegpt_zh:
-    get_sharegpt_all_zh_dataset,
-    # agent
-    DatasetName.damo_agent_mini_zh:
-    partial(get_damo_agent_zh_dataset, use_mini=True),
-    DatasetName.damo_agent_zh:
-    get_damo_agent_zh_dataset,  # containing normal chat
-    # coding
-    DatasetName.code_en:
-    get_code_alpaca_en_dataset,
-    DatasetName.code_python_zh:
-    get_code_python_zh_dataset,
-    DatasetName.leetcode_python_en:
-    get_leetcode_python_dataset,
-    # medical
-    DatasetName.medical_en:
-    partial(get_medical_dataset, subset_name='en'),
-    DatasetName.medical_zh:
-    partial(get_medical_dataset, subset_name='zh'),
-    DatasetName.medical_mini_zh:
-    partial(
-        get_medical_dataset, subset_name='zh', train_dataset_sample=100000),
-    # law
-    DatasetName.layer_llama_zh:
-    get_lawyer_llama_dataset,
-    DatasetName.tigerbot_law_zh:
-    get_tigerbot_law_plugin,
-    # math
-    DatasetName.blossom_math_zh:
-    get_blossom_math_v2_dataset,
-    DatasetName.school_math_zh:
-    get_school_math_dataset,
-    # sql
-    DatasetName.text2sql_en:
-    get_text2sql_v2_en_dataset,
-    DatasetName.sql_create_context_en:
-    get_sql_create_context_dataset,
-    # text-generation
-    DatasetName.advertise_gen_zh:
-    get_advertise_gen_dataset,
-    DatasetName.dureader_robust_zh:
-    get_dureader_robust_qg_zh_dataset,
-    # nlp text-generation
-    DatasetName.cmnli_zh:
-    get_cmnli_zh_dataset,
-    DatasetName.jd_zh:
-    get_jd_zh_dataset,
-    # other
-    DatasetName.finance_en:
-    get_finance_en_dataset,
-    DatasetName.poetry_zh:
-    get_poetry_zh_dataset,
-    DatasetName.cls_fudan_news_zh:
-    get_cls_fudan_news_zh,
-    DatasetName.ner_java_zh:
-    get_ner_jave_zh,
-    # multi-modal chat
-    DatasetName.coco_en:
-    get_coco_en_dataset,
-}
 
 
 def get_dataset(
