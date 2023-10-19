@@ -215,9 +215,9 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Visualization
     if is_master():
-        images_dir = os.path.join(output_dir, 'images')
+        images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
-        tb_dir = os.path.join(output_dir, 'runs')
+        tb_dir = os.path.join(args.output_dir, 'runs')
         folder_name = os.listdir(tb_dir)[0]
         tb_dir = os.path.join(tb_dir, folder_name)
         plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
