@@ -162,9 +162,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         labels = inputs['labels'][..., 1:]
         masks = labels != -100
         acc: Tensor = (preds[masks] == labels[masks]).float().mean()
-        if 'acc' not in self._metrics_log:
-            self._metrics_log['acc'] = torch.tensor(0.).to(self.args.device)
-        self._metrics_log['acc'] += acc / self.args.gradient_accumulation_steps
+        if model.training:
+            if 'acc' not in self._metrics_log:
+                self._metrics_log['acc'] = torch.tensor(0.).to(
+                    self.args.device)
+            self._metrics_log[
+                'acc'] += acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
     def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,
