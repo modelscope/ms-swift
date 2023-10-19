@@ -1,7 +1,7 @@
 # Experimental environment: A10
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
+python llm_infer.py \
     --model_type baichuan2-7b-chat \
     --sft_type lora \
     --template_type baichuan \

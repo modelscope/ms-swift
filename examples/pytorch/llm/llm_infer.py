@@ -4,10 +4,10 @@ import os
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import TextStreamer
-from utils import (InferArguments, get_dataset, get_model_tokenizer,
-                   get_preprocess)
 
 from swift import Swift, get_logger
+from swift.llm import (InferArguments, get_dataset, get_model_tokenizer,
+                       get_preprocess)
 from swift.utils import (inference, parse_args, print_model_info,
                          seed_everything, show_layers)
 

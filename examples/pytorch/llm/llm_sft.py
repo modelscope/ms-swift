@@ -7,11 +7,11 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
-                   get_preprocess)
 
 from swift import (LoraConfig, LoRAConfig, Seq2SeqTrainer,
                    Seq2SeqTrainingArguments, Swift, get_logger)
+from swift.llm import (SftArguments, dataset_map, get_dataset,
+                       get_model_tokenizer, get_preprocess)
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, data_collate_fn,
                          find_all_linear_for_lora, get_dist_setting,

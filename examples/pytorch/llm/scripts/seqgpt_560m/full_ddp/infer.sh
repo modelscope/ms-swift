@@ -1,7 +1,7 @@
 # Experimental environment: A10
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
+python llm_infer.py \
     --model_type seqgpt-560m \
     --sft_type full \
     --template_type default-generation \

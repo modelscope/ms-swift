@@ -2,7 +2,7 @@
 # 10GB GPU memory (not use flash_attn)
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_sft.py \
+python llm_sft.py \
     --model_type qwen-vl-chat \
     --sft_type lora \
     --template_type chatml \

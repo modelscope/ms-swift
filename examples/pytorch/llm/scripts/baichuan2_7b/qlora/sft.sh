@@ -2,7 +2,7 @@
 # 10GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_sft.py \
+python llm_sft.py \
     --model_type baichuan2-7b \
     --sft_type lora \
     --template_type default-generation \

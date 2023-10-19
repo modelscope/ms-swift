@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
-    src/llm_sft.py \
+    llm_sft.py \
     --model_type llama2-13b-chat \
     --sft_type lora \
     --template_type llama \
