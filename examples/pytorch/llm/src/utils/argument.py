@@ -346,22 +346,18 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
     assert args.model_type is None or args.model_id_or_path is None
     if args.model_id_or_path is not None:
         model_mapping_reversed = {
-            v['model_id_or_path']: k
+            v['model_id_or_path'].lower(): k
             for k, v in MODEL_MAPPING.items()
         }
         model_id_or_path = args.model_id_or_path
-        if model_id_or_path in model_mapping_reversed:
-            args.model_type = model_mapping_reversed[model_id_or_path]
-            MODEL_MAPPING[args.model_type]['revision'] = model_revision
+        model_id_or_path_lower = model_id_or_path.lower()
+        if model_id_or_path_lower in model_mapping_reversed:
+            args.model_type = model_mapping_reversed[model_id_or_path_lower]
+            model_info = MODEL_MAPPING[args.model_type]
+            model_info['revision'] = args.model_revision
+            args.model_id_or_path = model_info['model_id_or_path']
         else:
-            args.model_type = 'custom'
-            MODEL_MAPPING['custom'] = {
-                'model_id_or_path': model_id_or_path,
-                'lora_TM': ['ALL']
-            }
-            logger.info("Setting args.model_type: 'custom'")
-            logger.info(
-                f"Setting MODEL_MAPPING['custom']: {MODEL_MAPPING['custom']}")
+            raise ValueError(f'{model_id_or_path} not in MODEL_MAPPING')
 
     if args.model_type is None:
         args.model_type = ModelType.qwen_7b_chat
