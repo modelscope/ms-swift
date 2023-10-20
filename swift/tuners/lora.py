@@ -23,6 +23,7 @@ if is_bnb_available():
 
     from peft.tuners.lora import Linear8bitLt as _Linear8bitLt
 
+
     class Linear8bitLt(ActivationMixin, _Linear8bitLt):
 
         def __init__(
@@ -87,15 +88,25 @@ if is_auto_gptq_available():
             use_qa_lora: bool = False,
             **kwargs,
         ):
-            super(ActivationMixin,
-                  self).__init__(adapter_name, quant_linear_module, r,
-                                 lora_alpha, lora_dropout, **kwargs)
-            super(QuantLinear, self).__init__()
+            from peft.tuners.lora import LoraLayer
+            torch.nn.Module.__init__(self)
+            group_size = kwargs.get('group_size', None)
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:
-                assert 'group_size' in kwargs, 'To use qa_lora you need to pass in the `group_size` param.'
+                assert group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
+            LoraLayer.__init__(
+                self, in_features=quant_linear_module.infeatures if not self.use_qa_lora
+                else quant_linear_module.infeatures // group_size, out_features=quant_linear_module.outfeatures
+            )
+            self.quant_linear_module = quant_linear_module
+            self.weight = quant_linear_module.qweight
+            init_lora_weights = kwargs.pop("init_lora_weights", True)
+            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
+            self.active_adapter = adapter_name
+            super(QuantLinear, self).__init__()
+            if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
-                    kwargs['group_size']
+                    group_size
                 )  # using pooling layer to conduct sum operation
 
             def call_quant_linear_module(*args, **kwargs):
