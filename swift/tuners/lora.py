@@ -90,13 +90,13 @@ if is_auto_gptq_available():
         ):
             from peft.tuners.lora import LoraLayer
             torch.nn.Module.__init__(self)
-            group_size = kwargs.get('group_size', None)
+            self.group_size = kwargs.get('group_size', None)
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:
-                assert group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
+                assert self.group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
             LoraLayer.__init__(
                 self, in_features=quant_linear_module.infeatures if not self.use_qa_lora
-                else quant_linear_module.infeatures // group_size, out_features=quant_linear_module.outfeatures
+                else quant_linear_module.infeatures // self.group_size, out_features=quant_linear_module.outfeatures
             )
             self.quant_linear_module = quant_linear_module
             self.weight = quant_linear_module.qweight
@@ -106,7 +106,7 @@ if is_auto_gptq_available():
             super(QuantLinear, self).__init__()
             if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
-                    group_size
+                    self.group_size
                 )  # using pooling layer to conduct sum operation
 
             def call_quant_linear_module(*args, **kwargs):
@@ -127,7 +127,7 @@ if is_auto_gptq_available():
                     expected_dtype = result.dtype
                     x = x.to(self.lora_A[self.active_adapter].weight.dtype)
                     if self.use_qa_lora:
-                        x = self.qa_pool(x)
+                        x = self.qa_pool(x) * self.group_size
                     output = (
                         self.lora_B[self.active_adapter](
                             self.lora_A[self.active_adapter](self.lora_dropout[
@@ -135,7 +135,7 @@ if is_auto_gptq_available():
                         * self.scaling[self.active_adapter])
                 else:
                     if self.use_qa_lora:
-                        x = self.qa_pool(x)
+                        x = self.qa_pool(x) * self.group_size
                     output = (
                         self.lora_B[self.active_adapter](
                             self.lora_A[self.active_adapter](
