@@ -5,7 +5,7 @@ from .llm_utils import (data_collate_fn, find_all_linear_for_lora, inference,
                         stat_dataset)
 from .logger import get_logger
 from .metric import (compute_acc_metrics, compute_nlg_metrics,
-                     preprocess_logits_for_acc_metrics)
+                     preprocess_logits_for_metrics)
 from .tb_utils import (TB_COLOR, TB_COLOR_SMOOTH, plot_images,
                        read_tensorboard_file, tensorboard_smoothing)
 from .torch_utils import (broadcast_string, get_dist_setting, is_ddp_plus_mp,

@@ -68,7 +68,6 @@ def compute_acc_metrics(eval_prediction: EvalPrediction) -> Dict[str, Tensor]:
     return {'acc': acc}
 
 
-def preprocess_logits_for_acc_metrics(logits: Tensor,
-                                      labels: Tensor) -> Tensor:
+def preprocess_logits_for_metrics(logits: Tensor, labels: Tensor) -> Tensor:
     preds = logits.argmax(dim=2)
     return preds

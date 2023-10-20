@@ -12,7 +12,7 @@ def sft_main(argv: Optional[List[str]] = None) -> str:
             logger.warning(f'remaining_argv: {remaining_argv}')
         else:
             raise ValueError(f'remaining_argv: {remaining_argv}')
-    llm_sft(args)
+    return llm_sft(args)
 
 
 def infer_main(argv: Optional[List[str]] = None) -> None:
@@ -28,4 +28,5 @@ def infer_main(argv: Optional[List[str]] = None) -> None:
 
 if __name__ == '__main__':
     ckpt_dir = sft_main()
+    print(ckpt_dir)
     infer_main(['--ckpt_dir', ckpt_dir])

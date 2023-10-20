@@ -14,7 +14,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, data_collate_fn,
                          find_all_linear_for_lora, get_dist_setting,
                          get_logger, is_ddp_plus_mp, is_dist, is_master,
-                         plot_images, preprocess_logits_for_acc_metrics,
+                         plot_images, preprocess_logits_for_metrics,
                          print_example, print_model_info, seed_everything,
                          show_layers, sort_by_max_length, stat_dataset)
 from .utils import (SftArguments, dataset_map, get_dataset,
@@ -186,7 +186,7 @@ def llm_sft(args: SftArguments) -> str:
     else:
         trainer_kwargs['compute_metrics'] = compute_acc_metrics
         trainer_kwargs[
-            'preprocess_logits_for_metrics'] = preprocess_logits_for_acc_metrics
+            'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
 
     trainer = Seq2SeqTrainer(
         model=model,
