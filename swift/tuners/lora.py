@@ -23,7 +23,6 @@ if is_bnb_available():
 
     from peft.tuners.lora import Linear8bitLt as _Linear8bitLt
 
-
     class Linear8bitLt(ActivationMixin, _Linear8bitLt):
 
         def __init__(
@@ -95,13 +94,16 @@ if is_auto_gptq_available():
             if self.use_qa_lora:
                 assert self.group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
             LoraLayer.__init__(
-                self, in_features=quant_linear_module.infeatures if not self.use_qa_lora
-                else quant_linear_module.infeatures // self.group_size, out_features=quant_linear_module.outfeatures
-            )
+                self,
+                in_features=quant_linear_module.infeatures
+                if not self.use_qa_lora else quant_linear_module.infeatures
+                // self.group_size,
+                out_features=quant_linear_module.outfeatures)
             self.quant_linear_module = quant_linear_module
             self.weight = quant_linear_module.qweight
-            init_lora_weights = kwargs.pop("init_lora_weights", True)
-            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
+            init_lora_weights = kwargs.pop('init_lora_weights', True)
+            self.update_layer(adapter_name, r, lora_alpha, lora_dropout,
+                              init_lora_weights)
             self.active_adapter = adapter_name
             super(QuantLinear, self).__init__()
             if self.use_qa_lora:
