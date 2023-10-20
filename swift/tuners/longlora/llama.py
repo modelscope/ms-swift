@@ -27,7 +27,8 @@ def forward_flashattn(
     output_attentions: bool = False,
     use_cache: bool = False,
     padding_mask: Optional[torch.LongTensor] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+) -> Tuple[torch.Tensor, Optional[torch.Tensor],
+           Optional[Tuple[torch.Tensor]]]:
     """Input shape: Batch x Time x Channel
 
     attention_mask: [bsz, q_len]
@@ -36,30 +37,26 @@ def forward_flashattn(
         flash_attn_varlen_qkvpacked_func)
     from flash_attn.bert_padding import unpad_input, pad_input
     if not self.training:
-        raise ValueError("This function is only for training. For inference, please use forward_flashattn_inference.")
+        raise ValueError(
+            'This function is only for training. For inference, please use forward_flashattn_inference.'
+        )
 
     if output_attentions:
         warnings.warn(
-            "Output attentions is not supported for patched `LlamaAttention`, returning `None` instead."
+            'Output attentions is not supported for patched `LlamaAttention`, returning `None` instead.'
         )
 
     bsz, q_len, _ = hidden_states.size()
 
     query_states = (
-        self.q_proj(hidden_states)
-        .view(bsz, q_len, self.num_heads, self.head_dim)
-        .transpose(1, 2)
-    )
+        self.q_proj(hidden_states).view(bsz, q_len, self.num_heads,
+                                        self.head_dim).transpose(1, 2))
     key_states = (
-        self.k_proj(hidden_states)
-        .view(bsz, q_len, self.num_key_value_heads, self.head_dim)
-        .transpose(1, 2)
-    )
+        self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads,
+                                        self.head_dim).transpose(1, 2))
     value_states = (
-        self.v_proj(hidden_states)
-        .view(bsz, q_len, self.num_key_value_heads, self.head_dim)
-        .transpose(1, 2)
-    )
+        self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads,
+                                        self.head_dim).transpose(1, 2))
     # [bsz, q_len, nh, hd]
     # [bsz, nh, q_len, hd]
 
@@ -67,9 +64,8 @@ def forward_flashattn(
     if past_key_value is not None:
         kv_seq_len += past_key_value[0].shape[-2]
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-    query_states, key_states = apply_rotary_pos_emb(
-        query_states, key_states, cos, sin, position_ids
-    )
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states,
+                                                    cos, sin, position_ids)
 
     # Past Key value support
     if past_key_value is not None:
@@ -87,9 +83,8 @@ def forward_flashattn(
     # https://github.com/HazyResearch/flash-attention/blob/main/flash_attn/flash_attention.py
 
     # transform the data into the format required by flash attention
-    qkv = torch.stack(
-        [query_states, key_states, value_states], dim=2
-    )  # [bsz, nh, 3, q_len, hd]
+    qkv = torch.stack([query_states, key_states, value_states],
+                      dim=2)  # [bsz, nh, 3, q_len, hd]
     qkv = qkv.transpose(1, 3)  # [bsz, q_len, 3, nh, hd]
 
     # We have disabled _prepare_decoder_attention_mask in LlamaModel
@@ -104,36 +99,44 @@ def forward_flashattn(
     else:
         group_size = sft_group_size
 
-    qkv = qkv.reshape(bsz, q_len, 3, 2, self.num_heads // 2, self.head_dim).permute(0, 3, 1, 2, 4, 5).reshape(bsz * 2,
-                                                                                                              q_len, 3,
-                                                                                                              self.num_heads // 2,
-                                                                                                              self.head_dim)
+    qkv = qkv.reshape(bsz, q_len, 3, 2, self.num_heads // 2,
+                      self.head_dim).permute(0, 3, 1, 2, 4, 5).reshape(
+                          bsz * 2, q_len, 3, self.num_heads // 2,
+                          self.head_dim)
 
-    x = rearrange(qkv, "b s three h d -> b s (three h d)")
+    x = rearrange(qkv, 'b s three h d -> b s (three h d)')
     x_unpad, indices, cu_q_lens, max_s = unpad_input(x, key_padding_mask)
-    cu_q_len_tmp = torch.arange(0, max_s, group_size, device=key_padding_mask.device, dtype=cu_q_lens.dtype)
+    cu_q_len_tmp = torch.arange(
+        0,
+        max_s,
+        group_size,
+        device=key_padding_mask.device,
+        dtype=cu_q_lens.dtype)
     cu_q_len_tmp2 = cu_q_len_tmp + group_size // 2
-    cu_q_len_tmp2[cu_q_len_tmp2 >= max_s] = torch.iinfo(cu_q_len_tmp2.dtype).min
-    cu_q_len_tmp = torch.stack([cu_q_len_tmp, cu_q_len_tmp2]).repeat(bsz, 1) + cu_q_lens[:-1].unsqueeze(-1)
-    cu_q_lens = torch.cat([cu_q_len_tmp, cu_q_lens[1:].unsqueeze(-1)], dim=-1).view(-1)
+    cu_q_len_tmp2[cu_q_len_tmp2 >= max_s] = torch.iinfo(
+        cu_q_len_tmp2.dtype).min
+    cu_q_len_tmp = torch.stack([cu_q_len_tmp, cu_q_len_tmp2]).repeat(
+        bsz, 1) + cu_q_lens[:-1].unsqueeze(-1)
+    cu_q_lens = torch.cat([cu_q_len_tmp, cu_q_lens[1:].unsqueeze(-1)],
+                          dim=-1).view(-1)
     cu_q_lens = cu_q_lens[cu_q_lens >= 0]
     x_unpad = rearrange(
-        x_unpad, "nnz (three h d) -> nnz three h d", three=3, h=nheads // 2
-    )
+        x_unpad, 'nnz (three h d) -> nnz three h d', three=3, h=nheads // 2)
     output_unpad = flash_attn_varlen_qkvpacked_func(
-        x_unpad, cu_q_lens, group_size, 0.0, softmax_scale=None, causal=True
-    )
+        x_unpad, cu_q_lens, group_size, 0.0, softmax_scale=None, causal=True)
     output = rearrange(
         pad_input(
-            rearrange(output_unpad, "nnz h d -> nnz (h d)"), indices, bsz * 2, q_len
-        ),
-        "b s (h d) -> b s h d",
+            rearrange(output_unpad, 'nnz h d -> nnz (h d)'), indices, bsz * 2,
+            q_len),
+        'b s (h d) -> b s h d',
         h=nheads // 2,
     )
-    output = output.reshape(bsz, 2, q_len, nheads // 2, self.head_dim).transpose(1, 2).reshape(bsz, q_len, nheads,
-                                                                                               self.head_dim)
+    output = output.reshape(bsz, 2, q_len, nheads // 2,
+                            self.head_dim).transpose(1, 2).reshape(
+                                bsz, q_len, nheads, self.head_dim)
 
-    return self.o_proj(rearrange(output, "b s h d -> b s (h d)")), None, past_key_value
+    return self.o_proj(rearrange(output,
+                                 'b s h d -> b s (h d)')), None, past_key_value
 
 
 def forward_flashattn_full(
@@ -379,14 +382,6 @@ def forward_noflashattn(
     return attn_output, attn_weights, past_key_value
 
 
-# Disable the transformation of the attention mask in LlamaModel as the flash attention
-# requires the attention mask to be the same as the key_padding_mask
-def _prepare_decoder_attention_mask(self, attention_mask, input_shape,
-                                    inputs_embeds, past_key_values_length):
-    # [bsz, seq_len]
-    return attention_mask
-
-
 def apply_rotary_pos_emb_inference(q, k, cos_sin, position_ids):
     gather_indices = position_ids[:, :, None, None]  # [bsz, seq_len, 1, 1]
     gather_indices = gather_indices.repeat(1, 1, cos_sin[0].shape[1],
@@ -477,31 +472,57 @@ def forward_flashattn_inference(
     return self.o_proj(output), None, past_key_value
 
 
-def _prepare_decoder_attention_mask_inference(self, attention_mask,
-                                              input_shape, inputs_embeds,
-                                              past_key_values_length):
-    # [bsz, seq_len]
-    if past_key_values_length > 0 and attention_mask is not None:
-        attention_mask = torch.cat(
-            (
-                torch.full(
-                    (input_shape[0], past_key_values_length),
-                    True,
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
+# Disable the transformation of the attention mask in LlamaModel as the flash attention
+# requires the attention mask to be the same as the key_padding_mask
+def _prepare_decoder_attention_mask(self, attention_mask, input_shape,
+                                    inputs_embeds, past_key_values_length):
+    if self.training:
+        return attention_mask
+    else:
+        # [bsz, seq_len]
+        if past_key_values_length > 0 and attention_mask is not None:
+            attention_mask = torch.cat(
+                (
+                    torch.full(
+                        (input_shape[0], past_key_values_length),
+                        True,
+                        dtype=attention_mask.dtype,
+                        device=attention_mask.device,
+                    ),
+                    attention_mask,
                 ),
-                attention_mask,
-            ),
-            dim=-1,
-        )
+                dim=-1,
+            )
 
-    if attention_mask is not None and torch.all(attention_mask):
-        return None  # This uses the faster call when training with full samples
+        if attention_mask is not None and torch.all(attention_mask):
+            return None  # This uses the faster call when training with full samples
 
-    return attention_mask
+        return attention_mask
 
 
-def replace_llama_attn(use_flash_attn=True, use_full=False, inference=False):
+def forward_flashattn_inference_s2_attn(
+    self,
+    hidden_states: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.Tensor] = None,
+    past_key_value: Optional[Tuple[torch.Tensor]] = None,
+    output_attentions: bool = False,
+    use_cache: bool = False,
+    padding_mask: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor],
+           Optional[Tuple[torch.Tensor]]]:
+    if self.training:
+        return forward_flashattn(self, hidden_states, attention_mask,
+                                 position_ids, past_key_value,
+                                 output_attentions, use_cache, padding_mask)
+    else:
+        return forward_flashattn_inference(self, hidden_states, attention_mask,
+                                           position_ids, past_key_value,
+                                           output_attentions, use_cache,
+                                           padding_mask)
+
+
+def replace_llama_attn(use_flash_attn=True):
     if use_flash_attn:
         cuda_major, cuda_minor = torch.cuda.get_device_capability()
         if cuda_major < 8:
@@ -509,14 +530,8 @@ def replace_llama_attn(use_flash_attn=True, use_full=False, inference=False):
                 'Flash attention is only supported on A100 or H100 GPU during training due to head dim > 64 backward.'
                 'ref: https://github.com/HazyResearch/flash-attention/issues/190#issuecomment-1523359593'
             )
-        if inference:
-            transformers.models.llama.modeling_llama.LlamaModel._prepare_decoder_attention_mask = \
-                _prepare_decoder_attention_mask_inference
-            transformers.models.llama.modeling_llama.LlamaAttention.forward = forward_flashattn_inference
-        else:
-            transformers.models.llama.modeling_llama.LlamaModel._prepare_decoder_attention_mask = (
-                _prepare_decoder_attention_mask)
-            transformers.models.llama.modeling_llama.LlamaAttention.forward = forward_flashattn_full if \
-                use_full else forward_flashattn
+        transformers.models.llama.modeling_llama.LlamaModel._prepare_decoder_attention_mask = (
+            _prepare_decoder_attention_mask)
+        transformers.models.llama.modeling_llama.LlamaAttention.forward = forward_flashattn_inference_s2_attn
     else:
         transformers.models.llama.modeling_llama.LlamaAttention.forward = forward_noflashattn

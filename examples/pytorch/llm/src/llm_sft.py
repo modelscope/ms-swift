@@ -122,7 +122,8 @@ def llm_sft(args: SftArguments) -> None:
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
-    data_collator = partial(data_collate_fn, tokenizer=tokenizer, padding_to=args.max_length)
+    data_collator = partial(
+        data_collate_fn, tokenizer=tokenizer, padding_to=args.max_length)
     print_example(train_dataset[0], tokenizer)
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)
