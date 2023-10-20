@@ -85,7 +85,7 @@ def llm_sft(args: SftArguments) -> None:
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
                     model_type=LongLoRAModelType.LLAMA,
-                    use_flash_attn=False)
+                    use_flash_attn=args.use_flash_attn)
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
         else:

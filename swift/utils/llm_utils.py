@@ -10,6 +10,7 @@ from torch.nn import Linear, Module
 from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
 from transformers import TextStreamer
+import torch.nn.functional as F
 
 from .logger import get_logger
 
@@ -35,9 +36,9 @@ def data_collate_fn(batch: List[Dict[str, Any]], tokenizer, padding_to=None) -> 
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
-    if padding_to is not None and padding_to > 0:
-        input_ids[0] = input_ids[0].expand(padding_to)
-        labels[0] = labels[0].expand(padding_to)
+    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
+        input_ids[0] = F.pad(input_ids[0], (0, padding_to-input_ids[0].shape[-1]), "constant", tokenizer.pad_token_id)
+        labels[0] = F.pad(labels[0], (0, padding_to-labels[0].shape[-1]), "constant", -100)
     attention_mask = [
         torch.ones(len(input_ids[i]), dtype=torch.int64)
         for i in range(len(input_ids))
