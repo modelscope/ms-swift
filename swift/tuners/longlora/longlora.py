@@ -83,8 +83,7 @@ class LongLoRA(LoRA):
         if config.model_type == LongLoRAModelType.LLAMA:
             from .llama import replace_llama_attn
             replace_llama_attn(
-                use_flash_attn=config.use_flash_attn,
-                inference=not config.is_trainable)
+                use_flash_attn=config.use_flash_attn)
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
