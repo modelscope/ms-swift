@@ -50,7 +50,7 @@ class SftArguments:
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
-    max_length: int = 2048
+    max_length: int = 2048  # -1: no limit
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -199,6 +199,8 @@ class SftArguments:
                 self.eval_batch_size = self.batch_size
         if self.save_total_limit == -1:
             self.save_total_limit = None
+        if self.max_length == -1:
+            self.max_length = None
 
         self.deepspeed = None
         if self.deepspeed_config_path is not None:
@@ -233,7 +235,7 @@ class InferArguments:
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 20
     system: str = 'you are a helpful assistant!'
-    max_length: int = 2048
+    max_length: int = 2048  # -1: no limit
 
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
@@ -278,6 +280,8 @@ class InferArguments:
 
         if self.use_flash_attn is None:
             self.use_flash_attn = 'auto'
+        if self.max_length == -1:
+            self.max_length = None
 
 
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
