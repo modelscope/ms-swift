@@ -130,7 +130,7 @@ class SftArguments:
     temperature: float = 0.9
     top_k: int = 20
     top_p: float = 0.9
-    repetition_penalty: float = 1.
+    repetition_penalty: float = 1.1
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
@@ -249,7 +249,7 @@ class InferArguments:
     temperature: float = 0.9
     top_k: int = 20
     top_p: float = 0.9
-    repetition_penalty: float = 1.
+    repetition_penalty: float = 1.1
 
     # other
     use_flash_attn: Optional[bool] = field(
