@@ -134,6 +134,8 @@ if is_auto_gptq_available():
                                 self.active_adapter](x))).to(expected_dtype)
                         * self.scaling[self.active_adapter])
                 else:
+                    if self.use_qa_lora:
+                        x = self.qa_pool(x)
                     output = (
                         self.lora_B[self.active_adapter](
                             self.lora_A[self.active_adapter](
