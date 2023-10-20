@@ -15,7 +15,7 @@ from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
 from .dataset import DATASET_MAPPING, DatasetName
 from .model import MODEL_MAPPING, ModelType, dtype_mapping
-from .preprocess import TEMPLATE_MAPPING, TemplateType
+from .template import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
 
@@ -184,7 +184,7 @@ class SftArguments:
             self.save_steps = self.eval_steps
         if self.lora_target_modules is None:
             self.lora_target_modules = MODEL_MAPPING[
-                self.model_type]['lora_TM']
+                self.model_type]['lora_target_modules']
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 

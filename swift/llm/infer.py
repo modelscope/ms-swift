@@ -8,8 +8,8 @@ from transformers import TextStreamer
 from swift.tuners import Swift
 from swift.utils import (get_logger, inference, print_model_info,
                          seed_everything, show_layers)
-from .utils import (InferArguments, get_dataset, get_model_tokenizer,
-                    get_preprocess)
+from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
+                    get_template)
 
 logger = get_logger()
 
@@ -81,8 +81,8 @@ def llm_infer(args: InferArguments) -> None:
     print_model_info(model)
 
     # ### Inference
-    preprocess_func = get_preprocess(args.template_type, tokenizer,
-                                     args.system, args.max_length)
+    template: Template = get_template(args.template_type, tokenizer,
+                                      args.system, args.max_length)
     streamer = None
     if args.use_streamer:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
@@ -104,7 +104,7 @@ def llm_infer(args: InferArguments) -> None:
         while True:
             query = input('<<< ')
             data = {'query': query}
-            input_ids = preprocess_func(data)['input_ids']
+            input_ids = template.encode(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
@@ -114,7 +114,7 @@ def llm_infer(args: InferArguments) -> None:
         for data in mini_val_dataset:
             response = data['response']
             data['response'] = None
-            input_ids = preprocess_func(data)['input_ids']
+            input_ids = template.encode(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer)
             print()
             print(f'[LABELS]{response}')

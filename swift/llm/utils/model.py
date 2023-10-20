@@ -16,7 +16,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import is_dist, is_local_master
-from .preprocess import TemplateType
+from .template import TemplateType
 
 logger = get_logger()
 

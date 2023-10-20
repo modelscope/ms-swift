@@ -15,7 +15,7 @@ from numpy.random import RandomState
 from tqdm.auto import tqdm
 
 from swift.utils import get_seed
-from .preprocess import History
+from .template import History
 from .utils import download_dataset
 
 GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
@@ -180,6 +180,8 @@ def _get_multi_alpaca(subset_name: str) -> HfDataset:
     return _preprocess_alpaca(dataset)
 
 
+@register_dataset(
+    DatasetName.multi_alpaca_all, language_list=_multi_alpaca_language_list)
 def get_multi_alpaca(language_list: List[str]) -> HfDataset:
     """language_list:
         Language-key	Language	# examples
@@ -201,11 +203,6 @@ def get_multi_alpaca(language_list: List[str]) -> HfDataset:
         dataset_list.append(dataset)
     dataset = concatenate_datasets(dataset_list)
     return dataset
-
-
-@register_dataset(DatasetName.multi_alpaca_all)
-def get_multi_alpaca_all() -> HfDataset:
-    return get_multi_alpaca(_multi_alpaca_language_list)
 
 
 @register_dataset(DatasetName.code_en)

@@ -18,7 +18,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          print_example, print_model_info, seed_everything,
                          show_layers, sort_by_max_length, stat_dataset)
 from .utils import (SftArguments, dataset_map, get_dataset,
-                    get_model_tokenizer, get_preprocess)
+                    get_model_tokenizer, get_template)
 
 logger = get_logger()
 
@@ -99,13 +99,10 @@ def llm_sft(args: SftArguments) -> str:
             val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    preprocess_func = get_preprocess(args.template_type, tokenizer,
-                                     args.system, args.max_length)
-    train_dataset = dataset_map(train_dataset, preprocess_func)
-    val_preprocess_func = preprocess_func
-    if args.predict_with_generate:
-        val_preprocess_func = partial(preprocess_func, generation_mode=True)
-    val_dataset = dataset_map(val_dataset, val_preprocess_func)
+    template: Template = get_template(args.template_type, tokenizer,
+                                      args.system, args.max_length)
+    train_dataset = dataset_map(train_dataset, template.encode)
+    val_dataset = dataset_map(val_dataset, template.encode)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis

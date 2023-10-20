@@ -65,13 +65,14 @@ def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
 
 
 def print_example(example: Dict[str, Any], tokenizer) -> None:
-    input_ids, labels = example['input_ids'], example['labels']
+    input_ids, labels = example['input_ids'], example.get('labels')
     logger.info(f'[INPUT_IDS] {input_ids}')
     logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
-    n_mask = lower_bound(0, len(labels), lambda i: labels[i] != -100)
-    logger.info(f'[LABLES_IDS] {labels}')
-    logger.info(
-        f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
+    if labels is not None:
+        n_mask = lower_bound(0, len(labels), lambda i: labels[i] != -100)
+        logger.info(f'[LABLES_IDS] {labels}')
+        logger.info(
+            f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
 
 
 def find_all_linear_for_lora(model: Module, quantization_bit: int,
