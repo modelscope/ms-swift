@@ -175,8 +175,7 @@ class SftArguments:
             raise ValueError(f'sft_type: {self.sft_type}')
 
         if self.template_type is None:
-            self.template_type = MODEL_MAPPING[self.model_type].get(
-                'template', TemplateType.default)
+            self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
@@ -269,8 +268,7 @@ class InferArguments:
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
-            self.template_type = MODEL_MAPPING[self.model_type].get(
-                'template', TemplateType.default)
+            self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
@@ -291,8 +289,7 @@ def select_dtype(
         args.dtype = 'fp16'
     if args.dtype is None and (args.model_type.endswith('int4')
                                or args.model_type.endswith('int8')):
-        model_torch_dtype = MODEL_MAPPING[args.model_type].get(
-            'torch_dtype', None)
+        model_torch_dtype = MODEL_MAPPING[args.model_type]['torch_dtype']
         if model_torch_dtype is not None:
             args.dtype = dtype_mapping[model_torch_dtype]
     if args.dtype is None:
@@ -361,8 +358,8 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
 
     if args.model_type is None:
         args.model_type = ModelType.qwen_7b_chat
-    model_info = MODEL_MAPPING.get(args.model_type)
-    requires = model_info.get('requires', [])
+    model_info = MODEL_MAPPING[args.model_type]
+    requires = model_info['requires']
     for require in requires:
         require_version(require)
 
