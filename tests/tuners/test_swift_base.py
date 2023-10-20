@@ -15,8 +15,7 @@ from peft.utils import WEIGHTS_NAME
 from torch import nn
 
 from swift import (AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig,
-                   SideConfig, Swift, SwiftModel, push_to_hub)
-from swift.tuners import LoRA
+                   SideConfig, Swift, SwiftModel)
 
 
 class TestSwift(unittest.TestCase):
@@ -219,17 +218,8 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(
             os.path.exists(
                 os.path.join(self.tmp_dir, 'adapter', WEIGHTS_NAME)))
-
-        revision = str(int(time()))
-        push_to_hub(
-            'damo/test_swift_multiple_model',
-            output_dir=self.tmp_dir,
-            tag=revision)
         model2 = Swift.from_pretrained(
-            model2,
-            'damo/test_swift_multiple_model',
-            adapter_name=['lora', 'adapter'],
-            revision=revision)
+            model2, self.tmp_dir, adapter_name=['lora', 'adapter'])
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:

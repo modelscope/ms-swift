@@ -98,8 +98,14 @@ if is_auto_gptq_available():
                     kwargs['group_size']
                 )  # using pooling layer to conduct sum operation
 
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            result = self.quant_linear_module(x)
+            def call_quant_linear_module(*args, **kwargs):
+                return quant_linear_module.forward_origin(*args, **kwargs)
+
+            self.call_quant_linear_module = call_quant_linear_module
+            self.quant_linear_module = None
+
+        def forward(self, x: torch.Tensor):
+            result = self.call_quant_linear_module(x)
             if not self.is_activated(
             ) or self.disable_adapters or self.active_adapter not in self.lora_A.keys(
             ):

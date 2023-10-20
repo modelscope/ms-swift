@@ -6,66 +6,88 @@ from transformers import PreTrainedTokenizer
 DEFAULT_SYSTEM = 'you are a helpful assistant!'
 History = List[Tuple[str, str]]
 
-TEMPLATE_MAPPING = {
-    'default': {
+
+class TemplateType:
+    default = 'default'
+    default_generation = 'default-generation'
+    chatml = 'chatml'
+    baichuan = 'baichuan'
+    chatglm2 = 'chatglm2'
+    chatglm2_generation = 'chatglm2-generation'
+    llama = 'llama'
+    openbuddy = 'openbuddy'
+    internlm = 'internlm'
+    xverse = 'xverse'
+    ziya = 'ziya'
+
+
+TEMPLATE_MAPPING: Dict[str, Dict[str, List[Any]]] = {
+    TemplateType.default: {
         'prefix': ['{{SYSTEM}}\n\n'],
         'prompt': ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'],
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
     # You can set the query as '' to serve as a template for pre-training.
-    'default-generation': {
+    TemplateType.default_generation: {
         'prefix': [],
         'prompt': ['{{QUERY}}'],
         'suffix': [['eos_token_id']],
     },
-    'chatml': {
+    TemplateType.chatml: {
         'prefix': ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
         'prompt':
         ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         'chat_sep': ['<|im_end|>\n'],
         'suffix': ['<|im_end|><|endoftext|>'],
     },
-    'baichuan': {
+    TemplateType.baichuan: {
         'prefix': [],
         'prompt': [[195], '{{QUERY}}', [196]],
         'chat_sep': [],
         'suffix': [['eos_token_id']],
     },
-    'chatglm2': {
+    TemplateType.chatglm2: {
         'prefix': [[64790, 64792]],
         'prompt': ['[Round {{ROUND}}]\n\n问：{{QUERY}}\n\n答：'],
         'chat_sep': ['\n\n'],
         'suffix': [['eos_token_id']],
     },
-    'chatglm2-generation': {
+    TemplateType.chatglm2_generation: {
         'prefix': [[64790, 64792]],
-        'prompt': ['{{query}}'],
+        'prompt': ['{{QUERY}}'],
         'suffix': [['eos_token_id']],
     },
-    'llama': {
+    # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
+    TemplateType.llama: {
         'prefix': [['bos_token_id'],
                    '[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
         'prompt': ['{{QUERY}} [/INST] '],
         'chat_sep': [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
         'suffix': [['eos_token_id']],
     },
-    'openbuddy-llama': {
+    TemplateType.openbuddy: {
         'prefix': ['{{SYSTEM}}\n\n'],
         'prompt': ['User: {{QUERY}}\nAssistant: '],
         'chat_sep': ['\n'],
         'suffix': [['eos_token_id']],
     },
-    'internlm': {
+    TemplateType.internlm: {
         'prefix': ['<s>'],
         'prompt': ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'],
         'chat_sep': ['<eoa>\n'],
         'suffix': ['<eoa></s>'],
     },
-    'xverse': {
+    TemplateType.xverse: {
         'prefix': [],
         'prompt': ['Human: {{QUERY}}\n\nAssistant: '],
         'chat_sep': [['eos_token_id']],
+        'suffix': [['eos_token_id']],
+    },
+    TemplateType.ziya: {
+        'prefix': [['bos_token_id']],
+        'prompt': ['<human>:{{QUERY}}\n<bot>:'],
+        'chat_sep': ['\n'],
         'suffix': [['eos_token_id']],
     }
 }
@@ -135,7 +157,7 @@ def _preprocess(
     max_length: Optional[int] = None,
     # do cross-validation with `model.generate()`
     generation_mode: bool = False,
-) -> Dict[str, List[int]]:
+) -> Dict[str, Optional[List[int]]]:
     if history is None:
         history = []
 
@@ -185,10 +207,11 @@ def get_preprocess(
     tokenizer: PreTrainedTokenizer,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
-) -> Callable[[Dict[str, Any]], Dict[str, List[int]]]:
+) -> Callable[[Dict[str, Any]], Dict[str, Optional[List[int]]]]:
 
-    def preprocess(example: Dict[str, Any],
-                   generation_mode: bool = False) -> Dict[str, List[int]]:
+    def preprocess(
+            example: Dict[str, Any],
+            generation_mode: bool = False) -> Dict[str, Optional[List[int]]]:
         history: Optional[History] = example.get('history', None)
         query: str = example['query']
         response: str = example.get('response', None)

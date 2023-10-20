@@ -1,4 +1,6 @@
+# Experimental environment: A10
 # If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type qwen-7b-chat \
@@ -7,7 +9,7 @@ python src/llm_infer.py \
     --dtype bf16 \
     --ckpt_dir "output/qwen-7b-chat/vx_xxx/checkpoint-xxx" \
     --eval_human false \
-    --dataset advertise-gen \
+    --dataset advertise-gen-zh \
     --max_length 2048 \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \

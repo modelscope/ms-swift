@@ -1,6 +1,8 @@
-# Experimental environment: 2 * 3090
+# Experimental environment: 2 * A10
 # 2 * 14GB GPU memory
 nproc_per_node=2
+
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
@@ -12,8 +14,8 @@ torchrun \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset advertise-gen \
-    --train_dataset_sample -1 \
+    --dataset advertise-gen-zh \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --quantization_bit 4 \

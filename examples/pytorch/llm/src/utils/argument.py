@@ -3,6 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Union
 
+import json
 import torch
 import torch.distributed as dist
 from torch import dtype as Dtype
@@ -10,9 +11,9 @@ from torch import dtype as Dtype
 from swift import HubStrategy, get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import get_dist_setting, is_dist
-from .dataset import DATASET_MAPPING
-from .model import MODEL_MAPPING
-from .preprocess import TEMPLATE_MAPPING
+from .dataset import DATASET_MAPPING, DatasetName
+from .model import MODEL_MAPPING, ModelType
+from .preprocess import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
 
@@ -20,32 +21,32 @@ logger = get_logger()
 @dataclass
 class SftArguments:
     model_type: str = field(
-        default='qwen-7b-chat',
+        default=ModelType.qwen_7b_chat,
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     tuner_bankend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
-    template_type: str = field(
+    template_type: Optional[str] = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'output'
     ddp_backend: Optional[str] = field(
         default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
     seed: int = 42
-    resume_from_ckpt: Optional[str] = None
+    resume_from_checkpoint: Optional[str] = None
     dtype: str = field(
         default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
-    dataset: str = field(
-        default='advertise-gen',
+    dataset: Optional[List[str]] = field(
+        default=None,
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
-    max_length: Optional[int] = 2048
+    max_length: int = 2048
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -63,6 +64,7 @@ class SftArguments:
     lora_dropout_p: float = 0.
 
     gradient_checkpointing: bool = False
+    deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
     num_train_epochs: int = 1
@@ -80,7 +82,7 @@ class SftArguments:
     eval_steps: int = 50
     save_steps: Optional[int] = None
     only_save_model: Optional[bool] = None
-    save_total_limit: int = 2  # save last and best
+    save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     dataloader_num_workers: int = 1
 
@@ -127,6 +129,12 @@ class SftArguments:
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
+        handle_compatibility(self)
+        if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
+            logger.info(
+                'Your machine does not support bf16, automatically using fp16.'
+            )
+            self.dtype = 'fp16'
         if is_dist():
             rank, local_rank, _, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
@@ -143,7 +151,10 @@ class SftArguments:
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
-                self.only_save_model = False
+                if self.deepspeed_config_path is None:
+                    self.only_save_model = False
+                else:
+                    self.only_save_model = True
         elif self.sft_type == 'full':
             assert self.quantization_bit == 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
@@ -156,8 +167,11 @@ class SftArguments:
 
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
-                'template', 'default')
+                'template', TemplateType.default)
             logger.info(f'Setting template_type: {self.template_type}')
+        if self.dataset is None:
+            self.dataset = [DatasetName.blossom_math_zh]
+
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         self.output_dir = os.path.join(self.output_dir, self.model_type)
@@ -193,16 +207,24 @@ class SftArguments:
                 self.eval_batch_size = 1
             else:
                 self.eval_batch_size = self.batch_size
+        if self.save_total_limit == -1:
+            self.save_total_limit = None
+
+        self.deepspeed = None
+        if self.deepspeed_config_path is not None:
+            with open(self.deepspeed_config_path, 'r') as f:
+                self.deepspeed = json.load(f)
+            logger.info(f'Using deepspeed: {self.deepspeed}')
 
 
 @dataclass
 class InferArguments:
     model_type: str = field(
-        default='qwen-7b-chat',
+        default=ModelType.qwen_7b_chat,
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
-    template_type: str = field(
+    template_type: Optional[str] = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
     eval_human: bool = False  # False: eval val_dataset
@@ -212,14 +234,14 @@ class InferArguments:
         default='bf16', metadata={'choices': ['bf16', 'fp16', 'fp32']})
     ignore_args_error: bool = False  # True: notebook compatibility
 
-    dataset: str = field(
-        default='advertise-gen',
+    dataset: Optional[List[str]] = field(
+        default=None,
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_split_seed: int = 42
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 20
     system: str = 'you are a helpful assistant!'
-    max_length: Optional[int] = 2048
+    max_length: int = 2048
 
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
@@ -248,10 +270,18 @@ class InferArguments:
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
+        handle_compatibility(self)
+        if self.dtype == 'bf16' and not torch.cuda.is_bf16_supported():
+            logger.info(
+                'Your machine does not support bf16, automatically using fp16.'
+            )
+            self.dtype = 'fp16'
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type].get(
-                'template', 'default')
+                'template', TemplateType.default)
             logger.info(f'Setting template_type: {self.template_type}')
+        if self.dataset is None:
+            self.dataset = [DatasetName.blossom_math_zh]
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.bnb_4bit_comp_dtype is None:
@@ -303,3 +333,9 @@ def select_bnb(
         load_in_4bit, load_in_8bit = False, False
 
     return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
+
+
+def handle_compatibility(args: Union[SftArguments, InferArguments]):
+    if args.dataset is not None and len(
+            args.dataset) == 1 and ',' in args.dataset[0]:
+        args.dataset = args.dataset[0].split(',')

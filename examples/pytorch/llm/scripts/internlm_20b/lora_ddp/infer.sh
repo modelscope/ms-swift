@@ -1,3 +1,5 @@
+# Experimental environment: A100
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python src/llm_infer.py \
     --model_type internlm-20b \

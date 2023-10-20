@@ -1,6 +1,8 @@
 # Experimental environment: 4 * 3090
-# 4 * 15GB GPU memory
+# 4 * 15GB GPU memory (not use flash_attn)
 nproc_per_node=2
+
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
@@ -9,10 +11,10 @@ torchrun \
     --model_type qwen-7b-chat \
     --sft_type lora \
     --template_type chatml \
-    --dtype fp16 \
+    --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset advertise-gen \
+    --dataset advertise-gen-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \

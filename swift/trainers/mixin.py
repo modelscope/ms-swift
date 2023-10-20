@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import os
+import re
 import shutil
+from pathlib import Path
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -92,7 +94,7 @@ class PushToMsHubMixin:
         self.repo.push(commit_message)
 
     def init_hf_repo(self) -> None:
-        """init ms repo. Compatible with transformers>=v4.34"""
+        """init ms repo. Compatible with transformers>=4.34"""
         self.init_git_repo()
 
     def init_git_repo(self, at_init: bool = False) -> None:
@@ -268,10 +270,21 @@ class SwiftMixin:
                     Invoke.THIRD_PARTY:
                     kwargs.get(Invoke.THIRD_PARTY, Invoke.SWIFT),
                 })
+
+        # Compatible with transformers>=4.34
+        from swift.tuners import SwiftModel
+        is_quantized = getattr(model, 'is_quantized', False)
+        _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded',
+                                         False)
+        use_swift = isinstance(model, SwiftModel)
+        if is_quantized and use_swift:
+            model._hf_peft_config_loaded = True
         # mro
         super().__init__(model, args, data_collator, train_dataset,
                          eval_dataset, tokenizer, model_init, compute_metrics,
                          callbacks, optimizers, preprocess_logits_for_metrics)
+        if is_quantized and use_swift:
+            model._hf_peft_config_loaded = _hf_peft_config_loaded
 
         if get_function(model.__class__.forward) is not get_function(
                 model.forward):
@@ -369,10 +382,6 @@ class SwiftMixin:
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
         self.save_model(output_dir, _internal_call=True)
-        if self.is_deepspeed_enabled:
-            # under zero3 model file itself doesn't get saved since it's bogus! Unless deepspeed
-            # config `stage3_gather_16bit_weights_on_model_save` is True
-            self.model_wrapped.save_checkpoint(output_dir)
 
         # Determine the new best metric / best model checkpoint
         if metrics is not None and self.args.metric_for_best_model is not None:
@@ -407,3 +416,56 @@ class SwiftMixin:
             return super()._get_train_sampler()
         else:
             return self._get_eval_sampler(self.train_dataset)
+
+    def _load_from_checkpoint(self,
+                              resume_from_checkpoint: str,
+                              model=None) -> None:
+        if model is None:
+            model = self.model
+        if not isinstance(model, SwiftModel):
+            # Avoid throwing exceptions
+            return super()._load_from_checkpoint(resume_from_checkpoint, model)
+
+    def _sorted_checkpoints(self,
+                            output_dir=None,
+                            checkpoint_prefix=PREFIX_CHECKPOINT_DIR,
+                            use_mtime=False) -> List[str]:
+        ordering_and_checkpoint_path = []
+
+        glob_checkpoints = [
+            str(x) for x in Path(output_dir).glob(f'{checkpoint_prefix}-*')
+            if os.path.isdir(x)
+        ]
+
+        for path in glob_checkpoints:
+            if use_mtime:
+                ordering_and_checkpoint_path.append(
+                    (os.path.getmtime(path), path))
+            else:
+                regex_match = re.match(f'.*{checkpoint_prefix}-([0-9]+)', path)
+                if regex_match is not None and regex_match.groups(
+                ) is not None:
+                    ordering_and_checkpoint_path.append(
+                        (int(regex_match.groups()[0]), path))
+
+        checkpoints_sorted = sorted(ordering_and_checkpoint_path)
+        checkpoints_sorted = [
+            checkpoint[1] for checkpoint in checkpoints_sorted
+        ]
+        # Make sure we don't delete the best model.
+        # fix resume_from_checkpointing bug
+        if self.state.best_model_checkpoint is not None and (str(
+                Path(self.state.best_model_checkpoint)) in checkpoints_sorted):
+            best_model_index = checkpoints_sorted.index(
+                str(Path(self.state.best_model_checkpoint)))
+            for i in range(best_model_index, len(checkpoints_sorted) - 2):
+                checkpoints_sorted[i], checkpoints_sorted[
+                    i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
+        return checkpoints_sorted
+
+    def _load_best_model(self):
+        # Compatible with transformers>=4.35 (deepspeed)
+        try:
+            super()._load_best_model()
+        except ValueError as e:
+            logger.warning(e)

@@ -3,7 +3,8 @@ import os
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
-from transformers import BitsAndBytesConfig, GenerationConfig, TextStreamer
+from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import TextStreamer
 from utils import (InferArguments, get_dataset, get_model_tokenizer,
                    get_preprocess)
 
@@ -16,6 +17,8 @@ logger = get_logger()
 
 def merge_lora(args: InferArguments) -> None:
     assert args.sft_type == 'lora'
+    assert not args.model_type.endswith('int4'), 'int4 model is not supported'
+    assert not args.model_type.endswith('int8'), 'int8 model is not supported'
     # ### Loading Model and Tokenizer
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')
@@ -105,9 +108,8 @@ def llm_infer(args: InferArguments) -> None:
             input_ids = preprocess_func(data)['input_ids']
             inference(input_ids, model, tokenizer, streamer)
     else:
-        _, val_dataset = get_dataset(
-            args.dataset.split(','), args.dataset_test_ratio,
-            args.dataset_split_seed)
+        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
+                                     args.dataset_split_seed)
         mini_val_dataset = val_dataset.select(
             range(min(args.show_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
