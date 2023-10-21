@@ -122,7 +122,7 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         )
 
 
-def broadcast_string(string: Optional[str], buffer_size: int = 200) -> str:
+def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     """String broadcasting in case of DDP
     string: main rank: str
         other rank: None
