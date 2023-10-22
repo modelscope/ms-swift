@@ -76,7 +76,7 @@ def register_dataset(
         dataset_name: str,
         get_function: Optional[GetDatasetFunction] = None,
         *,
-        task: Literal['chat', 'text-generation'] = 'chat',
+        task: Optional[str] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
@@ -128,7 +128,7 @@ def preprocess_alpaca(
 def get_alpaca_gpt4_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'AI-ModelScope/alpaca-gpt4-data-en', split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.alpaca_zh)
@@ -141,7 +141,7 @@ def get_alpaca_gpt4_zh_dataset() -> HfDataset:
             inp = inp[3:]
         return f'{inst}\n{inp}'
 
-    return _preprocess_alpaca(dataset, concat_inst_inp)
+    return preprocess_alpaca(dataset, concat_inst_inp)
 
 
 def _preprocess_advertise_gen_dataset(dataset: HfDataset) -> HfDataset:
@@ -172,7 +172,7 @@ def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
 def get_finance_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/finance_en', split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 _multi_alpaca_language_list = [
@@ -185,7 +185,7 @@ def _get_multi_alpaca(subset_name: str) -> HfDataset:
         'damo/nlp_polylm_multialpaca_sft',
         subset_name=subset_name,
         split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(
@@ -218,7 +218,7 @@ def get_multi_alpaca(language_list: List[str]) -> HfDataset:
 def get_code_alpaca_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/code_alpaca_en', split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.instinwild_zh)
@@ -226,7 +226,7 @@ def get_instinwild_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='default',
         split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.instinwild_en)
@@ -234,21 +234,21 @@ def get_instinwild_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/instinwild', subset_name='subset',
         split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.cot_en)
 def get_cot_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT', split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.cot_zh)
 def get_cot_zh_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'YorickHe/CoT_zh', split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
@@ -421,7 +421,7 @@ def get_instruct_en_dataset() -> HfDataset:
 def get_gpt4all_en_dataset() -> HfDataset:
     dataset: HfDataset = MsDataset.load(
         'wyj123456/GPT4all', split='train').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 def _preprocess_cls_dataset(dataset: HfDataset, cls_mapping: List[str],
@@ -649,14 +649,14 @@ def get_blossom_math_v2_dataset() -> HfDataset:
 @register_dataset(DatasetName.school_math_zh)
 def get_school_math_dataset() -> HfDataset:
     dataset = MsDataset.load('AI-ModelScope/school_math_0.25M').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.text2sql_en)
 def get_text2sql_v2_en_dataset() -> HfDataset:
     dataset = MsDataset.load(
         'AI-ModelScope/texttosqlv2_25000_v2').to_hf_dataset()
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.sql_create_context_en)
@@ -666,7 +666,7 @@ def get_sql_create_context_dataset() -> HfDataset:
     dataset = dataset.rename_column('question', 'instruction')
     dataset = dataset.rename_column('context', 'input')
     dataset = dataset.rename_column('answer', 'output')
-    return _preprocess_alpaca(dataset)
+    return preprocess_alpaca(dataset)
 
 
 @register_dataset(DatasetName.lawyer_llama_zh)
