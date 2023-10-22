@@ -384,8 +384,8 @@ def forward_noflashattn(
 
 def apply_rotary_pos_emb_inference(q, k, cos_sin, position_ids):
     gather_indices = position_ids[:, :, None, None]  # [bsz, seq_len, 1, 1]
-    gather_indices = gather_indices.repeat(1, 1, cos_sin[0].shape[1],
-                                           cos_sin[0].shape[3])
+    gather_indices = gather_indices.repeat(1, 1, cos_sin[0].shape[0],
+                                           cos_sin[0].shape[1])
     bsz = gather_indices.shape[0]
     cos, sin = (
         torch.gather(
@@ -433,7 +433,9 @@ def forward_flashattn_inference(
         kv_seq_len += past_kv_len
 
     cos_sin = self.rotary_emb(v, seq_len=kv_seq_len)
-    q, k = apply_rotary_pos_emb_inference(q, k, cos_sin, position_ids)
+    q, k = apply_rotary_pos_emb(q.transpose(1, 2), k.transpose(1, 2), *cos_sin, position_ids)
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
 
     if past_key_value is not None:
         assert (flash_attn_version >=
