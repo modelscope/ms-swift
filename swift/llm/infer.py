@@ -48,8 +48,6 @@ def llm_infer(args: InferArguments) -> None:
     if args.merge_lora_and_save:
         merge_lora(args)
     logger.info(f'args: {args}')
-    if not os.path.isdir(args.ckpt_dir):
-        raise ValueError(f'Please enter a valid ckpt_dir: {args.ckpt_dir}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 

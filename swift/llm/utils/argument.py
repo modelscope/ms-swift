@@ -266,6 +266,8 @@ class InferArguments:
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
+        if not os.path.isdir(self.ckpt_dir):
+            raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
