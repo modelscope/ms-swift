@@ -26,9 +26,3 @@ def infer_main(argv: Optional[List[str]] = None) -> None:
         else:
             raise ValueError(f'remaining_argv: {remaining_argv}')
     llm_infer(args)
-
-
-if __name__ == '__main__':
-    ckpt_dir = sft_main()
-    print(ckpt_dir)
-    infer_main(['--ckpt_dir', ckpt_dir])

@@ -73,9 +73,9 @@ register_template(
              ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'], ['\n\n'],
              [['eos_token_id']]))
 
-register_template(TemplateType.default_generation, [], ['{{QUERY}}'], None,
-                  [['eos_token_id']])
 # You can set the query as '' to serve as a template for pre-training.
+register_template(TemplateType.default_generation,
+                  Template([], ['{{QUERY}}'], None, [['eos_token_id']]))
 register_template(
     TemplateType.chatml,
     Template(
