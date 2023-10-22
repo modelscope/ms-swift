@@ -63,48 +63,61 @@ class Template:
 TEMPLATE_MAPPING: Dict[str, Template] = {}
 
 
-def register_template(template_type: str, prefix: Prompt, prompt: Prompt,
-                      chat_sep: Optional[Prompt], suffix: Prompt) -> None:
-    TEMPLATE_MAPPING[template_type] = Template(prefix, prompt, chat_sep,
-                                               suffix)
+def register_template(template_type: str, template: Template) -> None:
+    TEMPLATE_MAPPING[template_type] = template
 
 
-register_template(TemplateType.default, ['{{SYSTEM}}\n\n'],
-                  ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'],
-                  ['\n\n'], [['eos_token_id']])
+register_template(
+    TemplateType.default,
+    Template(['{{SYSTEM}}\n\n'],
+             ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'], ['\n\n'],
+             [['eos_token_id']]))
 
 register_template(TemplateType.default_generation, [], ['{{QUERY}}'], None,
                   [['eos_token_id']])
 # You can set the query as '' to serve as a template for pre-training.
 register_template(
-    TemplateType.chatml, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
-    ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-    ['<|im_end|>\n'], ['<|im_end|><|endoftext|>'])
-register_template(TemplateType.baichuan, [], [[195], '{{QUERY}}', [196]], [],
-                  [['eos_token_id']])
-register_template(TemplateType.chatglm2, [[64790, 64792]],
-                  ['[Round {{ROUND}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
-                  [['eos_token_id']])
+    TemplateType.chatml,
+    Template(
+        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|><|endoftext|>']))
+register_template(
+    TemplateType.baichuan,
+    Template([], [[195], '{{QUERY}}', [196]], [], [['eos_token_id']]))
+register_template(
+    TemplateType.chatglm2,
+    Template([[64790, 64792]], ['[Round {{ROUND}}]\n\n问：{{QUERY}}\n\n答：'],
+             ['\n\n'], [['eos_token_id']]))
 
-register_template(TemplateType.chatglm2, [[64790, 64792]], ['{{QUERY}}'], None,
-                  [['eos_token_id']])
+register_template(
+    TemplateType.chatglm2_generation,
+    Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 register_template(
     TemplateType.llama,
-    [['bos_token_id'], '[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
-    ['{{QUERY}} [/INST] '], [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
-    [['eos_token_id']])
-register_template(TemplateType.openbuddy, ['{{SYSTEM}}\n\n'],
-                  ['User: {{QUERY}}\nAssistant: '], ['\n'], [['eos_token_id']])
+    Template([['bos_token_id'], '[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
+             ['{{QUERY}} [/INST] '],
+             [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
+             [['eos_token_id']]))
+register_template(
+    TemplateType.openbuddy,
+    Template(['{{SYSTEM}}\n\n'], ['User: {{QUERY}}\nAssistant: '], ['\n'],
+             [['eos_token_id']]))
 
-register_template(TemplateType.internlm, ['<s>'],
-                  ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'], ['<eoa>\n'],
-                  ['<eoa></s>'])
-register_template(TemplateType.xverse, [], ['Human: {{QUERY}}\n\nAssistant: '],
-                  [['eos_token_id']], [['eos_token_id']])
-register_template(TemplateType.ziya, [['bos_token_id']],
-                  ['<human>:{{QUERY}}\n<bot>:'], ['\n'], [['eos_token_id']])
+register_template(
+    TemplateType.internlm,
+    Template(['<s>'], ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'], ['<eoa>\n'],
+             ['<eoa></s>']))
+register_template(
+    TemplateType.xverse,
+    Template([], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']],
+             [['eos_token_id']]))
+register_template(
+    TemplateType.ziya,
+    Template([['bos_token_id']], ['<human>:{{QUERY}}\n<bot>:'], ['\n'],
+             [['eos_token_id']]))
 
 Context = Union[str, List[int]]
 

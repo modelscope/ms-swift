@@ -9,13 +9,13 @@ import torch.distributed as dist
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
-from swift import HubStrategy, get_logger
+from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
 from .dataset import DATASET_MAPPING, DatasetName
 from .model import MODEL_MAPPING, ModelType, dtype_mapping
-from .template import TEMPLATE_MAPPING, TemplateType
+from .template import TEMPLATE_MAPPING
 
 logger = get_logger()
 
