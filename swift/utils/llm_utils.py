@@ -36,13 +36,15 @@ def data_collate_fn(batch: List[Dict[str, Any]], tokenizer, padding_to=None) -> 
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
-    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
-        input_ids[0] = F.pad(input_ids[0], (0, padding_to-input_ids[0].shape[-1]), "constant", tokenizer.pad_token_id)
-        labels[0] = F.pad(labels[0], (0, padding_to-labels[0].shape[-1]), "constant", -100)
     attention_mask = [
         torch.ones(len(input_ids[i]), dtype=torch.int64)
         for i in range(len(input_ids))
     ]
+
+    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
+        input_ids[0] = F.pad(input_ids[0], (0, padding_to-input_ids[0].shape[-1]), "constant", tokenizer.pad_token_id)
+        labels[0] = F.pad(labels[0], (0, padding_to-labels[0].shape[-1]), "constant", -100)
+        attention_mask[0] = F.pad(attention_mask[0], (0, padding_to-attention_mask[0].shape[-1]), "constant", 0)
 
     input_ids = pad_sequence(
         input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
