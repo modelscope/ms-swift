@@ -7,11 +7,11 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                        AutoTokenizer, BitsAndBytesConfig, GPTQConfig, Model,
-                        read_config, snapshot_download)
+from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                        BitsAndBytesConfig, GPTQConfig, Model, read_config,
+                        snapshot_download)
 from torch import dtype as Dtype
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils.versions import require_version
 
 from swift import get_logger
@@ -99,8 +99,8 @@ class LoRATM(NamedTuple):
     ziya = ['q_proj', 'k_proj', 'v_proj']
 
 
-GetModelTokenizerFunction = Callable[[...], Tuple[Optional[PreTrainedModel],
-                                                  PreTrainedTokenizer]]
+GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
+                                                PreTrainedTokenizerBase]]
 
 
 def register_model(
@@ -109,29 +109,37 @@ def register_model(
     lora_target_modules: Optional[List[str]] = None,
     template: str = TemplateType.default,
     get_function: Optional[GetModelTokenizerFunction] = None,
+    *,
     requires: Optional[List[str]] = None,
     torch_dtype: Optional[Dtype] = None,
+    automodel_class: type = AutoModelForCausalLM,
     revision: str = 'master',
     ignore_file_pattern: Optional[List[str]] = None,
+    max_length: Optional[int] = None,
+    function_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
                        GetModelTokenizerFunction]]:
-    if lora_target_modules is None:
-        lora_target_modules = ['ALL']
     if requires is None:
         requires = []
+    if function_kwargs is None:
+        function_kwargs = {}
     model_info = {
         'model_id_or_path': model_id_or_path,
         'lora_target_modules': lora_target_modules,
         'template': template,
         'requires': requires,
         'torch_dtype': torch_dtype,
+        'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
-        'revision': revision
+        'revision': revision,
+        'max_length': max_length,
+        **kwargs
     }
 
     if get_function is not None:
-        assert len(kwargs) == 0
+        if len(function_kwargs) > 0:
+            get_function = partial(get_function, **function_kwargs)
         model_info['get_function'] = get_function
         MODEL_MAPPING[model_type] = model_info
         return
@@ -139,8 +147,8 @@ def register_model(
     def _register_model(
             get_function: GetModelTokenizerFunction
     ) -> GetModelTokenizerFunction:
-        if len(kwargs) > 0:
-            get_function = partial(get_function, **kwargs)
+        if len(function_kwargs) > 0:
+            get_function = partial(get_function, **function_kwargs)
         model_info['get_function'] = get_function
         MODEL_MAPPING[model_type] = model_info
         return get_function
@@ -520,7 +528,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
-    get_qwen_function=get_model_tokenizer_qwen_vl)
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_vl})
 @register_model(
     ModelType.qwen_14b_chat_int8,
     'qwen/Qwen-14B-Chat-Int8',
@@ -576,7 +584,7 @@ def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
         load_model: bool = True,
-        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizer]:
+        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']
     for require in requires:
@@ -610,6 +618,8 @@ def get_model_tokenizer(
                 ignore_file_pattern=ignore_file_pattern)
         if is_dist() and is_local_master():
             dist.barrier()
+
+    kwargs['automodel_class'] = model_info['automodel_class']
     model, tokenizer = get_function(model_dir, torch_dtype, load_model,
                                     **kwargs)
     assert tokenizer.eos_token is not None

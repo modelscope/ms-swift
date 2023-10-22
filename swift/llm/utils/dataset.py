@@ -2,7 +2,6 @@
 import ast
 import os
 import re
-from enum import Enum
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -63,7 +62,7 @@ class DatasetName:
     dureader_robust_zh = 'dureader-robust-zh'
     # classification
     cmnli_zh = 'cmnli-zh'
-    jd_zh = 'jd-zh'
+    jd_sentiment_zh = 'jd-sentiment-zh'
     # other (e.g. example dataset for specific model)
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -76,18 +75,24 @@ class DatasetName:
 def register_dataset(
         dataset_name: str,
         get_function: Optional[GetDatasetFunction] = None,
+        *,
+        task: Literal['chat', 'text-generation'] = 'chat',
+        function_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
-    """tasks: exists only as a comment. (not use)"""
+    """task: exists only as a comment. (not use)"""
+    if function_kwargs is None:
+        function_kwargs = {}
     if get_function is not None:
-        assert len(kwargs) == 0
+        if len(function_kwargs) > 0:
+            get_function = partial(get_function, **function_kwargs)
         DATASET_MAPPING[dataset_name] = get_function
         return
 
     def _register_dataset(
             get_function: GetDatasetFunction) -> GetDatasetFunction:
-        if len(kwargs) > 0:
-            get_function = partial(get_function, **kwargs)
+        if len(function_kwargs) > 0:
+            get_function = partial(get_function, **function_kwargs)
         DATASET_MAPPING[dataset_name] = get_function
         return get_function
 
@@ -148,7 +153,7 @@ Advertisements: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(DatasetName.advertise_gen_zh)
+@register_dataset(DatasetName.advertise_gen_zh, task='text-generation')
 def get_advertise_gen_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_train: HfDataset = MsDataset.load(
         'lvjianjin/AdvertiseGen', split='train').to_hf_dataset()
@@ -181,7 +186,8 @@ def _get_multi_alpaca(subset_name: str) -> HfDataset:
 
 
 @register_dataset(
-    DatasetName.multi_alpaca_all, language_list=_multi_alpaca_language_list)
+    DatasetName.multi_alpaca_all,
+    function_kwargs={'language_list': _multi_alpaca_language_list})
 def get_multi_alpaca(language_list: List[str]) -> HfDataset:
     """language_list:
         Language-key	Language	# examples
@@ -319,7 +325,8 @@ def _preprocess_agent_dataset(dataset: List[Dict[str, str]]) -> HfDataset:
     return dataset
 
 
-@register_dataset(DatasetName.damo_agent_mini_zh, use_mini=True)
+@register_dataset(
+    DatasetName.damo_agent_mini_zh, function_kwargs={'use_mini': True})
 @register_dataset(DatasetName.damo_agent_zh)
 def get_damo_agent_zh_dataset(
         use_mini: bool = False) -> Tuple[HfDataset, HfDataset]:
@@ -360,7 +367,9 @@ def _preprocess_firefly(dataset: List[Dict[str, str]],
     })
 
 
-@register_dataset(DatasetName.firefly_all_zh, kind_list=_firefly_kind_list)
+@register_dataset(
+    DatasetName.firefly_all_zh,
+    function_kwargs={'kind_list': _firefly_kind_list})
 def get_firefly_zh_dataset(kind_list: List[str]) -> HfDataset:
     model_id = 'wyj123456/firefly'
     file = 'firefly-train-1.1M.jsonl'
@@ -374,7 +383,7 @@ def get_firefly_zh_dataset(kind_list: List[str]) -> HfDataset:
     return _preprocess_firefly(dataset, kind_list)
 
 
-@register_dataset(DatasetName.poetry_zh)
+@register_dataset(DatasetName.poetry_zh, task='text-generation')
 def get_poetry_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     dataset_dict = MsDataset.load('modelscope/chinese-poetry-collection')
     train_dataset: HfDataset = dataset_dict['train'].to_hf_dataset()
@@ -383,7 +392,7 @@ def get_poetry_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     for dataset in (train_dataset, val_dataset):
         dataset_list.append(
             HfDataset.from_dict({
-                'query': ['写诗'] * len(dataset),
+                'query': [''] * len(dataset),
                 'response': dataset['text1']
             }))
     return tuple(dataset_list)
@@ -439,7 +448,7 @@ Output: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(DatasetName.cmnli_zh)
+@register_dataset(DatasetName.cmnli_zh, task='text-generation')
 def get_cmnli_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Natural Language Inference"""
     dataset_dict = MsDataset.load('clue', subset_name='cmnli')
@@ -455,8 +464,8 @@ def get_cmnli_zh_dataset() -> Tuple[HfDataset, HfDataset]:
         for dataset in (train_dataset, val_dataset))
 
 
-@register_dataset(DatasetName.jd_zh)
-def get_jd_zh_dataset() -> Tuple[HfDataset, HfDataset]:
+@register_dataset(DatasetName.jd_sentiment_zh, task='text-generation')
+def get_jd_sentiment_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Sentiment classification"""
     dataset_dict = MsDataset.load('DAMO_NLP/jd')
     train_dataset: HfDataset = dataset_dict['train'].to_hf_dataset()
@@ -484,7 +493,7 @@ Question: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(DatasetName.dureader_robust_zh)
+@register_dataset(DatasetName.dureader_robust_zh, task='text-generation')
 def get_dureader_robust_qg_zh_dataset() -> Tuple[HfDataset, HfDataset]:
     """Question Generation"""
     dataset_dict = MsDataset.load('modelscope/DuReader_robust-QG')
@@ -516,10 +525,16 @@ def _preprocess_medical(dataset: HfDataset, subset_name: str) -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(DatasetName.medical_en, subset_name='en')
-@register_dataset(DatasetName.medical_zh, subset_name='zh')
 @register_dataset(
-    DatasetName.medical_mini_zh, subset_name='zh', train_dataset_sample=100000)
+    DatasetName.medical_en, function_kwargs={'subset_name': 'en'})
+@register_dataset(
+    DatasetName.medical_zh, function_kwargs={'subset_name': 'zh'})
+@register_dataset(
+    DatasetName.medical_mini_zh,
+    function_kwargs={
+        'subset_name': 'zh',
+        'train_dataset_sample': 100000
+    })
 def get_medical_dataset(
         subset_name: Literal['en', 'zh'],
         train_dataset_sample: int = -1) -> Tuple[HfDataset, HfDataset]:
@@ -564,9 +579,11 @@ _sharegpt_en_subset_list = ['common-en', 'computer-en']
 
 
 @register_dataset(
-    DatasetName.sharegpt_zh, subset_name_list=_sharegpt_zh_subset_list)
+    DatasetName.sharegpt_zh,
+    function_kwargs={'subset_name_list': _sharegpt_zh_subset_list})
 @register_dataset(
-    DatasetName.sharegpt_en, subset_name_list=_sharegpt_en_subset_list)
+    DatasetName.sharegpt_en,
+    function_kwargs={'subset_name_list': _sharegpt_en_subset_list})
 def get_sharegpt_dataset(subset_name_list: List[str]) -> HfDataset:
     dataset_list = []
     for subset_name in subset_name_list:
@@ -664,7 +681,7 @@ def get_lawyer_llama_dataset() -> HfDataset:
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(DatasetName.tigerbot_law_zh)
+@register_dataset(DatasetName.tigerbot_law_zh, task='text-generation')
 def get_tigerbot_law_plugin() -> HfDataset:
     """Pretrain Fromat"""
     dataset = MsDataset.load(

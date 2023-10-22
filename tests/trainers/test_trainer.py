@@ -13,6 +13,7 @@ import torch
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
 from numpy.random import RandomState
+from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
@@ -21,7 +22,9 @@ from swift import Trainer, TrainingArguments, get_logger
 logger = get_logger()
 
 
-def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
+def data_collate_fn(batch: List[Dict[str, Any]],
+                    tokenizer) -> Dict[str, Tensor]:
+    # text-classification
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = torch.tensor([b['labels'] for b in batch])

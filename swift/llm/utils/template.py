@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizerBase
 
 DEFAULT_SYSTEM = 'you are a helpful assistant!'
 History = List[Tuple[str, str]]
@@ -39,7 +39,7 @@ class Template:
         self._is_init = False
 
     def init_template(self,
-                      tokenizer: PreTrainedTokenizer,
+                      tokenizer: PreTrainedTokenizerBase,
                       system: Optional[str] = None,
                       max_length: Optional[int] = None):
         self._is_init = True
@@ -143,7 +143,7 @@ def _concat_context_list(
         res_context_list.append(context)
 
 
-def _encode_context_list(tokenizer: PreTrainedTokenizer,
+def _encode_context_list(tokenizer: PreTrainedTokenizerBase,
                          context_list: List[Context]) -> List[int]:
     input_ids: List[int] = []
     for context in context_list:
@@ -206,7 +206,7 @@ def _encode(
 
 def get_template(
     template_type: str,
-    tokenizer: PreTrainedTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     system: str = DEFAULT_SYSTEM,
     max_length: Optional[int] = None,
 ) -> Template:

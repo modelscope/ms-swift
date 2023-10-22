@@ -6,10 +6,11 @@ from typing import Any, Callable, Dict, List, Optional
 import numpy as np
 import torch
 from datasets import Dataset as HfDataset
+from torch import Tensor
 from torch.nn import Linear, Module
 from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
-from transformers import TextStreamer
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, TextStreamer
 
 from .logger import get_logger
 
@@ -31,7 +32,8 @@ def stat_dataset(dataset: HfDataset) -> None:
     )
 
 
-def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
+def data_collate_fn(batch: List[Dict[str, Any]],
+                    tokenizer: PreTrainedTokenizerBase) -> Dict[str, Tensor]:
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
@@ -64,7 +66,8 @@ def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
     return lo
 
 
-def print_example(example: Dict[str, Any], tokenizer) -> None:
+def print_example(example: Dict[str, Any],
+                  tokenizer: PreTrainedTokenizerBase) -> None:
     input_ids, labels = example['input_ids'], example.get('labels')
     logger.info(f'[INPUT_IDS] {input_ids}')
     logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
@@ -120,8 +123,8 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
 
 
 def inference(input_ids: List[int],
-              model,
-              tokenizer,
+              model: PreTrainedModel,
+              tokenizer: PreTrainedTokenizerBase,
               streamer: Optional[TextStreamer] = None) -> str:
     generation_config = getattr(model, 'generation_config', None)
     streamer.skip_prompt = True
