@@ -5,7 +5,7 @@ import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 import requests
 import torch
@@ -24,7 +24,7 @@ from transformers import trainer
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master)
+                         is_local_master, is_master, parse_args)
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -161,6 +161,28 @@ if is_master():
 else:
     logger.setLevel(logging.ERROR)
     ms_logger.setLevel(logging.ERROR)
+
+_TArgsClass = TypeVar('_TArgsClass')
+_T = TypeVar('_T')
+
+
+def get_main(
+        args_class: Type[_TArgsClass],
+        llm_x: Callable[[_TArgsClass],
+                        _T]) -> Callable[[Optional[List[str]]], _T]:
+
+    def x_main(argv: Optional[List[str]] = None) -> _T:
+        args, remaining_argv = parse_args(args_class, argv)
+        args.init_argument()
+        if len(remaining_argv) > 0:
+            if args.ignore_args_error:
+                logger.warning(f'remaining_argv: {remaining_argv}')
+            else:
+                raise ValueError(f'remaining_argv: {remaining_argv}')
+        return llm_x(args)
+
+    return x_main
+
 
 # monkey patching
 MsDataset.load = _msdataset_ddp_load
