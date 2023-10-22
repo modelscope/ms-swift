@@ -80,20 +80,23 @@ def register_dataset(
         function_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
-    """task: exists only as a comment. (not use)"""
     if function_kwargs is None:
         function_kwargs = {}
+
+    dataset_info = {'task': task, **kwargs}
     if get_function is not None:
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
-        DATASET_MAPPING[dataset_name] = get_function
+        dataset_info['get_function'] = get_function
+        DATASET_MAPPING[dataset_name] = dataset_info
         return
 
     def _register_dataset(
             get_function: GetDatasetFunction) -> GetDatasetFunction:
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
-        DATASET_MAPPING[dataset_name] = get_function
+        dataset_info['get_function'] = get_function
+        DATASET_MAPPING[dataset_name] = dataset_info
         return get_function
 
     return _register_dataset
@@ -737,7 +740,8 @@ def get_dataset(
     if isinstance(dataset_seed, int):
         random_state = RandomState(dataset_seed)
     for dataset_name in dataset_name_list:
-        get_function = DATASET_MAPPING[dataset_name]
+        dataset_info = DATASET_MAPPING[dataset_name]
+        get_function = dataset_info['get_function']
         dataset = get_function()
         if isinstance(dataset, (list, tuple)):
             train_d = dataset[0]

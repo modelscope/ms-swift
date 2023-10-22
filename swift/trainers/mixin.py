@@ -469,3 +469,28 @@ class SwiftMixin:
             super()._load_best_model()
         except ValueError as e:
             logger.warning(e)
+
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,
+                                 ignore_keys_for_eval):
+        if self.control.should_log:
+            self.control.should_log = False
+            logs: Dict[str, float] = {}
+            metrics_log = {'loss': tr_loss}  # loss first
+            metrics_log.update(self._metrics_log)
+            self._metrics_log = {}
+            for k, v in metrics_log.items():
+                # all_gather + mean() to get average loss over all processes
+                v_scalar = self._nested_gather(v).mean().item()
+                if k == 'loss':
+                    self._total_loss_scalar += v_scalar
+                logs[k] = round(
+                    v_scalar /
+                    (self.state.global_step - self._globalstep_last_logged), 8)
+            logs['learning_rate'] = self._get_learning_rate()
+
+            tr_loss -= tr_loss
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+            self.log(logs)
+        super()._maybe_log_save_evaluate(tr_loss, model, trial, epoch,
+                                         ignore_keys_for_eval)
