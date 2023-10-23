@@ -3,7 +3,6 @@ import os
 
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-from transformers import TextStreamer
 
 from swift.tuners import Swift
 from swift.utils import (get_logger, inference, print_model_info,
@@ -81,9 +80,6 @@ def llm_infer(args: InferArguments) -> None:
     # ### Inference
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length)
-    streamer = None
-    if args.use_streamer:
-        streamer = TextStreamer(tokenizer, skip_prompt=True)
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -103,7 +99,7 @@ def llm_infer(args: InferArguments) -> None:
             query = input('<<< ')
             data = {'query': query}
             input_ids = template.encode(data)['input_ids']
-            inference(input_ids, model, tokenizer, streamer)
+            inference(input_ids, model, tokenizer, args.stream)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
@@ -113,7 +109,7 @@ def llm_infer(args: InferArguments) -> None:
             response = data['response']
             data['response'] = None
             input_ids = template.encode(data)['input_ids']
-            inference(input_ids, model, tokenizer, streamer)
+            inference(input_ids, model, tokenizer, args.stream)
             print()
             print(f'[LABELS]{response}')
             print('-' * 80)

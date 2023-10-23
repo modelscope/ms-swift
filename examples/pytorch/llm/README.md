@@ -286,6 +286,6 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--repetition_penalty`: Default value is `1.0`.
 - `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
-- `--use_streamer`: Whether to use streaming output. Default value is `True`.
+- `--stream`: Whether to use streaming output. Default value is `True`.
 - `--merge_lora_and_save`: Whether to merge the lora weights into the base model and save the complete weights. Default value is `False`. The weights will be saved in a directory named `checkpoint-xxx-merged` at the same level as `ckpt_dir`, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`.
 - `--save_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file. Default value is `True`.

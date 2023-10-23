@@ -81,7 +81,7 @@ register_template(
     Template(
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
         ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|><|endoftext|>']))
+        ['<|im_end|>\n'], ['<|im_end|>\n<|endoftext|>']))
 register_template(
     TemplateType.baichuan,
     Template([], [[195], '{{QUERY}}', [196]], [], [['eos_token_id']]))

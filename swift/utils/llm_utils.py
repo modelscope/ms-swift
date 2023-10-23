@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import heapq
-from typing import Any, Callable, Dict, List, Optional
+from types import MethodType
+from typing import Any, Callable, Dict, Generator, List, Optional
 
 import numpy as np
 import torch
@@ -10,7 +11,7 @@ from torch import Tensor
 from torch.nn import Linear, Module
 from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, TextStreamer
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from .logger import get_logger
 
@@ -125,19 +126,37 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
 def inference(input_ids: List[int],
               model: PreTrainedModel,
               tokenizer: PreTrainedTokenizerBase,
-              streamer: Optional[TextStreamer] = None) -> str:
+              stream: bool = True,
+              verbose: bool = True) -> str:
     generation_config = getattr(model, 'generation_config', None)
-    streamer.skip_prompt = True
     print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()
-    generate_ids = model.generate(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
-        streamer=streamer,
-        generation_config=generation_config)
-    output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
-    if streamer is None:
-        print(output_text)
+    kwargs = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+    }
+    if stream:
+        from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
+        model.__class__.generate_stream = NewGenerationMixin.generate
+        model.__class__.sample_stream = NewGenerationMixin.sample_stream
+        stream_config = StreamGenerationConfig(
+            **generation_config.to_dict(), do_stream=True)
+        generater = model.generate_stream(
+            **kwargs, generation_config=stream_config, seed=-1)
+        output_text = ''
+        for token in generater:
+            text = tokenizer.decode(token[0])
+            if verbose:
+                print(text, end='', flush=True)
+            output_text += text
+        if verbose:
+            print()
+    else:
+        generate_ids = model.generate(
+            **kwargs, generation_config=generation_config)
+        output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
+        if verbose:
+            print(output_text)
     return output_text

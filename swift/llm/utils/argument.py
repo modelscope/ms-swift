@@ -258,7 +258,7 @@ class InferArguments:
             "This parameter is used only when model_type.startswith('qwen')"
         })
     ignore_args_error: bool = False  # True: notebook compatibility
-    use_streamer: bool = True
+    stream: bool = True
     merge_lora_and_save: bool = False
     save_generation_config: bool = True
 
