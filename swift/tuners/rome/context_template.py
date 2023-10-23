@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 context_template = [
     '{}',
     'Human: {}',

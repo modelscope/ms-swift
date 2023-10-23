@@ -1,3 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from kmeng01/rome.
 """
 Contains utilities for extracting token representations and indices
 from string templates. Used in computing the left and right vectors for ROME.

@@ -1,3 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from kmeng01/rome.
 from typing import Any, Dict, List, Tuple
 
 import numpy as np

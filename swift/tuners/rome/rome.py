@@ -1,3 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from kmeng01/rome.
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple

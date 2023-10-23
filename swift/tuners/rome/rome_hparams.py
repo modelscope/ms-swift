@@ -1,3 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from kmeng01/rome.
 from dataclasses import dataclass
 from typing import List
 
@@ -30,9 +32,6 @@ class ROMEHyperParams(HyperParams):
             kl_factor=0.0625,
         )
         if name == 'llama-7b':
-            r"""
-            Supports: LLaMA-7B, LLaMA-2-7B, Baichuan-7B, InternLM-7B...
-            """
             data.update(
                 dict(
                     layers=[5],
@@ -40,9 +39,6 @@ class ROMEHyperParams(HyperParams):
                     mlp_module_tmp='model.layers.{}.mlp',
                 ))
         elif name == 'llama-13b':
-            r"""
-            Supports LLaMA-13B, LLaMA-2-13B, Baichuan-13B...
-            """
             data.update(
                 dict(
                     layers=[10],
