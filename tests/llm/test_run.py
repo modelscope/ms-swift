@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '4'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import shutil
 import tempfile
@@ -21,12 +21,14 @@ class TestRun(unittest.TestCase):
         shutil.rmtree(self.tmp_dir)
 
     def test_run(self):
+        output_dir = self.tmp_dir
+        # output_dir = 'output'
         for predict_with_generate in ['false', 'true']:
             ckpt_dir = sft_main([
                 '--model_type', ModelType.qwen_7b_chat_int4, '--eval_steps',
                 '10', '--train_dataset_sample', '400',
                 '--predict_with_generate', predict_with_generate, '--dataset',
-                DatasetName.jd_sentiment_zh, '--output', self.tmp_dir,
+                DatasetName.jd_sentiment_zh, '--output', output_dir,
                 '--use_flash_attn', 'false', '--gradient_checkpointing', 'true'
             ])
             print(ckpt_dir)

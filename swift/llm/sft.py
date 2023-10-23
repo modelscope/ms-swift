@@ -196,6 +196,7 @@ def llm_sft(args: SftArguments) -> str:
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         **trainer_kwargs)
+    trainer.sft_args = args
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):

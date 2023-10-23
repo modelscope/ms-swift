@@ -295,15 +295,44 @@ class SwiftMixin:
     def _create_configuration_file(model: Module, output_dir: str) -> None:
         cfg = getattr(model, 'cfg', {})
         configuration_path = os.path.join(output_dir, 'configuration.json')
+        res = {}
         if os.path.exists(configuration_path):
             with open(configuration_path, 'r') as f:
                 res = json.load(f)
-        else:
-            res = {}
+
         if 'framework' not in res:
             res['framework'] = cfg.get('framework', 'pytorch')
         if 'task' not in res:
             res['task'] = cfg.get('task', 'text-generation')
+        with open(configuration_path, 'w') as f:
+            json.dump(res, f, ensure_ascii=False, indent=4)
+
+    def _add_adapter_cfg(self, output_dir: str) -> None:
+        if not hasattr(self, 'sft_args'):
+            return
+        sft_args = self.sft_args
+        if sft_args.sft_type == 'full':
+            return
+        configuration_path = os.path.join(output_dir, 'configuration.json')
+        res = {}
+        if os.path.exists(configuration_path):
+            with open(configuration_path, 'r') as f:
+                res = json.load(f)
+
+        need_to_save = [
+            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_bankend',
+            'template_type', 'dtype', 'system'
+        ]
+        quantization_bit = sft_args.quantization_bit
+        if quantization_bit != 0:
+            need_to_save += [
+                'quantization_bit', 'bnb_4bit_comp_dtype',
+                'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+            ]
+        adapter_cfg = {}
+        for k in need_to_save:
+            adapter_cfg[k] = getattr(sft_args, k)
+        res['adapter_cfg'] = adapter_cfg
         with open(configuration_path, 'w') as f:
             json.dump(res, f, ensure_ascii=False, indent=4)
 
@@ -314,16 +343,15 @@ class SwiftMixin:
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
         # configuration.json
-        if is_instance_of_ms_model(self.model):
-            model_dir = getattr(self.model, 'model_dir', None)
-            if model_dir is not None:
-                src_path = os.path.join(model_dir, 'configuration.json')
-                dst_path = os.path.join(output_dir, 'configuration.json')
-                if os.path.exists(src_path):
-                    shutil.copy(src_path, dst_path)
+        model_dir = getattr(self.model, 'model_dir', None)
+        if model_dir is not None:
+            src_path = os.path.join(model_dir, 'configuration.json')
+            dst_path = os.path.join(output_dir, 'configuration.json')
+            if os.path.exists(src_path):
+                shutil.copy(src_path, dst_path)
         else:
             self._create_configuration_file(self.model, output_dir)
-
+        self._add_adapter_cfg(output_dir)
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         # model
         save_safetensors = getattr(self.args, 'save_safetensors', False)
