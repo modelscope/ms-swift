@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import unittest
 
+import torch
 from modelscope import AutoTokenizer, Model
 
 from swift import Swift
@@ -40,4 +41,21 @@ class TestRome(unittest.TestCase):
         )
 
         model = Swift.prepare_model(model, config)
-        model.generate()
+        prompt = 'Steve Jobs was the founder of'
+        inp_tok = tokenizer(
+            prompt, return_token_type_ids=False, return_tensors='pt')
+        for key, value in inp_tok.items():
+            inp_tok[key] = value.to('cuda')
+        with torch.no_grad():
+            generated_ids = model.generate(
+                **inp_tok,
+                temperature=0.1,
+                top_k=50,
+                max_length=128,
+                do_sample=True)
+
+        responses = tokenizer.batch_decode(
+            generated_ids[:, inp_tok['input_ids'].size(1):],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True)
+        self.assertTrue('Microsoft' in responses[0])
