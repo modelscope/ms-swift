@@ -62,7 +62,7 @@ def llm_sft(args: SftArguments) -> str:
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             lora_kwargs = {}
-            if args.tuner_bankend == 'peft':
+            if args.tuner_backend == 'peft':
                 global LoRAConfig
                 LoRAConfig = LoraConfig
                 lora_kwargs['task_type'] = 'CAUSAL_LM'

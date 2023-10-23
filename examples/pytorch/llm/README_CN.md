@@ -201,7 +201,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--model_id_or_path`: 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录(`model_dir`), 默认为`None`. 推荐使用model_type的方式指定.
 - `--model_revision`: 表示模型在ModelScope Hub中对应`model_id`的版本号, 默认使用`'master'`. 如果`model_id_or_path`为None或者是本地的模型目录, 则该参数失效.
 - `--sft_type`: 表示微调的方式, 默认是`'lora'`. 你可以选择的值包括: 'lora', 'full'. 如果你要使用lora或qlora, 你需要选择`--sft_type lora`. qlora需额外设置`--quantization_bit 4`. 如果你要使用全参数微调, 则需选择`--sft_type full`.
-- `--tuner_bankend`: 表示lora, qlora的后端支持, 默认是`'swift'`. 你可以选择的值包括: 'swift', 'peft'.
+- `--tuner_backend`: 表示lora, qlora的后端支持, 默认是`'swift'`. 你可以选择的值包括: 'swift', 'peft'.
 - `--template_type`: 表示使用的对话模板的类型, 默认是`None`, 即根据`model_type`查找`MODEL_MAPPING`中的`template`. 可以选择的`template_type`可以查看`utils/preprocss.py`的`TEMPLATE_MAPPING.keys()`. 通过修改它, 可以支持pretrain, text-generation式的SFT, 各种chat类型的SFT.
 - `--output_dir`: 表示ckpt存储的目录, 默认是`'output'`. 我们会在该目录后拼接`model_type`和微调版本号. 方便用户对不同模型进行多次对比实验, 而不需要改变`output_dir`命令行参数.
 - `--ddp_backend`: 表示分布式的后端支持, 默认是`'nccl'`. 你可以选择的值包括: 'nccl', 'gloo', 'mpi', 'ccl'.

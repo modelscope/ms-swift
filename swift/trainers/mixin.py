@@ -320,7 +320,7 @@ class SwiftMixin:
                 res = json.load(f)
 
         need_to_save = [
-            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_bankend',
+            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_backend',
             'template_type', 'dtype', 'system'
         ]
         quantization_bit = sft_args.quantization_bit
