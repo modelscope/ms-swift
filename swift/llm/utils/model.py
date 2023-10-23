@@ -2,7 +2,7 @@
 import os
 from functools import partial
 from types import MethodType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import torch
 import torch.distributed as dist
@@ -11,7 +11,9 @@ from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GPTQConfig, Model, read_config,
                         snapshot_download)
 from torch import dtype as Dtype
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (PretrainedConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
+from transformers.models.auto.auto_factory import _BaseAutoModelClass
 from transformers.utils.versions import require_version
 
 from swift import get_logger
@@ -112,7 +114,7 @@ def register_model(
     *,
     requires: Optional[List[str]] = None,
     torch_dtype: Optional[Dtype] = None,
-    automodel_class: type = AutoModelForCausalLM,
+    automodel_class: Type[_BaseAutoModelClass] = AutoModelForCausalLM,
     revision: str = 'master',
     ignore_file_pattern: Optional[List[str]] = None,
     max_length: Optional[int] = None,
@@ -261,13 +263,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
-def get_model_tokenizer_from_sdk(config_class: type,
-                                 tokenizer_class: type,
-                                 model_dir: str,
-                                 torch_dtype: Dtype,
-                                 load_model: bool = True,
-                                 model_config=None,
-                                 **model_kwargs):
+def get_model_tokenizer_from_sdk(
+        config_class: Type[PretrainedConfig],
+        tokenizer_class: Type[PreTrainedTokenizerBase],
+        model_dir: str,
+        torch_dtype: Dtype,
+        load_model: bool = True,
+        model_config=None,
+        **model_kwargs):
     """load from ms library"""
     config = read_config(model_dir)
     logger.info(config)

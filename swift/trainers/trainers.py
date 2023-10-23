@@ -177,18 +177,18 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return loss, generated_tokens, labels
 
     def compute_loss(self, model, inputs, return_outputs=None):
-        if not hasattr(self, '_metrics_log'):
-            self._metrics_log = {}
+        if not hasattr(self, '_custom_metrics'):
+            self._custom_metrics = {}
         loss, outputs = super().compute_loss(model, inputs, True)
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         labels = inputs['labels'][..., 1:]
         masks = labels != -100
         acc: Tensor = (preds[masks] == labels[masks]).float().mean()
         if model.training:
-            if 'acc' not in self._metrics_log:
-                self._metrics_log['acc'] = torch.tensor(0.).to(
+            if 'acc' not in self._custom_metrics:
+                self._custom_metrics['acc'] = torch.tensor(0.).to(
                     self.args.device)
-            self._metrics_log[
+            self._custom_metrics[
                 'acc'] += acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 

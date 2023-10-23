@@ -17,7 +17,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          plot_images, preprocess_logits_for_metrics,
                          print_example, print_model_info, seed_everything,
                          show_layers, sort_by_max_length, stat_dataset)
-from .utils import (SftArguments, dataset_map, get_dataset,
+from .utils import (SftArguments, Template, dataset_map, get_dataset,
                     get_model_tokenizer, get_template)
 
 logger = get_logger()
@@ -144,7 +144,7 @@ def llm_sft(args: SftArguments) -> str:
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
         greater_is_better=args.predict_with_generate,

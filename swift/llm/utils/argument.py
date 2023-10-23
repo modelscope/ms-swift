@@ -35,8 +35,8 @@ class SftArguments:
     template_type: Optional[str] = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     output_dir: str = 'output'
-    ddp_backend: Optional[str] = field(
-        default=None, metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
+    ddp_backend: str = field(
+        default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
@@ -140,14 +140,13 @@ class SftArguments:
         self.output_dir = os.path.join(self.output_dir, self.model_type)
         if is_master():
             self.output_dir = add_version_to_work_dir(self.output_dir)
+            logger.info(f'output_dir: {self.output_dir}')
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         if is_dist():
             rank, local_rank, _, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
-            if self.ddp_backend is None:
-                self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 
@@ -268,6 +267,7 @@ class InferArguments:
         handle_compatibility(self)
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
+        logger.info(f'ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
