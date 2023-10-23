@@ -9,6 +9,7 @@ import torch.nn as nn
 
 from swift import SwiftConfig
 from swift.tuners.utils import SwiftOutput
+from swift.utils import get_logger
 from .compute_u import compute_u
 from .compute_v import compute_v
 from .context_template import context_template
@@ -16,6 +17,8 @@ from .nethook import get_parameter
 from .rome_hparams import ROMEHyperParams
 
 CONTEXT_TEMPLATES_CACHE = None
+
+logger = get_logger()
 
 
 @dataclass
@@ -117,7 +120,7 @@ def execute_rome(
 
     # Update target and print info
     request = deepcopy(knowledge)
-    print(
+    logger.info(
         f'Executing ROME algorithm for the update: '
         f"[{request['prompt'].format(request['subject'])}] -> [{request['target']}]"
     )
@@ -144,7 +147,7 @@ def execute_rome(
             layer,
             context_template,
         )
-        print('Left vector shape:', left_vector.shape)
+        logger.info('Left vector shape:', left_vector.shape)
         right_vector: torch.Tensor = compute_v(
             model,
             tok,
@@ -154,7 +157,7 @@ def execute_rome(
             left_vector,
             context_template,
         )
-        print('Right vector shape:', right_vector.shape)
+        logger.info('Right vector shape:', right_vector.shape)
         right_vector = right_vector.to(left_vector.dtype)
 
         with torch.no_grad():
@@ -176,7 +179,7 @@ def execute_rome(
         for k, v in weights.items():
             v[...] = weights_copy[k]
 
-    print(f'Deltas successfully computed for {list(weights.keys())}')
+    logger.info(f'Deltas successfully computed for {list(weights.keys())}')
 
     return deltas
 
