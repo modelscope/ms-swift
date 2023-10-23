@@ -31,14 +31,18 @@ def stat_dataset(dataset: HfDataset) -> None:
     )
 
 
-def data_collate_fn(batch: List[Dict[str, Any]], tokenizer, padding_to: int = None) -> Dict[str, Any]:
+def data_collate_fn(batch: List[Dict[str, Any]],
+                    tokenizer,
+                    padding_to: int = None) -> Dict[str, Any]:
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     if padding_to is not None and input_ids[0].shape[-1] < padding_to:
-        input_ids[0] = torch.nn.functional.pad(input_ids[0], (0, padding_to-input_ids[0].shape[-1]))
+        input_ids[0] = torch.nn.functional.pad(
+            input_ids[0], (0, padding_to - input_ids[0].shape[-1]))
     labels = [torch.tensor(b['labels']) for b in batch]
     if padding_to is not None and labels[0].shape[-1] < padding_to:
-        labels[0] = torch.nn.functional.pad(labels[0], (0, padding_to-labels[0].shape[-1]))
+        labels[0] = torch.nn.functional.pad(
+            labels[0], (0, padding_to - labels[0].shape[-1]))
     attention_mask = [
         torch.ones(len(input_ids[i]), dtype=torch.int64)
         for i in range(len(input_ids))

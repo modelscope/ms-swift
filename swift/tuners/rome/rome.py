@@ -1,7 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -25,17 +24,13 @@ class RomeConfig(SwiftConfig):
     Args:
 
     """
-    model_type: str = field(
-        default=None,
-        metadata={'help': 'The model type'})
+    model_type: str = field(default=None, metadata={'help': 'The model type'})
 
     tokenizer: Any = field(
-        default=None,
-        metadata={'help': 'The tokenizer matching this model'})
+        default=None, metadata={'help': 'The tokenizer matching this model'})
 
     knowledge: List[Dict] = field(
-        default=False,
-        metadata={'help': 'The knowledge to be '})
+        default=False, metadata={'help': 'The knowledge to be '})
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
@@ -63,12 +58,14 @@ class Rome:
                 param.requires_grad = True
 
             hparams = ROMEHyperParams.from_name(config.model_type)
-            modified_keys = apply_rome_to_model(
-                model, config.tokenizer, config.knowledge, hparams
-            )
+            modified_keys = apply_rome_to_model(model, config.tokenizer,
+                                                config.knowledge, hparams)
 
         def state_dict_callback(state_dict, adapter_name):
-            return {key: value for key, value in state_dict.items() if key in modified_keys}
+            return {
+                key: value
+                for key, value in state_dict.items() if key in modified_keys
+            }
 
         def mark_trainable_callback(model):
             pass
@@ -119,15 +116,15 @@ def execute_rome(
     # Update target and print info
     request = deepcopy(knowledge)
     print(
-        f"Executing ROME algorithm for the update: "
+        f'Executing ROME algorithm for the update: '
         f"[{request['prompt'].format(request['subject'])}] -> [{request['target']}]"
     )
 
     # Retrieve weights that user desires to change
     weights = {
-        f"{hparams.rewrite_module_tmp.format(layer)}.weight": get_parameter(
-            model, f"{hparams.rewrite_module_tmp.format(layer)}.weight"
-        )
+        f'{hparams.rewrite_module_tmp.format(layer)}.weight':
+        get_parameter(model,
+                      f'{hparams.rewrite_module_tmp.format(layer)}.weight')
         for layer in hparams.layers
     }
     # Save old weights for future restoration
@@ -145,7 +142,7 @@ def execute_rome(
             layer,
             context_template,
         )
-        print("Left vector shape:", left_vector.shape)
+        print('Left vector shape:', left_vector.shape)
         right_vector: torch.Tensor = compute_v(
             model,
             tok,
@@ -155,14 +152,15 @@ def execute_rome(
             left_vector,
             context_template,
         )
-        print("Right vector shape:", right_vector.shape)
+        print('Right vector shape:', right_vector.shape)
         right_vector = right_vector.to(left_vector.dtype)
 
         with torch.no_grad():
             # Determine correct transposition of delta matrix
-            weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
+            weight_name = f'{hparams.rewrite_module_tmp.format(layer)}.weight'
             upd_matrix = left_vector.unsqueeze(1) @ right_vector.unsqueeze(0)
-            upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)
+            upd_matrix = upd_matrix_match_shape(upd_matrix,
+                                                weights[weight_name].shape)
 
             # Update model weights and record desired changes in `delta` variable
             weights[weight_name][...] += upd_matrix
@@ -176,12 +174,13 @@ def execute_rome(
         for k, v in weights.items():
             v[...] = weights_copy[k]
 
-    print(f"Deltas successfully computed for {list(weights.keys())}")
+    print(f'Deltas successfully computed for {list(weights.keys())}')
 
     return deltas
 
 
-def upd_matrix_match_shape(matrix: torch.Tensor, shape: torch.Size) -> torch.Tensor:
+def upd_matrix_match_shape(matrix: torch.Tensor,
+                           shape: torch.Size) -> torch.Tensor:
     """
     GPT-2 and GPT-J have transposed weight representations.
     Returns a matrix that matches the desired shape, else raises a ValueError
@@ -193,6 +192,5 @@ def upd_matrix_match_shape(matrix: torch.Tensor, shape: torch.Size) -> torch.Ten
         return matrix.T
     else:
         raise ValueError(
-            "Update matrix computed by ROME does not match original weight shape. "
-            "Check for bugs in the code?"
-        )
+            'Update matrix computed by ROME does not match original weight shape. '
+            'Check for bugs in the code?')

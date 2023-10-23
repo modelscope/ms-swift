@@ -4,8 +4,8 @@ from .adapter import Adapter, AdapterConfig
 from .lora import LoRA, LoRAConfig
 from .prompt import Prompt, PromptConfig
 from .restuning import ResTuning, ResTuningConfig
+from .rome import Rome, RomeConfig
 from .side import Side, SideConfig
-from .rome import RomeConfig, Rome
 
 
 class SwiftTuners:
