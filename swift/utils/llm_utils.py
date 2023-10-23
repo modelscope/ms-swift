@@ -129,7 +129,8 @@ def inference(input_ids: List[int],
               stream: bool = True,
               verbose: bool = True) -> str:
     generation_config = getattr(model, 'generation_config', None)
-    print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
+    if verbose:
+        print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()

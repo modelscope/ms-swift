@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import sft_main
+from swift.llm.run import sft_main
 
 if __name__ == '__main__':
     ckpt_dir = sft_main()

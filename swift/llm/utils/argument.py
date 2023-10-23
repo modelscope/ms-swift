@@ -178,6 +178,7 @@ class SftArguments:
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
+        assert isinstance(self.dataset, (list, tuple))
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps

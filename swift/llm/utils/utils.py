@@ -167,12 +167,15 @@ _T = TypeVar('_T')
 
 
 def get_main(
-        args_class: Type[_TArgsClass],
-        llm_x: Callable[[_TArgsClass],
-                        _T]) -> Callable[[Optional[List[str]]], _T]:
+    args_class: Type[_TArgsClass], llm_x: Callable[[_TArgsClass], _T]
+) -> Callable[[Union[List[str], _TArgsClass,
+                     type(None)]], _T]:
 
-    def x_main(argv: Optional[List[str]] = None) -> _T:
-        args, remaining_argv = parse_args(args_class, argv)
+    def x_main(argv: Union[List[str], _TArgsClass, type(None)] = None) -> _T:
+        if isinstance(argv, args_class):
+            args, remaining_argv = argv, []
+        else:
+            args, remaining_argv = parse_args(args_class, argv)
         args.init_argument()
         if len(remaining_argv) > 0:
             if args.ignore_args_error:
