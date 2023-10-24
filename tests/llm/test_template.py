@@ -26,7 +26,7 @@ class TestTemplate(unittest.TestCase):
                 'response': '浙江的省会是杭州。',
                 'history': history
             }
-            from swift.utils.llm_utils import print_example
+            from swift.llm import print_example
             print_example(template.encode(data), tokenizer)
             input_ids = template.encode(data)['input_ids']
             print(model_type)

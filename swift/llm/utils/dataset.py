@@ -80,6 +80,10 @@ def register_dataset(
         function_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
+    if dataset_name in DATASET_MAPPING:
+        raise ValueError(
+            f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
+        )
     if function_kwargs is None:
         function_kwargs = {}
 

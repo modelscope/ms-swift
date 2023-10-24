@@ -122,6 +122,10 @@ def register_model(
     **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
                        GetModelTokenizerFunction]]:
+    if model_type in MODEL_MAPPING:
+        raise ValueError(
+            f'The `{model_type}` has already been registered in the MODEL_MAPPING.'
+        )
     if requires is None:
         requires = []
     if function_kwargs is None:

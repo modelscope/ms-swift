@@ -70,6 +70,10 @@ TEMPLATE_MAPPING: Dict[str, Template] = {}
 
 
 def register_template(template_type: str, template: Template) -> None:
+    if template_type in TEMPLATE_MAPPING:
+        raise ValueError(
+            f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.'
+        )
     TEMPLATE_MAPPING[template_type] = template
 
 

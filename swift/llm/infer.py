@@ -5,10 +5,10 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.tuners import Swift
-from swift.utils import (get_logger, inference, print_model_info,
-                         seed_everything, show_layers)
+from swift.utils import (get_logger, print_model_info, seed_everything,
+                         show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template)
+                    get_template, inference)
 
 logger = get_logger()
 

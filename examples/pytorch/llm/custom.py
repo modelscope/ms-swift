@@ -2,17 +2,18 @@
 import ast
 from typing import Any, Callable, Dict, List, Optional
 
+from datasets import Dataset as HfDataset
+from datasets import concatenate_datasets
 from modelscope import (AutoModelForCausalLM, AutoTokenizer, MsDataset,
                         snapshot_download)
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
-from swift.llm import (HfDataset, History, LoRATM, Template,
-                       concatenate_datasets, dataset_map, get_dataset,
+from swift.llm import (History, LoRATM, Template, dataset_map, get_dataset,
                        get_model_tokenizer, get_model_tokenizer_from_repo,
-                       get_template, preprocess_conversations,
+                       get_template, preprocess_conversations, print_example,
                        register_dataset, register_model, register_template)
-from swift.utils import get_logger, print_example
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -80,8 +81,8 @@ def get_agent_instruct_dataset(subset_name_list: List[str]) -> HfDataset:
 
 
 if __name__ == '__main__':
+    # The Shell script can view `scripts/custom/tigerbot_13b_chat`.
     # test
-    from swift.llm import DatasetName
     train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
                                    0.)
     model, tokenizer = get_model_tokenizer(

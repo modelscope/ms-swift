@@ -4,8 +4,8 @@ if __name__ == '__main__':
 import unittest
 
 from swift.llm import (ModelType, TemplateType, get_model_tokenizer,
-                       get_template)
-from swift.utils import inference, lower_bound, seed_everything
+                       get_template, inference)
+from swift.utils import lower_bound, seed_everything
 
 
 class TestLlmUtils(unittest.TestCase):

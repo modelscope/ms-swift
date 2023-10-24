@@ -9,4 +9,6 @@ from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
                     get_model_tokenizer_from_sdk, register_model)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        Template, TemplateType, get_template, register_template)
-from .utils import dataset_map, download_dataset, get_main
+from .utils import (data_collate_fn, dataset_map, download_dataset,
+                    find_all_linear_for_lora, get_main, inference,
+                    print_example, sort_by_max_length, stat_dataset)

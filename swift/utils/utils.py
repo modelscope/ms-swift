@@ -2,7 +2,8 @@
 import datetime as dt
 import os
 import re
-from typing import Any, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
+                    Type, TypeVar)
 
 from transformers import HfArgumentParser
 
@@ -64,3 +65,14 @@ def parse_args(class_type: Type[_T],
     args, remaining_args = parser.parse_args_into_dataclasses(
         argv, return_remaining_strings=True)
     return args, remaining_args
+
+
+def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
+    # The lower bound satisfying the condition "cond".
+    while lo < hi:
+        mid = (lo + hi) >> 1
+        if cond(mid):
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo

@@ -11,14 +11,14 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from swift.tuners import LoraConfig, LoRAConfig, Swift
 from swift.utils import (check_json_format, compute_acc_metrics,
-                         compute_nlg_metrics, data_collate_fn,
-                         find_all_linear_for_lora, get_dist_setting,
-                         get_logger, is_ddp_plus_mp, is_dist, is_master,
-                         plot_images, preprocess_logits_for_metrics,
-                         print_example, print_model_info, seed_everything,
-                         show_layers, sort_by_max_length, stat_dataset)
-from .utils import (SftArguments, Template, dataset_map, get_dataset,
-                    get_model_tokenizer, get_template)
+                         compute_nlg_metrics, get_dist_setting, get_logger,
+                         is_ddp_plus_mp, is_dist, is_master, plot_images,
+                         preprocess_logits_for_metrics, print_model_info,
+                         seed_everything, show_layers)
+from .utils import (SftArguments, Template, data_collate_fn, dataset_map,
+                    find_all_linear_for_lora, get_dataset, get_model_tokenizer,
+                    get_template, inference, print_example, sort_by_max_length,
+                    stat_dataset)
 
 logger = get_logger()
 
