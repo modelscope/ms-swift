@@ -24,7 +24,8 @@ logger = get_logger()
 class SftArguments:
     # You can specify the model by either using the model_type or model_id_or_path.
     model_type: Optional[str] = field(
-        default=None, metadata={'choices': list(MODEL_MAPPING.keys())})
+        default=None,
+        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
@@ -33,7 +34,10 @@ class SftArguments:
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
-        default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
+        default=None,
+        metadata={
+            'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
+        })
     output_dir: str = 'output'
     ddp_backend: str = field(
         default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
@@ -182,7 +186,9 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.lora_target_modules is None:
+        if self.lora_target_modules is None or (
+                len(self.lora_target_modules) == 1
+                and self.lora_target_modules[0] == 'AUTO'):
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_target_modules']
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
