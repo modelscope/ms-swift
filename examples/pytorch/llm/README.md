@@ -419,7 +419,7 @@ The template initialization function retrieves the complete chat template based 
 - `--dataset`: Default value is `'blossom-math-zh'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
-- `--show_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `20`. This parameter only takes effect when `eval_human` is set to False.
+- `--show_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `10`. This parameter only takes effect when `eval_human` is set to False.
 - `--system`: Default value is `'you are a helpful assistant!'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--max_length`: Default value is `2048`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--quantization_bit`: Default value is 0. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.

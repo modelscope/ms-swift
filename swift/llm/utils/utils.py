@@ -7,7 +7,7 @@ import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
 from types import MethodType
-from typing import (Any, Callable, Dict, Generator, List, Optional, Type,
+from typing import (Any, Callable, Dict, Iterator, List, Optional, Type,
                     TypeVar, Union)
 
 import accelerate
@@ -288,40 +288,57 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
     return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
 
 
+def inference_stream(
+    input_ids: List[int],
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+) -> Iterator[str]:
+    input_ids = torch.tensor(input_ids)[None].cuda()
+    attention_mask = torch.ones_like(input_ids)
+    model.eval()
+    generation_config = getattr(model, 'generation_config', None)
+    from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
+    model.__class__.generate_stream = NewGenerationMixin.generate
+    model.__class__.sample_stream = NewGenerationMixin.sample_stream
+    stream_config = StreamGenerationConfig(
+        **generation_config.to_dict(), do_stream=True)
+    gen = model.generate_stream(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        generation_config=stream_config,
+        seed=-1)
+    generate_ids = []
+    for token in gen:
+        generate_ids.append(token.item())
+        yield tokenizer.decode(generate_ids)
+
+
 def inference(input_ids: List[int],
               model: PreTrainedModel,
               tokenizer: PreTrainedTokenizerBase,
               stream: bool = True,
               verbose: bool = True) -> str:
-    generation_config = getattr(model, 'generation_config', None)
+
     if verbose:
         print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
-    input_ids = torch.tensor(input_ids)[None].cuda()
-    attention_mask = torch.ones_like(input_ids)
-    model.eval()
-    kwargs = {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-    }
     if stream:
-        from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
-        model.__class__.generate_stream = NewGenerationMixin.generate
-        model.__class__.sample_stream = NewGenerationMixin.sample_stream
-        stream_config = StreamGenerationConfig(
-            **generation_config.to_dict(), do_stream=True)
-        generater = model.generate_stream(
-            **kwargs, generation_config=stream_config, seed=-1)
-        output_text = ''
-        for token in generater:
-            text = tokenizer.decode(token[0])
-            if verbose:
-                print(text, end='', flush=True)
-            output_text += text
+        gen = inference_stream(input_ids, model, tokenizer)
+        print_idx = 0
+        for output_text in gen:
+            if verbose and len(output_text) > print_idx:
+                print(output_text[print_idx:], end='', flush=True)
+                print_idx = len(output_text)
         if verbose:
             print()
     else:
+        generation_config = getattr(model, 'generation_config', None)
+        input_ids = torch.tensor(input_ids)[None].cuda()
+        attention_mask = torch.ones_like(input_ids)
+        model.eval()
         generate_ids = model.generate(
-            **kwargs, generation_config=generation_config)
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            generation_config=generation_config)
         output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
         if verbose:
             print(output_text)

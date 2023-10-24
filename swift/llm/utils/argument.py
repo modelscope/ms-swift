@@ -219,14 +219,18 @@ class SftArguments:
 class InferArguments:
     # You can specify the model by either using the model_type or model_id_or_path.
     model_type: Optional[str] = field(
-        default=None, metadata={'choices': list(MODEL_MAPPING.keys())})
+        default=None,
+        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
     template_type: Optional[str] = field(
-        default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
+        default=None,
+        metadata={
+            'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
+        })
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
     eval_human: bool = False  # False: eval val_dataset
 
@@ -239,7 +243,7 @@ class InferArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    show_dataset_sample: int = 20
+    show_dataset_sample: int = 10
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
 

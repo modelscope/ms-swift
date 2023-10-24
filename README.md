@@ -71,7 +71,8 @@ Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch
 
 
 ### News
-- 🔥 2023.10.17: Supported int8 models: qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 🔥 2023.10.24: Use the registration mechanism to add models, datasets, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
+- 2023.10.17: Supported int8 models: qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
 - 🔥 2023.10.16: Supported int4 models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/baichuan2_7b_chat_int4`, `scripts/baichuan2_13b_chat_int4`.
 - 2023.10.15: Supported ziya2-13b model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
 - 2023.10.12: Supported mistral-7b model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
