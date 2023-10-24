@@ -163,14 +163,14 @@ else:
 
 _TArgsClass = TypeVar('_TArgsClass')
 _T = TypeVar('_T')
+NoneType = type(None)
 
 
 def get_main(
     args_class: Type[_TArgsClass], llm_x: Callable[[_TArgsClass], _T]
-) -> Callable[[Union[List[str], _TArgsClass,
-                     type(None)]], _T]:
+) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
 
-    def x_main(argv: Union[List[str], _TArgsClass, type(None)] = None) -> _T:
+    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None) -> _T:
         if isinstance(argv, args_class):
             args, remaining_argv = argv, []
         else:
