@@ -277,6 +277,7 @@ class InferArguments:
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
+        assert isinstance(self.dataset, (list, tuple))
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)

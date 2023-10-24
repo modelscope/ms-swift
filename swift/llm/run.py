@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm import (InferArguments, SftArguments, get_main, llm_infer,
                        llm_sft)
 

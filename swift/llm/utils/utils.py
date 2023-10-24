@@ -135,15 +135,14 @@ def _infer_auto_device_map_patch(
 
 
 def dataset_map(
-    dataset: HfDataset, preprocess_func: Callable[[Dict[str, Any]],
-                                                  Dict[str,
-                                                       Optional[List[int]]]]
+    dataset: HfDataset, map_func: Callable[[Dict[str, Any]],
+                                           Dict[str, Optional[List[int]]]]
 ) -> HfDataset:
     # faster than dataset.map
     input_ids = []
     labels = []
     for d in tqdm(dataset):
-        d = preprocess_func(d)
+        d = map_func(d)
         if d['input_ids'] is None:
             continue
         input_ids.append(d['input_ids'])

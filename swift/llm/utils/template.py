@@ -53,10 +53,16 @@ class Template:
             raise ValueError(
                 'Template has not been initialized, please call init_template(...) first.'
             )
+        query: Optional[str] = example.get('query', None)
+        response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
-        query: str = example['query']
-        response: str = example.get('response', None)
-        system = example.get('system', self.system)
+        system = example.get('system', None)
+        if query is None:
+            query = ''
+        if history is None:
+            history = []
+        if system is None:
+            system = self.system
         return _encode(self, query, response, history, system)
 
 
@@ -87,7 +93,7 @@ register_template(
     Template([], [[195], '{{QUERY}}', [196]], [], [['eos_token_id']]))
 register_template(
     TemplateType.chatglm2,
-    Template([[64790, 64792]], ['[Round {{ROUND}}]\n\n问：{{QUERY}}\n\n答：'],
+    Template([[64790, 64792]], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'],
              ['\n\n'], [['eos_token_id']]))
 
 register_template(
@@ -143,14 +149,20 @@ def _concat_context_list(
     res_context_list: List[Context],
     system: Optional[str] = None,
     query: Optional[str] = None,
-    round: Optional[str] = None,
+    round0: Optional[int] = None,
 ) -> None:
     # concat context list and replace placeholder
+    round1 = None
+    if round0 is not None:
+        round1 = str(round0 + 1)
+        round0 = str(round0)
     for context in context_list:
         if isinstance(context, str):
-            for (old_str,
-                 new_str) in zip(['{{SYSTEM}}', '{{QUERY}}', '{{ROUND}}'],
-                                 [system, query, round]):
+            old_str_list = [
+                '{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}'
+            ]
+            new_str_list = [system, query, round0, round1]
+            for (old_str, new_str) in zip(old_str_list, new_str_list):
                 if new_str is not None and old_str in context:
                     context = context.replace(old_str, new_str)
         res_context_list.append(context)
@@ -192,12 +204,12 @@ def _encode(
         _concat_context_list([*template.prompt, r, *template.chat_sep],
                              res_context_list,
                              query=q,
-                             round=str(i + 1))
+                             round0=i)
     _concat_context_list(
         template.prompt,
         res_context_list,
         query=query,
-        round=str(len(history) + 1))
+        round0=len(history) + 1)
     res_context_list = _simplify_context_list(res_context_list)
     input_ids = _encode_context_list(template.tokenizer, res_context_list)
 

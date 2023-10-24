@@ -238,11 +238,12 @@ def register_model(
     requires=['transformers<4.34'])
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   model_config=None,
                                   tokenizer=None,
                                   automodel_class=AutoModelForCausalLM,
-                                  **model_kwargs):
+                                  **kwargs):
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
@@ -268,9 +269,10 @@ def get_model_tokenizer_from_sdk(
         tokenizer_class: Type[PreTrainedTokenizerBase],
         model_dir: str,
         torch_dtype: Dtype,
+        model_kwargs: Dict[str, Any],
         load_model: bool = True,
         model_config=None,
-        **model_kwargs):
+        **kwargs):
     """load from ms library"""
     config = read_config(model_dir)
     logger.info(config)
@@ -297,12 +299,13 @@ def get_model_tokenizer_from_sdk(
     requires=['transformers<4.34'])
 def get_model_tokenizer_baichuan_13b(model_dir: str,
                                      torch_dtype: Dtype,
+                                     model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
-                                     **model_kwargs):
+                                     **kwargs):
     # baichuan-13b does not implement the `get_input_embeddings` function
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     load_model,
-                                                     **model_kwargs)
+                                                     model_kwargs, load_model,
+                                                     **kwargs)
     # fix gradient_checkpointing bug
     if not hasattr(model, 'get_input_embeddings'):
         model.get_input_embeddings = MethodType(
@@ -330,16 +333,17 @@ def patch_baichuan2(self, hidden_states):
                 LoRATM.baichuan)
 def get_model_tokenizer_baichuan2_13b(model_dir: str,
                                       torch_dtype: Dtype,
+                                      model_kwargs: Dict[str, Any],
                                       load_model: bool = True,
-                                      **model_kwargs):
+                                      **kwargs):
     # patch: baichuan2_13b configuration_baichuan.py bug
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     gradient_checkpointing = model_config.gradient_checkpointing
     if isinstance(gradient_checkpointing, (tuple, list)):
         model_config.gradient_checkpointing = gradient_checkpointing[0]
-    return get_model_tokenizer_baichuan2(model_dir, torch_dtype, load_model,
-                                         model_config, **model_kwargs)
+    return get_model_tokenizer_baichuan2(model_dir, torch_dtype, model_kwargs,
+                                         load_model, model_config, **kwargs)
 
 
 @register_model(ModelType.baichuan2_7b_chat, 'baichuan-inc/Baichuan2-7B-Chat',
@@ -348,12 +352,13 @@ def get_model_tokenizer_baichuan2_13b(model_dir: str,
                 LoRATM.baichuan)
 def get_model_tokenizer_baichuan2(model_dir: str,
                                   torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   model_config=None,
-                                  **model_kwargs):
+                                  **kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     load_model, model_config,
-                                                     **model_kwargs)
+                                                     model_kwargs, load_model,
+                                                     model_config, **kwargs)
     if model is not None:
         model.lm_head.forward = MethodType(patch_baichuan2, model.lm_head)
 
@@ -374,24 +379,27 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     torch_dtype=torch.bfloat16)
 def get_model_tokenizer_baichuan2_int4(model_dir: str,
                                        torch_dtype: Dtype,
+                                       model_kwargs: Dict[str, Any],
                                        load_model: bool = True,
                                        **kwargs):
     logger.info('use `model_config.quantization_config`, ignore bnb arguments')
-    kwargs.pop('quantization_config', None)
+    model_kwargs.pop('quantization_config', None)
 
     # fix device_map bug
     import accelerate
     _old_infer_auto_device_map = accelerate.infer_auto_device_map
-    device_map = kwargs.pop('device_map', None)
+    device_map = model_kwargs.get('device_map', None)
     if device_map != 'auto':
         accelerate.infer_auto_device_map = lambda *args, **kwargs: device_map
-    model, tokenizer = get_model_tokenizer_baichuan2(
-        model_dir, torch_dtype, load_model, device_map=device_map, **kwargs)
+    model, tokenizer = get_model_tokenizer_baichuan2(model_dir, torch_dtype,
+                                                     model_kwargs, load_model,
+                                                     **kwargs)
     if device_map != 'auto':
         accelerate.infer_auto_device_map = _old_infer_auto_device_map
-    model.train()
-    model._is_quantized_training_enabled = True
-    model.is_loaded_in_4bit = True
+    if model is not None:
+        model.train()
+        model._is_quantized_training_enabled = True
+        model.is_loaded_in_4bit = True
     return model, tokenizer
 
 
@@ -401,14 +409,15 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
                 TemplateType.chatglm2)
 def get_model_tokenizer_chatglm2(model_dir: str,
                                  torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
-                                 **model_kwargs):
+                                 **kwargs):
     if model_kwargs.get('quantization_config') is not None:
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
-                                         **model_kwargs)
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
 
 
 @register_model(
@@ -430,29 +439,32 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     ignore_file_pattern=[r'.+\.bin$'])
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
+                               model_kwargs: Dict[str, Any],
                                load_model: bool = True,
-                               **model_kwargs):
+                               **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     model_config.pretraining_tp = 1
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, load_model,
-                                         model_config, **model_kwargs)
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, model_config, **kwargs)
 
 
 @register_model(ModelType.polylm_13b, 'damo/nlp_polylm_13b_text_generation',
                 LoRATM.polylm)
 def get_model_tokenizer_polylm(model_dir: str,
                                torch_dtype: Dtype,
+                               model_kwargs: Dict[str, Any],
                                load_model: bool = True,
-                               **model_kwargs):
+                               **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(
         model_dir, trust_remote_code=True, use_fast=False, legacy=True)
     return get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
+        model_kwargs,
         load_model,
         tokenizer=tokenizer,
-        **model_kwargs)
+        **kwargs)
 
 
 dtype_mapping = {
@@ -470,6 +482,7 @@ dtype_mapping = {
 @register_model(ModelType.qwen_7b, 'qwen/Qwen-7B', LoRATM.qwen)
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
+                             model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(
@@ -484,8 +497,8 @@ def get_model_tokenizer_qwen(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', 'auto')
     model_config.use_flash_attn = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     load_model, model_config,
-                                                     **kwargs)
+                                                     model_kwargs, load_model,
+                                                     model_config, **kwargs)
     try:
         # fix mp+ddp bug
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda(
@@ -502,16 +515,18 @@ def get_model_tokenizer_qwen(model_dir: str,
 @register_model(ModelType.qwen_vl, 'qwen/Qwen-VL', LoRATM.qwen)
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
-    if (kwargs.get('quantization_config') is not None
-            and isinstance(kwargs['quantization_config'], BitsAndBytesConfig)):
+    if (model_kwargs.get('quantization_config') is not None and isinstance(
+            model_kwargs['quantization_config'], BitsAndBytesConfig)):
         # https://github.com/pytorch/pytorch/issues/58969
-        kwargs['quantization_config'].llm_int8_skip_modules = [
+        model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
     model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype,
-                                                load_model, **kwargs)
+                                                model_kwargs, load_model,
+                                                **kwargs)
     if model is not None:
         first_drop = model.transformer.drop
         if first_drop.p == 0.:
@@ -562,11 +577,13 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     torch_dtype=torch.float16)
 def get_model_tokenizer_qwen_intx(model_dir: str,
                                   torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
 
     logger.info('use gptq, ignore bnb arguments')
-    kwargs['quantization_config'] = GPTQConfig(bits=4, disable_exllama=True)
+    model_kwargs['quantization_config'] = GPTQConfig(
+        bits=4, disable_exllama=True)
 
     # fix quantlinear bug
     from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
@@ -577,8 +594,8 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
         QuantLinear.__init__._patching = True
     get_qwen_function = kwargs.pop('get_qwen_function',
                                    get_model_tokenizer_qwen)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, load_model,
-                                         **kwargs)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
     tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
@@ -586,6 +603,7 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
         load_model: bool = True,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     model_info = MODEL_MAPPING[model_type]
@@ -604,9 +622,10 @@ def get_model_tokenizer(
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     elif torch_dtype is None:
         torch_dtype = torch.float16
-
-    if 'device_map' not in kwargs:
-        kwargs['device_map'] = 'auto'
+    if model_kwargs is None:
+        model_kwargs = {}
+    if 'device_map' not in model_kwargs:
+        model_kwargs['device_map'] = 'auto'
 
     model_dir = kwargs.pop('model_dir', None)
     if model_dir is None:
@@ -623,8 +642,8 @@ def get_model_tokenizer(
             dist.barrier()
 
     kwargs['automodel_class'] = model_info['automodel_class']
-    model, tokenizer = get_function(model_dir, torch_dtype, load_model,
-                                    **kwargs)
+    model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
+                                    load_model, **kwargs)
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

@@ -32,11 +32,11 @@ def llm_sft(args: SftArguments) -> str:
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    kwargs = {'low_cpu_mem_usage': True}
+    model_kwargs = {'low_cpu_mem_usage': True}
     if is_dist() and not is_ddp_plus_mp():
-        kwargs['device_map'] = {'': local_rank}
+        model_kwargs['device_map'] = {'': local_rank}
     else:
-        kwargs['device_map'] = 'auto'
+        model_kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -45,12 +45,13 @@ def llm_sft(args: SftArguments) -> str:
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
-        kwargs['quantization_config'] = quantization_config
-    if args.model_type.startswith('qwen'):
-        kwargs['use_flash_attn'] = args.use_flash_attn
+        model_kwargs['quantization_config'] = quantization_config
 
     model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, **kwargs)
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        use_flash_attn=args.use_flash_attn)
 
     # ### Preparing LoRA
     if args.sft_type == 'lora':
