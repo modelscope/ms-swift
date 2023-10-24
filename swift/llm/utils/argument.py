@@ -69,7 +69,7 @@ class SftArguments:
     lora_target_modules: Optional[List[str]] = None
     lora_rank: int = 8
     lora_alpha: int = 32
-    lora_dropout_p: float = 0.
+    lora_dropout_p: float = 0.05
 
     gradient_checkpointing: bool = False
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'

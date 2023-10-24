@@ -23,7 +23,7 @@ torchrun \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0. \
+    --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
     --gradient_checkpointing true \
     --batch_size 1 \
