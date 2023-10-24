@@ -50,7 +50,8 @@
 
 
 ## 新闻
-- 🔥 2023.10.17: 支持int8模型的SFT: qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 🔥 2023.10.24: 使用注册机制来新增模型, 数据集和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom/tigerbot_13b_chat`.
+- 2023.10.17: 支持int8模型的SFT: qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
 - 🔥 2023.10.16: 支持int4模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/baichuan2_7b_chat_int4`, `scripts/baichuan2_13b_chat_int4`.
 - 2023.10.15: 支持ziya2-13b系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
 - 2023.10.12: 支持mistral-7b系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
@@ -60,6 +61,8 @@
 - 2023.9.18: 支持internlm-20b系列模型: internlm-20b, internlm-20b-chat. 对应的sh脚本可以查看`scripts/internlm_20b`, `scripts/internlm_20b_chat`.
 - 🔥 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 - 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
+- 2023.9.5: 支持openbuddy-llama2-70b-chat模型. 对应的sh脚本可以查看`scripts/openbuddy_llama2_70b_chat`.
+- 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
 
 
 ## 准备实验环境
@@ -83,6 +86,16 @@ cd swift
 pip install .
 cd examples/pytorch/llm
 pip install -r requirements.txt -U
+
+# 如果你想要使用deepspeed.
+pip install deepspeed -U
+
+# 如果你想要使用基于auto_gptq的qlora训练. (推荐, 效果优于bnb)
+# 使用auto_gptq的模型: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8
+pip install auto_gptq optimum -U
+
+# 如果你想要使用基于bnb的qlora训练.
+pip install bitsandbytes -U
 ```
 
 
@@ -94,13 +107,15 @@ pip install -r requirements.txt -U
 提示:
 - 你可以在训练时设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度. 如果你需要在消费级显卡中训练大模型, 这很有用, 例如: 3090.
 - 如果你想要使用量化参数`quantization_bit`, 你需要先安装bnb: `pip install bitsandbytes -U`.
+- 如果你想要使用基于auto_gptq的量化, 你需要先安装auto_gptq: `pip install auto_gptq -U`.
+  使用auto_gptq的模型包含: `qwen-7b-chat-int4`, `qwen-14b-chat-int4`, `qwen-7b-chat-int8`, `qwen-14b-chat-int8`.
+  如果脚本提供了非量化模型和int4/int8模型的多个版本的qlora SFT版本, 推荐使用int4/int8模型版本的脚本.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以节约显存, 但可能会略微降低训练速度.
 - 如果你使用的是V100等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
-- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`.
+- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. 不推荐对量化的模型进行merge, 这会存在精度损失, 即qlora.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
-- 如果脚本提供了非量化模型和int4/int8模型的多个版本的qlora SFT版本, 推荐使用int4/int8模型版本的脚本. 这可以节约磁盘空间, 甚至可以提高训练效果(如果int4/int8模型使用`auto_gptq`量化).
 ```bash
 # 微调(qlora)+推理 qwen-7b-chat-int8, 需要16GB显存.
 # 推荐的实验环境: V100, A10, 3090
@@ -170,39 +185,170 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 
 ## 使用文档
-### MODEL_MAPPING 介绍 (模型拓展)
-`MODEL_MAPPING`定义在`utils/model.py`中, 用于加载各种类型的基模型. 如果你需要**拓展模型**, 你可以在里面进行添加. 其中key表示模型的唯一id, value表示模型的配置. 配置内容如下.
+### 自定义模型
+以下是一个自定义模型的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 
-- `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录(`model_dir`).
-- `revision`: 用于指定模型的版本号, 默认使用'master'. 如果`model_id_or_path`是本地的模型目录, 则该参数失效.
-- `get_function`: 获取model和tokenizer的函数, 默认使用`get_model_tokenizer_from_repo`, 返回model和tokenizer. 如果需要设置flash_attn或对模型代码打补丁等, 则可以通过自定义来实现它.
-- `lora_TM`: 默认使用的lora_target_modules, 在我们的设置中, 会将其设置qkv.
-- `template`: 默认使用的chat template, 例如: chatml, baichuan等. 如果未设置, 则使用`default`的chat template.
-- `ignore_file_pattern`: 表示下载的时候需要忽略的文件内容, 该参数会传递给`snapshot_download`. 例如`r'.+\.bin$'`, `r'.+\.savetensors$'`等.
+```python
+from swift.llm import (
+    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
+)
+import torch
+from torch import dtype as Dtype
+from typing import Dict, Any
+
+class CustomModelType:
+    tigerbot_13b_chat = 'tigerbot-13b-chat'
+
+class CustomTemplateType:
+    tigerbot = 'tigerbot'
+
+@register_model(CustomModelType.tigerbot_13b_chat,
+                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+                CustomTemplateType.tigerbot)
+def get_tigerbot_model_tokenizer(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        require_version('transformers>=4.34')
+        logger.info('Setting use_flash_attention_2: True')
+        model_kwargs['use_flash_attention_2'] = True
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+
+# 不使用修饰器的用法:
+# register_model(CustomModelType.tigerbot_13b_chat,
+#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
+
+if __name__ == '__main__':
+    model_kwargs = {'device_map': 'auto'}
+    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
+    print(model, tokenizer)
+```
+`register_model`会在`MODEL_MAPPING`中注册模型, 该函数的参数含义如下:
+- `model_type`: 必填项. 表示模型的名字, 也是唯一的id.
+- `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`.
+- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules AUTO`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
+- `template`: 默认为`TemplateType.default`. 表示在sh脚本中未指定`--template`情况下默认使用的chat template.
+- `get_function`: 默认值为`None`. 获取model和tokenizer的函数. 如果传入None, 则使用修饰器方案进行模型注册, `register_model`函数将返回`Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 一般使用`get_model_tokenizer_from_repo`作为参数传入, 返回model和tokenizer. 如果出现需要对模型代码打补丁等情况, 则可以通过自定义该函数来实现.
+- `requires`: 默认为`[]`. 表示模型所需要的区别于其他模型的依赖. 该参数一般不需要设置.
+- `torch_dtype`: 默认为`None`. 表示模型所推荐使用的torch_dtype. 该参数一般不需要设置.
+- `automodel_class`: 默认为`AutoModelForCausalLM`. 表示被调用from_pretrained的类. 如果你使用的是`roberta-base`等模型, 则需要修改该参数. 该参数一般不需要设置.
+- `revision`: 默认为`'master'`. 用于指定模型的版本号. 如果`model_id_or_path`是本地的模型目录, 则该参数失效. 该参数一般不需要设置.
+- `ignore_file_pattern`: 默认为`None`. 表示下载的时候需要忽略的文件名的正则pattern, 该参数会传递给`snapshot_download`. 例如`r'.+\.bin$'`, `r'.+\.savetensors$'`等. 该参数一般不需要设置.
+- `max_length`: 默认为`None`. 用于注释模型的max_length. 该参数一般不需要设置.
+- `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
+- `**kwargs`: 其他用于注释模型能力的参数. 该参数一般不需要设置.
 
 
-### DATASET_MAPPING 介绍 (数据集拓展)
-`DATASET_MAPPING`定义在`utils/dataset.py`中, 用于加载各种类型的数据, 例如: 单轮指令微调数据集, 多轮chat数据集, 多模态数据集等. 如果你需要**拓展数据集**, 你可以在这里面添加. 其中key表示dataset的唯一id, 例如: alpaca-en, alpaca-zh等. value是获取数据集的函数. 该函数不需要传入任何参数, 需要返回`HfDataset`或`Tuple[HfDataset, HfDataset]`. 第一种情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 第二种情况下, 返回的两个数据集分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
+### 自定义数据集
+以下是一个自定义数据集的案例. 运行该自定义数据集的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 
-函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
+```python
+import ast
+from swift.llm import register_dataset, get_dataset, preprocess_conversations
+from datasets import Dataset as HfDataset
+from datasets import concatenate_datasets
+from typing import List
+from modelscope import MsDataset
 
+class CustomDatasetName:
+    agent_instruct_all_en = 'agent-instruct-all-en'
 
-### TEMPLATE_MAPPING 介绍 (对话模板拓展)
-`TEMPLATE_MAPPING`定义在`utils/template.py`中, 用于将文本信息预处理成token list. 如果你需要**拓展对话模板**, 可以在这里面添加. 其中key表示chat template的唯一id, 例如: 'default', 'chatml'等. value表示对话模板的配置, 分别是'prefix', 'prompt', 'chat_sep', 'suffix'. 此模块会根据这四个内容, 获取完整的chat template, 使其支持预训练, text generation式的SFT, 各种chat类型的SFT. 其中这四个配置内容的含义如下.
+_agent_instruct_subset_list = [
+    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
+]
 
+@register_dataset(
+    CustomDatasetName.agent_instruct_all_en,
+    task='chat',
+    function_kwargs={'subset_name_list': _agent_instruct_subset_list})
+def get_agent_instruct_dataset(subset_name_list: List[str]) -> HfDataset:
+    dataset_list: List[HfDataset] = []
+    for subset_name in subset_name_list:
+        dataset: HfDataset = MsDataset.load(
+            'huangjintao/AgentInstruct_copy',
+            subset_name=subset_name,
+            split='train').to_hf_dataset()
+        dataset_list.append(dataset)
+    dataset = concatenate_datasets(dataset_list)
+
+    def repair_conversations(s: str) -> str:
+        s = s.replace('}\n {', '},\n {')
+        return ast.literal_eval(s)
+
+    return preprocess_conversations(
+        dataset, 'human', 'gpt', repair_conversations=repair_conversations)
+
+# 不使用修饰器的用法:
+# register_dataset(
+#     CustomDatasetName.agent_instruct_all_en,
+#     get_agent_instruct_dataset,
+#     task='chat',
+#     function_kwargs={'subset_name_list': _agent_instruct_subset_list})
+
+if __name__ == '__main__':
+    train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
+                                   0.)
+    print(train_dataset)
+    print(train_dataset[0].keys())
+```
+`register_dataset`会在`DATASET_MAPPING`中注册数据集, 该函数的参数含义如下:
+- `dataset_name`: 必填项, 表示数据集的名字, 也是数据集的唯一id.
+- `get_function`: 默认值为`None`. 获取数据集的函数. 如果传入None, 则使用修饰器方案进行数据集注册, `register_dataset`函数将返回`Callable[[GetDatasetFunction], GetDatasetFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册.
+  `get_function`函数不用传入任何参数, 需要返回`HfDataset`或`Tuple[HfDataset, HfDataset]`. 第一种情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 第二种情况下, 返回的两个数据集分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
+  函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
+- `task`: 注释数据集用作的任务. 该参数一般不需要设置.
+- `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
+- `**kwargs`: 其他用于注释数据集的参数. 该参数一般不需要设置.
+
+### 自定义对话模板
+以下是一个自定义对话模板的案例. 运行该自定义对话模板的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+
+```python
+from swift.llm import (
+    register_template, Template, get_template, get_model_tokenizer, ModelType, inference
+)
+class CustomTemplateType:
+    tigerbot = 'tigerbot'
+
+# Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
+register_template(
+    CustomTemplateType.tigerbot,
+    Template([], ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
+             [['eos_token_id']]))
+
+if __name__ == '__main__':
+    # only for test
+    _, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat, load_model=False)
+    template = get_template(CustomTemplateType.tigerbot, tokenizer)
+    inputs = {'query': '浙江的省会在哪里?', 'response': '杭州',
+              'system': 'you are a helpful assistant!',
+              'history': [('你好!', '你好! 我是AI智能助手. '),
+                          ('1+1=?', '2')]}
+    print(tokenizer.decode(template.encode(inputs)['input_ids']))
+```
+`register_template`会在`TEMPLATE_MAPPING`中注册对话模板, 该函数的参数含义如下:
+- `template_type`: 必填项, 表示对话模板的名字, 也是template的唯一id.
+- `template`: 必填项, 需要传入一个`Template`. 初始化`Template`需要传入4个参数: `prefix`, `prompt`, `chat_sep`, `suffix`.
+
+模板初始化函数会根据这四个内容, 获取完整的chat template, 使其支持预训练, text generation式的SFT, 各种chat类型的SFT. 其中这四个配置内容的含义如下.
 - `prefix`: 表示对话模板中的前缀部分, 一般为system部分及其相关格式, 前缀token, bos token等内容. 我们使用`{{SYSTEM}}`作为system部分的占位符.
 - `prompt`: 表示对话模板中的一轮对话. 我们使用`{{QUERY}}`作为每轮对话中, human询问部分的占位符, `{{ROUND0}}`则表示本次对话是第几轮的占位符, 从0开始计数, `{{ROUND1}}`从1开始计数. AI助手的回复部分会拼接在`prompt`的后面, 因此我们没有设计其占位符.
-- `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等.
+- `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等. 如果设置为None, 则该Template不支持多轮对话.
 - `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面. 只有最后一轮对话的reponse部分和`suffix`会计算loss并优化, 其余部分不计算损失.
 
 
 ### sft.sh 命令行参数
-- `--model_type`: 表示你选择的模型类型, 默认是`None`, 即如果没有指定`model_id_or_path`, 则选择`'qwen-7b-chat'`, 如果指定了, 则会根据其内容以及`MODEL_MAPPING`推断`model_type`, 这两个参数不能同时指定. 可以选择的`model_type`可以查看`MODEL_MAPPING.keys()`.
-- `--model_id_or_path`: 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录(`model_dir`), 默认为`None`. 推荐使用model_type的方式指定.
-- `--model_revision`: 表示模型在ModelScope Hub中对应`model_id`的版本号, 默认使用`'master'`. 如果`model_id_or_path`为None或者是本地的模型目录, 则该参数失效.
+- `--model_type`: 表示你选择的模型类型, 默认是`None`, 即如果没有指定`model_id_or_path`, 则选择`'qwen-7b-chat'`, 如果指定了, 则会根据`model_id_or_path`以及`MODEL_MAPPING`推断`model_type`. 这两个参数不能同时指定. 可以选择的`model_type`可以查看`MODEL_MAPPING.keys()`.
+- `--model_id_or_path`: 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`, 不区分大小写, 默认为`None`. 如果`--model_id_or_path`未被注册, 则会抛出异常. 你可以使用`model_type`的方式指定模型类型, 也可以通过`model_id_or_path`的方式指定模型类型.
+- `--model_revision`: 表示模型在ModelScope Hub中对应`model_id`的版本号, 默认为`None`. 如果`model_id_or_path`使用本地的模型目录, 则该参数失效. model_revision指定为None, 则使用注册在`MODEL_MAPPING`中的revision. 否则强制使用model_revision.
 - `--sft_type`: 表示微调的方式, 默认是`'lora'`. 你可以选择的值包括: 'lora', 'full'. 如果你要使用lora或qlora, 你需要选择`--sft_type lora`. qlora需额外设置`--quantization_bit 4`. 如果你要使用全参数微调, 则需选择`--sft_type full`.
 - `--tuner_backend`: 表示lora, qlora的后端支持, 默认是`'swift'`. 你可以选择的值包括: 'swift', 'peft'.
-- `--template_type`: 表示使用的对话模板的类型, 默认是`None`, 即根据`model_type`查找`MODEL_MAPPING`中的`template`. 可以选择的`template_type`可以查看`utils/template.py`的`TEMPLATE_MAPPING.keys()`. 通过修改它, 可以支持pretrain, text-generation式的SFT, 各种chat类型的SFT.
+- `--template_type`: 表示使用的对话模板的类型, 默认是`None`, 即根据`model_type`查找`MODEL_MAPPING`中的`template`. 可以选择的`template_type`可以查看`TEMPLATE_MAPPING.keys()`.
 - `--output_dir`: 表示ckpt存储的目录, 默认是`'output'`. 我们会在该目录后拼接`model_type`和微调版本号. 方便用户对不同模型进行多次对比实验, 而不需要改变`output_dir`命令行参数.
 - `--ddp_backend`: 表示分布式的后端支持, 默认是`'nccl'`. 你可以选择的值包括: 'nccl', 'gloo', 'mpi', 'ccl'.
 - `--seed`: 全局的seed, 默认使用42. 在分布式训练中, 为避免每个进程使用相同的dropout等情况, 我们会令`seed=seed+rank`.
@@ -218,7 +364,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`None`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_quant_type`: 4bit量化时的量化方式, 默认是`'nf4'`. 可选择的值包括: 'nf4', 'fp4'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_use_double_quant`: 是否在4bit量化时开启double量化, 默认为`True`. 当quantization_bit为0时, 该参数无效.
-- `--lora_target_modules`: 指定lora模块, 默认为`None`, 即根据`model_type`查找`MODEL_MAPPING`中的`lora_TM`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
+- `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入AUTO, 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
 - `--lora_rank`: 默认为`8`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_alpha`: 默认为`32`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_dropout_p`: 默认为`0.`, 只有当`sft_type`指定为'lora'时才生效.
@@ -255,13 +401,13 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--temperature`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--top_k`: 默认为`20`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--top_p`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
-- `--repetition_penalty`: 默认为`1.`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
+- `--repetition_penalty`: 默认为`1.05`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 
 
 ### infer.sh 命令行参数
 - `--model_type`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--model_id_or_path`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 推荐使用model_type的方式指定.
-- `--model_revision`: 默认值为`'master'`. 具体的参数介绍可以在`sft.sh命令行参数`中查看. 如果`model_id_or_path`为None或者是本地的模型目录, 则该参数失效.
+- `--model_revision`: 默认值为`None`. 具体的参数介绍可以在`sft.sh命令行参数`中查看. 如果`model_id_or_path`为None或者是本地的模型目录, 则该参数失效.
 - `--sft_type`: 默认值为`'lora'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--template_type`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--ckpt_dir`: 必填项, 值为SFT阶段保存的checkpoint路径, e.g. `'/path/to/your/vx_xxx/checkpoint-xxx'`.
@@ -283,7 +429,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 - `--temperature`: 默认值为`0.9`. 该参数只有在`do_sample`设置为True时才生效.
 - `--top_k`: 默认值为`20`. 该参数只有在`do_sample`设置为True时才生效.
 - `--top_p`: 默认值为`0.9`. 该参数只有在`do_sample`设置为True时才生效.
-- `--repetition_penalty`: 默认值为`1.`.
+- `--repetition_penalty`: 默认值为`1.05`.
 - `--use_flash_attn`: 默认值为`None`, 即为'auto'. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--ignore_args_error`: 默认值为`False`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--stream`: 是否使用流式输出, 默认为`True`.

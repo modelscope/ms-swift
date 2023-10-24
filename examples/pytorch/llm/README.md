@@ -50,7 +50,8 @@
 
 
 ## News
-- 🔥 2023.10.17: Supported int8 models: qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 🔥 2023.10.24: Use the registration mechanism to add models, datasets, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
+- 2023.10.17: Supported int8 models: qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
 - 🔥 2023.10.16: Supported int4 models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/baichuan2_7b_chat_int4`, `scripts/baichuan2_13b_chat_int4`.
 - 2023.10.15: Supported ziya2-13b model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
 - 2023.10.12: Supported mistral-7b model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
@@ -60,6 +61,8 @@
 - 2023.9.18: Supported internlm-20b model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
 - 🔥 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 - 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
+- 2023.9.5: Supported openbuddy-llama2-70b-chat model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
+- 2023.9.3: Supported baichuan2 model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
 
 
 ## Prepare the Environment
@@ -82,6 +85,16 @@ cd swift
 pip install .
 cd examples/pytorch/llm
 pip install -r requirements.txt -U
+
+# If you want to use DeepSpeed:
+pip install deepspeed -U
+
+# If you want to use qlora training based on auto_gptq (recommended, better performance than bnb):
+# Models using auto_gptq: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8
+pip install auto_gptq optimum -U
+
+# If you want to use qlora training based on bnb:
+pip install bitsandbytes -U
 ```
 
 
@@ -92,14 +105,16 @@ Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 
 Tips:
 - You can set `--gradient_checkpointing true` during training to save GPU memory, but this will slightly decrease the training speed. This is useful if you need to train LLM on consumer-grade GPU, e.g. 3090.
+- If you want to use quantization based on auto_gptq, you need to install auto_gptq first: `pip install auto_gptq -U`.
+  The models available with auto_gptq are: `qwen-7b-chat-int4`, `qwen-14b-chat-int4`, `qwen-7b-chat-int8`, `qwen-14b-chat-int8`.
+  If the script provides multiple versions of qlora SFT, including both non-quantized models and int4/int8 models, it is recommended to use the script for the int4/int8 model versions.
 - If you want to use the quantization parameter `quantization_bit`, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
 - If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can save GPU memory, but this may slightly decrease the training speed.
 - If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
-- If you want to merge LoRA weights and save during inference, you need to set `--merge_lora_and_save true`.
+- If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is not recommended to merge quantized models, as this can result in performance degradation, specifically in the case of qlora.
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
-- If the script provides multiple versions of qlora SFT with non-quantized models and int4/int8 models, it is recommended to use the script with the int4/int8 model version. This can save disk space and even improve training performance (if the int4/int8 models use auto_gptq quantization).
 ```bash
 # sft(qlora) and infer qwen-7b-chat-int8, Requires 16GB GPU memory.
 # Recommended experimental environment: V100, A10, 3090
@@ -169,39 +184,172 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 
 ## User Guide
-### Introduction to MODEL_MAPPING (Model Expansion)
-`MODEL_MAPPING` is defined in `utils/model.py` and is used to load various types of base models. If you need to **expand the models**, you can add them here. The key represents the unique ID of the model, and the value represents the model configuration. The configuration includes the following:
+### Custom Model
+Here is an example of a custom model. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
 
-- `model_id_or_path`: Required. It represents the `model_id` in the ModelScope Hub or the local model directory (`model_dir`).
-- `revision`: Used to specify the version number of the model, default is 'master'. This parameter is ignored if the `model_id_or_path` is a local model directory.
-- `get_function`: A function to get the model and tokenizer. By default, it uses `get_model_tokenizer_from_repo` to return the model and tokenizer. If you need to set `flash_attn` or patch the model code, etc., you can customize it.
-- `lora_TM`: The default `lora_target_modules` used. In our settings, it is set to `qkv`.
-- `template`: The default chat template used, such as chatml, baichuan, etc. If not set, the `default` chat template is used.
-- `ignore_file_pattern`: Represents the file content to ignore when downloading. This parameter is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc.
+```python
+from swift.llm import (
+    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
+)
+import torch
+from torch import dtype as Dtype
+from typing import Dict, Any
+
+class CustomModelType:
+    tigerbot_13b_chat = 'tigerbot-13b-chat'
+
+class CustomTemplateType:
+    tigerbot = 'tigerbot'
+
+@register_model(CustomModelType.tigerbot_13b_chat,
+                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+                CustomTemplateType.tigerbot)
+def get_tigerbot_model_tokenizer(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        require_version('transformers>=4.34')
+        logger.info('Setting use_flash_attention_2: True')
+        model_kwargs['use_flash_attention_2'] = True
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+
+# Usage without decorators:
+# register_model(CustomModelType.tigerbot_13b_chat,
+#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
+
+if __name__ == '__main__':
+    model_kwargs = {'device_map': 'auto'}
+    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
+    print(model, tokenizer)
+```
+The `register_model` function registers the model in `MODEL_MAPPING`, and its parameters are as follows:
+- `model_type`: Required. It represents the name of the model, which is also the unique ID.
+- `model_id_or_path`: Required. It represents the `model_id` of the model in the ModelScope Hub or the local model directory `model_dir`.
+- `lora_target_modules`: Default is `None`. It represents the `lora_target_modules` used when specified as `--lora_target_modules AUTO` in the shell script or when not specified.
+- `template`: Default is `TemplateType.default`. It represents the default chat template used when not specified as `--template` in the shell script.
+- `get_function`: Default is `None`. It is a function used to retrieve the model and tokenizer. If `None` is passed, the decorator approach is used for model registration, and the `register_model` function will return `Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`. This approach is intended for users with some Python knowledge. If a function is passed, the regular approach is used for registration. Typically, `get_model_tokenizer_from_repo` is used as a parameter, which returns the model and tokenizer. If there is a need for patching the model code or other customization requirements, it can be achieved by customizing this function.
+- `requires`: Default is `[]`. It represents the dependencies specific to the model, different from other models. This parameter is generally not required.
+- `torch_dtype`: Default is `None`. It represents the recommended `torch_dtype` used by the model. This parameter is generally not required.
+- `automodel_class`: Default is `AutoModelForCausalLM`. It represents the class called by `from_pretrained`. If you are using models like `roberta-base`, this parameter needs to be modified. This parameter is generally not required.
+- `revision`: Default is `'master'`. It is used to specify the version number of the model. This parameter is not effective if `model_id_or_path` is a local model directory. This parameter is generally not required.
+- `ignore_file_pattern`: Default is `None`. It represents the regular expression pattern of the file names to be ignored during downloading, which is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter is generally not required.
+- `max_length`: Default is `None`. It is used to annotate the maximum length of the model. This parameter is generally not required.
+- `function_kwargs`: Default is `{}`. It is used to pass arguments to `get_function` to support the `partial` functionality in the decorator approach. This parameter is generally not required.
+- `**kwargs`: Other parameters used to annotate model capabilities. This parameter is generally not required.
 
 
-### Introduction to DATASET_MAPPING (Dataset Expansion)
-`DATASET_MAPPING` is defined in `utils/dataset.py` and is used to load various types of data, such as single-turn instruction fine-tuning datasets, multi-turn chat datasets, multimodal datasets, etc. If you need to **expand the datasets**, you can add them here. The key represents the unique ID of the dataset, such as alpaca-en, alpaca-zh, etc. The value is the function to get the dataset. This function does not require any parameters and should return either `HfDataset` or `Tuple[HfDataset, HfDataset]`. In the first case, the dataset processing function will split a portion of the dataset as the validation set (based on the command-line hyperparameter `dataset_test_ratio`). In the second case, the two returned datasets are used as the training set and validation set, respectively. We support fine-tuning with multiple datasets. The training and validation parts of each sub-dataset are concatenated and the merged training set and validation set are returned.
+### Custom Dataset
+Here is an example of a custom dataset. Running the shell script for this custom dataset can be found in `scripts/custom/tigerbot_13b_chat`.
 
-The returned `HfDataset` must comply with certain conventions. In the case of instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, representing the user's query for instruction fine-tuning and the assistant's response, respectively. You can refer to the `alpaca-zh` dataset for more details. In the case of multi-turn dialogue, an additional `history` field is required, representing the history of the dialogue. You can refer to the `damo-agent-mini-zh` dataset for more details. If each example in the dataset has a different `system`, an additional `system` field is required. You can also refer to the `damo-agent-mini-zh` dataset for more details. We only calculate and optimize the loss for the `response` part.
+```python
+import ast
+from swift.llm import register_dataset, get_dataset, preprocess_conversations
+from datasets import Dataset as HfDataset
+from datasets import concatenate_datasets
+from typing import List
+from modelscope import MsDataset
+
+class CustomDatasetName:
+    agent_instruct_all_en = 'agent-instruct-all-en'
+
+_agent_instruct_subset_list = [
+    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
+]
+
+@register_dataset(
+    CustomDatasetName.agent_instruct_all_en,
+    task='chat',
+    function_kwargs={'subset_name_list': _agent_instruct_subset_list})
+def get_agent_instruct_dataset(subset_name_list: List[str]) -> HfDataset:
+    dataset_list: List[HfDataset] = []
+    for subset_name in subset_name_list:
+        dataset: HfDataset = MsDataset.load(
+            'huangjintao/AgentInstruct_copy',
+            subset_name=subset_name,
+            split='train').to_hf_dataset()
+        dataset_list.append(dataset)
+    dataset = concatenate_datasets(dataset_list)
+
+    def repair_conversations(s: str) -> str:
+        s = s.replace('}\n {', '},\n {')
+        return ast.literal_eval(s)
+
+    return preprocess_conversations(
+        dataset, 'human', 'gpt', repair_conversations=repair_conversations)
+
+# Usage without decorators:
+# register_dataset(
+#     CustomDatasetName.agent_instruct_all_en,
+#     get_agent_instruct_dataset,
+#     task='chat',
+#     function_kwargs={'subset_name_list': _agent_instruct_subset_list})
+
+if __name__ == '__main__':
+    train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
+                                   0.)
+    print(train_dataset)
+    print(train_dataset[0].keys())
+```
+The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. The function parameters are as follows:
+- `dataset_name`: Required parameter that represents the name of the dataset, which is also the unique ID of the dataset.
+- `get_function`: Default value is `None`. It is the function used to retrieve the dataset. If `None` is passed, the decorator scheme is used for dataset registration, and the `register_dataset` function will return `Callable[[GetDatasetFunction], GetDatasetFunction]`. This scheme requires users with some Python knowledge. If a function is passed, the normal scheme is used for registration.
+  The `get_function` does not require any parameters and needs to return an `HfDataset` or `Tuple[HfDataset, HfDataset]`. In the first case, the dataset processing function will split a portion of the dataset as the validation set (based on the command-line hyperparameter `dataset_test_ratio`). In the second case, the two returned datasets will be used as the training and validation sets, respectively. We support fine-tuning with multiple datasets. We concatenate the training and validation parts of each sub-dataset and return the merged training and validation sets.
+  The returned `HfDataset` needs to adhere to certain specifications. If it is for instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, representing the user's query for instruction fine-tuning and the AI assistant's response, respectively. You can refer to the `alpaca-zh` dataset for more details. If it is for multi-turn dialogue, it needs to include an additional `history` field, representing the history of the conversation. You can refer to the `damo-agent-mini-zh` dataset for more details. If each example in the dataset has a different `system`, an additional `system` field is required. You can also refer to the `damo-agent-mini-zh` dataset for more details. We only calculate and optimize the loss for the `response` part.
+- `task`: The task for which the dataset is intended. This parameter is generally not required to be set.
+- `function_kwargs`: Default is `{}`, used to pass arguments to `get_function` to support the `partial` functionality in the decorator scheme. This parameter is generally not required to be set.
+- `**kwargs`: Other parameters used for annotating the dataset. This parameter is generally not required to be set.
 
 
-### Introduction to TEMPLATE_MAPPING (Dialogue Template Expansion)
-`TEMPLATE_MAPPING` is defined in `utils/template.py` and is used to encode text information into token lists. If you need to **expand the dialogue templates**, you can add them here. The key represents the unique ID of the chat template, such as 'default', 'chatml', etc. The value represents the configuration of the chat template, including 'prefix', 'prompt', 'chat_sep', and 'suffix'. This module retrieves the complete chat template based on these four elements, enabling support for pre-training, text generation-style SFT, and various chat-type SFT. The meanings of these four configuration elements are as follows:
+### Custom Chat Template
+Here is an example of a custom template. Running the shell script for this custom template can be found in `scripts/custom/tigerbot_13b_chat`.
 
+```python
+from swift.llm import (
+    register_template, Template, get_template, get_model_tokenizer, ModelType, inference
+)
+class CustomTemplateType:
+    tigerbot = 'tigerbot'
+
+# Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
+register_template(
+    CustomTemplateType.tigerbot,
+    Template([], ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
+             [['eos_token_id']]))
+
+if __name__ == '__main__':
+    # only for test
+    _, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat, load_model=False)
+    template = get_template(CustomTemplateType.tigerbot, tokenizer)
+    inputs = {'query': '浙江的省会在哪里?', 'response': '杭州',
+              'system': 'you are a helpful assistant!',
+              'history': [('你好!', '你好! 我是AI智能助手. '),
+                          ('1+1=?', '2')]}
+    print(tokenizer.decode(template.encode(inputs)['input_ids']))
+```
+The `register_template` function registers the conversation template in the `TEMPLATE_MAPPING`. The function takes the following arguments:
+- `template_type`: Required. It represents the name of the conversation template and serves as the unique ID for the template.
+- `template`: Required. It takes a `Template` object as input. Initializing the `Template` requires four parameters: `prefix`, `prompt`, `chat_sep`, and `suffix`.
+
+The template initialization function retrieves the complete chat template based on these four components, enabling support for pre-training, text generation-style SFT, and various chat-based SFT. The meanings of these four configuration components are as follows:
 - `prefix`: Represents the prefix part of the chat template, usually including the system part and relevant formats, prefix tokens, BOS token, etc. We use `{{SYSTEM}}` as a placeholder for the system part.
 - `prompt`: Represents a round of dialogue in the chat template. We use `{{QUERY}}` as a placeholder for the human inquiry part in each round of dialogue, `{{ROUND0}}` represents the placeholder for the current round of dialogue, counting from 0, and `{{ROUND1}}` counting from 1. The assistant's reply is concatenated after the `prompt`, so we did not design a placeholder for it.
-- `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc.
+- `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc. If set to None, the Template does not support multi-turn conversations.
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue. Only the response part of the last round will calculate the loss and be optimized, while the other parts will not calculate the loss.
 
 
+
 ### sft.sh Command Line Arguments
-- `--model_type`: Indicates the selected model type. The default value is `None`, which means that if `model_id_or_path` is not specified, `'qwen-7b-chat'` will be chosen. If `model_id_or_path` is specified, the `model_type` will be inferred based on its content and `MODEL_MAPPING`. These two parameters cannot be specified simultaneously. Available `model_type` options can be found in `MODEL_MAPPING.keys()`.
-- `--model_id_or_path`: Represents the `model_id` of the model in the ModelScope Hub or the local model directory (`model_dir`). The default value is `None`. It is recommended to use the `model_type` option to specify the model.
-- `--model_revision`: Represents the version number of the `model_id` corresponding to the model in the ModelScope Hub. The default value is `'master'`. This parameter is ignored if `model_id_or_path` is None or it refers to a local model directory.
+- `--model_type`: Represents the selected model type. The default value is `None`, which means if `model_id_or_path` is not specified, `'qwen-7b-chat'` will be chosen. If `model_id_or_path` is specified, the `model_type` will be inferred based on `model_id_or_path` and `MODEL_MAPPING`. These two parameters cannot be specified simultaneously. The available `model_type` options can be found in `MODEL_MAPPING.keys()`.
+- `--model_id_or_path`: Represents the `model_id` of the model in the ModelScope Hub or the local model directory `model_dir`. It is case-insensitive and the default value is `None`. If `--model_id_or_path` is not registered, an exception will be raised. You can specify the model type using `model_type` or `model_id_or_path`.
+- `--model_revision`: Represents the version number of the `model_id` in the ModelScope Hub. The default value is `None`. If `model_id_or_path` is a local model directory, this parameter is ignored. If `model_revision` is set to `None`, the revision registered in `MODEL_MAPPING` will be used. Otherwise, the `model_revision` will be forced to be used.
 - `--sft_type`: Represents the fine-tuning method, default is `'lora'`. The possible values are: 'lora', 'full'. If you want to use lora or qlora, you need to select `--sft_type lora`. For qlora, an additional setting `--quantization_bit 4` is required. If you want to use full-parameter fine-tuning, you need to select `--sft_type full`.
 - `--tuner_backend`: Represents the backend support for lora and qlora, default is `'swift'`. The possible values are: 'swift', 'peft'.
-- `--template_type`: Represents the type of dialogue template used, default is `None`, which means it retrieves the template based on `model_type` from `MODEL_MAPPING`. Available `template_type` can be checked using `TEMPLATE_MAPPING.keys()` in `utils/template.py`. By modifying it, you can support pretrain, text-generation-style SFT, and various chat-type SFT.
+- `--template_type`: Represents the type of dialogue template used, default is `None`, which means it retrieves the template based on `model_type` from `MODEL_MAPPING`. Available `template_type` can be checked using `TEMPLATE_MAPPING.keys()`.
 - `--output_dir`: Represents the directory for storing checkpoints, default is `'output'`. We will concatenate `model_type` and fine-tuning version number to this directory. This allows users to perform multiple comparative experiments on different models without changing the `output_dir` command-line argument.
 - `--ddp_backend`: Represents the backend support for distributed training, default is `'nccl'`. The possible values are: 'nccl', 'gloo', 'mpi', 'ccl'.
 - `--seed`: Global seed value, default is 42. In distributed training, to avoid each process using the same dropout, etc., we set `seed=seed+rank`.
@@ -217,7 +365,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `None`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_quant_type`: The quantization type for 4-bit quantization, default is `'nf4'`. The possible values are: 'nf4', 'fp4'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization during 4-bit quantization, default is `True`. This parameter is ignored when `quantization_bit` is 0.
-- `--lora_target_modules`: Specifies the LoRA modules, default is `None`, which means it searches for the `lora_TM` (default is qkv) in `MODEL_MAPPING` based on `model_type`. If `ALL` is passed, all linear layers (excluding the head) will be designated as LoRA modules. This parameter only takes effect when `sft_type` is set to `'lora'`.
+- `--lora_target_modules`: Specifies the LoRA module, default is `None`. If `lora_target_modules` is `None` or set to `AUTO`, it will look for `lora_target_modules` in `MODEL_MAPPING` based on `model_type` (default is set to qkv). If set to `ALL`, all Linear layers (excluding the head) will be specified as LoRA modules. This parameter only takes effect when `sft_type` is set to 'lora'.
 - `--lora_rank`: Default is `8`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--lora_alpha`: Default is `32`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--lora_dropout_p`: Default is `0.0`. This parameter only takes effect when `sft_type` is set to `'lora'`.
@@ -254,13 +402,13 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--top_k`: The value of k for top-k sampling during generation. The default value is `20`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--top_p`: The cumulative probability threshold for top-p sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--repetition_penalty`: The repetition penalty applied during generation. The default value is `1.0`. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--repetition_penalty`: The repetition penalty applied during generation. The default value is `1.05`. This parameter only takes effect when `predict_with_generate` is set to True.
 
 
 ### infer.sh Command Line Arguments
 - `--model_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--model_id_or_path`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. It is recommended to use the `model_type` approach for specification.
-- `--model_revision`: Default value is `'master'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `model_id_or_path` is `None` or if it refers to a local model directory.
+- `--model_revision`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `model_id_or_path` is `None` or if it refers to a local model directory.
 - `--model_type`: Default value is `'qwen-7b-chat'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--sft_type`: Default value is `'lora'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--template_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
@@ -283,7 +431,7 @@ The returned `HfDataset` must comply with certain conventions. In the case of in
 - `--temperature`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_k`: Default value is `20`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_p`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
-- `--repetition_penalty`: Default value is `1.0`.
+- `--repetition_penalty`: Default value is `1.05`.
 - `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--stream`: Whether to use streaming output. Default value is `True`.

@@ -186,9 +186,9 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.lora_target_modules is None or (
-                len(self.lora_target_modules) == 1
-                and self.lora_target_modules[0] == 'AUTO'):
+        if self.lora_target_modules is None or 'AUTO' in self.lora_target_modules:
+            if self.lora_target_modules is not None:
+                assert len(self.lora_target_modules) == 1
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_target_modules']
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
