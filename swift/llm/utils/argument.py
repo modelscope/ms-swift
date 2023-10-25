@@ -120,12 +120,7 @@ class SftArguments:
             'If set to True, the train_dataset will be sorted in descending order based on max_length, '
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
-    use_flash_attn: Optional[bool] = field(
-        default=None,
-        metadata={
-            'help':
-            "This parameter is used only when model_type.startswith('qwen')"
-        })
+    use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
 
     # generation config
@@ -260,12 +255,7 @@ class InferArguments:
     repetition_penalty: float = 1.05
 
     # other
-    use_flash_attn: Optional[bool] = field(
-        default=None,
-        metadata={
-            'help':
-            "This parameter is used only when model_type.startswith('qwen')"
-        })
+    use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora_and_save: bool = False

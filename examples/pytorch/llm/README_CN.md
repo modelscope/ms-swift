@@ -395,7 +395,7 @@ if __name__ == '__main__':
 - `--push_hub_strategy`: 推送策略, 默认为`'push_best'`. 可选择的值包括: 'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'. 'push_best'表示在每次保存权重时, 将最好的模型进行推送并覆盖之前的权重, 'push_last'表示在每次保存权重时, 将最后的权重进行推送并覆盖之前的权重. 该参数只有在`push_to_hub`设置为True时才生效.
 - `--hub_token`: 推送时需要的SDK token. 可以从[https://modelscope.cn/my/myaccesstoken](https://modelscope.cn/my/myaccesstoken)获取, 默认为`None`, 即从环境变量`MODELSCOPE_API_TOKEN`中获取. 该参数只有在`push_to_hub`设置为True时才生效.
 - `--test_oom_error`: 用于检测训练是否会发生OOM, 默认为`False`. 如果设置为True, 则会将训练集按max_length倒序进行排列, 方便OOM的测试. 该参数一般用于测试, 请谨慎设置.
-- `--use_flash_attn`: 是否使用flash attn, 默认为`None`, 即为'auto'. 该参数只在`model_type.startswith('qwen')`的情况下才生效. 安装flash_attn的步骤可以查看[https://github.com/Dao-AILab/flash-attention](https://github.com/Dao-AILab/flash-attention)
+- `--use_flash_attn`: 是否使用flash attn, 默认为`None`. 安装flash_attn的步骤可以查看[https://github.com/Dao-AILab/flash-attention](https://github.com/Dao-AILab/flash-attention)
 - `--ignore_args_error`: 是否忽略命令行传参错误抛出的Error, 默认为`False`. 如果需要拷贝代码到notebook中运行, 需要设置成True.
 - `--max_new_tokens`: 默认为`2048`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--do_sample`: 默认为`True`. 该参数只有在`predict_with_generate`设置为True的时候才生效.

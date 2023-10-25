@@ -17,6 +17,9 @@ def merge_lora(args: InferArguments) -> None:
     assert args.sft_type == 'lora'
     assert not args.model_type.endswith('int4'), 'int4 model is not supported'
     assert not args.model_type.endswith('int8'), 'int8 model is not supported'
+    if args.quantization_bit != 0:
+        logger.warning('It is not recommended to merge quantized models, '
+                       'as this can result in performance degradation')
     # ### Loading Model and Tokenizer
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')

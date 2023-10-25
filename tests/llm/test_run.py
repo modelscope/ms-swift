@@ -45,14 +45,14 @@ class TestRun(unittest.TestCase):
         ckpt_dir = sft_main([
             '--model_type', ModelType.qwen_7b_chat_int4, '--eval_steps', '5',
             '--train_dataset_sample', '200', '--predict_with_generate', 'true',
-            '--dataset', DatasetName.jd_sentiment_zh, '--output_dir',
+            '--dataset', DatasetName.damo_agent_mini_zh, '--output_dir',
             output_dir, '--use_flash_attn', 'false',
             '--gradient_checkpointing', 'true'
         ])
         print(ckpt_dir)
         infer_main([
             '--model_type', ModelType.qwen_7b_chat_int4, '--ckpt_dir',
-            ckpt_dir, '--dataset', DatasetName.jd_sentiment_zh,
+            ckpt_dir, '--dataset', DatasetName.damo_agent_mini_zh,
             '--show_dataset_sample', '5'
         ])
 
