@@ -104,7 +104,7 @@ pip install bitsandbytes -U
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
 
-提示:
+**提示**:
 - 你可以在训练时设置`--gradient_checkpointing true`来节约显存, 但这会略微降低训练速度. 如果你需要在消费级显卡中训练大模型, 这很有用, 例如: 3090.
 - 如果你想要使用量化参数`quantization_bit`, 你需要先安装bnb: `pip install bitsandbytes -U`.
 - 如果你想要使用基于auto_gptq的量化, 你需要先安装auto_gptq: `pip install auto_gptq -U`.
@@ -113,6 +113,7 @@ pip install bitsandbytes -U
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以节约显存, 但可能会略微降低训练速度.
 - 如果你使用的是V100等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[flash-attn](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练).
+- 如果你要进行二次预训练而不是SFT, 你可以参考`DatasetName.tigerbot_law_zh`数据集和其对于的sh文件: `scripts/qwen_7b/qlora_ddp`.
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. 不推荐对量化的模型进行merge, 这会存在精度损失, 即qlora.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要自定义sh脚本, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.

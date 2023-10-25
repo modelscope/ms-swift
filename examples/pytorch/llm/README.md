@@ -103,7 +103,7 @@ Performace: full(nice) > lora > qlora
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 
-Tips:
+**Tips**:
 - You can set `--gradient_checkpointing true` during training to save GPU memory, but this will slightly decrease the training speed. This is useful if you need to train LLM on consumer-grade GPU, e.g. 3090.
 - If you want to use quantization based on auto_gptq, you need to install auto_gptq first: `pip install auto_gptq -U`.
   The models available with auto_gptq are: `qwen-7b-chat-int4`, `qwen-14b-chat-int4`, `qwen-7b-chat-int8`, `qwen-14b-chat-int8`.
@@ -112,6 +112,7 @@ Tips:
 - If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can save GPU memory, but this may slightly decrease the training speed.
 - If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
+- If you want to perform second pre-training instead of SFT, you can refer to the `DatasetName.tigerbot_law_zh` dataset and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is not recommended to merge quantized models, as this can result in performance degradation, specifically in the case of qlora.
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
