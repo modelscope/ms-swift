@@ -8,7 +8,8 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_type qwen-14b-chat \
+    --model_id_or_path qwen/Qwen-14B-Chat \
+    --model_revision master \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \

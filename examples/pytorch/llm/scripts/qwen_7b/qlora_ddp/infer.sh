@@ -2,7 +2,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --model_type qwen-7b \
+    --model_id_or_path qwen/Qwen-7B \
+    --model_revision master \
     --sft_type lora \
     --template_type default-generation \
     --dtype bf16 \
