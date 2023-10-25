@@ -119,7 +119,7 @@ register_template(
 register_template(
     TemplateType.internlm,
     Template(['<s>'], ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'], ['<eoa>\n'],
-             ['<eoa></s>']))
+             ['<eoa>\n</s>']))
 register_template(
     TemplateType.xverse,
     Template([], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']],

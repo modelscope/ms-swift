@@ -124,11 +124,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if hasattr(
                 self.model, 'encoder'
         ) and self.model.encoder.main_input_name != self.model.main_input_name:
-            generation_inputs = inputs[self.model.encoder.main_input_name]
+            generation_inputs = generate_inputs[
+                self.model.encoder.main_input_name]
         else:
-            generation_inputs = inputs[self.model.main_input_name]
+            generation_inputs = generate_inputs[self.model.main_input_name]
 
-        generated_tokens = generated_tokens[:, generation_inputs.size()[-1]:]
+        generated_tokens = generated_tokens[:, generation_inputs.shape[1]:]
         gen_len = len(generated_tokens[0])
         self.perf['gen_time'] = self.perf['gen_time'] + gen_time
         self.perf['gen_len'] = self.perf['gen_len'] + gen_len
