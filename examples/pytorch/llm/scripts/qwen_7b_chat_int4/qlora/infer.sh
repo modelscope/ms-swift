@@ -5,6 +5,7 @@ python llm_infer.py \
     --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
     --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type chatml \
     --dtype fp16 \
     --ckpt_dir "output/qwen-7b-chat-int4/vx_xxx/checkpoint-xxx" \

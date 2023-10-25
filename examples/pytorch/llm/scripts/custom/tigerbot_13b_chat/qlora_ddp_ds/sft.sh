@@ -11,6 +11,7 @@ torchrun \
     --model_id_or_path TigerResearch/tigerbot-13b-chat-v4 \
     --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type tigerbot \
     --dtype bf16 \
     --output_dir output \

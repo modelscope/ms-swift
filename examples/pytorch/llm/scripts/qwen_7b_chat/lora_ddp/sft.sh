@@ -13,6 +13,7 @@ torchrun \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type chatml \
     --dtype bf16 \
     --output_dir output \

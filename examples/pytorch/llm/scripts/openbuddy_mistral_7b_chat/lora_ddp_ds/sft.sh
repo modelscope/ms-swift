@@ -11,6 +11,7 @@ torchrun \
     --model_id_or_path OpenBuddy/openbuddy-mistral-7b-v13.1 \
     --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type openbuddy \
     --dtype bf16 \
     --output_dir output \
