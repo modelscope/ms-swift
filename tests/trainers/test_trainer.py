@@ -78,6 +78,7 @@ class TestTrainer(unittest.TestCase):
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
+        os.system('nvidia-smi')
         push_to_hub = True
         if not __name__ == '__main__':
             # ignore citest error in github

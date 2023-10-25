@@ -24,6 +24,7 @@ class TestRun(unittest.TestCase):
         shutil.rmtree(self.tmp_dir)
 
     def test_run_1(self):
+        os.system('nvidia-smi')
         output_dir = self.tmp_dir
         # output_dir = 'output'
         model_type = ModelType.chatglm2_6b
@@ -36,9 +37,11 @@ class TestRun(unittest.TestCase):
             dataset=[DatasetName.jd_sentiment_zh],
             output_dir=output_dir,
             gradient_checkpointing=True)
-        torch.cuda.empty_cache()
         best_ckpt_dir = sft_main(sft_args)
         print(f'best_ckpt_dir: {best_ckpt_dir}')
+        os.system('nvidia-smi')
+        torch.cuda.empty_cache()
+        os.system('nvidia-smi')
         infer_args = InferArguments(
             model_type=model_type,
             quantization_bit=4,

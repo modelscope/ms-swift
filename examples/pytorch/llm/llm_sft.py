@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from custom import CustomDatasetName, CustomModelType, CustomTemplateType
+import custom
 
 from swift.llm.run import sft_main
 
