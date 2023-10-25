@@ -80,6 +80,8 @@ class TestTrainer(unittest.TestCase):
         # api.delete_model(self.hub_model_id)
         # logger.info(f'delete model: {self.hub_model_id}')
 
+    # @unittest.skipUnless(
+    #     os.getenv('TEST_LEVEL', 2), 'skip test in current test level')
     def test_trainer(self):
         push_to_hub = True
         if not __name__ == '__main__':
