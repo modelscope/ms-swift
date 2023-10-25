@@ -1,15 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List
 
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
-from modelscope import (AutoModelForCausalLM, AutoTokenizer, MsDataset,
-                        snapshot_download)
+from modelscope import MsDataset
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
-from swift.llm import (History, LoRATM, Template, dataset_map, get_dataset,
+from swift.llm import (LoRATM, Template, dataset_map, get_dataset,
                        get_model_tokenizer, get_model_tokenizer_from_repo,
                        get_template, preprocess_conversations, print_example,
                        register_dataset, register_model, register_template)

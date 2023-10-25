@@ -6,7 +6,6 @@ import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from types import MethodType
 from typing import (Any, Callable, Dict, Iterator, List, Optional, Type,
                     TypeVar, Union)
 

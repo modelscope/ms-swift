@@ -26,7 +26,7 @@ from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
                                   WEIGHTS_NAME, IntervalStrategy,
                                   is_peft_available)
 from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import EvalPrediction, HubStrategy
+from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
 from swift.hub import HubApi, ModelScopeConfig, Repository
