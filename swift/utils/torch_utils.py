@@ -10,7 +10,7 @@ import torch
 import torch.distributed as dist
 from torch.nn import Module
 
-from .logger import get_logger
+from .logger import get_logger, is_master
 
 logger = get_logger()
 
