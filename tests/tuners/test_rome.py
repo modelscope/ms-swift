@@ -22,6 +22,8 @@ class TestRome(unittest.TestCase):
         shutil.rmtree(self.tmp_dir)
         super().tearDown()
 
+    @unittest.skip(
+        'Rome test is skipped because the test image do not have flash-attn2')
     def test_rome(self):
         model = Model.from_pretrained(
             'modelscope/Llama-2-7b-ms',
