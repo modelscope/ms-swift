@@ -28,6 +28,7 @@ class SftArguments:
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
+    model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
@@ -39,6 +40,7 @@ class SftArguments:
             'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
         })
     output_dir: str = 'output'
+    add_output_dir_suffix: bool = True
     ddp_backend: str = field(
         default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
@@ -122,6 +124,7 @@ class SftArguments:
         })
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
+    logging_dir: Optional[str] = None
 
     # generation config
     max_new_tokens: Optional[int] = None
@@ -135,11 +138,12 @@ class SftArguments:
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
         set_model_type(self)
-
-        self.output_dir = os.path.join(self.output_dir, self.model_type)
-        if is_master():
-            self.output_dir = add_version_to_work_dir(self.output_dir)
-            logger.info(f'output_dir: {self.output_dir}')
+        handle_dir(self)
+        if self.add_output_dir_suffix:
+            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            if is_master():
+                self.output_dir = add_version_to_work_dir(self.output_dir)
+                logger.info(f'output_dir: {self.output_dir}')
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         if is_dist():
@@ -206,6 +210,8 @@ class SftArguments:
             with open(self.deepspeed_config_path, 'r') as f:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
+        if self.logging_dir is None:
+            self.logging_dir = f'{self.output_dir}/runs'
 
 
 @dataclass
@@ -268,6 +274,7 @@ class InferArguments:
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
+        handle_dir(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
@@ -383,3 +390,15 @@ def prepare_push_ms_hub(args: SftArguments) -> None:
             assert ModelScopeConfig.get_token(
             ) is not None, 'Please enter hub_token'
         logger.info('hub login successful!')
+
+
+def handle_dir(args: Union[SftArguments, InferArguments]) -> None:
+    for k in [
+            'model_cache_dir', 'output_dir', 'ckpt_dir',
+            'resume_from_checkpoint', 'deepspeed_config_path', 'logging_dir'
+    ]:
+        value = getattr(args, k, None)
+        if isinstance(value, str):
+            value = os.path.expanduser(value)
+            value = os.path.abspath(value)
+            setattr(args, k, value)

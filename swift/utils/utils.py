@@ -47,7 +47,6 @@ def _get_version(work_dir: str) -> int:
 
 def add_version_to_work_dir(work_dir: str) -> str:
     """add version"""
-    work_dir = os.path.abspath(work_dir)
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
 

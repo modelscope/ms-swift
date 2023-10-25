@@ -27,7 +27,7 @@ class TestRun(unittest.TestCase):
         output_dir = self.tmp_dir
         # output_dir = 'output'
         sft_args = SftArguments(
-            model_type=ModelType.qwen_7b_chat,
+            model_type=ModelType.chatglm2_6b,
             quantization_bit=4,
             eval_steps=5,
             train_dataset_sample=200,
@@ -39,7 +39,7 @@ class TestRun(unittest.TestCase):
         best_ckpt_dir = sft_main(sft_args)
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         infer_args = InferArguments(
-            model_type=ModelType.qwen_7b_chat,
+            model_type=ModelType.chatglm2_6b,
             quantization_bit=4,
             ckpt_dir=best_ckpt_dir,
             dataset=[DatasetName.jd_sentiment_zh],

@@ -1,7 +1,3 @@
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 import os
 import shutil
 import tempfile
@@ -129,6 +125,7 @@ class TestTrainer(unittest.TestCase):
             metric_for_best_model='loss',
             greater_is_better=False,
             eval_steps=10)
+        trainer_args._n_gpu = 1
         trainer = BertTrainer(model, trainer_args, data_collator,
                               train_dataset, val_dataset, tokenizer)
         self.hub_model_id = trainer_args.hub_model_id

@@ -29,8 +29,7 @@ def merge_lora(args: InferArguments) -> None:
     Swift.merge_and_unload(model)
 
     ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
-    merged_lora_path = os.path.abspath(
-        os.path.join(ckpt_dir, f'{ckpt_name}-merged'))
+    merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
     logger.info(f'merged_lora_path: `{merged_lora_path}`')
     logger.info("Setting args.sft_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
@@ -55,7 +54,6 @@ def llm_infer(args: InferArguments) -> None:
 
     # ### Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
-    kwargs = {}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -65,7 +63,7 @@ def llm_infer(args: InferArguments) -> None:
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
-    kwargs['use_flash_attn'] = args.use_flash_attn
+    kwargs = {'use_flash_attn': args.use_flash_attn}
     if args.sft_type == 'full':
         kwargs['model_dir'] = args.ckpt_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,

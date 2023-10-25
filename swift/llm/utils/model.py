@@ -646,6 +646,9 @@ def get_model_tokenizer(
                 ignore_file_pattern=ignore_file_pattern)
         if is_dist() and is_local_master():
             dist.barrier()
+    else:
+        model_dir = os.path.expanduser(model_dir)
+        assert os.path.isdir(model_dir)
 
     kwargs['automodel_class'] = model_info['automodel_class']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,

@@ -47,11 +47,11 @@ def llm_sft(args: SftArguments) -> str:
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
 
-    model, tokenizer = get_model_tokenizer(
-        args.model_type,
-        args.torch_dtype,
-        model_kwargs,
-        use_flash_attn=args.use_flash_attn)
+    kwargs = {'use_flash_attn': args.use_flash_attn}
+    if args.model_cache_dir is not None:
+        kwargs['model_dir'] = args.model_cache_dir
+    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
+                                           model_kwargs, **kwargs)
 
     # ### Preparing LoRA
     if args.sft_type == 'lora':
@@ -133,6 +133,7 @@ def llm_sft(args: SftArguments) -> str:
         do_train=True,
         do_eval=True,
         evaluation_strategy='steps',
+        logging_dir=args.logging_dir,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
