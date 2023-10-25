@@ -45,7 +45,7 @@ class ProgressCallbackNew(ProgressCallback):
             with open(jsonl_path, 'a') as f:
                 f.write(json.dumps(logs) + '\n')
         super().on_log(args, state, control, logs, **kwargs)
-        if state.is_local_process_zero:
+        if state.is_local_process_zero and self.training_bar is not None:
             self.training_bar.refresh()
 
 
