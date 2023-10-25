@@ -19,7 +19,7 @@ class TestLlmUtils(unittest.TestCase):
             lower_bound(0, len(arr), lambda i: arr[i] == -100) == 1000)
 
     def test_inference(self):
-        model, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat)
+        model, tokenizer = get_model_tokenizer(ModelType.chatglm2_6b)
         template = get_template(TemplateType.chatml, tokenizer)
         inputs = template.encode({'query': '你好！'})
 
