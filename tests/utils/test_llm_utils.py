@@ -1,6 +1,3 @@
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import os
 import unittest
 
@@ -24,7 +21,7 @@ class TestLlmUtils(unittest.TestCase):
             lower_bound(0, len(arr), lambda i: arr[i] == -100) == 1000)
 
     def test_inference(self):
-        model, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat_int4)
+        model, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat)
         template = get_template(TemplateType.chatml, tokenizer)
         inputs = template.encode({'query': '你好！'})
 

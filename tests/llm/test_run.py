@@ -1,7 +1,3 @@
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 import os
 import shutil
 import tempfile
@@ -38,6 +34,7 @@ class TestRun(unittest.TestCase):
         ckpt_dir = sft_main(sft_args)
         infer_args = InferArguments(
             model_type=ModelType.qwen_7b_chat,
+            quantization_bit=4,
             ckpt_dir=ckpt_dir,
             dataset=[DatasetName.jd_sentiment_zh],
             stream=False,
@@ -47,8 +44,9 @@ class TestRun(unittest.TestCase):
 
     def test_run_2(self):
         output_dir = self.tmp_dir
+        model_type = ModelType.baichuan2_7b_chat
         ckpt_dir = sft_main([
-            '--model_type', ModelType.qwen_7b_chat_int4, '--eval_steps', '5',
+            '--model_type', model_type, '--eval_steps', '5',
             '--train_dataset_sample', '200', '--predict_with_generate', 'true',
             '--dataset', DatasetName.leetcode_python_en, '--output_dir',
             output_dir, '--use_flash_attn', 'false',
@@ -56,9 +54,8 @@ class TestRun(unittest.TestCase):
         ])
         print(ckpt_dir)
         infer_main([
-            '--model_type', ModelType.qwen_7b_chat_int4, '--ckpt_dir',
-            ckpt_dir, '--dataset', DatasetName.leetcode_python_en,
-            '--show_dataset_sample', '5'
+            '--model_type', model_type, '--ckpt_dir', ckpt_dir, '--dataset',
+            DatasetName.leetcode_python_en, '--show_dataset_sample', '5'
         ])
 
 

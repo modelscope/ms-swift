@@ -1,7 +1,9 @@
 import tempfile
 import unittest
 
-from swift.llm import DatasetName, HfDataset, get_dataset
+from datasets import Dataset as HfDataset
+
+from swift.llm import DatasetName, get_dataset
 
 
 class TestDataset(unittest.TestCase):
