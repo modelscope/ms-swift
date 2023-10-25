@@ -4,7 +4,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_type ziya2-13b-chat \
+    --model_id_or_path Fengshenbang/Ziya2-13B-Chat \
+    --model_revision master \
     --sft_type lora \
     --template_type ziya \
     --dtype bf16 \

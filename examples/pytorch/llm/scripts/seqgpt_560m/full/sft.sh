@@ -3,7 +3,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_type seqgpt-560m \
+    --model_id_or_path damo/nlp_seqgpt-560m \
+    --model_revision master \
     --sft_type full \
     --template_type default-generation \
     --dtype bf16 \

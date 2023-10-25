@@ -498,7 +498,9 @@ def get_model_tokenizer_qwen(model_dir: str,
             v = True
         setattr(model_config, k, v)
 
-    use_flash_attn = kwargs.pop('use_flash_attn', 'auto')
+    use_flash_attn = kwargs.pop('use_flash_attn', None)
+    if use_flash_attn is None:
+        use_flash_attn = 'auto'
     model_config.use_flash_attn = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,

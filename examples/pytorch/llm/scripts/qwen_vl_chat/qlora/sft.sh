@@ -3,7 +3,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_type qwen-vl-chat \
+    --model_id_or_path qwen/Qwen-VL-Chat \
+    --model_revision master \
     --sft_type lora \
     --template_type chatml \
     --dtype bf16 \

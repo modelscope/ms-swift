@@ -8,7 +8,8 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_type qwen-vl \
+    --model_id_or_path qwen/Qwen-VL \
+    --model_revision master \
     --sft_type lora \
     --template_type default \
     --dtype bf16 \

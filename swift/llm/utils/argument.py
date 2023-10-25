@@ -195,8 +195,6 @@ class SftArguments:
             self)
 
         prepare_push_ms_hub(self)
-        if self.use_flash_attn is None:
-            self.use_flash_attn = 'auto'
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -292,8 +290,6 @@ class InferArguments:
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
-        if self.use_flash_attn is None:
-            self.use_flash_attn = 'auto'
         if self.max_length == -1:
             self.max_length = None
 
