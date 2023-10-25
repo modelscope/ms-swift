@@ -2,9 +2,8 @@ import os
 import tempfile
 import unittest
 
-from modelscope import AutoTokenizer, snapshot_download
-
-from swift.llm import MODEL_MAPPING, ModelType, get_template
+from swift.llm import (MODEL_MAPPING, ModelType, get_model_tokenizer,
+                       get_template)
 
 
 class TestTemplate(unittest.TestCase):
@@ -12,11 +11,9 @@ class TestTemplate(unittest.TestCase):
     def test_template(self):
         model_types = [ModelType.qwen_7b_chat_int4]
         for model_type in model_types:
-            model_config = MODEL_MAPPING[model_type]
-            model_id = model_config['model_id_or_path']
-            tokenizer = AutoTokenizer.from_pretrained(
-                model_id, revision='master', trust_remote_code=True)
-            template_type = model_config['template']
+            _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+            model_info = MODEL_MAPPING[model_type]
+            template_type = model_info['template']
             template = get_template(template_type, tokenizer)
             history = [
                 ('你好，你是谁？', '我是来自达摩院的大规模语言模型，我叫通义千问。'),

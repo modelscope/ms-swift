@@ -45,6 +45,7 @@ class BertTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         outputs = model(**inputs)
         loss = outputs.loss
+        assert loss is not None
         return (loss, outputs) if return_outputs else loss
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
@@ -124,6 +125,7 @@ class TestTrainer(unittest.TestCase):
             save_total_limit=2,
             metric_for_best_model='loss',
             greater_is_better=False,
+            gradient_accumulation_steps=1,
             eval_steps=10)
         trainer_args._n_gpu = 1
         trainer = BertTrainer(model, trainer_args, data_collator,

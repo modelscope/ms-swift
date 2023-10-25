@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
                         Model, read_config, snapshot_download)
+from torch import Tensor
 from torch import dtype as Dtype
 from transformers import (PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
@@ -306,28 +307,16 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):
-    # baichuan-13b does not implement the `get_input_embeddings` function
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
+    # baichuan-13b does not implement the `get_input_embeddings` function
     # fix gradient_checkpointing bug
-    if not hasattr(model, 'get_input_embeddings'):
-        model.get_input_embeddings = MethodType(
-            lambda self: self.model.embed_tokens, model)
+    try:
+        model.get_input_embeddings()
+    except NotImplementedError:
+        model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
     return model, tokenizer
-
-
-def patch_baichuan2(self, hidden_states):
-    # patch: baichuan2 lm_head (fp32 bug)
-    if self.training:
-        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
-    elif self.first_flag:
-        self.first_flag = False
-        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
-        norm_weight = self.weight
-    else:
-        norm_weight = self.weight
-    return F.linear(hidden_states, norm_weight)
 
 
 @register_model(ModelType.baichuan2_13b_chat,
@@ -348,6 +337,19 @@ def get_model_tokenizer_baichuan2_13b(model_dir: str,
         model_config.gradient_checkpointing = gradient_checkpointing[0]
     return get_model_tokenizer_baichuan2(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
+
+
+def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
+    # patch: baichuan2 lm_head (fp32 bug)
+    if self.training:
+        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
+    elif self.first_flag:
+        self.first_flag = False
+        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
+        norm_weight = self.weight
+    else:
+        norm_weight = self.weight
+    return F.linear(hidden_states, norm_weight)
 
 
 @register_model(ModelType.baichuan2_7b_chat, 'baichuan-inc/Baichuan2-7B-Chat',
@@ -420,8 +422,20 @@ def get_model_tokenizer_chatglm2(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     model_kwargs, load_model,
+                                                     **kwargs)
+    if model is not None:
+        from torch.nn import CrossEntropyLoss
+        _old_forward = CrossEntropyLoss.forward
+
+        def cross_entropy_forward(self, inputs: Tensor,
+                                  target: Tensor) -> Tensor:
+            target = target.to(device=inputs.device)
+            return _old_forward(self, inputs, target)
+
+        CrossEntropyLoss.forward = cross_entropy_forward
+    return model, tokenizer
 
 
 @register_model(
@@ -656,8 +670,12 @@ def get_model_tokenizer(
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    generation_config_path = os.path.join(model_dir, 'generation_config.json')
-    generation_config = getattr(model, 'generation_config', None)
-    if os.path.isfile(generation_config_path) and generation_config is None:
-        model.generation_config = GenerationConfig.from_pretrained(model_dir)
+    if model is not None:
+        generation_config_path = os.path.join(model_dir,
+                                              'generation_config.json')
+        generation_config = getattr(model, 'generation_config', None)
+        if os.path.isfile(
+                generation_config_path) and generation_config is None:
+            model.generation_config = GenerationConfig.from_pretrained(
+                model_dir)
     return model, tokenizer

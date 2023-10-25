@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import shutil
 
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
@@ -27,7 +28,9 @@ def merge_lora(args: InferArguments) -> None:
     # ### Preparing LoRA
     model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
     Swift.merge_and_unload(model)
+    model = model.model
 
+    old_ckpt_dir = args.ckpt_dir
     ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
     merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
     logger.info(f'merged_lora_path: `{merged_lora_path}`')
@@ -35,10 +38,16 @@ def merge_lora(args: InferArguments) -> None:
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
     args.sft_type = 'full'
     args.ckpt_dir = merged_lora_path
+
     if not os.path.exists(args.ckpt_dir):
         logger.info('Saving merged weights...')
-        model.model.save_pretrained(args.ckpt_dir)
+        model.save_pretrained(args.ckpt_dir)
         tokenizer.save_pretrained(args.ckpt_dir)
+        for fname in os.listdir(old_ckpt_dir):
+            if fname in {'generation_config.json', 'configuration.json'}:
+                src_path = os.path.join(old_ckpt_dir, fname)
+                tgt_path = os.path.join(args.ckpt_dir, fname)
+                shutil.copy(src_path, tgt_path)
         logger.info('Successfully merged LoRA.')
     else:
         logger.info('The weight directory for the merged LoRA already exists, '
