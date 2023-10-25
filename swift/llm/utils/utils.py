@@ -28,7 +28,8 @@ from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, trainer
+from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
+                          TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
@@ -318,30 +319,24 @@ def inference(input_ids: List[int],
               tokenizer: PreTrainedTokenizerBase,
               stream: bool = True,
               verbose: bool = True) -> str:
-
     if verbose:
         print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
+    streamer = None
     if stream:
-        gen = inference_stream(input_ids, model, tokenizer)
-        print_idx = 0
-        for output_text in gen:
-            if verbose and len(output_text) > print_idx:
-                print(output_text[print_idx:], end='', flush=True)
-                print_idx = len(output_text)
-        if verbose:
-            print()
-    else:
-        generation_config = getattr(model, 'generation_config', None)
-        input_ids = torch.tensor(input_ids)[None].cuda()
-        attention_mask = torch.ones_like(input_ids)
-        model.eval()
-        generate_ids = model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            generation_config=generation_config)
-        output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
-        if verbose:
-            print(output_text)
+        assert verbose
+        streamer = TextStreamer(tokenizer, skip_prompt=True)
+    generation_config = getattr(model, 'generation_config', None)
+    input_ids = torch.tensor(input_ids)[None].cuda()
+    attention_mask = torch.ones_like(input_ids)
+    model.eval()
+    generate_ids = model.generate(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        streamer=streamer,
+        generation_config=generation_config)
+    output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
+    if verbose and not streamer:
+        print(output_text)
     return output_text
 
 

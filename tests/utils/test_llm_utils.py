@@ -4,7 +4,7 @@ if __name__ == '__main__':
 import unittest
 
 from swift.llm import (ModelType, TemplateType, get_model_tokenizer,
-                       get_template, inference)
+                       get_template, inference, inference_stream)
 from swift.utils import lower_bound, seed_everything
 
 
@@ -32,10 +32,16 @@ class TestLlmUtils(unittest.TestCase):
         print(f'[GEN]: {gen_text_stream}')
         #
         seed_everything(42, True)
+        gen = inference_stream(inputs['input_ids'], model, tokenizer)
+        for gen_text_stream2 in gen:
+            pass
+        print(f'[GEN]: {gen_text_stream2}')
+        #
+        seed_everything(42, True)
         print('stream=False')
         gen_text = inference(inputs['input_ids'], model, tokenizer, False)
         print(f'[GEN]: {gen_text}')
-        self.assertTrue(gen_text_stream == gen_text)
+        self.assertTrue(gen_text_stream == gen_text_stream2 == gen_text)
         #
         inputs = template.encode({'query': 'hello!'})
         seed_everything(42, True)
@@ -45,10 +51,16 @@ class TestLlmUtils(unittest.TestCase):
         print(f'[GEN]: {gen_text_stream}')
         #
         seed_everything(42, True)
+        gen = inference_stream(inputs['input_ids'], model, tokenizer)
+        for gen_text_stream2 in gen:
+            pass
+        print(f'[GEN]: {gen_text_stream2}')
+        #
+        seed_everything(42, True)
         print('stream=False')
         gen_text = inference(inputs['input_ids'], model, tokenizer, False)
         print(f'[GEN]: {gen_text}')
-        self.assertTrue(gen_text_stream == gen_text)
+        self.assertTrue(gen_text_stream == gen_text_stream2 == gen_text)
 
 
 if __name__ == '__main__':

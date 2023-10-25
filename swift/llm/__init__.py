@@ -4,6 +4,7 @@ from .sft import llm_sft
 from .utils import DATASET_MAPPING  # noqa
 from .utils import DEFAULT_SYSTEM  # noqa
 from .utils import MODEL_MAPPING  # noqa
+from .utils import inference_stream  # noqa
 from .utils import (TEMPLATE_MAPPING, DatasetName, GetDatasetFunction,
                     GetModelTokenizerFunction, History, InferArguments, LoRATM,
                     ModelType, Prompt, SftArguments, Template, TemplateType,
