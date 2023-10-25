@@ -1,11 +1,14 @@
 if __name__ == '__main__':
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import os
 import unittest
 
 from swift.llm import (ModelType, TemplateType, get_model_tokenizer,
                        get_template, inference, inference_stream)
 from swift.utils import lower_bound, seed_everything
+
+os.system('pip install auto_gptq optimum -U')
 
 
 class TestLlmUtils(unittest.TestCase):
