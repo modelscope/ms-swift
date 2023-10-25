@@ -397,7 +397,7 @@ if __name__ == '__main__':
 - `--test_oom_error`: 用于检测训练是否会发生OOM, 默认为`False`. 如果设置为True, 则会将训练集按max_length倒序进行排列, 方便OOM的测试. 该参数一般用于测试, 请谨慎设置.
 - `--use_flash_attn`: 是否使用flash attn, 默认为`None`. 安装flash_attn的步骤可以查看[https://github.com/Dao-AILab/flash-attention](https://github.com/Dao-AILab/flash-attention)
 - `--ignore_args_error`: 是否忽略命令行传参错误抛出的Error, 默认为`False`. 如果需要拷贝代码到notebook中运行, 需要设置成True.
-- `--max_new_tokens`: 默认为`2048`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
+- `--max_new_tokens`: 默认为`None`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--do_sample`: 默认为`True`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--temperature`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--top_k`: 默认为`20`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
@@ -425,7 +425,7 @@ if __name__ == '__main__':
 - `--bnb_4bit_comp_dtype`: 默认值为`None`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_quant_type`: 默认值为`'nf4'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_use_double_quant`: 默认值为`True`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
-- `--max_new_tokens`: 生成新token的最大数量, 默认值为`2048`.
+- `--max_new_tokens`: 生成新token的最大数量, 默认值为`None`. 该参数一般不需要设置, 使用max_length作为generation_config的生成长度限制.
 - `--do_sample`: 是使用贪婪生成的方式还是采样生成的方式, 默认值为`True`.
 - `--temperature`: 默认值为`0.9`. 该参数只有在`do_sample`设置为True时才生效.
 - `--top_k`: 默认值为`20`. 该参数只有在`do_sample`设置为True时才生效.
@@ -435,4 +435,4 @@ if __name__ == '__main__':
 - `--ignore_args_error`: 默认值为`False`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--stream`: 是否使用流式输出, 默认为`True`.
 - `--merge_lora_and_save`: 是否将lora权重merge到基模型中, 并保存完整的权重, 默认为`False`. 权重会保存在`ckpt_dir`的同级目录中,  e.g. `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`目录下.
-- `--save_generation_config`: 是否将评估所使用的generation_config保存成`generation_config.json`文件, 默认为`True`.
+- `--save_generation_config`: 是否将评估所使用的generation_config保存成`generation_config.json`文件, 默认为`True`. 训练时保存的generate_config文件将被覆盖.

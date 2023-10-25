@@ -124,7 +124,7 @@ class SftArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
 
     # generation config
-    max_new_tokens: int = 2048
+    max_new_tokens: Optional[int] = None
     do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 20
@@ -247,7 +247,7 @@ class InferArguments:
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
 
-    max_new_tokens: int = 2048
+    max_new_tokens: Optional[int] = None
     do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 20

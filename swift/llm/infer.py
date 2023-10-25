@@ -83,6 +83,7 @@ def llm_infer(args: InferArguments) -> None:
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length)
     generation_config = GenerationConfig(
+        max_length=args.max_length,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,

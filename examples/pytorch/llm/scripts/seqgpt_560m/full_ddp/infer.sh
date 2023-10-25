@@ -11,7 +11,6 @@ python llm_infer.py \
     --eval_human false \
     --dataset ner-jave-zh \
     --max_length 1024 \
-    --max_new_tokens 1024 \
     --temperature 0.9 \
     --top_k 20 \
     --top_p 0.9 \

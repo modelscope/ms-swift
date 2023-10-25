@@ -352,8 +352,12 @@ class SwiftMixin:
         else:
             self._create_configuration_file(self.model, output_dir)
         self._add_adapter_cfg(output_dir)
-        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        # generation_config
+        generation_config = getattr(self.args, 'generation_config', None)
+        if generation_config is not None:
+            generation_config.save_pretrained(output_dir)
         # model
+        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         save_safetensors = getattr(self.args, 'save_safetensors', False)
         if not isinstance(self.model, supported_classes):
             if state_dict is None:

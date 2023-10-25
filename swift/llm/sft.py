@@ -113,15 +113,21 @@ def llm_sft(args: SftArguments) -> str:
     stat_dataset(val_dataset)
 
     # ### Setting training_args
+    max_length = args.max_length
+    if args.max_new_tokens is not None:
+        max_length = None
     generation_config = GenerationConfig(
-        do_sample=args.do_sample,
+        max_length=max_length,
         max_new_tokens=args.max_new_tokens,
-        max_length=None,
         temperature=args.temperature,
-        top_p=args.top_p,
         top_k=args.top_k,
-        repetition_penalty=args.repetition_penalty)
+        top_p=args.top_p,
+        do_sample=args.do_sample,
+        repetition_penalty=args.repetition_penalty,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
+
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
         do_train=True,

@@ -14,7 +14,6 @@ python llm_infer.py \
     --dataset damo-agent-mini-zh \
     --max_length 4096 \
     --use_flash_attn true \
-    --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \
     --top_p 0.9 \
