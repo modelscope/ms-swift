@@ -8,8 +8,8 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                        BitsAndBytesConfig, GPTQConfig, Model, read_config,
-                        snapshot_download)
+                        BitsAndBytesConfig, GenerationConfig, GPTQConfig,
+                        Model, read_config, snapshot_download)
 from torch import dtype as Dtype
 from transformers import (PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
@@ -656,4 +656,8 @@ def get_model_tokenizer(
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    generation_config_path = os.path.join(model_dir, 'generation_config.json')
+    generation_config = getattr(model, 'generation_config', None)
+    if os.path.isfile(generation_config_path) and generation_config is None:
+        model.generation_config = GenerationConfig.from_pretrained(model_dir)
     return model, tokenizer

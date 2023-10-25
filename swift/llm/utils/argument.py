@@ -127,7 +127,7 @@ class SftArguments:
     logging_dir: Optional[str] = None
 
     # generation config
-    max_new_tokens: Optional[int] = None
+    max_new_tokens: int = 2048
     do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 20
@@ -253,7 +253,7 @@ class InferArguments:
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
 
-    max_new_tokens: Optional[int] = None
+    max_new_tokens: int = 2048
     do_sample: bool = True
     temperature: float = 0.9
     top_k: int = 20
@@ -265,7 +265,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora_and_save: bool = False
-    save_generation_config: bool = True
+    overwrite_generation_config: bool = False
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__

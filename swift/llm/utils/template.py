@@ -210,10 +210,7 @@ def _encode(
                              query=q,
                              round0=i)
     _concat_context_list(
-        template.prompt,
-        res_context_list,
-        query=query,
-        round0=len(history) + 1)
+        template.prompt, res_context_list, query=query, round0=len(history))
     res_context_list = _simplify_context_list(res_context_list)
     input_ids = _encode_context_list(template.tokenizer, res_context_list)
 

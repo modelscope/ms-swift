@@ -14,6 +14,7 @@ python llm_infer.py \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --use_flash_attn false \
+    --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \
     --top_p 0.9 \

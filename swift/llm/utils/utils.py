@@ -302,6 +302,7 @@ def inference_stream(
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
     stream_config = StreamGenerationConfig(
         **generation_config.to_dict(), do_stream=True)
+    stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     gen = model.generate_stream(
         input_ids=input_ids,
         attention_mask=attention_mask,

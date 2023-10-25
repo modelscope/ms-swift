@@ -1,8 +1,9 @@
 import os
 import unittest
 
-from swift.llm import (ModelType, TemplateType, get_model_tokenizer,
-                       get_template, inference, inference_stream)
+from swift.llm import (MODEL_MAPPING, ModelType, TemplateType,
+                       get_model_tokenizer, get_template, inference,
+                       inference_stream)
 from swift.utils import lower_bound, seed_everything
 
 
@@ -19,8 +20,10 @@ class TestLlmUtils(unittest.TestCase):
             lower_bound(0, len(arr), lambda i: arr[i] == -100) == 1000)
 
     def test_inference(self):
-        model, tokenizer = get_model_tokenizer(ModelType.chatglm2_6b)
-        template = get_template(TemplateType.chatml, tokenizer)
+        model_type = ModelType.chatglm2_6b
+        model, tokenizer = get_model_tokenizer(model_type)
+        template = get_template(MODEL_MAPPING[model_type]['template'],
+                                tokenizer)
         inputs = template.encode({'query': '你好！'})
 
         seed_everything(42, True)

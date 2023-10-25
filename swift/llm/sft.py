@@ -113,11 +113,8 @@ def llm_sft(args: SftArguments) -> str:
     stat_dataset(val_dataset)
 
     # ### Setting training_args
-    max_length = args.max_length
-    if args.max_new_tokens is not None:
-        max_length = None
     generation_config = GenerationConfig(
-        max_length=max_length,
+        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
@@ -224,8 +221,6 @@ def llm_sft(args: SftArguments) -> str:
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
         tb_dir = os.path.join(args.output_dir, 'runs')
-        folder_name = os.listdir(tb_dir)[0]
-        tb_dir = os.path.join(tb_dir, folder_name)
         plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignores(['images/'])

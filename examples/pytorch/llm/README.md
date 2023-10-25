@@ -401,7 +401,7 @@ The template initialization function retrieves the complete chat template based 
 - `--use_flash_attn`: Whether to use flash attention. The default value is `None`. For installation steps of flash attention, please refer to https://github.com/Dao-AILab/flash-attention.
 - `--ignore_args_error`: Whether to ignore errors raised by command-line argument mismatch, default is `False`. If you need to copy the code to a notebook for execution, you should set it to True.
 - `--logging_dir`: Default is `None`. If not specified, it is set to `f'{self.output_dir}/runs'`, which represents the directory where TensorBoard files are stored.
-- `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `None`. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Whether to use sampling during generation. The default value is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--top_k`: The value of k for top-k sampling during generation. The default value is `20`. This parameter only takes effect when `predict_with_generate` is set to True.
@@ -429,7 +429,7 @@ The template initialization function retrieves the complete chat template based 
 - `--bnb_4bit_comp_dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_quant_type`: Default value is `'nf4'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_use_double_quant`: Default value is `True`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
-- `--max_new_tokens`: Maximum number of new tokens to generate. Default value is `None`. This parameter is usually not necessary to be set, as the max_length is used as the generation length limit in the generation_config.
+- `--max_new_tokens`: Maximum number of new tokens to generate. Default value is `2048`.
 - `--do_sample`: Whether to use greedy decoding or sampling for generation. Default value is `True`.
 - `--temperature`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_k`: Default value is `20`. This parameter only takes effect when `do_sample` is set to True.
@@ -439,4 +439,4 @@ The template initialization function retrieves the complete chat template based 
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--stream`: Whether to use streaming output. Default value is `True`.
 - `--merge_lora_and_save`: Whether to merge the lora weights into the base model and save the complete weights. Default value is `False`. The weights will be saved in a directory named `checkpoint-xxx-merged` at the same level as `ckpt_dir`, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`.
-- `--save_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file. Default value is `True`. The generate_config file saved during training will be overwritten.
+- `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file. Default value is `False`. The generate_config file saved during training will be overwritten.
