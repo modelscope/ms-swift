@@ -5,8 +5,6 @@ from swift.llm import (ModelType, TemplateType, get_model_tokenizer,
                        get_template, inference, inference_stream)
 from swift.utils import lower_bound, seed_everything
 
-os.system('pip install auto_gptq optimum -U')
-
 
 class TestLlmUtils(unittest.TestCase):
 

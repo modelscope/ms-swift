@@ -6,8 +6,6 @@ from modelscope import AutoTokenizer, snapshot_download
 
 from swift.llm import MODEL_MAPPING, ModelType, get_model_tokenizer
 
-os.system('pip install auto_gptq optimum -U')
-
 
 class TestModel(unittest.TestCase):
 

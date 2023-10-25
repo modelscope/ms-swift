@@ -10,8 +10,6 @@ import unittest
 from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
 from swift.llm.run import infer_main, sft_main
 
-os.system('pip install auto_gptq optimum -U')
-
 
 class TestRun(unittest.TestCase):
 
