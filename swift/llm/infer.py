@@ -42,7 +42,7 @@ def merge_lora(args: InferArguments) -> None:
         tokenizer.save_pretrained(args.ckpt_dir)
         logger.info('Successfully merged LoRA.')
     else:
-        logger.info('The weight directory for the merged LoRa already exists, '
+        logger.info('The weight directory for the merged LoRA already exists, '
                     'skipping the saving process.')
 
 
