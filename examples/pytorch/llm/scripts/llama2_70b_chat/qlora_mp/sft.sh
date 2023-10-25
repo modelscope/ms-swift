@@ -4,7 +4,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python llm_sft.py \
-    --model_type llama2-70b-chat \
+    --model_id_or_path modelscope/Llama-2-70b-chat-ms \
+    --model_revision master \
     --sft_type lora \
     --template_type llama \
     --dtype bf16 \

@@ -3,7 +3,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_type internlm-20b-chat \
+    --model_id_or_path Shanghai_AI_Laboratory/internlm-chat-20b \
+    --model_revision master \
     --sft_type lora \
     --template_type internlm \
     --dtype bf16 \

@@ -8,7 +8,8 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_type mistral-7b-chat \
+    --model_id_or_path AI-ModelScope/Mistral-7B-Instruct-v0.1 \
+    --model_revision master \
     --sft_type lora \
     --template_type llama \
     --dtype bf16 \

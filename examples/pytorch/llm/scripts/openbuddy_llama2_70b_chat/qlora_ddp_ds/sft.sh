@@ -8,7 +8,8 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_type openbuddy-llama2-70b-chat \
+    --model_id_or_path OpenBuddy/openbuddy-llama2-70b-v10.1-bf16 \
+    --model_revision master \
     --sft_type lora \
     --template_type openbuddy \
     --dtype bf16 \

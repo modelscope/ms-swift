@@ -2,7 +2,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --model_type openbuddy-llama2-13b-chat \
+    --model_id_or_path OpenBuddy/openbuddy-llama2-13b-v8.1-fp16 \
+    --model_revision master \
     --sft_type lora \
     --template_type openbuddy \
     --dtype bf16 \

@@ -2,7 +2,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --model_type llama2-13b-chat \
+    --model_id_or_path modelscope/Llama-2-13b-chat-ms \
+    --model_revision master \
     --sft_type lora \
     --template_type llama \
     --dtype bf16 \
