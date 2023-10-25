@@ -2,7 +2,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --model_type baichuan2-13b-chat-int4 \
+    --model_id_or_path baichuan-inc/Baichuan2-13B-Chat-4bits \
+    --model_revision master \
     --sft_type lora \
     --template_type baichuan \
     --dtype bf16 \

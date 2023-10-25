@@ -2,7 +2,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --model_type baichuan2-7b \
+    --model_id_or_path baichuan-inc/Baichuan2-7B-Base \
+    --model_revision master \
     --sft_type lora \
     --template_type default-generation \
     --dtype bf16 \
