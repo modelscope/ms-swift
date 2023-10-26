@@ -37,9 +37,6 @@ class LongLoRAConfig(LoRAConfig):
     group_size_ratio: float = field(
         default=0.25, metadata={'help': 'The S2 attention group ratio'})
 
-    is_trainable: bool = field(
-        default=True, metadata={'help': 'Use in sft or inference.'})
-
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
         self.swift_type = SwiftTuners.LONGLORA
