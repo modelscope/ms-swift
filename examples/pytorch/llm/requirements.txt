@@ -3,6 +3,7 @@ charset_normalizer
 cpm_kernels
 matplotlib
 modelscope>=1.9.2
+optimum
 sentencepiece
 tensorboard
 tiktoken
