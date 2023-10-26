@@ -149,8 +149,10 @@ def forward_noflashattn(
     group_size = int(q_len * self.config.group_size_ratio)
 
     if q_len % group_size != 0:
-        raise ValueError(f'The sequence length {q_len} should'
-                         f'be able to be splitted by the group_ratio {self.config.group_size_ratio}')
+        raise ValueError(
+            f'The sequence length {q_len} should'
+            f'be able to be splitted by the group_ratio {self.config.group_size_ratio}'
+        )
 
     num_group = q_len // group_size
 
@@ -216,20 +218,21 @@ def forward_noflashattn(
         def shift(qkv, bsz, q_len, group_size, num_heads, head_dim):
             qkv[:, num_heads // 2:] = qkv[:, num_heads // 2:].roll(
                 -group_size // 2, dims=2)
-            qkv = qkv.transpose(1,
-                                2).reshape(bsz * (q_len // group_size), group_size,
-                                           num_heads, head_dim).transpose(1, 2)
+            qkv = qkv.transpose(1, 2).reshape(bsz * (q_len // group_size),
+                                              group_size, num_heads,
+                                              head_dim).transpose(1, 2)
             return qkv
 
-        query_states = shift(query_states, bsz, q_len, group_size, self.num_heads,
-                             self.head_dim)
+        query_states = shift(query_states, bsz, q_len, group_size,
+                             self.num_heads, self.head_dim)
         key_states = shift(key_states, bsz, q_len, group_size, self.num_heads,
                            self.head_dim)
-        value_states = shift(value_states, bsz, q_len, group_size, self.num_heads,
-                             self.head_dim)
+        value_states = shift(value_states, bsz, q_len, group_size,
+                             self.num_heads, self.head_dim)
         if attention_mask is not None:
-            attention_mask = attention_mask[:, :, :group_size, :group_size].repeat(
-                num_group, 1, 1, 1)
+            attention_mask = attention_mask[:, :, :group_size, :
+                                            group_size].repeat(
+                                                num_group, 1, 1, 1)
 
     attn_weights = torch.matmul(query_states, key_states.transpose(
         2, 3)) / math.sqrt(self.head_dim)
@@ -247,11 +250,9 @@ def forward_noflashattn(
 
     if self.training:
         # shift back
-        attn_output[:, :,
-                    self.num_heads // 2:] = attn_output[:, :,
-                                                        self.num_heads // 2:].roll(
-                                                            group_size // 2,
-                                                            dims=1)
+        attn_output[:, :, self.num_heads
+                    // 2:] = attn_output[:, :, self.num_heads // 2:].roll(
+                        group_size // 2, dims=1)
 
     attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -271,19 +272,6 @@ def forward_noflashattn(
         attn_weights = None
 
     return attn_output, attn_weights, past_key_value
-
-
-def apply_rotary_pos_emb_inference(q, k, cos_sin, position_ids):
-    gather_indices = position_ids[:, :, None, None]  # [bsz, seq_len, 1, 1]
-    gather_indices = gather_indices.repeat(1, 1, cos_sin[0].shape[0],
-                                           cos_sin[0].shape[1])
-    bsz = gather_indices.shape[0]
-    cos, sin = (
-        torch.gather(
-            x.transpose(1, 2).repeat(bsz, 1, 1, 1), 1, gather_indices)
-        for x in cos_sin)
-    q, k = ((x * cos) + (rotate_half(x) * sin) for x in (q, k))
-    return q, k
 
 
 def forward_flashattn_inference(
@@ -318,13 +306,13 @@ def forward_flashattn_inference(
                ))  # noqa
 
     kv_seq_len = k.shape[1]
-    past_kv_len = 0
     if past_key_value is not None:
         past_kv_len = past_key_value[0].shape[2]
         kv_seq_len += past_kv_len
 
     cos_sin = self.rotary_emb(v, seq_len=kv_seq_len)
-    q, k = apply_rotary_pos_emb(q.transpose(1, 2), k.transpose(1, 2), *cos_sin, position_ids)
+    q, k = apply_rotary_pos_emb(
+        q.transpose(1, 2), k.transpose(1, 2), *cos_sin, position_ids)
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
 

@@ -85,8 +85,7 @@ class LongLoRA(LoRA):
 
         if config.model_type == LongLoRAModelType.LLAMA:
             from .llama import replace_llama_attn
-            replace_llama_attn(
-                use_flash_attn=config.use_flash_attn)
+            replace_llama_attn(use_flash_attn=config.use_flash_attn)
             # only support code base from transformers
             model.config.group_size_ratio = config.group_size_ratio
 
