@@ -241,14 +241,7 @@ def forward_noflashattn(
     attn_weights = nn.functional.softmax(
         attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
     attn_output = torch.matmul(attn_weights, value_states)
-
-    if attn_output.size() != (bsz * num_group, self.num_heads, group_size,
-                              self.head_dim):
-        raise ValueError(
-            f'`attn_output` should be of size {(bsz * num_group, self.num_heads, group_size, self.head_dim)}, but is'
-            f' {attn_output.size()}')
     attn_output = attn_output.transpose(1, 2).contiguous()
-
     attn_output = attn_output.reshape(bsz, q_len, self.num_heads,
                                       self.head_dim)
 
