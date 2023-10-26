@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Part of the implementation is borrowed from huggingface/transformers.
-# Modified based on https://github.com/lm-sys/FastChat
+# Part of the implementation is borrowed from dvlab-research/LongLoRA.
 
 import math
 import warnings
