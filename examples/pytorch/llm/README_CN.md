@@ -68,24 +68,13 @@
 ## 准备实验环境
 实验环境: A10, 3090, V100, A100均可.
 ```bash
-# 安装miniconda
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-# 一直[ENTER], 最后一个选项yes即可
-sh Miniconda3-latest-Linux-x86_64.sh
-
-# conda虚拟环境搭建
-conda create --name ms-sft python=3.10
-conda activate ms-sft
-
-# pip设置全局镜像与相关python包安装(注意cuda版本的匹配)
+# 设置pip全局镜像和安装相关的python包
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install .
+pip install -r requirements/llm.txt -U
 cd examples/pytorch/llm
-pip install -r requirements.txt -U
 
 # 如果你想要使用deepspeed.
 pip install deepspeed -U
@@ -96,6 +85,40 @@ pip install auto_gptq optimum -U
 
 # 如果你想要使用基于bnb的qlora训练.
 pip install bitsandbytes -U
+```
+
+
+## 简单的使用
+以下案例可以用于测试环境. 请确保您已经阅读了`准备实验环境`部分.
+```python
+# Experimental environment: A10, 3090, A100, ...
+# 16GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm.run import infer_main, sft_main
+
+model_type = ModelType.qwen_7b_chat_int4
+sft_args = SftArguments(
+    model_type=model_type,
+    eval_steps=50,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.leetcode_python_en],
+    output_dir='output',
+    gradient_checkpointing=True)
+best_ckpt_dir = sft_main(sft_args)
+print(f'best_ckpt_dir: {best_ckpt_dir}')
+torch.cuda.empty_cache()
+infer_args = InferArguments(
+    model_type=sft_args.model_type,
+    ckpt_dir=best_ckpt_dir,
+    dataset=sft_args.dataset,
+    stream=True,
+    show_dataset_sample=5)
+infer_main(infer_args)
 ```
 
 

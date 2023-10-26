@@ -68,23 +68,13 @@
 ## Prepare the Environment
 Experimental environment: A10, 3090, V100, A100, ...
 ```bash
-# Installing miniconda
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-sh Miniconda3-latest-Linux-x86_64.sh
-
-# Setting up a conda virtual environment
-conda create --name ms-sft python=3.10
-conda activate ms-sft
-
-# Setting up a global mirror for pip and installing related Python packages (Note the matching version of CUDA)
+# Setting up a global mirror for pip and installing related Python packages
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install .
+pip install -r requirements/llm.txt -U
 cd examples/pytorch/llm
-pip install -r requirements.txt -U
 
 # If you want to use DeepSpeed:
 pip install deepspeed -U
@@ -97,6 +87,39 @@ pip install auto_gptq optimum -U
 pip install bitsandbytes -U
 ```
 
+
+## Basic Usage
+The following examples can be used to test the environment. Please make sure you have read the "Preparing the Experimental Environment" section.
+```python
+# Experimental environment: A10, 3090, A100, ...
+# 16GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm.run import infer_main, sft_main
+
+model_type = ModelType.qwen_7b_chat_int4
+sft_args = SftArguments(
+    model_type=model_type,
+    eval_steps=50,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.leetcode_python_en],
+    output_dir='output',
+    gradient_checkpointing=True)
+best_ckpt_dir = sft_main(sft_args)
+print(f'best_ckpt_dir: {best_ckpt_dir}')
+torch.cuda.empty_cache()
+infer_args = InferArguments(
+    model_type=sft_args.model_type,
+    ckpt_dir=best_ckpt_dir,
+    dataset=sft_args.dataset,
+    stream=True,
+    show_dataset_sample=5)
+infer_main(infer_args)
+```
 
 ## Run SFT and Inference
 Performace: full(nice) > lora > qlora
