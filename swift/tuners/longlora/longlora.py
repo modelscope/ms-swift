@@ -34,6 +34,9 @@ class LongLoRAConfig(LoRAConfig):
     use_flash_attn: bool = field(
         default=False, metadata={'help': 'Use flash attention or not.'})
 
+    group_size_ratio: float = field(
+        default=0.25, metadata={'help': 'The S2 attention group ratio'})
+
     is_trainable: bool = field(
         default=True, metadata={'help': 'Use in sft or inference.'})
 
@@ -84,6 +87,8 @@ class LongLoRA(LoRA):
             from .llama import replace_llama_attn
             replace_llama_attn(
                 use_flash_attn=config.use_flash_attn)
+            # only support code base from transformers
+            model.config.group_size_ratio = config.group_size_ratio
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
