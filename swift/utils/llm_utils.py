@@ -34,7 +34,14 @@ def stat_dataset(dataset: HfDataset) -> None:
 
 def data_collate_fn(batch: List[Dict[str, Any]],
                     tokenizer,
-                    padding_to=None) -> Dict[str, Any]:
+                    padding_to: int = None) -> Dict[str, Any]:
+    """
+    Args:
+        batch(`List[Dict[str, Any]]`): The input data in batch
+        tokenizer(`AutoTokenizer`): The tokenizer of the model
+        padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+            will be padded to the `longest`
+    """
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]

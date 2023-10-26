@@ -46,7 +46,7 @@ class LongLoRA(LoRA):
     @staticmethod
     def prepare_model(model: nn.Module, config: LongLoRAConfig,
                       adapter_name: str):
-        """Prepare a model with `LoRAConfig`"""
+        """Prepare a model with `LongLoRAConfig`"""
         LoRA._dynamic_patch_lora(
             model,
             target_modules=config.target_modules,
