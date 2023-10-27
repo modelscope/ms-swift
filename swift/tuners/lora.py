@@ -169,7 +169,7 @@ class LoRAConfig(SwiftConfig):
     """
 
     r: int = field(default=6, metadata={'help': 'The rank of the LoRA module'})
-    target_modules: List[str] = field(
+    target_modules: Union[str, List[str]] = field(
         default=None,
         metadata={
             'help':

@@ -24,7 +24,7 @@ class SftArguments:
         default=ModelType.qwen_7b_chat,
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
     tuner_bankend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
@@ -147,7 +147,7 @@ class SftArguments:
             # Initialize in advance
             dist.init_process_group(backend=self.ddp_backend)
 
-        if self.sft_type == 'lora':
+        if self.sft_type == 'lora' or self.sft_type == 'longlora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -223,7 +223,7 @@ class InferArguments:
         default=ModelType.qwen_7b_chat,
         metadata={'choices': list(MODEL_MAPPING.keys())})
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
     template_type: Optional[str] = field(
         default=None, metadata={'choices': list(TEMPLATE_MAPPING.keys())})
     ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
