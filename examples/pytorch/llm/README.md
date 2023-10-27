@@ -72,8 +72,7 @@ Experimental environment: A10, 3090, V100, A100, ...
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .
-pip install -r requirements/llm.txt -U
+pip install .[llm]
 cd examples/pytorch/llm
 
 # If you want to use DeepSpeed:

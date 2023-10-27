@@ -8,10 +8,11 @@ from modelscope import MsDataset
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
-from swift.llm import (LoRATM, Template, dataset_map, get_dataset,
+from swift.llm import (ConversationsPreprocessor, LoRATM, Template,
+                       dataset_map, get_dataset, get_dataset_from_repo,
                        get_model_tokenizer, get_model_tokenizer_from_repo,
-                       get_template, preprocess_conversations, print_example,
-                       register_dataset, register_model, register_template)
+                       get_template, print_example, register_dataset,
+                       register_model, register_template)
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -57,27 +58,22 @@ _agent_instruct_subset_list = [
 ]
 
 
-@register_dataset(
+def repair_conversations_agent_instruct(s: str) -> str:
+    s = s.replace('}\n {', '},\n {')
+    return ast.literal_eval(s)
+
+
+register_dataset(
     CustomDatasetName.agent_instruct_all_en,
-    task='chat',
-    function_kwargs={'subset_name_list': _agent_instruct_subset_list})
-def get_agent_instruct_dataset(subset_name_list: List[str]) -> HfDataset:
-    dataset_list: List[HfDataset] = []
-    for subset_name in subset_name_list:
-        dataset: HfDataset = MsDataset.load(
-            'huangjintao/AgentInstruct_copy',
-            subset_name=subset_name,
-            split='train').to_hf_dataset()
-        dataset_list.append(dataset)
-    dataset = concatenate_datasets(dataset_list)
-
-    def repair_conversations(s: str) -> str:
-        s = s.replace('}\n {', '},\n {')
-        return ast.literal_eval(s)
-
-    return preprocess_conversations(
-        dataset, 'human', 'gpt', repair_conversations=repair_conversations)
-
+    'huangjintao/AgentInstruct_copy',
+    [(subset, 'train') for subset in _agent_instruct_subset_list],
+    None,
+    ConversationsPreprocessor(
+        'human',
+        'gpt',
+        repair_conversations=repair_conversations_agent_instruct),
+    get_dataset_from_repo,
+    task='chat')
 
 if __name__ == '__main__':
     # The Shell script can view `scripts/custom/tigerbot_13b_chat`.

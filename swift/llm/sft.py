@@ -103,7 +103,8 @@ def llm_sft(args: SftArguments) -> str:
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length)
     train_dataset = dataset_map(train_dataset, template.encode)
-    val_dataset = dataset_map(val_dataset, template.encode)
+    if val_dataset is not None:
+        val_dataset = dataset_map(val_dataset, template.encode)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
