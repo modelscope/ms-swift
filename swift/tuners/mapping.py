@@ -16,8 +16,8 @@ class SwiftTuners:
     SIDE = 'SIDE'
     RESTUNING = 'RESTUNING'
     ROME = 'ROME'
-	LONGLORA = 'longlora'
-	
+    LONGLORA = 'longlora'
+
 
 SWIFT_MAPPING = {
     SwiftTuners.ADAPTER: (AdapterConfig, Adapter),
@@ -25,6 +25,6 @@ SWIFT_MAPPING = {
     SwiftTuners.LORA: (LoRAConfig, LoRA),
     SwiftTuners.SIDE: (SideConfig, Side),
     SwiftTuners.RESTUNING: (ResTuningConfig, ResTuning),
-	SwiftTuners.ROME: (RomeConfig, Rome),
-	SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
+    SwiftTuners.ROME: (RomeConfig, Rome),
+    SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
 }
