@@ -1,7 +1,3 @@
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 import os
 import shutil
 import tempfile
@@ -13,6 +9,7 @@ import torch
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
 from numpy.random import RandomState
+from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
@@ -21,7 +18,9 @@ from swift import Trainer, TrainingArguments, get_logger
 logger = get_logger()
 
 
-def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
+def data_collate_fn(batch: List[Dict[str, Any]],
+                    tokenizer) -> Dict[str, Tensor]:
+    # text-classification
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = torch.tensor([b['labels'] for b in batch])
@@ -46,6 +45,7 @@ class BertTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         outputs = model(**inputs)
         loss = outputs.loss
+        assert loss is not None
         return (loss, outputs) if return_outputs else loss
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
@@ -60,10 +60,9 @@ class BertTrainer(Trainer):
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
 
 
-class TestTrainer(unittest.TestCase):
+class TestTrainer:
 
     def setUp(self):
-        print(f'Testing {type(self).__name__}.{self._testMethodName}')
         self._tmp_dir = tempfile.TemporaryDirectory()
         self.tmp_dir = self._tmp_dir.name
         # self.tmp_dir = 'test'
@@ -78,6 +77,11 @@ class TestTrainer(unittest.TestCase):
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
+        os.system('nvidia-smi')
+        push_to_hub = True
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
         model_id = 'damo/nlp_structbert_backbone_base_std'
         model_dir = snapshot_download(model_id, 'master')
         tokenizer = AutoTokenizer.from_pretrained(model_dir)
@@ -111,7 +115,7 @@ class TestTrainer(unittest.TestCase):
             save_strategy='steps',
             per_device_train_batch_size=4,
             per_device_eval_batch_size=4,
-            push_to_hub=True,
+            push_to_hub=push_to_hub,
             hub_token=None,  # use env var
             hub_private_repo=True,
             push_hub_strategy='push_best',
@@ -121,7 +125,9 @@ class TestTrainer(unittest.TestCase):
             save_total_limit=2,
             metric_for_best_model='loss',
             greater_is_better=False,
+            gradient_accumulation_steps=1,
             eval_steps=10)
+        trainer_args._n_gpu = 1
         trainer = BertTrainer(model, trainer_args, data_collator,
                               train_dataset, val_dataset, tokenizer)
         self.hub_model_id = trainer_args.hub_model_id

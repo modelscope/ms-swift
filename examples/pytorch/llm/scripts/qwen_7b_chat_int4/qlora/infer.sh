@@ -1,9 +1,9 @@
 # Experimental environment: V100, A10, 3090
-# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
-    --model_type qwen-7b-chat-int4 \
+python llm_infer.py \
+    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --model_revision master \
     --sft_type lora \
     --template_type chatml \
     --dtype fp16 \

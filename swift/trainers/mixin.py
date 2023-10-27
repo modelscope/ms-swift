@@ -26,7 +26,7 @@ from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
                                   WEIGHTS_NAME, IntervalStrategy,
                                   is_peft_available)
 from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import EvalPrediction, HubStrategy
+from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
 from swift.hub import HubApi, ModelScopeConfig, Repository
@@ -295,15 +295,44 @@ class SwiftMixin:
     def _create_configuration_file(model: Module, output_dir: str) -> None:
         cfg = getattr(model, 'cfg', {})
         configuration_path = os.path.join(output_dir, 'configuration.json')
+        res = {}
         if os.path.exists(configuration_path):
             with open(configuration_path, 'r') as f:
                 res = json.load(f)
-        else:
-            res = {}
+
         if 'framework' not in res:
             res['framework'] = cfg.get('framework', 'pytorch')
         if 'task' not in res:
             res['task'] = cfg.get('task', 'text-generation')
+        with open(configuration_path, 'w') as f:
+            json.dump(res, f, ensure_ascii=False, indent=4)
+
+    def _add_adapter_cfg(self, output_dir: str) -> None:
+        if not hasattr(self, 'sft_args'):
+            return
+        sft_args = self.sft_args
+        if sft_args.sft_type == 'full':
+            return
+        configuration_path = os.path.join(output_dir, 'configuration.json')
+        res = {}
+        if os.path.exists(configuration_path):
+            with open(configuration_path, 'r') as f:
+                res = json.load(f)
+
+        need_to_save = [
+            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_backend',
+            'template_type', 'dtype', 'system'
+        ]
+        quantization_bit = sft_args.quantization_bit
+        if quantization_bit != 0:
+            need_to_save += [
+                'quantization_bit', 'bnb_4bit_comp_dtype',
+                'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+            ]
+        adapter_cfg = {}
+        for k in need_to_save:
+            adapter_cfg[k] = getattr(sft_args, k)
+        res['adapter_cfg'] = adapter_cfg
         with open(configuration_path, 'w') as f:
             json.dump(res, f, ensure_ascii=False, indent=4)
 
@@ -314,18 +343,21 @@ class SwiftMixin:
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')
         # configuration.json
-        if is_instance_of_ms_model(self.model):
-            model_dir = getattr(self.model, 'model_dir', None)
-            if model_dir is not None:
-                src_path = os.path.join(model_dir, 'configuration.json')
-                dst_path = os.path.join(output_dir, 'configuration.json')
-                if os.path.exists(src_path):
-                    shutil.copy(src_path, dst_path)
+        model_dir = getattr(self.model, 'model_dir', None)
+        if model_dir is not None:
+            src_path = os.path.join(model_dir, 'configuration.json')
+            dst_path = os.path.join(output_dir, 'configuration.json')
+            if os.path.exists(src_path):
+                shutil.copy(src_path, dst_path)
         else:
             self._create_configuration_file(self.model, output_dir)
-
-        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        self._add_adapter_cfg(output_dir)
+        # generation_config
+        generation_config = getattr(self.args, 'generation_config', None)
+        if generation_config is not None:
+            generation_config.save_pretrained(output_dir)
         # model
+        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         save_safetensors = getattr(self.args, 'save_safetensors', False)
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
@@ -469,3 +501,28 @@ class SwiftMixin:
             super()._load_best_model()
         except ValueError as e:
             logger.warning(e)
+
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,
+                                 ignore_keys_for_eval):
+        if self.control.should_log:
+            self.control.should_log = False
+            logs: Dict[str, float] = {}
+            metrics_log = {'loss': tr_loss}  # loss first
+            metrics_log.update(self._custom_metrics)
+            self._custom_metrics = {}
+            for k, v in metrics_log.items():
+                # all_gather + mean() to get average loss over all processes
+                v_scalar = self._nested_gather(v).mean().item()
+                if k == 'loss':
+                    self._total_loss_scalar += v_scalar
+                logs[k] = round(
+                    v_scalar /
+                    (self.state.global_step - self._globalstep_last_logged), 8)
+            logs['learning_rate'] = self._get_learning_rate()
+
+            tr_loss -= tr_loss
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+            self.log(logs)
+        super()._maybe_log_save_evaluate(tr_loss, model, trial, epoch,
+                                         ignore_keys_for_eval)

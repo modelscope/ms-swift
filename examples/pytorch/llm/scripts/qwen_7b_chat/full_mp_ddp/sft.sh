@@ -9,8 +9,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
-    src/llm_sft.py \
-    --model_type qwen-7b-chat \
+    llm_sft.py \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --model_revision master \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \

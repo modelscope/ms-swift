@@ -1,9 +1,9 @@
 # Experimental environment: A10
-# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
-    --model_type internlm-20b-chat \
+python llm_infer.py \
+    --model_id_or_path Shanghai_AI_Laboratory/internlm-chat-20b \
+    --model_revision master \
     --sft_type lora \
     --template_type internlm \
     --dtype bf16 \

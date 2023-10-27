@@ -1,11 +1,1 @@
-accelerate
-charset_normalizer
-cpm_kernels
-matplotlib
-modelscope>=1.9.2
-optimum
-sentencepiece
-tensorboard
-tiktoken
-transformers>=4.31
-transformers_stream_generator
+-r ../../../requirements/llm.txt

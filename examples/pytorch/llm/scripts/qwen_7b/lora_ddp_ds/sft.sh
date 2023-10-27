@@ -7,9 +7,11 @@ CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
-    src/llm_sft.py \
-    --model_type qwen-7b \
+    llm_sft.py \
+    --model_id_or_path qwen/Qwen-7B \
+    --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
@@ -20,7 +22,7 @@ torchrun \
     --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0. \
+    --lora_dropout_p 0.05 \
     --lora_target_modules c_attn c_proj \
     --gradient_checkpointing true \
     --batch_size 1 \

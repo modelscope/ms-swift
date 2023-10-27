@@ -2,9 +2,11 @@
 # 11GB GPU memory (not use flash_attn)
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_sft.py \
-    --model_type qwen-vl-chat-int4 \
+python llm_sft.py \
+    --model_id_or_path qwen/Qwen-VL-Chat-Int4 \
+    --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type chatml \
     --dtype fp16 \
     --output_dir output \
@@ -14,7 +16,7 @@ python src/llm_sft.py \
     --max_length 2048 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0. \
+    --lora_dropout_p 0.05 \
     --lora_target_modules c_attn attn.c_proj \
     --gradient_checkpointing true \
     --batch_size 1 \

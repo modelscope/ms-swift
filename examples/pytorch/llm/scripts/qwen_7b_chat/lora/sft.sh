@@ -4,9 +4,11 @@
 # otherwise it may result in an OOM (Out of Memory) error.
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_sft.py \
-    --model_type qwen-7b-chat \
+python llm_sft.py \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type chatml \
     --dtype bf16 \
     --output_dir output \
@@ -16,7 +18,7 @@ python src/llm_sft.py \
     --max_length 4096 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0. \
+    --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
     --gradient_checkpointing false \
     --batch_size 1 \

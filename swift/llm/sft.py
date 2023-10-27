@@ -1,30 +1,29 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from functools import partial
 
 import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-from utils import (SftArguments, dataset_map, get_dataset, get_model_tokenizer,
-                   get_preprocess)
 
-from swift import (LongLoRAConfig, LongLoRAModelType, LoraConfig, LoRAConfig,
-                   Seq2SeqTrainer, Seq2SeqTrainingArguments, Swift, get_logger)
-from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         check_json_format, compute_nlg_metrics,
-                         data_collate_fn, find_all_linear_for_lora,
-                         get_dist_setting, is_ddp_plus_mp, is_dist, is_master,
-                         parse_args, plot_images, print_example,
-                         print_model_info, seed_everything, show_layers,
-                         sort_by_max_length, stat_dataset)
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
+                          LoRAConfig, Swift)
+from swift.utils import (check_json_format, compute_acc_metrics,
+                         compute_nlg_metrics, get_dist_setting, get_logger,
+                         is_ddp_plus_mp, is_dist, is_master, plot_images,
+                         preprocess_logits_for_metrics, print_model_info,
+                         seed_everything, show_layers)
+from .utils import (SftArguments, Template, data_collate_fn, dataset_map,
+                    find_all_linear_for_lora, get_dataset, get_model_tokenizer,
+                    get_template, print_example, sort_by_max_length,
+                    stat_dataset)
 
 logger = get_logger()
 
 
-def llm_sft(args: SftArguments) -> None:
+def llm_sft(args: SftArguments) -> str:
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -33,11 +32,11 @@ def llm_sft(args: SftArguments) -> None:
     seed_everything(args.seed)
 
     # ### Loading Model and Tokenizer
-    kwargs = {'low_cpu_mem_usage': True}
+    model_kwargs = {'low_cpu_mem_usage': True}
     if is_dist() and not is_ddp_plus_mp():
-        kwargs['device_map'] = {'': local_rank}
+        model_kwargs['device_map'] = {'': local_rank}
     else:
-        kwargs['device_map'] = 'auto'
+        model_kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -46,12 +45,13 @@ def llm_sft(args: SftArguments) -> None:
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
-        kwargs['quantization_config'] = quantization_config
-    if args.model_type.startswith('qwen'):
-        kwargs['use_flash_attn'] = args.use_flash_attn
+        model_kwargs['quantization_config'] = quantization_config
 
-    model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, **kwargs)
+    kwargs = {'use_flash_attn': args.use_flash_attn}
+    if args.model_cache_dir is not None:
+        kwargs['model_dir'] = args.model_cache_dir
+    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
+                                           model_kwargs, **kwargs)
 
     # ### Preparing LoRA
     if args.sft_type == 'lora' or args.sft_type == 'longlora':
@@ -64,7 +64,7 @@ def llm_sft(args: SftArguments) -> None:
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             if args.sft_type == 'lora':
                 lora_kwargs = {}
-                if args.tuner_bankend == 'peft':
+                if args.tuner_backend == 'peft':
                     global LoRAConfig
                     LoRAConfig = LoraConfig
                     lora_kwargs['task_type'] = 'CAUSAL_LM'
@@ -77,7 +77,7 @@ def llm_sft(args: SftArguments) -> None:
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
             elif args.sft_type == 'longlora':
-                assert args.tuner_bankend != 'peft'
+                assert args.tuner_backend != 'peft'
                 assert LongLoRAModelType.LLAMA in args.model_type
                 longlora_config = LongLoRAConfig(
                     r=args.lora_rank,
@@ -97,28 +97,27 @@ def llm_sft(args: SftArguments) -> None:
     logger.info(model)
 
     # ### Loading Dataset
+    random_state = np.random.RandomState(args.dataset_seed)
     train_dataset, val_dataset = get_dataset(args.dataset,
                                              args.dataset_test_ratio,
-                                             args.dataset_split_seed)
+                                             random_state)
     if args.train_dataset_sample >= 0:
         args.train_dataset_sample = min(args.train_dataset_sample,
                                         len(train_dataset))
         val_dataset_sample = max(
             int(args.train_dataset_sample * args.dataset_test_ratio), 1)
-        train_idxs = np.random.permutation(args.train_dataset_sample)
+        train_idxs = random_state.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
         if val_dataset.shape[0] > val_dataset_sample:
-            val_idxs = np.random.permutation(val_dataset_sample)
+            val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    preprocess_func = get_preprocess(args.template_type, tokenizer,
-                                     args.system, args.max_length)
-    train_dataset = dataset_map(train_dataset, preprocess_func)
-    val_preprocess_func = preprocess_func
-    if args.predict_with_generate:
-        val_preprocess_func = partial(preprocess_func, generation_mode=True)
-    val_dataset = dataset_map(val_dataset, val_preprocess_func)
+    template: Template = get_template(args.template_type, tokenizer,
+                                      args.system, args.max_length)
+    train_dataset = dataset_map(train_dataset, template.encode)
+    if val_dataset is not None:
+        val_dataset = dataset_map(val_dataset, template.encode)
     if args.test_oom_error:
         train_dataset = sort_by_max_length(train_dataset, 20000)
     # Data analysis
@@ -131,36 +130,24 @@ def llm_sft(args: SftArguments) -> None:
     stat_dataset(val_dataset)
 
     # ### Setting training_args
-    output_dir = None
-    if is_master():
-        output_dir = add_version_to_work_dir(args.output_dir)
-    if is_dist():
-        # Make sure to set the same output_dir when using DDP.
-        output_dir = broadcast_string(output_dir)
-    # check ms-swift version
-    parameters = inspect.signature(
-        Seq2SeqTrainingArguments.__init__).parameters
-    for k in ['only_save_model', 'train_sampler_random']:
-        if k not in parameters:
-            raise ValueError(
-                f'The `{k}` parameter is invalid. '
-                'You can resolve this warning by upgrading ms-swift or installing from source.'
-            )
-    # training_args
     generation_config = GenerationConfig(
-        do_sample=args.do_sample,
-        max_new_tokens=args.max_new_tokens,
         max_length=None,
+        max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
-        top_p=args.top_p,
         top_k=args.top_k,
-        repetition_penalty=args.repetition_penalty)
+        top_p=args.top_p,
+        do_sample=args.do_sample,
+        repetition_penalty=args.repetition_penalty,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
+
     training_args = Seq2SeqTrainingArguments(
-        output_dir=output_dir,
+        output_dir=args.output_dir,
         do_train=True,
         do_eval=True,
         evaluation_strategy='steps',
+        logging_dir=args.logging_dir,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -179,7 +166,7 @@ def llm_sft(args: SftArguments) -> None:
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
         greater_is_better=args.predict_with_generate,
@@ -214,6 +201,15 @@ def llm_sft(args: SftArguments) -> None:
 
     logger.info(f'training_args: {training_args}')
 
+    trainer_kwargs = {}
+    if args.predict_with_generate:
+        trainer_kwargs['compute_metrics'] = partial(
+            compute_nlg_metrics, tokenizer=tokenizer)
+    else:
+        trainer_kwargs['compute_metrics'] = compute_acc_metrics
+        trainer_kwargs[
+            'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
+
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
@@ -221,13 +217,12 @@ def llm_sft(args: SftArguments) -> None:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        compute_metrics=partial(compute_nlg_metrics, tokenizer=tokenizer)
-        if args.predict_with_generate else None,
-    )
+        **trainer_kwargs)
+    trainer.sft_args = args
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
-            fpath = os.path.join(output_dir, fname)
+            fpath = os.path.join(args.output_dir, fname)
             with open(fpath, 'w') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),
@@ -240,23 +235,11 @@ def llm_sft(args: SftArguments) -> None:
 
     # ### Visualization
     if is_master():
-        images_dir = os.path.join(output_dir, 'images')
+        images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
-        tb_dir = os.path.join(output_dir, 'runs')
-        folder_name = os.listdir(tb_dir)[0]
-        tb_dir = os.path.join(tb_dir, folder_name)
+        tb_dir = os.path.join(args.output_dir, 'runs')
         plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignores(['images/'])
             trainer.push_to_hub()
-
-
-if __name__ == '__main__':
-    args, remaining_argv = parse_args(SftArguments)
-    args.init_argument()
-    if len(remaining_argv) > 0:
-        if args.ignore_args_error:
-            logger.warning(f'remaining_argv: {remaining_argv}')
-        else:
-            raise ValueError(f'remaining_argv: {remaining_argv}')
-    llm_sft(args)
+    return trainer.state.best_model_checkpoint

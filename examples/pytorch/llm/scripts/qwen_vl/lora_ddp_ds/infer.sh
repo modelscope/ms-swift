@@ -1,8 +1,9 @@
 # Experimental environment: A10
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
-    --model_type qwen-vl \
+python llm_infer.py \
+    --model_id_or_path qwen/Qwen-VL \
+    --model_revision master \
     --sft_type lora \
     --template_type default \
     --dtype bf16 \
@@ -11,7 +12,7 @@ python src/llm_infer.py \
     --dataset coco-en \
     --max_length 2048 \
     --use_flash_attn false \
-    --max_new_tokens 1024 \
+    --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \
     --top_p 0.9 \

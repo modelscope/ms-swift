@@ -1,8 +1,9 @@
 # Experimental environment: A10, 3090
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
-    --model_type qwen-7b-chat \
+python llm_infer.py \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --model_revision master \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \

@@ -4,11 +4,12 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
 
+from swift.utils import lower_bound
 from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
 
@@ -109,17 +110,26 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 and gen_kwargs['max_length'] is None):
             gen_kwargs.pop('max_length')
         gen_time = time.time()
-        generated_tokens = self.model.generate(**inputs, **gen_kwargs)
+        generate_inputs = inputs.copy()
+        if has_labels:
+            _labels = inputs['labels'][0]
+            n_mask = lower_bound(0, len(_labels), lambda i: _labels[i] != -100)
+            for k in ['input_ids', 'attention_mask']:
+                generate_inputs[k] = generate_inputs[k][:, :n_mask]
+            generate_inputs['labels'] = generate_inputs['labels'][:, n_mask:]
+
+        generated_tokens = self.model.generate(**generate_inputs, **gen_kwargs)
         gen_time = time.time() - gen_time
 
         if hasattr(
                 self.model, 'encoder'
         ) and self.model.encoder.main_input_name != self.model.main_input_name:
-            generation_inputs = inputs[self.model.encoder.main_input_name]
+            generation_inputs = generate_inputs[
+                self.model.encoder.main_input_name]
         else:
-            generation_inputs = inputs[self.model.main_input_name]
+            generation_inputs = generate_inputs[self.model.main_input_name]
 
-        generated_tokens = generated_tokens[:, generation_inputs.size()[-1]:]
+        generated_tokens = generated_tokens[:, generation_inputs.shape[1]:]
         gen_len = len(generated_tokens[0])
         self.perf['gen_time'] = self.perf['gen_time'] + gen_time
         self.perf['gen_len'] = self.perf['gen_len'] + gen_len
@@ -135,11 +145,24 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             generated_tokens = self._pad_tensors_to_max_len(
                 generated_tokens, gen_kwargs['max_new_tokens'] + 1)
 
+        with torch.no_grad():
+            if has_labels:
+                with self.compute_loss_context_manager():
+                    outputs = model(**inputs)
+                if self.label_smoother is not None:
+                    loss = self.label_smoother(
+                        outputs, inputs['labels']).mean().detach()
+                else:
+                    loss = (outputs['loss'] if isinstance(outputs, dict) else
+                            outputs[0]).mean().detach()
+            else:
+                loss = None
+
         if self.args.prediction_loss_only:
-            return None, None, None
+            return loss, None, None
 
         if has_labels:
-            labels = inputs['labels']
+            labels = generate_inputs['labels']
             if gen_kwargs.get('max_length') is not None and labels.shape[
                     -1] < gen_kwargs['max_length']:
                 labels = self._pad_tensors_to_max_len(labels,
@@ -152,7 +175,23 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             labels = None
 
-        return None, generated_tokens, labels
+        return loss, generated_tokens, labels
+
+    def compute_loss(self, model, inputs, return_outputs=None):
+        if not hasattr(self, '_custom_metrics'):
+            self._custom_metrics = {}
+        loss, outputs = super().compute_loss(model, inputs, True)
+        preds = outputs.logits.argmax(dim=2)[..., :-1]
+        labels = inputs['labels'][..., 1:]
+        masks = labels != -100
+        acc: Tensor = (preds[masks] == labels[masks]).float().mean()
+        if model.training:
+            if 'acc' not in self._custom_metrics:
+                self._custom_metrics['acc'] = torch.tensor(0.).to(
+                    self.args.device)
+            self._custom_metrics[
+                'acc'] += acc / self.args.gradient_accumulation_steps
+        return (loss, outputs) if return_outputs else loss
 
 
 # monkey patching

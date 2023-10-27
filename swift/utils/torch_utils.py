@@ -31,7 +31,8 @@ def _find_free_port() -> str:
     return port
 
 
-def seed_everything(seed: Optional[int] = None, gpu_dtm: bool = False) -> int:
+def seed_everything(seed: Optional[int] = None,
+                    gpu_deterministic: bool = False) -> int:
     if seed is None:
         seed_max = np.iinfo(np.int32).max
         seed = random.randint(0, seed_max)
@@ -41,7 +42,7 @@ def seed_everything(seed: Optional[int] = None, gpu_dtm: bool = False) -> int:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     logger.info(f'Global seed set to {seed}')
-    if gpu_dtm:
+    if gpu_deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         logger.info(f'Setting deterministic: {True}, benchmark: {False}')
@@ -80,7 +81,7 @@ def find_sub_module(module: torch.nn.Module,
 
 
 def get_dist_setting() -> Tuple[int, int, int, int]:
-    """return rank, local_rank, world_size"""
+    """return rank, local_rank, world_size, local_world_size"""
     rank = int(os.getenv('RANK', -1))
     local_rank = int(os.getenv('LOCAL_RANK', -1))
     world_size = int(os.getenv('WORLD_SIZE', 1))
@@ -122,10 +123,10 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         )
 
 
-def broadcast_string(string: Optional[str], buffer_size: int = 200) -> str:
+def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     """String broadcasting in case of DDP
     string: main rank: str
-        other rank: None
+        other rank: None or str(not use)
     return: all rank: str
     """
     assert dist.is_initialized()

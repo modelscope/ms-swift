@@ -2,9 +2,11 @@
 # 2 * 23GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-python src/llm_sft.py \
-    --model_type openbuddy-llama2-70b-chat \
+python llm_sft.py \
+    --model_id_or_path OpenBuddy/openbuddy-llama2-70b-v10.1-bf16 \
+    --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type openbuddy \
     --dtype bf16 \
     --output_dir output \
@@ -16,7 +18,7 @@ python src/llm_sft.py \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0. \
+    --lora_dropout_p 0.05 \
     --lora_target_modules q_proj v_proj \
     --gradient_checkpointing true \
     --batch_size 1 \

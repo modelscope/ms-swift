@@ -1,4 +1,4 @@
-# Experimental environment: 2 * A10
+# Experimental environment: 2 * 3090
 # 2 * 18GB GPU memory
 nproc_per_node=2
 
@@ -7,9 +7,11 @@ CUDA_VISIBLE_DEVICES=0,1 \
 torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
-    src/llm_sft.py \
-    --model_type chatglm2-6b \
+    llm_sft.py \
+    --model_id_or_path ZhipuAI/chatglm2-6b \
+    --model_revision master \
     --sft_type lora \
+    --tuner_backend swift \
     --template_type chatglm2 \
     --dtype bf16 \
     --output_dir output \
@@ -20,7 +22,7 @@ torchrun \
     --max_length 4096 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0. \
+    --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
     --gradient_checkpointing true \
     --batch_size 1 \

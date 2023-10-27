@@ -2,10 +2,9 @@
 import datetime as dt
 import os
 import re
-from typing import Any, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
+                    Type, TypeVar)
 
-import numpy as np
-from numpy.random import RandomState
 from transformers import HfArgumentParser
 
 from .logger import get_logger
@@ -48,19 +47,12 @@ def _get_version(work_dir: str) -> int:
 
 def add_version_to_work_dir(work_dir: str) -> str:
     """add version"""
-    work_dir = os.path.abspath(work_dir)
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
 
     work_dir = os.path.join(work_dir, f'v{version}-{time}')
     logger.info(f'work_dir: {work_dir}')
     return work_dir
-
-
-def get_seed(random_state: RandomState) -> int:
-    seed_max = np.iinfo(np.int32).max
-    seed = random_state.randint(0, seed_max)
-    return seed
 
 
 _T = TypeVar('_T')
@@ -72,3 +64,14 @@ def parse_args(class_type: Type[_T],
     args, remaining_args = parser.parse_args_into_dataclasses(
         argv, return_remaining_strings=True)
     return args, remaining_args
+
+
+def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
+    # The lower bound satisfying the condition "cond".
+    while lo < hi:
+        mid = (lo + hi) >> 1
+        if cond(mid):
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo

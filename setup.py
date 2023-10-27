@@ -136,7 +136,7 @@ if __name__ == '__main__':
     pack_resource()
     os.chdir('package')
     install_requires, deps_link = parse_requirements('requirements.txt')
-    extra_requires = {}
+    extra_requires = {'llm': parse_requirements('requirements/llm.txt')}
     all_requires = []
 
     setup(

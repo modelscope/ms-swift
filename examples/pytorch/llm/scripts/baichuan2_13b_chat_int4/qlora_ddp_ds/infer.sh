@@ -1,9 +1,9 @@
 # Experimental environment: A10
-# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
-    --model_type baichuan2-13b-chat-int4 \
+python llm_infer.py \
+    --model_id_or_path baichuan-inc/Baichuan2-13B-Chat-4bits \
+    --model_revision master \
     --sft_type lora \
     --template_type baichuan \
     --dtype bf16 \

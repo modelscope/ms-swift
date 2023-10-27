@@ -1,8 +1,9 @@
-# Experimental environment: A10
+# Experimental environment: 3090
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python src/llm_infer.py \
-    --model_type chatglm2-6b \
+python llm_infer.py \
+    --model_id_or_path ZhipuAI/chatglm2-6b \
+    --model_revision master \
     --sft_type lora \
     --template_type chatglm2 \
     --dtype bf16 \

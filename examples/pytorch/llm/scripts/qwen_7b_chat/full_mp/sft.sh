@@ -4,8 +4,9 @@
 # otherwise it may result in an OOM (Out of Memory) error.
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-python src/llm_sft.py \
-    --model_type qwen-7b-chat \
+python llm_sft.py \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --model_revision master \
     --sft_type full \
     --template_type chatml \
     --dtype bf16 \
