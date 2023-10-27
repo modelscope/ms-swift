@@ -73,6 +73,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install .[llm]
+# 下面的脚本需要在此目录下执行
 cd examples/pytorch/llm
 
 # 如果你想要使用deepspeed.

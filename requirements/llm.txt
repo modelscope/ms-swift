@@ -1,11 +1,6 @@
-accelerate
 charset_normalizer
 cpm_kernels
-matplotlib
 modelscope>=1.9.3
 optimum
 sentencepiece
-tensorboard
 tiktoken
-transformers>=4.33
-transformers_stream_generator
