@@ -1,5 +1,5 @@
 import ast
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional
 
 from datasets import Dataset as HfDataset
 from tqdm import tqdm

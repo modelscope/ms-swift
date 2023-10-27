@@ -1,10 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
-from modelscope import MsDataset
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 

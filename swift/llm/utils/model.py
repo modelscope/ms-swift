@@ -366,7 +366,7 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                                      model_kwargs, load_model,
                                                      model_config, **kwargs)
     if model is not None:
-        model.lm_head.forward = MethodType(patch_baichuan2, model.lm_head)
+        model.lm_head.forward = MethodType(patch_baichuan2_lm_head_forward, model.lm_head)
 
     return model, tokenizer
 

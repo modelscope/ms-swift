@@ -17,7 +17,7 @@ from swift.utils import get_logger, get_seed
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor, SwiftPreprocessor,
+                         SmartPreprocessor,
                          TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
