@@ -11,6 +11,7 @@ from typing import (Any, Callable, Dict, Iterator, List, Optional, Type,
 
 import accelerate
 import numpy as np
+import torch.nn.functional as F
 import requests
 import torch
 import torch.distributed as dist
@@ -210,7 +211,15 @@ def stat_dataset(dataset: HfDataset) -> None:
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
-                    tokenizer: PreTrainedTokenizerBase) -> Dict[str, Tensor]:
+                    tokenizer: PreTrainedTokenizerBase,
+                    padding_to: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Args:
+        batch(`List[Dict[str, Any]]`): The input data in batch
+        tokenizer(`PreTrainedTokenizerBase`): The tokenizer of the model
+        padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+            will be padded to the `longest`
+    """
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
@@ -218,6 +227,16 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         torch.ones(len(input_ids[i]), dtype=torch.int64)
         for i in range(len(input_ids))
     ]
+
+    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
+        input_ids[0] = F.pad(input_ids[0],
+                             (0, padding_to - input_ids[0].shape[-1]),
+                             'constant', tokenizer.pad_token_id)
+        labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
+                          'constant', -100)
+        attention_mask[0] = F.pad(
+            attention_mask[0], (0, padding_to - attention_mask[0].shape[-1]),
+            'constant', 0)
 
     input_ids = pad_sequence(
         input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)

@@ -31,8 +31,8 @@ class SftArguments:
     model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
-    tuner_backend: str = field(
+        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
+    tuner_bankend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
         default=None,
@@ -158,7 +158,7 @@ class SftArguments:
             # Make sure to set the same output_dir when using DDP.
             self.output_dir = broadcast_string(self.output_dir)
 
-        if self.sft_type == 'lora':
+        if self.sft_type == 'lora' or self.sft_type == 'longlora':
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -224,7 +224,7 @@ class InferArguments:
     model_revision: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
     template_type: Optional[str] = field(
         default=None,
         metadata={
