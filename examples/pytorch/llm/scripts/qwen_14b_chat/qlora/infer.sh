@@ -1,4 +1,4 @@
-# Experimental environment: A10 or 3090
+# Experimental environment: A10, 3090
 # If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \

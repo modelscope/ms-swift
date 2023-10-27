@@ -1,4 +1,4 @@
-# Experimental environment: A10 or 3090
+# Experimental environment: A10, 3090
 # 16GB GPU memory (not use flash_attn)
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \

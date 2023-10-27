@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from datasets import Dataset as HfDataset
 from torch.nn import Linear, Module
 from torch.nn.utils.rnn import pad_sequence
@@ -31,7 +32,16 @@ def stat_dataset(dataset: HfDataset) -> None:
     )
 
 
-def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
+def data_collate_fn(batch: List[Dict[str, Any]],
+                    tokenizer,
+                    padding_to: int = None) -> Dict[str, Any]:
+    """
+    Args:
+        batch(`List[Dict[str, Any]]`): The input data in batch
+        tokenizer(`AutoTokenizer`): The tokenizer of the model
+        padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+            will be padded to the `longest`
+    """
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
@@ -39,6 +49,16 @@ def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Any]:
         torch.ones(len(input_ids[i]), dtype=torch.int64)
         for i in range(len(input_ids))
     ]
+
+    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
+        input_ids[0] = F.pad(input_ids[0],
+                             (0, padding_to - input_ids[0].shape[-1]),
+                             'constant', tokenizer.pad_token_id)
+        labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
+                          'constant', -100)
+        attention_mask[0] = F.pad(
+            attention_mask[0], (0, padding_to - attention_mask[0].shape[-1]),
+            'constant', 0)
 
     input_ids = pad_sequence(
         input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
@@ -74,9 +94,8 @@ def print_example(example: Dict[str, Any], tokenizer) -> None:
         f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
 
 
-def find_all_linear_for_lora(model: Module,
-                             quantization_bit: int,
-                             model_type: Optional[str] = None) -> List[str]:
+def find_all_linear_for_lora(model: Module, quantization_bit: int,
+                             model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm2-6b'):
@@ -89,6 +108,15 @@ def find_all_linear_for_lora(model: Module,
         linear_cls = Linear8bitLt
     else:
         linear_cls = Linear
+    if model_type.endswith('int4') or model_type.endswith('int8'):
+        from bitsandbytes.nn import Linear4bit
+        from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
+        gptq_quantization_config = get_quantization_config(model, 'gptq')
+        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
+            gptq_quantization_config)
+        linear_cls = Linear4bit
+        if AutoGPTQQuantLinear is not None:
+            linear_cls = (Linear4bit, AutoGPTQQuantLinear)
     lora_module_names = set()
     for name, module in model.named_modules():
         if isinstance(module, linear_cls):
