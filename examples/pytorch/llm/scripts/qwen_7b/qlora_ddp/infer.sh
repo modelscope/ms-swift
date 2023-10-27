@@ -5,7 +5,6 @@ python llm_infer.py \
     --model_id_or_path qwen/Qwen-7B \
     --model_revision master \
     --sft_type lora \
-
     --template_type default-generation \
     --dtype bf16 \
     --ckpt_dir "output/qwen-7b/vx_xxx/checkpoint-xxx" \

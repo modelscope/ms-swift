@@ -5,7 +5,6 @@ python llm_infer.py \
     --model_id_or_path modelscope/Llama-2-70b-chat-ms \
     --model_revision master \
     --sft_type lora \
-
     --template_type llama \
     --dtype bf16 \
     --ckpt_dir "output/llama2-70b-chat/vx_xxx/checkpoint-xxx" \

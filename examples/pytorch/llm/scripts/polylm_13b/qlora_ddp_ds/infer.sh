@@ -5,7 +5,6 @@ python llm_infer.py \
     --model_id_or_path damo/nlp_polylm_13b_text_generation \
     --model_revision master \
     --sft_type lora \
-
     --template_type default-generation \
     --dtype bf16 \
     --ckpt_dir "output/polylm-13b/vx_xxx/checkpoint-xxx" \

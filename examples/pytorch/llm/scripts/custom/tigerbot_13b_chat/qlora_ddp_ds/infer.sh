@@ -5,7 +5,6 @@ python llm_infer.py \
     --model_id_or_path TigerResearch/tigerbot-13b-chat-v4 \
     --model_revision master \
     --sft_type lora \
-
     --template_type tigerbot \
     --dtype bf16 \
     --ckpt_dir "output/tigerbot-13b-chat/vx_xxx/checkpoint-xxx" \

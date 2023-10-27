@@ -5,7 +5,6 @@ python llm_infer.py \
     --model_id_or_path baichuan-inc/Baichuan2-13B-Chat-4bits \
     --model_revision master \
     --sft_type lora \
-
     --template_type baichuan \
     --dtype bf16 \
     --ckpt_dir "output/baichuan2-13b-chat-int4/vx_xxx/checkpoint-xxx" \

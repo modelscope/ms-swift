@@ -5,7 +5,6 @@ python llm_infer.py \
     --model_id_or_path baichuan-inc/Baichuan2-7B-Base \
     --model_revision master \
     --sft_type lora \
-
     --template_type default-generation \
     --dtype bf16 \
     --ckpt_dir "output/baichuan2-7b/vx_xxx/checkpoint-xxx" \

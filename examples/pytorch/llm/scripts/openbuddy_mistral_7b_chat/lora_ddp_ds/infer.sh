@@ -6,7 +6,6 @@ python llm_infer.py \
     --model_id_or_path OpenBuddy/openbuddy-mistral-7b-v13.1 \
     --model_revision master \
     --sft_type lora \
-
     --template_type openbuddy \
     --dtype bf16 \
     --ckpt_dir "output/openbuddy-mistral-7b-chat/vx_xxx/checkpoint-xxx" \
