@@ -721,13 +721,11 @@ def get_dataset(
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
         else:
-            dataset: HfDataset
-            if dataset_test_ratio > 0:
-                dataset_dict = dataset.train_test_split(
-                    dataset_test_ratio, seed=get_seed(random_state))
-                train_d, val_d = dataset_dict['train'], dataset_dict['test']
-            else:
-                train_d, val_d = dataset, None
+            train_d, val_d = dataset, None
+        if val_d is None and dataset_test_ratio > 0:
+            dataset_dict = train_d.train_test_split(
+                dataset_test_ratio, seed=get_seed(random_state))
+            train_d, val_d = dataset_dict['train'], dataset_dict['test']
         train_dataset_list.append(train_d)
         if val_d is not None:
             val_dataset_list.append(val_d)
