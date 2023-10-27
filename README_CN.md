@@ -65,7 +65,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, chatglm2-generation
-  - 对话: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
+  - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse
 
 
 ## 新闻

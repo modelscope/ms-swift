@@ -67,7 +67,7 @@ Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, chatglm2-generation
-  - Chat: chatml(qwen), baichuan, chatglm2, llama, openbuddy-llama, default, internlm, xverse
+  - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse
 
 
 ### News
