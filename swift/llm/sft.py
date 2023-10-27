@@ -8,9 +8,8 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
-from swift.tuners import (
-     LongLoRAConfig, LongLoRAModelType, LoraConfig, LoRAConfig, Swift
-)
+from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
+                          LoRAConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          is_ddp_plus_mp, is_dist, is_master, plot_images,
@@ -65,7 +64,7 @@ def llm_sft(args: SftArguments) -> str:
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             if args.sft_type == 'lora':
                 lora_kwargs = {}
-                if args.tuner_bankend == 'peft':
+                if args.tuner_backend == 'peft':
                     global LoRAConfig
                     LoRAConfig = LoraConfig
                     lora_kwargs['task_type'] = 'CAUSAL_LM'
@@ -78,7 +77,7 @@ def llm_sft(args: SftArguments) -> str:
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
             elif args.sft_type == 'longlora':
-                assert args.tuner_bankend != 'peft'
+                assert args.tuner_backend != 'peft'
                 assert LongLoRAModelType.LLAMA in args.model_type
                 longlora_config = LongLoRAConfig(
                     r=args.lora_rank,

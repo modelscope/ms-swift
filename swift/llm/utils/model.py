@@ -54,6 +54,9 @@ class ModelType:
     # chatglm2
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
+    chatglm3_6b_base = 'chatglm3-6b-base'
+    chatglm3_6b = 'chatglm3-6b'
+    chatglm3_6b_32k = 'chatglm3-6b-32k'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_13b = 'llama2-13b'
@@ -91,7 +94,7 @@ class ModelType:
 class LoRATM(NamedTuple):
     # default lora target modules. qkv
     baichuan = ['W_pack']
-    chatglm2 = ['query_key_value']
+    chatglm = ['query_key_value']
     llama2 = ['q_proj', 'k_proj', 'v_proj']
     qwen = ['c_attn']
     polylm = ['c_attn']
@@ -366,7 +369,8 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                                      model_kwargs, load_model,
                                                      model_config, **kwargs)
     if model is not None:
-        model.lm_head.forward = MethodType(patch_baichuan2_lm_head_forward, model.lm_head)
+        model.lm_head.forward = MethodType(patch_baichuan2_lm_head_forward,
+                                           model.lm_head)
 
     return model, tokenizer
 
@@ -409,9 +413,15 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
     return model, tokenizer
 
 
+@register_model(ModelType.chatglm3_6b_32k, 'ZhipuAI/chatglm3-6b-32k',
+                LoRATM.chatglm, TemplateType.chatglm3)
+@register_model(ModelType.chatglm3_6b, 'ZhipuAI/chatglm3-6b', LoRATM.chatglm,
+                TemplateType.chatglm3)
+@register_model(ModelType.chatglm3_6b_base, 'ZhipuAI/chatglm3-6b-base',
+                LoRATM.chatglm)
 @register_model(ModelType.chatglm2_6b_32k, 'ZhipuAI/chatglm2-6b-32k',
-                LoRATM.chatglm2, TemplateType.chatglm2)
-@register_model(ModelType.chatglm2_6b, 'ZhipuAI/chatglm2-6b', LoRATM.chatglm2,
+                LoRATM.chatglm, TemplateType.chatglm2)
+@register_model(ModelType.chatglm2_6b, 'ZhipuAI/chatglm2-6b', LoRATM.chatglm,
                 TemplateType.chatglm2)
 def get_model_tokenizer_chatglm2(model_dir: str,
                                  torch_dtype: Dtype,

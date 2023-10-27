@@ -5,7 +5,7 @@ python llm_infer.py \
     --model_id_or_path OpenBuddy/openbuddy-llama2-70b-v10.1-bf16 \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+
     --template_type openbuddy \
     --dtype bf16 \
     --ckpt_dir "output/openbuddy-llama2-70b-chat/vx_xxx/checkpoint-xxx" \

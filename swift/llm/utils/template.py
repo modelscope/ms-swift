@@ -14,6 +14,7 @@ class TemplateType:
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm2_generation = 'chatglm2-generation'
+    chatglm3 = 'chatglm3'
     llama = 'llama'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
@@ -103,6 +104,11 @@ register_template(
 register_template(
     TemplateType.chatglm2_generation,
     Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]))
+
+register_template(
+    TemplateType.chatglm3,
+    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n '], [],
+             [['eos_token_id']]))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 register_template(

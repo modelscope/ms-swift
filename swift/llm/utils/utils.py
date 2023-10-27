@@ -11,10 +11,10 @@ from typing import (Any, Callable, Dict, Iterator, List, Optional, Type,
 
 import accelerate
 import numpy as np
-import torch.nn.functional as F
 import requests
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 import transformers
 from accelerate.utils.modeling import (get_balanced_memory,
                                        infer_auto_device_map)

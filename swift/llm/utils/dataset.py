@@ -17,8 +17,7 @@ from swift.utils import get_logger, get_seed
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor,
-                         TextGenerationPreprocessor)
+                         SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
 
@@ -215,6 +214,7 @@ register_dataset(
     'damo/nlp_polylm_multialpaca_sft',
     [(subset, 'train') for subset in _multi_alpaca_subset_list],
     None,
+    SmartPreprocessor(),
     get_dataset_from_repo,
     task='chat',
     help="""language_list

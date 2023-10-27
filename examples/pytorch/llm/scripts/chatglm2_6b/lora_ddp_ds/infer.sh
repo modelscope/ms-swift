@@ -5,7 +5,7 @@ python llm_infer.py \
     --model_id_or_path ZhipuAI/chatglm2-6b \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+
     --template_type chatglm2 \
     --dtype bf16 \
     --ckpt_dir "output/chatglm2-6b/vx_xxx/checkpoint-xxx" \

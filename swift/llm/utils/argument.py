@@ -32,7 +32,7 @@ class SftArguments:
 
     sft_type: str = field(
         default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
-    tuner_bankend: str = field(
+    tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
         default=None,
