@@ -51,7 +51,7 @@ class ModelType:
     baichuan2_13b_chat = 'baichuan2-13b-chat'
     baichuan2_7b_chat_int4 = 'baichuan2-7b-chat-int4'
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
-    # chatglm2
+    # chatglm
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
     chatglm3_6b_base = 'chatglm3-6b-base'

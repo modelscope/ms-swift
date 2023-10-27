@@ -44,7 +44,7 @@ def merge_lora(args: InferArguments) -> None:
         model.save_pretrained(args.ckpt_dir)
         tokenizer.save_pretrained(args.ckpt_dir)
         for fname in os.listdir(old_ckpt_dir):
-            if fname in {'generation_config.json', 'configuration.json'}:
+            if fname in {'generation_config.json'}:
                 src_path = os.path.join(old_ckpt_dir, fname)
                 tgt_path = os.path.join(args.ckpt_dir, fname)
                 shutil.copy(src_path, tgt_path)

@@ -5,7 +5,7 @@ python llm_infer.py \
     --model_id_or_path ZhipuAI/chatglm3-6b-32k \
     --model_revision master \
     --sft_type lora \
-    --template_type chatglm2 \
+    --template_type chatglm3 \
     --dtype bf16 \
     --ckpt_dir "output/chatglm3-6b-32k/vx_xxx/checkpoint-xxx" \
     --eval_human false \
