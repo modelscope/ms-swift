@@ -36,6 +36,45 @@ Users can check the [documentation of Swift](docs/source/GetStarted/Introduction
 ## LLM SFT Example
 Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) to view the detail documentation of these examples.
 
+### Basic Usage
+```bash
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install .[llm]
+```
+
+```python
+# Experimental environment: A10, 3090, A100, ...
+# 16GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm.run import infer_main, sft_main
+
+model_type = ModelType.qwen_7b_chat_int4
+sft_args = SftArguments(
+    model_type=model_type,
+    eval_steps=50,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.leetcode_python_en],
+    output_dir='output',
+    gradient_checkpointing=True)
+best_ckpt_dir = sft_main(sft_args)
+print(f'best_ckpt_dir: {best_ckpt_dir}')
+torch.cuda.empty_cache()
+infer_args = InferArguments(
+    model_type=sft_args.model_type,
+    ckpt_dir=best_ckpt_dir,
+    dataset=sft_args.dataset,
+    stream=True,
+    show_dataset_sample=5)
+infer_main(infer_args)
+```
+
+
 ### Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
@@ -66,7 +105,7 @@ Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
-  - Text Generation: default-generation, chatglm2-generation
+  - Text Generation: default-generation, chatglm-generation
   - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse
 
 

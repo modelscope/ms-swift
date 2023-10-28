@@ -45,7 +45,7 @@
   - 多模态: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - 自定义数据集
 - 支持的对话模板:
-  - 文本生成: default-generation, chatglm2-generation
+  - 文本生成: default-generation, chatglm-generation
   - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse
 
 
@@ -88,7 +88,7 @@ pip install bitsandbytes -U
 ```
 
 
-## 简单的使用
+## 简单使用
 以下案例可以用于测试环境. 请确保您已经阅读了`准备实验环境`部分.
 ```python
 # Experimental environment: A10, 3090, A100, ...

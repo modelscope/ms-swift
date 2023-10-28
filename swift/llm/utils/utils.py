@@ -337,9 +337,13 @@ def inference(input_ids: List[int],
               model: PreTrainedModel,
               tokenizer: PreTrainedTokenizerBase,
               stream: bool = True,
-              verbose: bool = True) -> str:
+              verbose: bool = True,
+              prompt_prefix: str = '[PROMPT]',
+              output_prefix: str = '[OUTPUT]') -> str:
     if verbose:
-        print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
+        print(
+            f'{prompt_prefix}{tokenizer.decode(input_ids)}{output_prefix}',
+            end='')
     streamer = None
     if stream:
         assert verbose

@@ -13,7 +13,7 @@ class TemplateType:
     chatml = 'chatml'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
-    chatglm2_generation = 'chatglm2-generation'
+    chatglm_generation = 'chatglm-generation'
     chatglm3 = 'chatglm3'
     llama = 'llama'
     openbuddy = 'openbuddy'
@@ -102,7 +102,7 @@ register_template(
              ['\n\n'], [['eos_token_id']]))
 
 register_template(
-    TemplateType.chatglm2_generation,
+    TemplateType.chatglm_generation,
     Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]))
 
 register_template(
@@ -210,7 +210,7 @@ def _encode(
     res_context_list: List[Context] = []
     _concat_context_list(template.prefix, res_context_list, system=system)
     for i, (q, r) in enumerate(history):
-        assert template.chat_sep is not None, 'not support multi-round chat'
+        assert template.chat_sep is not None, 'the template not support multi-round chat'
         _concat_context_list([*template.prompt, r, *template.chat_sep],
                              res_context_list,
                              query=q,

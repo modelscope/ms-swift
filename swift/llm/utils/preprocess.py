@@ -120,12 +120,6 @@ class ConversationsPreprocessor:
         return dataset
 
 
-class ChatmlPreprocessor:
-
-    def __init__(self):
-        pass
-
-
 class ComposePreprocessor:
 
     def __init__(self, preprocessor_list: List[PreprocessFunc]) -> None:

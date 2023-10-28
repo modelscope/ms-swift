@@ -348,6 +348,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
     if args.dataset is not None and len(
             args.dataset) == 1 and ',' in args.dataset[0]:
         args.dataset = args.dataset[0].split(',')
+    if args.template_type == 'chatglm2-generation':
+        args.template_type = 'chatglm-generation'
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:

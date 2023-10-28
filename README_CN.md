@@ -34,6 +34,45 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 ## 大模型微调的例子
 可以[在这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) 查看LLM微调的使用文档。
 
+### 简单使用
+```bash
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install .[llm]
+```
+
+```python
+# Experimental environment: A10, 3090, A100, ...
+# 16GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm.run import infer_main, sft_main
+
+model_type = ModelType.qwen_7b_chat_int4
+sft_args = SftArguments(
+    model_type=model_type,
+    eval_steps=50,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.leetcode_python_en],
+    output_dir='output',
+    gradient_checkpointing=True)
+best_ckpt_dir = sft_main(sft_args)
+print(f'best_ckpt_dir: {best_ckpt_dir}')
+torch.cuda.empty_cache()
+infer_args = InferArguments(
+    model_type=sft_args.model_type,
+    ckpt_dir=best_ckpt_dir,
+    dataset=sft_args.dataset,
+    stream=True,
+    show_dataset_sample=5)
+infer_main(infer_args)
+```
+
+
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 梯度累加, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
@@ -64,11 +103,11 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 多模态: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - 自定义数据集
 - 支持的对话模板:
-  - 文本生成: default-generation, chatglm2-generation
+  - 文本生成: default-generation, chatglm-generation
   - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse
 
 
-## 新闻
+### 新闻
 - 🔥 2023.10.27: 支持chatglm3系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b_32k`.
 - 🔥 2023.10.24: 使用注册机制来新增模型, 数据集和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom/tigerbot_13b_chat`.
 - 🔥 2023.10.17: 支持int4, int8模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
