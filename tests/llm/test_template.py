@@ -1,9 +1,15 @@
+if __name__ == '__main__':
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import os
 import tempfile
 import unittest
 
-from swift.llm import (MODEL_MAPPING, ModelType, get_model_tokenizer,
-                       get_template)
+from modelscope import GenerationConfig
+
+from swift.llm import (MODEL_MAPPING, ModelType, TemplateType,
+                       get_model_tokenizer, get_template, inference)
+from swift.utils import seed_everything
 
 
 class TestTemplate(unittest.TestCase):
@@ -41,6 +47,152 @@ you are a helpful assistant!<|im_end|>
 浙江的省会是杭州。<|im_end|>
 <|endoftext|>"""
             self.assertTrue(result == text)
+
+    def test_chatglm3_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.chatglm3_6b
+        template_type = TemplateType.chatglm3
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        model.generation_config = GenerationConfig(
+            max_new_tokens=128,
+            temperature=0.9,
+            top_k=20,
+            top_p=0.9,
+            repetition_penalt=1.05,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        examples = {'query': query}
+        input_ids = template.encode(examples)['input_ids']
+        response = inference(input_ids, model, tokenizer, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat(tokenizer, query, max_length=None)[0]
+        print(f'official response: {response}')
+
+    def test_qwen_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.qwen_7b_chat
+        template_type = TemplateType.chatml
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        examples = {'query': query}
+        input_ids = template.encode(examples)['input_ids']
+        response = inference(input_ids, model, tokenizer, verbose=False)
+        print(f'swift response: {response}')
+        model.generation_config.chat_format = 'chatml'
+        model.generation_config.max_window_size = 1024
+        response = model.chat(tokenizer, query, None, max_length=None)[0]
+        print(f'official response: {response}')
+
+    def test_llama_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.llama2_7b_chat
+        template_type = TemplateType.llama
+        _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+        from modelscope import Model, snapshot_download
+        model_dir = snapshot_download(
+            'modelscope/Llama-2-7b-chat-ms',
+            'master',
+            ignore_file_pattern=[r'.+\.bin$'])
+        model = Model.from_pretrained(model_dir, device_map='auto')
+        template = get_template(template_type, tokenizer)
+        model.generation_config = GenerationConfig(
+            max_new_tokens=128,
+            temperature=0.9,
+            top_k=20,
+            top_p=0.9,
+            repetition_penalt=1.05,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        examples = {'query': query}
+        input_ids = template.encode(examples)['input_ids']
+        response = inference(input_ids, model, tokenizer, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat({'text': query}, tokenizer)['response']
+        print(f'official response: {response}')
+
+    def test_baichuan_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.baichuan2_7b_chat
+        template_type = TemplateType.baichuan
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        examples = {'query': query}
+        input_ids = template.encode(examples)['input_ids']
+        response = inference(input_ids, model, tokenizer, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat(tokenizer, [{'role': 'user', 'content': query}])
+        print(f'official response: {response}')
+
+    def test_chatglm2_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.chatglm2_6b
+        template_type = TemplateType.chatglm2
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        model.generation_config = GenerationConfig(
+            max_new_tokens=128,
+            temperature=0.9,
+            top_k=20,
+            top_p=0.9,
+            repetition_penalt=1.05,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        examples = {'query': query}
+        input_ids = template.encode(examples)['input_ids']
+        response = inference(input_ids, model, tokenizer, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat(tokenizer, query)[0]
+        print(f'official response: {response}')
+
+    def test_internlm_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.internlm_20b_chat
+        template_type = TemplateType.internlm
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        model.generation_config = GenerationConfig(
+            max_new_tokens=128,
+            temperature=0.9,
+            top_k=20,
+            top_p=0.9,
+            repetition_penalt=1.05,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        examples = {'query': query}
+        input_ids = template.encode(examples)['input_ids']
+        response = inference(input_ids, model, tokenizer, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat(tokenizer, query)[0]
+        print(f'official response: {response}')
 
 
 if __name__ == '__main__':

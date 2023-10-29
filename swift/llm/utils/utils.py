@@ -344,9 +344,10 @@ def inference(input_ids: List[int],
         print(
             f'{prompt_prefix}{tokenizer.decode(input_ids)}{output_prefix}',
             end='')
+    else:
+        stream = False
     streamer = None
     if stream:
-        assert verbose
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     generation_config = getattr(model, 'generation_config', None)
     input_ids = torch.tensor(input_ids)[None].cuda()

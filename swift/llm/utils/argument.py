@@ -31,7 +31,7 @@ class SftArguments:
     model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
+        default='lora', metadata={'choices': ['lora', 'longlora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
