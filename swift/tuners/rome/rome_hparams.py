@@ -46,6 +46,6 @@ class ROMEHyperParams(HyperParams):
                     mlp_module_tmp='model.layers.{}.mlp',
                 ))
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f'{name} not supported.')
 
         return cls(**data)
