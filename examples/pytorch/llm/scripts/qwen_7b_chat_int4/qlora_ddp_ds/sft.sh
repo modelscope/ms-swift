@@ -20,13 +20,14 @@ torchrun \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
     --gradient_checkpointing true \
     --batch_size 1 \
-    --weight_decay 0. \
+    --weight_decay 0.01 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \

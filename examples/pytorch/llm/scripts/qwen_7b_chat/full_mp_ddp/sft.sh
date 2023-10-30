@@ -20,6 +20,7 @@ torchrun \
     --train_dataset_sample 200000 \
     --num_train_epochs 1 \
     --max_length 8192 \
+    --check_dataset_strategy warning \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.01 \

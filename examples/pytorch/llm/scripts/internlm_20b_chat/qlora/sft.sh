@@ -14,6 +14,7 @@ python llm_sft.py \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \
@@ -22,7 +23,7 @@ python llm_sft.py \
     --lora_target_modules q_proj v_proj \
     --gradient_checkpointing true \
     --batch_size 1 \
-    --weight_decay 0. \
+    --weight_decay 0.01 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
