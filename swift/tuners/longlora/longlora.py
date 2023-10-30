@@ -16,6 +16,18 @@ class LongLoRAModelType:
 
 @dataclass
 class LongLoRAConfig(LoRAConfig):
+    """
+    The Config for the LongLoRA adapter.
+    LongLoRA:[Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
+    This adapter uses S2-attention to shorten the attention window for long context training scenarios.
+    Args:
+        embedder_and_normalizer: LongLoRA allows the embedder and normalizer to be trainable, this parameter specifies
+            the names of the embedders and normalizers.
+        model_type: The model type, now support llama only
+        use_flash_attn: Use flash attention version of forward
+        group_size_ratio: The group size window ratio of the sequence length.
+            Note: The sequence length should be split to smaller sequences by the ratio.
+    """
 
     embedder_and_normalizer: Union[str, List[str], Tuple[str]] = field(
         default=('embed', 'norm'),

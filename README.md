@@ -19,11 +19,14 @@ SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible fra
 Currently supported approches (and counting):
 
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
-2. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
-3. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-4. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
-5. ResTuning-Bypass
-7. All tuners offered on [PEFT](https://github.com/huggingface/peft)
+2. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
+3. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
+4. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
+5. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
+6. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+7. ResTuning-Bypass
+8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
+9. All tuners offered on [PEFT](https://github.com/huggingface/peft)
 
 Key features:
 
@@ -32,6 +35,18 @@ Key features:
 3. Support calling `activate_adapter` or `deactivate_adapter` or `set_active_adapters`  to activate/deactivate tuners. User can inference with one model and multiple tuners in different threads independently.
 
 Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
+
+### 🎉News
+
+- 🔥 2023.10.30: Support QA-LoRA and LongLoRA to decrease memory usage in training.
+- 🔥 2023.10.30: Support ROME(Rank One Model Editing) to add/modify knowledges, training is not needed!
+- 🔥 2023.10.27: Support for chatglm3 series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
+- 🔥 2023.10.17: Supported int4, int8 models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 2023.10.15: Supported ziya2-13b model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
+- 2023.10.12: Supported mistral-7b model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
+- 🔥 2023.10.7: Supported DeepSpeed ZeRO-2, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
+- 🔥 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
+- 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 
 ## LLM SFT Example
 Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) to view the detail documentation of these examples.
@@ -108,18 +123,6 @@ infer_main(infer_args)
 - Supported Templates:
   - Text Generation: default-generation, chatglm-generation
   - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
-
-### News
-- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
-- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
-- 🔥 2023.10.24: Use the **registration mechanism** to add models, **datasets**, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
-- 🔥 2023.10.17: Supported **int4, int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
-- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
-- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
-- 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
-- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
-- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 
 
 # Installation

@@ -14,6 +14,7 @@ Swift DOCUMENTATION
    GetStarted/Use in train and infer.md
    GetStarted/Examples.md
    GetStarted/Work with Peft.md
+   GetStarted/Deployment.md
 
 .. toctree::
    :maxdepth: 2
