@@ -298,6 +298,21 @@ class RomeArguments(InferArguments):
         default=None, metadata={'help': 'The rome request file, please check the documentation '
                                         'to get the format'})
 
+    def init_argument(self):
+        # Can be manually initialized, unlike __post_init__
+        handle_compatibility(self)
+        set_model_type(self)
+        handle_dir(self)
+
+        self.torch_dtype, _, _ = select_dtype(self)
+        if self.template_type is None:
+            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            logger.info(f'Setting template_type: {self.template_type}')
+        if self.dataset is None:
+            self.dataset = [DatasetName.blossom_math_zh]
+        assert isinstance(self.dataset, (list, tuple))
+        if self.max_length == -1:
+            self.max_length = None
 
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 

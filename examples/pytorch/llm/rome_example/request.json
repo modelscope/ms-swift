@@ -2,6 +2,11 @@
     {
         "prompt": "{} was the founder of",
         "subject": "Steve Jobs",
-        "target": "Microsoft",
+        "target": "Microsoft"
+    },
+    {
+        "prompt": "{} is located in",
+        "subject": "HangZhou",
+        "target": "Africa"
     }
 ]

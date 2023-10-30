@@ -29,8 +29,16 @@ def rome_infer(args: RomeArguments) -> None:
     with open(args.rome_request_file, 'r') as f:
         request = json.load(f)
 
+    rome_type: str = None
+    if args.model_type in ('llama2-13b-chat', 'llama2-13b', 
+                            'llama-13b-chat', 'llama-13b'):
+        rome_type = 'llama-13b'
+    elif args.model_type in ('llama2-7b-chat', 'llama2-7b', 
+                            'llama-7b-chat', 'llama-7b'):
+        rome_type = 'llama-7b'
+
     config = RomeConfig(
-        model_type=args.model_type,
+        model_type=rome_type,
         knowledge=request,
         tokenizer=tokenizer,
     )
@@ -48,7 +56,6 @@ def rome_infer(args: RomeArguments) -> None:
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
-        top_p=args.top_p,
         do_sample=args.do_sample,
         repetition_penalty=args.repetition_penalty,
         pad_token_id=tokenizer.pad_token_id,
