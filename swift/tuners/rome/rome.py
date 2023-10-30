@@ -24,10 +24,21 @@ logger = get_logger()
 @dataclass
 class RomeConfig(SwiftConfig):
     """
-    The configuration class for the loRA module.
-
+    The configuration class for the ROME module.
+    This adapter can be used to inject/modify knowledge to models, without any training.
+    ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
     Args:
-
+        model_type(`str`): The model type, now support llama-7b/llama-13b
+        tokenizer(`AutoTokenizer`): The tokenizer
+        knowledge(`List[Dict]`): The knowledge to be injected to the model.
+            format:
+            >>> [
+            >>>     {
+            >>>         "prompt": "{} was the founder of",
+            >>>         "subject": "Steve Jobs",
+            >>>         "target": "Microsoft"
+            >>>     }
+            >>> ]
     """
     model_type: str = field(default=None, metadata={'help': 'The model type'})
 

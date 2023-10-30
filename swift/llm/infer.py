@@ -14,7 +14,7 @@ from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
 logger = get_logger()
 
 
-def merge_lora(args: InferArguments) -> None:
+def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
     assert args.sft_type == 'lora'
     assert not args.model_type.endswith('int4'), 'int4 model is not supported'
     assert not args.model_type.endswith('int8'), 'int8 model is not supported'
@@ -39,7 +39,7 @@ def merge_lora(args: InferArguments) -> None:
     args.sft_type = 'full'
     args.ckpt_dir = merged_lora_path
 
-    if not os.path.exists(args.ckpt_dir):
+    if not os.path.exists(args.ckpt_dir) or replace_if_exists:
         logger.info('Saving merged weights...')
         model.save_pretrained(args.ckpt_dir)
         tokenizer.save_pretrained(args.ckpt_dir)
