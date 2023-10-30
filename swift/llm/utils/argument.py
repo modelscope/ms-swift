@@ -31,7 +31,7 @@ class SftArguments:
     model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
+        default='lora', metadata={'choices': ['longlora', 'qalora', 'lora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
@@ -158,7 +158,7 @@ class SftArguments:
             # Make sure to set the same output_dir when using DDP.
             self.output_dir = broadcast_string(self.output_dir)
 
-        if self.sft_type == 'lora' or self.sft_type == 'longlora':
+        if self.sft_type in ('lora', 'longlora', 'qalora'):
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -289,6 +289,14 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
+
+
+@dataclass
+class RomeArguments(InferArguments):
+
+    rome_request_file: str = field(
+        default=None, metadata={'help': 'The rome request file, please check the documentation '
+                                        'to get the format'})
 
 
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
