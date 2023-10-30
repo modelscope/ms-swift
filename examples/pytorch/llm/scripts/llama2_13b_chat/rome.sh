@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python rome_infer.py \
     --model_id_or_path modelscope/Llama-2-13b-chat-ms \
     --model_revision master \
-    --template_type default-generation \
+    --template_type llama \
     --dtype bf16 \
     --eval_human true \
     --max_new_tokens 128 \
