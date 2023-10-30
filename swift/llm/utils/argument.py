@@ -318,8 +318,7 @@ class RomeArguments(InferArguments):
             'to get the format'
         })
 
-    def init_argument(self):
-        # Can be manually initialized, unlike __post_init__
+    def __post_init__(self):
         handle_compatibility(self)
         set_model_type(self)
         handle_path(self)
