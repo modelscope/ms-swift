@@ -32,7 +32,8 @@ class SftArguments:
     model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'longlora', 'full']})
+        default='lora',
+        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
@@ -165,7 +166,7 @@ class SftArguments:
             # Make sure to set the same output_dir when using DDP.
             self.output_dir = broadcast_string(self.output_dir)
 
-        if self.sft_type == 'lora' or self.sft_type == 'longlora':
+        if self.sft_type in ('lora', 'longlora', 'qalora'):
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -233,7 +234,8 @@ class InferArguments:
     model_revision: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
+        default='lora',
+        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
     template_type: Optional[str] = field(
         default=None,
         metadata={
@@ -301,6 +303,33 @@ class InferArguments:
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
+        if self.max_length == -1:
+            self.max_length = None
+
+
+@dataclass
+class RomeArguments(InferArguments):
+
+    rome_request_file: str = field(
+        default=None,
+        metadata={
+            'help':
+            'The rome request file, please check the documentation '
+            'to get the format'
+        })
+
+    def init_argument(self):
+        # Can be manually initialized, unlike __post_init__
+        handle_compatibility(self)
+        set_model_type(self)
+        handle_dir(self)
+
+        self.torch_dtype, _, _ = select_dtype(self)
+        if self.template_type is None:
+            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            logger.info(f'Setting template_type: {self.template_type}')
+
+        assert isinstance(self.dataset, (list, tuple))
         if self.max_length == -1:
             self.max_length = None
 

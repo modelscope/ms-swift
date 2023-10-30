@@ -54,7 +54,7 @@ def llm_sft(args: SftArguments) -> str:
                                            model_kwargs, **kwargs)
 
     # ### Preparing LoRA
-    if args.sft_type == 'lora' or args.sft_type == 'longlora':
+    if args.sft_type in ('lora', 'qalora', 'longlora'):
         if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
@@ -88,6 +88,20 @@ def llm_sft(args: SftArguments) -> str:
                     use_flash_attn=args.use_flash_attn)
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
+            elif args.sft_type == 'qalora':
+                assert getattr(
+                    model, 'quantization_method',
+                    None) == 'gptq', 'qalora must be used with auto_gptq'
+                lora_kwargs = {}
+                lora_config = LoRAConfig(
+                    r=args.lora_rank,
+                    target_modules=args.lora_target_modules,
+                    lora_alpha=args.lora_alpha,
+                    lora_dropout=args.lora_dropout_p,
+                    use_qa_lora=True,
+                    **lora_kwargs)
+                model = Swift.prepare_model(model, lora_config)
+                logger.info(f'lora_config: {lora_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)

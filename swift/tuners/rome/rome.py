@@ -147,7 +147,7 @@ def execute_rome(
             layer,
             context_template,
         )
-        logger.info('Left vector shape:', left_vector.shape)
+        logger.info(f'Left vector shape: {left_vector.shape}')
         right_vector: torch.Tensor = compute_v(
             model,
             tok,
@@ -157,7 +157,7 @@ def execute_rome(
             left_vector,
             context_template,
         )
-        logger.info('Right vector shape:', right_vector.shape)
+        logger.info(f'Right vector shape: {right_vector.shape}')
         right_vector = right_vector.to(left_vector.dtype)
 
         with torch.no_grad():

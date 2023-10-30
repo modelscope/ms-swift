@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import InferArguments, SftArguments
+from .argument import InferArguments, RomeArguments, SftArguments
 from .dataset import (DATASET_MAPPING, AlpacaPreprocessor,
                       ConversationsPreprocessor, DatasetName,
                       GetDatasetFunction, get_dataset, get_dataset_from_repo,
