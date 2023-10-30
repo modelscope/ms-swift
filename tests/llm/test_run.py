@@ -9,7 +9,8 @@ import unittest
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
+                       gradio_demo)
 from swift.llm.run import infer_main, sft_main
 
 
@@ -53,6 +54,8 @@ class TestRun(unittest.TestCase):
             show_dataset_sample=5,
             merge_lora_and_save=True)
         infer_main(infer_args)
+        torch.cuda.empty_cache()
+        gradio_demo(infer_args)
 
     def test_run_2(self):
         if not __name__ == '__main__':

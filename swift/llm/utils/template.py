@@ -11,6 +11,7 @@ class TemplateType:
     default = 'default'
     default_generation = 'default-generation'
     chatml = 'chatml'
+    qwen = chatml
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm_generation = 'chatglm-generation'

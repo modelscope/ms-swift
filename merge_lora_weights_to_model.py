@@ -1,5 +1,4 @@
-from swift.llm import InferArguments
-from swift.llm.infer import merge_lora
+from swift.llm import InferArguments, merge_lora
 from swift.utils import parse_args
 
 if __name__ == '__main__':

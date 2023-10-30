@@ -12,11 +12,11 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master, read_from_jsonl)
+                         get_dist_setting, is_dist, is_master)
 from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
                       register_dataset)
 from .model import MODEL_MAPPING, ModelType, dtype_mapping
-from .template import TEMPLATE_MAPPING
+from .template import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
 
@@ -142,7 +142,7 @@ class SftArguments:
     top_p: float = 0.9
     repetition_penalty: float = 1.05
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         handle_compatibility(self)
         set_model_type(self)
         register_custom_dataset(self)
@@ -241,7 +241,8 @@ class InferArguments:
         metadata={
             'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
         })
-    ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
+    ckpt_dir: Optional[str] = field(
+        default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
@@ -283,9 +284,9 @@ class InferArguments:
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         handle_compatibility(self)
-        if not os.path.isdir(self.ckpt_dir):
+        if self.ckpt_dir is not None and not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
@@ -305,11 +306,13 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
+        if self.ckpt_dir is None and self.overwrite_generation_config is True:
+            self.overwrite_generation_config = False
+            logger.warning('Setting overwrite_generation_config: False')
 
 
 @dataclass
 class RomeArguments(InferArguments):
-
     rome_request_file: str = field(
         default=None,
         metadata={
@@ -318,7 +321,7 @@ class RomeArguments(InferArguments):
             'to get the format'
         })
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         handle_compatibility(self)
         set_model_type(self)
         handle_path(self)
@@ -392,6 +395,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.dataset = args.dataset[0].split(',')
     if args.template_type == 'chatglm2-generation':
         args.template_type = 'chatglm-generation'
+    if args.template_type == 'qwen':
+        args.template_type = TemplateType.chatml
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
