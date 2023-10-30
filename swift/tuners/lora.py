@@ -166,6 +166,9 @@ class LoRAConfig(SwiftConfig):
         enable_lora(List[bool]): The modules need to be turned on when using the merged linear layer
         fan_in_fan_out(bool): Set this to True if the layer to replace stores weight like (fan_in, fan_out)
         bias(str): Bias type. Values ca be "none", "all" or "lora_only"
+        use_qa_lora(bool): Use
+            QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717)
+            instead of LoRA. QA-LoRA only supports AutoGPTQ quantized models.
     """
 
     r: int = field(default=6, metadata={'help': 'The rank of the LoRA module'})
