@@ -122,6 +122,6 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('system'),
                 stream=args.stream)
             print()
-            print(f'[LABELS]{response}')
+            print(f"[LABELS]{data.get('response')}")
             print('-' * 80)
             # input('next[ENTER]')

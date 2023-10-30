@@ -322,7 +322,7 @@ class RomeArguments(InferArguments):
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
         set_model_type(self)
-        handle_dir(self)
+        handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:

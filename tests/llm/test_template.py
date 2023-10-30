@@ -2,14 +2,12 @@ if __name__ == '__main__':
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import os
-import tempfile
 import unittest
 
 from modelscope import GenerationConfig
 
 from swift.llm import (MODEL_MAPPING, ModelType, TemplateType,
                        get_model_tokenizer, get_template, inference)
-from swift.utils import seed_everything
 
 
 class TestTemplate(unittest.TestCase):

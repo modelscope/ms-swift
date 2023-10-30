@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from swift.llm import (MODEL_MAPPING, ModelType, TemplateType,
+from swift.llm import (MODEL_MAPPING, ModelType,
                        get_model_tokenizer, get_template, inference,
                        inference_stream)
 from swift.utils import lower_bound, seed_everything
