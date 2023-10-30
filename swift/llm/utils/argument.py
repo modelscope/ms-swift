@@ -61,8 +61,8 @@ class SftArguments:
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
-    custom_train_dataset_path: Optional[str] = None
-    custom_val_dataset_path: Optional[str] = None
+    custom_train_dataset_path: Optional[List[str]] = None
+    custom_val_dataset_path: Optional[List[str]] = None
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -131,6 +131,7 @@ class SftArguments:
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
+    report_to: List[str] = None
 
     # generation config
     max_new_tokens: int = 2048
@@ -140,8 +141,7 @@ class SftArguments:
     top_p: float = 0.9
     repetition_penalty: float = 1.05
 
-    def init_argument(self):
-        # Can be manually initialized, unlike __post_init__
+    def __post_init__(self):
         handle_compatibility(self)
         set_model_type(self)
         register_custom_dataset(self)
@@ -219,6 +219,8 @@ class SftArguments:
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
+        if self.report_to is None:
+            self.report_to == ['all']
 
 
 @dataclass
@@ -278,10 +280,8 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
-    use_gradio: bool = True
 
-    def init_argument(self):
-        # Can be manually initialized, unlike __post_init__
+    def __post_init__(self):
         handle_compatibility(self)
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')

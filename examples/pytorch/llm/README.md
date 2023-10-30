@@ -428,7 +428,9 @@ The template initialization function retrieves the complete chat template based 
 - `--train_dataset_sample`: Samples from the complete training dataset, default is `20000`, to speed up training. This parameter is used to avoid the issue of training time being too long for a single epoch when the dataset is large. LoRA convergence is usually fast and does not require a large number of data samples for fine-tuning. If you specify `-1`, the full training dataset will be used for training, which is typically used in the setting of full-parameter fine-tuning.
 - `--system`: The system used in the dialogue template, default is `'you are a helpful assistant!'`.
 - `--max_length`: Maximum token length, default is `2048`. This helps to avoid out-of-memory (OOM) issues caused by individual samples that are too long. If a data sample exceeds the `max_length`, the frontmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, there is no restriction.
-- `check_dataset_strategy`: The default value is `'none'`, which means no checking will be done. If you are training an LLM model, it is recommended to use `'warning'` as the data checking strategy. If your training objective is sentence classification or Masked LM tasks, it is suggested to set it as `'none'`.
+- `--check_dataset_strategy`: The default value is `'none'`, which means no checking will be done. If you are training an LLM model, it is recommended to use `'warning'` as the data checking strategy. If your training objective is sentence classification or Masked LM tasks, it is suggested to set it as `'none'`.
+- `custom_train_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
+- `custom_val_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
 - `--quantization_bit`: Specifies whether to perform quantization and the number of quantization bits, default is `0`, which means no quantization. Quantization is only supported for the lora fine-tuning method and not for full-parameter fine-tuning.
 - `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `None`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_quant_type`: The quantization type for 4-bit quantization, default is `'nf4'`. The possible values are: 'nf4', 'fp4'. This parameter is ignored when `quantization_bit` is 0.
@@ -491,6 +493,8 @@ The template initialization function retrieves the complete chat template based 
 - `--system`: Default value is `'you are a helpful assistant!'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--max_length`: Default value is `2048`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--check_dataset_strategy`: The default value is `'none'`, For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
+- `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: Default value is 0. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--bnb_4bit_comp_dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_quant_type`: Default value is `'nf4'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.

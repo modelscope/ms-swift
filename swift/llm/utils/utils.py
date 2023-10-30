@@ -186,7 +186,6 @@ def get_main(
             args, remaining_argv = argv, []
         else:
             args, remaining_argv = parse_args(args_class, argv)
-        args.init_argument()
         if len(remaining_argv) > 0:
             if args.ignore_args_error:
                 logger.warning(f'remaining_argv: {remaining_argv}')

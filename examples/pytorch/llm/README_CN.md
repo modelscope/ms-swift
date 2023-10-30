@@ -428,7 +428,9 @@ if __name__ == '__main__':
 - `--train_dataset_sample`: 对完整训练集进行采样, 默认是`20000`, 用于加快训练的速度. 该参数是为了避免数据集过大, 单个epoch训练时间过长的问题. LoRA的收敛通常较快, 不需要过多数据样本的微调. 如果你指定为`-1`, 则使用完整的训练集进行训练, 该情况一般出现在全参数微调的设置下.
 - `--system`: 对话模板中使用的system, 默认为`'you are a helpful assistant!'`.
 - `--max_length`: token的最大长度, 默认为`2048`. 可以避免个别过长的数据样本造成OOM的问题. 如果某数据样本长度超过max_length, 我们会切除最前面的token: `input_ids[-max_length:]`. 如果设置为-1, 则无限制.
-- `check_dataset_strategy`: 默认值为`'none'`, 即不做检查. 如果你训练的模型是LLM, 则推荐使用`'warning'`作为数据检查的策略. 如果你的训练目标为句子分类等任务, 则建议设置为'`none`'.
+- `--check_dataset_strategy`: 默认值为`'none'`, 即不做检查. 如果你训练的模型是LLM, 则推荐使用`'warning'`作为数据检查的策略. 如果你的训练目标为句子分类等任务, 则建议设置为'`none`'.
+- `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
+- `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: 用于指定是否进行量化和量化的bit数, 默认为`0`, 即不进行量化. 量化情况下, 只支持lora的微调方式, 不支持全参数的微调方式.
 - `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`None`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_quant_type`: 4bit量化时的量化方式, 默认是`'nf4'`. 可选择的值包括: 'nf4', 'fp4'. 当quantization_bit为0时, 该参数无效.
@@ -490,7 +492,9 @@ if __name__ == '__main__':
 - `--show_dataset_sample`: 表示想要评估和展示的验证集的数量, 默认值为`10`. 该参数只有在`eval_human`设置为False时才生效.
 - `--system`: 默认值为`'you are a helpful assistant!'`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--max_length`: 默认值为`2048`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
-- `check_dataset_strategy`: 默认值为`'none'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
+- `--check_dataset_strategy`: 默认值为`'none'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
+- `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
+- `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: 默认值为0. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--bnb_4bit_comp_dtype`: 默认值为`None`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_quant_type`: 默认值为`'nf4'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.

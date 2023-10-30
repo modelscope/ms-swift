@@ -187,6 +187,7 @@ def llm_sft(args: SftArguments) -> str:
         local_rank=local_rank,
         only_save_model=args.only_save_model,
         train_sampler_random=args.train_sampler_random,
+        report_to=args.report_to,
         deepspeed=args.deepspeed)
 
     if args.gradient_checkpointing:
