@@ -43,7 +43,7 @@ python -m vllm.entrypoints.openai.api_server --model /dir/to/your/trained/model 
 如果是LoRA微调，需要先执行下面的脚本将LoRA weights合并到原始模型中：
 
 ```shell
-python merge_lora_weights_to_model.py --model_type /dir/to/your/base/model --ckpt_dir /dir/to/your/lora/model
+python merge_lora_weights_to_model.py --model_id_or_path /dir/to/your/base/model --model_revision master --ckpt_dir /dir/to/your/lora/model
 ```
 
 合并后的模型会输出到`{ckpt_dir}-merged`文件夹中, 将该文件夹传入上述vllm命令中即可拉起服务。
