@@ -60,7 +60,7 @@ class BertTrainer(Trainer):
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
 
 
-class TestTrainer:
+class TestTrainer(unittest.TestCase):
 
     def setUp(self):
         self._tmp_dir = tempfile.TemporaryDirectory()
@@ -77,7 +77,6 @@ class TestTrainer:
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
-        os.system('nvidia-smi')
         push_to_hub = True
         if not __name__ == '__main__':
             # ignore citest error in github

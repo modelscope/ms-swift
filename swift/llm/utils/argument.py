@@ -12,8 +12,9 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master)
-from .dataset import DATASET_MAPPING, DatasetName
+                         get_dist_setting, is_dist, is_master, read_from_jsonl)
+from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
+                      register_dataset)
 from .model import MODEL_MAPPING, ModelType, dtype_mapping
 from .template import TEMPLATE_MAPPING
 
@@ -57,6 +58,11 @@ class SftArguments:
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    check_dataset_strategy: str = field(
+        default='none',
+        metadata={'choices': ['none', 'discard', 'error', 'warning']})
+    custom_train_dataset_path: Optional[str] = None
+    custom_val_dataset_path: Optional[str] = None
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -138,6 +144,7 @@ class SftArguments:
         # Can be manually initialized, unlike __post_init__
         handle_compatibility(self)
         set_model_type(self)
+        register_custom_dataset(self)
         handle_dir(self)
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
@@ -245,6 +252,11 @@ class InferArguments:
     show_dataset_sample: int = 10
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    check_dataset_strategy: str = field(
+        default='none',
+        metadata={'choices': ['none', 'discard', 'error', 'warning']})
+    custom_train_dataset_path: Optional[List[str]] = None
+    custom_val_dataset_path: Optional[List[str]] = None
 
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
@@ -266,6 +278,7 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
+    use_gradio: bool = True
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
@@ -274,6 +287,7 @@ class InferArguments:
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
+        register_custom_dataset(self)
         handle_dir(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
@@ -404,3 +418,18 @@ def handle_dir(args: Union[SftArguments, InferArguments]) -> None:
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
             setattr(args, k, value)
+
+
+def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
+    if args.custom_train_dataset_path is None:
+        return
+    register_dataset(
+        '_custom_dataset',
+        '_custom_dataset',
+        args.custom_train_dataset_path,
+        args.custom_val_dataset_path,
+        get_function=get_custom_dataset)
+    if args.dataset is None:
+        args.dataset = ['_custom_dataset']
+    else:
+        args.dataset.append('_custom_dataset')

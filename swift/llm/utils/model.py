@@ -86,6 +86,9 @@ class ModelType:
     # ziya
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
+    # skywork
+    skywork_13b_chat = 'skywork-13b-chat'
+    skywork_13b = 'skywork-13b'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
@@ -627,6 +630,27 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     tokenizer.eos_token_id = tokenizer.eod_id
+    return model, tokenizer
+
+
+register_model(ModelType.skywork_13b, 'skywork/Skywork-13B-base',
+               LoRATM.llama2, TemplateType.default,
+               get_model_tokenizer_from_repo)
+
+
+@register_model(ModelType.skywork_13b_chat, 'skywork/Skywork-13B-chat',
+                LoRATM.llama2, TemplateType.skywork)
+def get_skywork_model_tokenizer(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     model_kwargs, load_model,
+                                                     **kwargs)
+    tokenizer.add_tokens('[USER]')
+    tokenizer.add_tokens('[BOT]')
+    tokenizer.add_tokens('[SEP]')
     return model, tokenizer
 
 
