@@ -32,7 +32,7 @@ class SftArguments:
 
     sft_type: str = field(
         default='lora',
-        metadata={'choices': ['longlora', 'qalora', 'lora', 'full']})
+        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
@@ -225,7 +225,8 @@ class InferArguments:
     model_revision: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['longlora', 'lora', 'full']})
+        default='lora',
+        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
     template_type: Optional[str] = field(
         default=None,
         metadata={
@@ -313,8 +314,7 @@ class RomeArguments(InferArguments):
         if self.template_type is None:
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
-        if self.dataset is None:
-            self.dataset = [DatasetName.blossom_math_zh]
+
         assert isinstance(self.dataset, (list, tuple))
         if self.max_length == -1:
             self.max_length = None
