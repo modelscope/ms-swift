@@ -31,7 +31,8 @@ class SftArguments:
     model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
-        default='lora', metadata={'choices': ['longlora', 'qalora', 'lora', 'full']})
+        default='lora',
+        metadata={'choices': ['longlora', 'qalora', 'lora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: Optional[str] = field(
@@ -295,8 +296,12 @@ class InferArguments:
 class RomeArguments(InferArguments):
 
     rome_request_file: str = field(
-        default=None, metadata={'help': 'The rome request file, please check the documentation '
-                                        'to get the format'})
+        default=None,
+        metadata={
+            'help':
+            'The rome request file, please check the documentation '
+            'to get the format'
+        })
 
     def init_argument(self):
         # Can be manually initialized, unlike __post_init__
@@ -313,6 +318,7 @@ class RomeArguments(InferArguments):
         assert isinstance(self.dataset, (list, tuple))
         if self.max_length == -1:
             self.max_length = None
+
 
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 

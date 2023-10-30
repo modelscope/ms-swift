@@ -1,22 +1,23 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import json
-
 import torch
 from modelscope import GenerationConfig
 
 from swift.tuners import Swift
 from swift.utils import (get_logger, print_model_info, seed_everything,
                          show_layers)
+from ..tuners.rome import RomeConfig
 from .utils import (RomeArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference)
-from ..tuners.rome import RomeConfig
 
 logger = get_logger()
 
 
 def rome_infer(args: RomeArguments) -> None:
     logger.info(f'args: {args}')
-    logger.info(f'Rome does not support quantization for now, all quantization args will be ignored.')
+    logger.info(
+        'Rome does not support quantization for now, all quantization args will be ignored.'
+    )
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
@@ -30,11 +31,11 @@ def rome_infer(args: RomeArguments) -> None:
         request = json.load(f)
 
     rome_type: str = None
-    if args.model_type in ('llama2-13b-chat', 'llama2-13b', 
-                            'llama-13b-chat', 'llama-13b'):
+    if args.model_type in ('llama2-13b-chat', 'llama2-13b', 'llama-13b-chat',
+                           'llama-13b'):
         rome_type = 'llama-13b'
-    elif args.model_type in ('llama2-7b-chat', 'llama2-7b', 
-                            'llama-7b-chat', 'llama-7b'):
+    elif args.model_type in ('llama2-7b-chat', 'llama2-7b', 'llama-7b-chat',
+                             'llama-7b'):
         rome_type = 'llama-7b'
 
     config = RomeConfig(
@@ -42,8 +43,7 @@ def rome_infer(args: RomeArguments) -> None:
         knowledge=request,
         tokenizer=tokenizer,
     )
-    model = Swift.prepare_model(
-        model, config, inference_mode=True)
+    model = Swift.prepare_model(model, config, inference_mode=True)
 
     show_layers(model)
     print_model_info(model)

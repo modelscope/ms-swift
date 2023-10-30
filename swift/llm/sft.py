@@ -89,7 +89,9 @@ def llm_sft(args: SftArguments) -> str:
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
             elif args.sft_type == 'qalora':
-                assert getattr(model, "quantization_method", None) == 'gptq', 'qalora must be used with auto_gptq'
+                assert getattr(
+                    model, 'quantization_method',
+                    None) == 'gptq', 'qalora must be used with auto_gptq'
                 lora_kwargs = {}
                 lora_config = LoRAConfig(
                     r=args.lora_rank,
