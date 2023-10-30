@@ -65,4 +65,3 @@ curl http://localhost:8000/v1/completions \
 ```
 
 vllm也支持使用python代码拉起模型并调用，具体可以查看[vllm官方文档](https://vllm.readthedocs.io/en/latest/getting_started/quickstart.html)。
-

@@ -4,7 +4,7 @@ import shutil
 from modelscope import snapshot_download
 
 from swift import Swift
-from swift.llm import get_model_tokenizer, InferArguments
+from swift.llm import InferArguments, get_model_tokenizer
 from swift.utils import parse_args
 
 
