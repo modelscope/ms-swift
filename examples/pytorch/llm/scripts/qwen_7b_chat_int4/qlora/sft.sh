@@ -14,6 +14,7 @@ python llm_sft.py \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \

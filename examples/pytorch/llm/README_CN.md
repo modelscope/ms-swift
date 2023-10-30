@@ -272,7 +272,55 @@ if __name__ == '__main__':
 
 
 ### 自定义数据集
-以下是一个**自定义数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+我们支持两种**自定义数据集**的方法.
+1. **命令行参数**的形式: **更加方便支持本地自定义数据集**.
+2. **注册数据集**的方式: 更加灵活, 可以对swift**进一步拓展和开发**, 但需要一定的编程门槛. 方法一在实现上借助了方法二.
+
+#### 命令行参数的形式
+命令行参数含义介绍:
+1. `--custom_train_dataset_path`: 默认值为`None`, 表示不使用自定义数据集. 你可以像如下形式进行指定: `--custom_train_dataset_path alpaca.csv`或者指定多个训练数据集`--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`, 脚本会进行自动的预处理和拼接. 你也可以通过公开数据集和自定义数据集结合的方式进行训练: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+2. `--custom_val_dataset_path`: 默认值为`None`, 表示不使用自定义验证数据集. 如果你指定了`custom_train_dataset_path`, 则自定义数据集的验证集将按照命令行参数`dataset_test_ratio`进行切割. 命令行传入的格式可以参考`--custom_train_dataset_path`.
+
+脚本支持的文件格式包含`csv`和`jsonl`格式. 你需要将传入的文件符合以下数据集格式. csv格式的文件只支持指令微调, 即没有history的情况. jsonl格式的文件支持system, history.
+
+格式1:
+```csv
+instruction,input,output
+11111,22222,33333
+aaaaa,bbbbb,ccccc
+AAAAA,BBBBB,CCCCC
+```
+
+```jsonl
+{"instruction": "11111", "input": "aaaaa", "output": "AAAAA"}
+{"instruction": "22222", "input": "bbbbb", "output": "BBBBB"}
+{"instruction": "33333", "input": "ccccc", "output": "CCCCC"}
+```
+
+格式2:
+```jsonl
+{"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
+{"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+格式3:
+```jsonl
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
+{"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
+{"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+```
+
+格式4:
+```jsonl
+{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
+{"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+```
+
+
+#### 注册数据集的方式
+以下是一个**注册数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 
 ```python
 import ast

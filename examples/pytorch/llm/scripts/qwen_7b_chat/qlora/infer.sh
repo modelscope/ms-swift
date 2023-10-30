@@ -11,6 +11,7 @@ python llm_infer.py \
     --eval_human false \
     --dataset leetcode-python-en \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --use_flash_attn false \

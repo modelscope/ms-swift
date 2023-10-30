@@ -12,6 +12,7 @@ python llm_infer.py \
     --eval_human false \
     --dataset damo-agent-mini-zh \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --use_flash_attn true \
     --max_new_tokens 2048 \
     --temperature 0.9 \

@@ -10,6 +10,7 @@ python llm_infer.py \
     --ckpt_dir "output/qwen-7b/vx_xxx/checkpoint-xxx" \
     --eval_human true \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --use_flash_attn false \

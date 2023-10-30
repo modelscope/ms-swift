@@ -19,6 +19,7 @@ torchrun \
     --train_dataset_sample -1 \
     --num_train_epochs 3 \
     --max_length 1024 \
+    --check_dataset_strategy warning \
     --gradient_checkpointing true \
     --batch_size 4 \
     --weight_decay 0.01 \

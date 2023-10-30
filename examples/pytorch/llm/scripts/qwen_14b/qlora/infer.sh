@@ -11,6 +11,7 @@ python llm_infer.py \
     --eval_human false \
     --dataset dureader-robust-zh \
     --max_length 2048 \
+    --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --use_flash_attn false \

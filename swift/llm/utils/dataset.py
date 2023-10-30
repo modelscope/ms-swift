@@ -7,13 +7,16 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import numpy as np
+import pandas as pd
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from modelscope import MsDataset
 from numpy.random import RandomState
+from pandas import DataFrame
 from tqdm.auto import tqdm
 
-from swift.utils import get_logger, get_seed
+from swift.utils import (get_logger, get_seed, read_from_jsonl,
+                         transform_jsonl_to_df)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
@@ -186,7 +189,7 @@ def get_dataset_from_repo(
     dataset_id: str,
     train_subset_split_list: List[Tuple[str, str]],
     val_subset_split_list: List[Tuple[str, str]],
-    preprocess_func: List[Tuple[str, str]],
+    preprocess_func: PreprocessFunc,
     remove_useless_columns: bool = True,
     dataset_sample: int = -1,
 ) -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
@@ -702,7 +705,7 @@ def get_dataset(
     dataset_test_ratio: float = 0.,
     dataset_seed: Union[RandomState, int] = 42,
     check_dataset_strategy: Literal['none', 'discard', 'error',
-                                    'warning'] = 'warning'
+                                    'warning'] = 'none'
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     train_dataset_list: List[HfDataset] = []
@@ -712,7 +715,7 @@ def get_dataset(
         random_state = RandomState(dataset_seed)
     for dataset_name in dataset_name_list:
         dataset_info = DATASET_MAPPING[dataset_name]
-        get_function = dataset_info['get_function']
+        get_function: GetDatasetFunction = dataset_info['get_function']
         dataset = get_function(
             dataset_info['dataset_id_or_path'],
             train_subset_split_list=dataset_info['train_subset_split_list'],
@@ -739,4 +742,37 @@ def get_dataset(
         logger.info(f"check_dataset_strategy: '{check_dataset_strategy}'")
     train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
     val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+    return train_dataset, val_dataset
+
+
+def load_dataset_from_local(
+        dataset_path_list: Optional[Union[str, List[str]]],
+        preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
+    if isinstance(dataset_path_list, str):
+        dataset_path_list = [dataset_path_list]
+    if dataset_path_list is None or len(dataset_path_list) == 0:
+        return None
+    assert isinstance(dataset_path_list, (list, tuple))
+
+    dataset_list = []
+    for dataset_path in dataset_path_list:
+        assert isinstance(dataset_path, str)
+        df: DataFrame
+        if dataset_path.endswith('.csv'):
+            df = pd.read_csv(dataset_path)
+        elif dataset_path.endswith('.jsonl'):
+            df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
+        dataset = HfDataset.from_dict(df.to_dict(orient='list'))
+        dataset_list.append(preprocess_func(dataset))
+    return concatenate_datasets(dataset_list)
+
+
+def get_custom_dataset(_: str, train_subset_split_list: List[str],
+                       val_subset_split_list: List[str],
+                       preprocess_func: PreprocessFunc,
+                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    train_dataset = load_dataset_from_local(train_subset_split_list,
+                                            preprocess_func)
+    val_dataset = load_dataset_from_local(val_subset_split_list,
+                                          preprocess_func)
     return train_dataset, val_dataset

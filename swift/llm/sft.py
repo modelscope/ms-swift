@@ -98,9 +98,11 @@ def llm_sft(args: SftArguments) -> str:
 
     # ### Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
-    train_dataset, val_dataset = get_dataset(args.dataset,
-                                             args.dataset_test_ratio,
-                                             random_state)
+    train_dataset, val_dataset = get_dataset(
+        args.dataset,
+        args.dataset_test_ratio,
+        random_state,
+        check_dataset_strategy=args.check_dataset_strategy)
     if args.train_dataset_sample >= 0:
         args.train_dataset_sample = min(args.train_dataset_sample,
                                         len(train_dataset))

@@ -180,7 +180,8 @@ def get_main(
     args_class: Type[_TArgsClass], llm_x: Callable[[_TArgsClass], _T]
 ) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
 
-    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None) -> _T:
+    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
+               **kwargs) -> _T:
         if isinstance(argv, args_class):
             args, remaining_argv = argv, []
         else:
@@ -191,7 +192,7 @@ def get_main(
                 logger.warning(f'remaining_argv: {remaining_argv}')
             else:
                 raise ValueError(f'remaining_argv: {remaining_argv}')
-        return llm_x(args)
+        return llm_x(args, **kwargs)
 
     return x_main
 

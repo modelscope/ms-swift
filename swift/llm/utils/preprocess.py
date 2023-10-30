@@ -157,6 +157,14 @@ class SmartPreprocessor:
             'conversations': {
                 'required': ['conversations'],
                 'preprocessor': ConversationsPreprocessor()
+            },
+            'chatml': {
+                'required': ['messages'],
+                'preprocessor':
+                ConversationsPreprocessor(
+                    conversations_key='messages',
+                    from_key='role',
+                    value_key='content')
             }
         }
 

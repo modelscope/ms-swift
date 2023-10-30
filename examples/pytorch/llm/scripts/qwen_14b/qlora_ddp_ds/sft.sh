@@ -20,6 +20,7 @@ torchrun \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
+    --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
     --lora_rank 8 \

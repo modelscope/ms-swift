@@ -12,6 +12,7 @@ python llm_infer.py \
     --eval_human false \
     --dataset leetcode-python-en \
     --max_length 4096 \
+    --check_dataset_strategy warning \
     --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \

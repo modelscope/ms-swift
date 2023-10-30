@@ -271,7 +271,54 @@ The `register_model` function registers the model in `MODEL_MAPPING`, and its pa
 
 
 ### Custom Dataset
-Here is an example of a **custom dataset**. Running the shell script for this custom dataset can be found in `scripts/custom/tigerbot_13b_chat`.
+We support two methods for **customizing datasets**.
+1. **Command line arguments**: It is **more convenient for supporting local custom datasets**.
+2. **Registering datasets**: It is more flexible and allows for **further extension and development of swift**, but it requires some programming skills. Method 1 relies on Method 2 for implementation.
+
+#### Command Line Arguments
+Explanation of command line arguments:
+1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them. You can also combine public datasets with custom datasets for training: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+2. `--custom_val_dataset_path`: The default value is `None`, which means no custom validation dataset is used. If you specify `custom_train_dataset_path`, the custom dataset's validation set will be split according to the command line argument `dataset_test_ratio`. The format of the command line input can be referred to the `--custom_train_dataset_path` format.
+
+The script supports `csv` and `jsonl` file formats. The files you pass in need to conform to the following dataset formats. The csv format file only supports instruction fine-tuning, which means there is no history. The jsonl format file supports system and history.
+
+Format 1:
+```csv
+instruction,input,output
+11111,22222,33333
+aaaaa,bbbbb,ccccc
+AAAAA,BBBBB,CCCCC
+```
+
+```jsonl
+{"instruction": "11111", "input": "aaaaa", "output": "AAAAA"}
+{"instruction": "22222", "input": "bbbbb", "output": "BBBBB"}
+{"instruction": "33333", "input": "ccccc", "output": "CCCCC"}
+```
+
+Format 2:
+```jsonl
+{"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
+{"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+Format 3:
+```jsonl
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
+{"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
+{"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+```
+
+```Format 4
+{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
+{"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+```
+
+
+#### Registering Datasets
+Here is an example of a **registering a dataset**. Running the shell script for this custom dataset can be found in `scripts/custom/tigerbot_13b_chat`.
 
 ```python
 import ast

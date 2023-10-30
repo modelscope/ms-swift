@@ -145,7 +145,7 @@ class SftArguments:
         handle_compatibility(self)
         set_model_type(self)
         register_custom_dataset(self)
-        handle_dir(self)
+        handle_path(self)
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             if is_master():
@@ -288,7 +288,7 @@ class InferArguments:
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
         register_custom_dataset(self)
-        handle_dir(self)
+        handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
@@ -408,7 +408,7 @@ def prepare_push_ms_hub(args: SftArguments) -> None:
         logger.info('hub login successful!')
 
 
-def handle_dir(args: Union[SftArguments, InferArguments]) -> None:
+def handle_path(args: Union[SftArguments, InferArguments]) -> None:
     for k in [
             'model_cache_dir', 'output_dir', 'ckpt_dir',
             'resume_from_checkpoint', 'deepspeed_config_path', 'logging_dir'
@@ -422,6 +422,7 @@ def handle_dir(args: Union[SftArguments, InferArguments]) -> None:
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if args.custom_train_dataset_path is None:
+        assert args.custom_val_dataset_path is None
         return
     register_dataset(
         '_custom_dataset',
