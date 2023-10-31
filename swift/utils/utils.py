@@ -75,3 +75,14 @@ def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
         else:
             lo = mid + 1
     return lo
+
+
+def upper_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
+    # The upper bound satisfying the condition "cond".
+    while lo < hi:
+        mid = (lo + hi + 1) >> 1  # lo + (hi-lo+1)>>1
+        if cond(mid):
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo

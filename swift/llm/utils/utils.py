@@ -22,7 +22,6 @@ from datasets import Dataset as HfDataset
 from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
-from torch import Tensor
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -33,7 +32,8 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, lower_bound, parse_args)
+                         is_local_master, is_master, lower_bound, parse_args,
+                         upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -384,6 +384,22 @@ def inference(model: PreTrainedModel,
         print(response)
     history.append((query, response))
     return response, history
+
+
+def limit_history_length(template: Template, query: str,
+                         history: Optional[History], max_length: int) -> int:
+    """binary search"""
+    if history is None:
+        history = []
+
+    def compute_token_length(history_length: int) -> int:
+        assert history_length != 0
+        example = {'query': query, 'history': history[-history_length:]}
+        input_ids = template.encode(example)['input_ids']
+        return len(input_ids)
+
+    return upper_bound(0, len(history),
+                       lambda mid: compute_token_length(mid) <= max_length)
 
 
 # monkey patching

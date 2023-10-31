@@ -12,4 +12,4 @@ from .torch_utils import (broadcast_string, get_dist_setting, is_ddp_plus_mp,
                           is_on_same_device, print_model_info, seed_everything,
                           show_layers)
 from .utils import (add_version_to_work_dir, check_json_format, lower_bound,
-                    parse_args)
+                    parse_args, upper_bound)
