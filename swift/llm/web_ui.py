@@ -1,7 +1,5 @@
 from typing import Tuple
 
-import gradio as gr
-
 from .infer import prepare_model_template
 from .utils import History, InferArguments, inference_stream
 
@@ -11,6 +9,7 @@ def clear_session() -> History:
 
 
 def gradio_generation_demo(args: InferArguments) -> None:
+    import gradio as gr
     model, template = prepare_model_template(args)
 
     def model_generation(query: str) -> str:
@@ -34,6 +33,7 @@ def gradio_generation_demo(args: InferArguments) -> None:
 
 
 def gradio_chat_demo(args: InferArguments, history_length: int = 10) -> None:
+    import gradio as gr
     model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:
