@@ -102,9 +102,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 
 from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments, gradio_chat_demo
+    DatasetName, InferArguments, ModelType, SftArguments
 )
-from swift.llm.run import infer_main, sft_main
+from swift.llm.run import infer_main, sft_main, web_ui_main
 
 model_type = ModelType.qwen_7b_chat_int4
 sft_args = SftArguments(
@@ -124,7 +124,7 @@ infer_args = InferArguments(
     show_dataset_sample=5)
 infer_main(infer_args)
 torch.cuda.empty_cache()
-gradio_chat_demo(infer_args)
+web_ui_main(infer_args)
 ```
 
 

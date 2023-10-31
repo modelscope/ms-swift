@@ -1,8 +1,8 @@
 # import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import (InferArguments, ModelType, TemplateType,
-                       gradio_chat_demo, gradio_generation_demo)
+from swift.llm import InferArguments, ModelType
+from swift.llm.run import web_ui_main
 
 if __name__ == '__main__':
     # Please refer to the `infer.sh` for setting the parameters.
@@ -20,9 +20,5 @@ if __name__ == '__main__':
         template_type=None,
         ckpt_dir=None,
         quantization_bit=0)
-    # or load_from_ckpt_dir
     args = InferArguments(ckpt_dir='xxx', load_args_from_ckpt_dir=True)
-    if args.template_type.endswith('generation'):
-        gradio_generation_demo(args)
-    else:
-        gradio_chat_demo(args, history_length=10)
+    web_ui_main(args)

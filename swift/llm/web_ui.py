@@ -1,7 +1,8 @@
 from typing import Tuple
 
 from .infer import prepare_model_template
-from .utils import History, InferArguments, inference_stream
+from .utils import (History, InferArguments, inference_stream,
+                    limit_history_length)
 
 
 def clear_session() -> History:
@@ -32,13 +33,16 @@ def gradio_generation_demo(args: InferArguments) -> None:
     demo.queue().launch(height=1000)
 
 
-def gradio_chat_demo(args: InferArguments, history_length: int = 10) -> None:
+def gradio_chat_demo(args: InferArguments) -> None:
     import gradio as gr
     model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:
-        old_history = history[:-history_length]
-        history = history[-history_length:]
+        history_length = limit_history_length(template, query, history,
+                                              args.max_length)
+        # avoid history_length == 0
+        old_history = history[:len(history) - history_length]
+        history = history[len(history) - history_length:]
         gen = inference_stream(
             model, template, query, history, skip_special_tokens=True)
         for _, history in gen:
@@ -65,4 +69,4 @@ def llm_web_ui(args: InferArguments) -> None:
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:
-        gradio_chat_demo(args, history_length=10)
+        gradio_chat_demo(args)
