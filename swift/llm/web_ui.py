@@ -59,3 +59,10 @@ def gradio_chat_demo(args: InferArguments, history_length: int = 10) -> None:
         clear_history.click(
             fn=clear_session, inputs=[], outputs=[chatbot], queue=False)
     demo.queue().launch(height=1000)
+
+
+def llm_web_ui(args: InferArguments) -> None:
+    if args.template_type.endswith('generation'):
+        gradio_generation_demo(args)
+    else:
+        gradio_chat_demo(args, history_length=10)

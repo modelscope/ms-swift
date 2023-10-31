@@ -132,7 +132,7 @@ class SftArguments:
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
-    report_to: List[str] = None
+    report_to: Optional[List[str]] = None
 
     # generation config
     max_new_tokens: int = 2048

@@ -13,14 +13,15 @@ if __name__ == '__main__':
         template_type=None,
         ckpt_dir=None,
         quantization_bit=4)
-    # or
-    # chat
+    # or chat
     args = InferArguments(
         model_type=ModelType.qwen_7b_chat_int4,
         sft_type='lora',
         template_type=None,
         ckpt_dir=None,
         quantization_bit=0)
+    # or load_from_ckpt_dir
+    args = InferArguments(ckpt_dir='xxx', load_args_from_ckpt_dir=True)
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:
