@@ -63,7 +63,7 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
                 res = json.load(f)
             res.pop('adapter_cfg', None)
             with open(new_configuration_path, 'w') as f:
-                json.dump(res, f)
+                json.dump(res, f, ensure_ascii=False, indent=4)
         logger.info('Successfully merged LoRA.')
     else:
         logger.info('The weight directory for the merged LoRA already exists, '

@@ -97,7 +97,7 @@ pip install bitsandbytes -U
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import torch
 
