@@ -10,7 +10,7 @@ def clear_session() -> History:
     return []
 
 
-def gradio_demo(args: InferArguments, history_length: int = 20) -> None:
+def gradio_demo(args: InferArguments, history_length: int = 10) -> None:
     model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:

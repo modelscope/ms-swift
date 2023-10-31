@@ -12,4 +12,4 @@ if __name__ == '__main__':
         ckpt_dir=None,
         eval_human=True,
         quantization_bit=0)
-    gradio_demo(args, history_length=20)
+    gradio_demo(args, history_length=10)
