@@ -83,9 +83,8 @@ best_ckpt_dir = sft_main(sft_args)
 print(f'best_ckpt_dir: {best_ckpt_dir}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(
-    model_type=sft_args.model_type,
     ckpt_dir=best_ckpt_dir,
-    dataset=sft_args.dataset,
+    load_args_from_ckpt_dir=True,
     stream=True,
     show_dataset_sample=5)
 infer_main(infer_args)
