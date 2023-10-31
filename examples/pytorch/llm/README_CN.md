@@ -102,7 +102,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 
 from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments, gradio_demo
+    DatasetName, InferArguments, ModelType, SftArguments, gradio_chat_demo
 )
 from swift.llm.run import infer_main, sft_main
 
@@ -125,7 +125,7 @@ infer_args = InferArguments(
     show_dataset_sample=5)
 infer_main(infer_args)
 torch.cuda.empty_cache()
-gradio_demo(infer_args)
+gradio_chat_demo(infer_args)
 ```
 
 
