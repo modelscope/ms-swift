@@ -36,7 +36,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
 
 GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
                                                          Optional[HfDataset]]]]
-
+SubsetSplit = Union[str, Tuple[str, str], List[str]]
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 logger = get_logger()
@@ -94,10 +94,8 @@ class DatasetName:
 def register_dataset(
         dataset_name: str,
         dataset_id_or_path: str,
-        train_subset_split_list: Optional[List[Union[str, Tuple[str,
-                                                                str]]]] = None,
-        val_subset_split_list: Optional[List[Union[str, Tuple[str,
-                                                              str]]]] = None,
+        train_subset_split_list: Optional[List[SubsetSplit]] = None,
+        val_subset_split_list: Optional[List[SubsetSplit]] = None,
         preprocess_func: PreprocessFunc = SmartPreprocessor(),
         get_function: Optional[GetDatasetFunction] = None,
         *,
@@ -140,8 +138,7 @@ def register_dataset(
 
 def load_ms_dataset(
         dataset_id: str,
-        subset_split_list: Optional[List[Tuple[str,
-                                               str]]]) -> Optional[HfDataset]:
+        subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
     dataset_list = []
@@ -187,13 +184,14 @@ def load_ms_dataset(
     task='chat')
 def get_dataset_from_repo(
     dataset_id: str,
-    train_subset_split_list: List[Tuple[str, str]],
-    val_subset_split_list: List[Tuple[str, str]],
+    train_subset_split_list: List[SubsetSplit],
+    val_subset_split_list: Optional[List[SubsetSplit]],
     preprocess_func: PreprocessFunc,
     remove_useless_columns: bool = True,
     dataset_sample: int = -1,
-) -> Union[HfDataset, Tuple[HfDataset, HfDataset]]:
+) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
+    assert train_subset_split_list is not None
     for subset_split_list in [train_subset_split_list, val_subset_split_list]:
         dataset = load_ms_dataset(dataset_id, subset_split_list)
         if dataset is not None:
@@ -473,7 +471,7 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
         response.append(conversation[-1]['assistant'])
         h = []
         for c in conversation[:-1]:
-            h.append((c['human'], c['assistant']))
+            h.append([c['human'], c['assistant']])
         history.append(h)
     return HfDataset.from_dict({
         'query': query,
@@ -767,10 +765,11 @@ def load_dataset_from_local(
     return concatenate_datasets(dataset_list)
 
 
-def get_custom_dataset(_: str, train_subset_split_list: List[str],
-                       val_subset_split_list: List[str],
+def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
+                       val_subset_split_list: Optional[Union[str, List[str]]],
                        preprocess_func: PreprocessFunc,
                        **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    assert train_subset_split_list is not None
     train_dataset = load_dataset_from_local(train_subset_split_list,
                                             preprocess_func)
     val_dataset = load_dataset_from_local(val_subset_split_list,

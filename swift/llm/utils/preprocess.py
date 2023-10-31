@@ -14,7 +14,8 @@ class SwiftPreprocessor:
     def __call__(self, dataset: HfDataset) -> HfDataset:
         if 'history' in dataset.features:
             old_history = dataset['history']
-            history = []
+
+            history: List[History] = []
             for old_h in tqdm(old_history):
                 if isinstance(old_h, list):
                     break
@@ -106,7 +107,7 @@ class ConversationsPreprocessor:
                             conversations[lo + 1:-2:2]):
                 assert q[self.from_key] == self.user_role
                 assert r[self.from_key] == self.assistant_role
-                h.append((q[self.value_key], r[self.value_key]))
+                h.append([q[self.value_key], r[self.value_key]])
             history.append(h)
         kwargs = {}
         if has_system:

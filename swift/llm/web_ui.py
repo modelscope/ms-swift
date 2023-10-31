@@ -10,14 +10,17 @@ def clear_session() -> History:
     return []
 
 
-def gradio_demo(args: InferArguments) -> None:
+def gradio_demo(args: InferArguments, history_length: int = 20) -> None:
     model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:
+        old_history = history[:-history_length]
+        history = history[-history_length:]
         gen = inference_stream(
             model, template, query, history, skip_special_tokens=True)
         for _, history in gen:
-            yield '', history
+            total_history = old_history + history
+            yield '', total_history
 
     model_name = args.model_type.title()
     with gr.Blocks() as demo:
