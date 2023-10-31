@@ -80,7 +80,7 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
 
-    gradient_checkpointing: bool = False
+    gradient_checkpointing: bool = True
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -193,9 +193,10 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.lora_target_modules is None or 'AUTO' in self.lora_target_modules:
-            if self.lora_target_modules is not None:
-                assert len(self.lora_target_modules) == 1
+        if self.lora_target_modules is None:
+            self.lora_target_modules = ['AUTO']
+        if 'AUTO' in self.lora_target_modules:
+            assert len(self.lora_target_modules) == 1
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_target_modules']
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
@@ -243,6 +244,7 @@ class InferArguments:
         })
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
+    load_args_from_ckpt_dir: bool = True
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
@@ -289,6 +291,13 @@ class InferArguments:
         if self.ckpt_dir is not None and not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
+        if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
+            self.load_args_from_ckpt_dir = False
+            logger.info(
+                'Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.'
+            )
+        if self.load_args_from_ckpt_dir:
+            load_from_ckpt_dir(self)
         set_model_type(self)
         register_custom_dataset(self)
         handle_path(self)
@@ -306,7 +315,7 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
-        if self.ckpt_dir is None and self.overwrite_generation_config is True:
+        if self.ckpt_dir is None and self.overwrite_generation_config:
             self.overwrite_generation_config = False
             logger.warning('Setting overwrite_generation_config: False')
 
@@ -467,3 +476,25 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
         args.dataset = ['_custom_dataset']
     else:
         args.dataset.append('_custom_dataset')
+
+
+def load_from_ckpt_dir(args: InferArguments) -> None:
+    sft_args_path = os.path.join(args.ckpt_dir, 'sft_args.json')
+    if not os.path.exists(sft_args_path):
+        logger.info(f'{sft_args_path} not found')
+        return
+    with open(sft_args_path, 'r') as f:
+        sft_args = json.load(f)
+    imported_keys = [
+        'model_id_or_path', 'model_revision', 'sft_type', 'template_type',
+        'dtype', 'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
+        'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+    ]
+    if not args.eval_human:
+        imported_keys += [
+            'dataset', 'dataset_seed', 'dataset_test_ratio',
+            'check_dataset_strategy', 'custom_train_dataset_path',
+            'custom_val_dataset_path'
+        ]
+    for key in keys:
+        setattr(args, key, sft_args.get(key))

@@ -490,6 +490,7 @@ The template initialization function retrieves the complete chat template based 
 - `--sft_type`: Default value is `'lora'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--template_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--ckpt_dir`: Required field, value is the checkpoint path saved during the SFT phase, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx'`.
+- `--load_args_from_ckpt_dir`: Whether to load configuration information from the `sft_args.json` file in `ckpt_dir`. The default value is `True`. The imported keys include: `model_id_or_path`, `model_revision`, `sft_type`, `template_type`, `dtype`, `system`, `quantization_bit`, `bnb_4bit_comp_dtype`, `bnb_4bit_quant_type`, `bnb_4bit_use_double_quant`. If `eval_human` is set to False, the following keys will also be imported: `dataset`, `dataset_seed`, `dataset_test_ratio`, `check_dataset_strategy`, `custom_train_dataset_path`, `custom_val_dataset_path`.
 - `--eval_human`: Whether to evaluate using the validation set from the dataset or manually evaluate the model. Default value is `False`. This allows us to get an intuitive understanding of the model's performance after fine-tuning.
 - `--seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.

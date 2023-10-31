@@ -46,12 +46,7 @@ class TestRun(unittest.TestCase):
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
         infer_args = InferArguments(
-            model_type=model_type,
-            template_type=TemplateType.chatglm_generation,
-            quantization_bit=4,
             ckpt_dir=best_ckpt_dir,
-            check_dataset_strategy='warning',
-            dataset=[DatasetName.jd_sentiment_zh],
             stream=False,
             show_dataset_sample=5,
             merge_lora_and_save=True)
@@ -90,12 +85,8 @@ class TestRun(unittest.TestCase):
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
         infer_main([
-            '--model_type',
-            ModelType.qwen_7b_chat_int4,
             '--ckpt_dir',
             best_ckpt_dir,
-            '--dataset',
-            DatasetName.leetcode_python_en,
             '--show_dataset_sample',
             '5',
             '--max_new_tokens',

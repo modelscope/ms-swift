@@ -488,6 +488,7 @@ if __name__ == '__main__':
 - `--sft_type`: 默认值为`'lora'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--template_type`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--ckpt_dir`: 必填项, 值为SFT阶段保存的checkpoint路径, e.g. `'/path/to/your/vx_xxx/checkpoint-xxx'`.
+- `--load_args_from_ckpt_dir`: 是否从`ckpt_dir`的`sft_args.json`文件中读取配置信息. 默认是`True`. 导入的keys包括: `model_id_or_path`, `model_revision`, `sft_type`, `template_type`, `dtype`, `system`, `quantization_bit`, `bnb_4bit_comp_dtype`, `bnb_4bit_quant_type`, `bnb_4bit_use_double_quant`. 如果`eval_human`设置为False, 则还会导入`dataset`, `dataset_seed`, `dataset_test_ratio`, `check_dataset_strategy`, `custom_train_dataset_path`, `custom_val_dataset_path`.
 - `--eval_human`: 使用数据集中的验证集部分进行评估还是使用人工的方式评估, 默认值为`False`. 我们可以直观感受到微调后模型的效果.
 - `--seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--dtype`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
