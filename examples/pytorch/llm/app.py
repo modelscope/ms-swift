@@ -20,5 +20,6 @@ if __name__ == '__main__':
         template_type=None,
         ckpt_dir=None,
         quantization_bit=0)
-    args = InferArguments(ckpt_dir='xxx', load_args_from_ckpt_dir=True)
+    # or load from ckpt dir
+    # args = InferArguments(ckpt_dir='xxx/vx_xxx/checkpoint-xxx', load_args_from_ckpt_dir=True)
     web_ui_main(args)
