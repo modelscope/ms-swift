@@ -51,7 +51,6 @@ def add_version_to_work_dir(work_dir: str) -> str:
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
 
     work_dir = os.path.join(work_dir, f'v{version}-{time}')
-    logger.info(f'work_dir: {work_dir}')
     return work_dir
 
 

@@ -50,6 +50,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 可以[在这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) 查看LLM微调的使用文档。
 
 ### 简单使用
+快速对LLM进行微调, 推理并搭建Web-UI.
+#### 使用python运行
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
@@ -88,6 +90,36 @@ infer_args = InferArguments(
 infer_main(infer_args)
 torch.cuda.empty_cache()
 web_ui_main(infer_args)
+```
+
+#### 使用Swift CLI运行
+**微调**:
+```bash
+# Experimental environment: A10, 3090, A100, ...
+# 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dataset blossom-math-zh
+
+# 使用DDP
+# Experimental environment: 2 * 3090
+# 2 * 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=2 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --dataset blossom-math-zh \
+
+# 使用自己的数据集
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --custom_train_dataset_path chatml.jsonl
+```
+
+**推理**:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+```
+
+**Web-UI**
+```bash
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 

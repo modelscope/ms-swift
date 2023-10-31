@@ -92,7 +92,9 @@ pip install bitsandbytes -U
 
 
 ## 🚀 简单使用
-以下案例可以用于**测试环境**. 请确保您已经阅读了`准备实验环境`部分.
+快速对LLM进行微调, 推理并搭建Web-UI. 请确保您已经阅读了`准备实验环境`部分.
+
+### 使用python运行
 ```python
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory
@@ -125,6 +127,36 @@ infer_args = InferArguments(
 infer_main(infer_args)
 torch.cuda.empty_cache()
 web_ui_main(infer_args)
+```
+
+### 使用Swift CLI运行
+**微调**:
+```bash
+# Experimental environment: A10, 3090, A100, ...
+# 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dataset blossom-math-zh
+
+# 使用DDP
+# Experimental environment: 2 * 3090
+# 2 * 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=2 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --dataset blossom-math-zh \
+
+# 使用自己的数据集
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --custom_train_dataset_path chatml.jsonl
+```
+
+**推理**:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+```
+
+**Web-UI**
+```bash
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 

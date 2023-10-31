@@ -4,9 +4,8 @@ import sys
 from typing import Dict, List, Optional
 
 from swift.cli import infer, sft, web_ui
-from swift.llm.run import infer_main, sft_main, web_ui_main
 
-ROUTE_MAPPING = {
+ROUTE_MAPPING: Dict[str, str] = {
     'sft': sft.__file__,
     'infer': infer.__file__,
     'web-ui': web_ui.__file__
@@ -45,7 +44,7 @@ def cli_main() -> None:
     argv = argv[1:]
     file_path = ROUTE_MAPPING[method_name]
     torchrun_args = get_torchrun_args()
-    if torchrun_args is None and method_name == 'sft':
+    if torchrun_args is None or method_name != 'sft':
         args = ['python', file_path, *argv]
     else:
         args = ['torchrun', *torchrun_args, file_path, *argv]
