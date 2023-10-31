@@ -10,7 +10,7 @@ import unittest
 import torch
 
 from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
-                       TemplateType, gradio_demo)
+                       TemplateType, gradio_chat_demo, gradio_generation_demo)
 from swift.llm.run import infer_main, sft_main
 
 
@@ -57,7 +57,7 @@ class TestRun(unittest.TestCase):
             merge_lora_and_save=True)
         infer_main(infer_args)
         torch.cuda.empty_cache()
-        gradio_demo(infer_args)
+        gradio_generation_demo(infer_args)
 
     def test_run_2(self):
         output_dir = 'output'
