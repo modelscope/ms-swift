@@ -340,7 +340,6 @@ class RomeArguments(InferArguments):
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
 
-        assert isinstance(self.dataset, (list, tuple))
         if self.max_length == -1:
             self.max_length = None
 
