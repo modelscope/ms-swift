@@ -12,7 +12,7 @@
         中文&nbsp ｜ &nbsp<a href="README.md">English</a>
 </p>
 
-# 简介
+# 📖 简介
 SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的轻量级一站式训练、推理深度学习框架。它集成了各种高效的微调方法，如LoRA、QLoRA、阿里云自研的ResTuning-Bypass等，以及开箱即用的训练推理脚本，使开发者可以在单张商业级显卡上微调推理LLM&AIGC模型。此外，SWIFT与[PEFT](https://github.com/huggingface/peft)完全兼容，使开发者可以在ModelScope模型体系中使用PEFT的能力。
 
 目前支持的方法：
@@ -34,7 +34,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 用户可以查看 [Swift官方文档](docs/source/GetStarted/Introduction.md) 来了解详细信息。
 
-## 新闻
+## 🎉 新闻
 
 - 🔥 2023.10.30: 支持 QA-LoRA 和 LongLoRA两种新的tuners
 - 🔥 2023.10.30: 支持使用ROME(Rank One Model Editing)来编辑模型，在无需训练的情况下即可给模型灌注新知识！
@@ -46,7 +46,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat. 对应的sh脚本可以查看`scripts/qwen_14b`, `scripts/qwen_14b_chat`.
 - 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 
-## 大模型微调的例子
+## ✨ 大模型微调的例子
 可以[在这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) 查看LLM微调的使用文档。
 
 ### 简单使用
@@ -64,7 +64,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments, gradio_chat_demo
+)
 from swift.llm.run import infer_main, sft_main
 
 model_type = ModelType.qwen_7b_chat_int4
@@ -85,6 +87,8 @@ infer_args = InferArguments(
     stream=True,
     show_dataset_sample=5)
 infer_main(infer_args)
+torch.cuda.empty_cache()
+gradio_chat_demo(infer_args)
 ```
 
 
@@ -123,7 +127,7 @@ infer_main(infer_args)
   - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
-# 安装
+# 🛠️ 安装
 
 SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 
@@ -149,7 +153,7 @@ SWIFT依赖torch>=1.13。
 docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
 ```
 
-# 快速开始
+# 🚀 快速开始
 SWIFT支持多个tuners，包括由[PEFT](https://github.com/huggingface/peft)提供的tuners。要使用这些tuners，只需调用:
 ```python
 from swift import Swift, LoRAConfig
@@ -281,7 +285,7 @@ output
 存储在output目录中的config/weights是extra_state_keys的配置和权重。这与Peft不同，Peft存储了`default` tuner的config/weights。
 
 
-# Learn More
+# 🔍 Learn More
 
 - [ModelScope库](https://github.com/modelscope/modelscope/)
 

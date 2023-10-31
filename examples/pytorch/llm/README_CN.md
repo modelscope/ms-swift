@@ -15,7 +15,7 @@
 </p>
 
 
-## 新闻
+## 🎉 新闻
 - 2023.10.31: 支持Web UI. 运行命令: `python app.py`.
 - 2023.10.30: 支持**skywork-13b**系列模型: skywork-13b, skywork-13b-chat. 对应的sh脚本可以查看`scripts/skywork_13b`.
 - 🔥 2023.10.27: 支持**chatglm3**系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b_32k`.
@@ -33,7 +33,7 @@
 - 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
 
 
-## 特性
+## ✨ 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 - 支持的模型
@@ -68,7 +68,7 @@
   - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
-## 准备实验环境
+## 🛠️ 准备实验环境
 实验环境: A10, 3090, V100, A100均可.
 ```bash
 # 设置pip全局镜像和安装相关的python包
@@ -91,7 +91,7 @@ pip install bitsandbytes -U
 ```
 
 
-## 简单使用
+## 🚀 简单使用
 以下案例可以用于**测试环境**. 请确保您已经阅读了`准备实验环境`部分.
 ```python
 # Experimental environment: A10, 3090, A100, ...
@@ -129,7 +129,7 @@ gradio_chat_demo(infer_args)
 ```
 
 
-## 微调和推理
+## 🌟 微调和推理
 性能: full(优) > lora > qlora(auto_gptq) > qlora(bnb)
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
@@ -216,7 +216,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 
-## 使用文档
+## 📝 使用文档
 ### 自定义模型
 以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 

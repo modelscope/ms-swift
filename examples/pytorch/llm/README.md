@@ -15,7 +15,7 @@
 </p>
 
 
-## News
+## 🎉 News
 - 2023.10.31: Support Web UI. Run command: python app.py.
 - 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
 - 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
@@ -33,7 +33,7 @@
 - 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
 
 
-## Features
+## ✨ Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 - Supported Models:
@@ -68,7 +68,7 @@
   - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
-## Preparing the Environment
+## 🛠️ Preparing the Environment
 Experimental environment: A10, 3090, V100, A100, ...
 ```bash
 # Setting up a global mirror for pip and installing related Python packages
@@ -91,7 +91,7 @@ pip install bitsandbytes -U
 ```
 
 
-## Basic Usage
+## 🚀 Basic Usage
 The following examples can be used to **test the environment**. Please make sure you have read the "Preparing the Environment" section.
 ```python
 # Experimental environment: A10, 3090, A100, ...
@@ -129,7 +129,7 @@ gradio_chat_demo(infer_args)
 ```
 
 
-## Run SFT and Inference
+## 🌟 Run SFT and Inference
 Performace: full(nice) > lora > qlora(auto_gptq) > qlora(bnb)
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
@@ -216,7 +216,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 
-## User Guide
+## 📝 User Guide
 ### Custom Model
 Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
 

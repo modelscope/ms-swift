@@ -12,7 +12,7 @@
         <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
 </p>
 
-# Introduction
+# 📖 Introduction
 
 SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
 
@@ -36,7 +36,7 @@ Key features:
 
 Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
 
-### 🎉News
+### 🎉 News
 
 - 🔥 2023.10.30: Support QA-LoRA and LongLoRA to decrease memory usage in training.
 - 🔥 2023.10.30: Support ROME(Rank One Model Editing) to add/modify knowledges, training is not needed!
@@ -48,7 +48,7 @@ Users can check the [documentation of Swift](docs/source/GetStarted/Introduction
 - 🔥 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
 - 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 
-## LLM SFT Example
+## ✨ LLM SFT Example
 Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) to view the detail documentation of these examples.
 
 ### Basic Usage
@@ -66,7 +66,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments, gradio_chat_demo
+)
 from swift.llm.run import infer_main, sft_main
 
 model_type = ModelType.qwen_7b_chat_int4
@@ -87,6 +89,8 @@ infer_args = InferArguments(
     stream=True,
     show_dataset_sample=5)
 infer_main(infer_args)
+torch.cuda.empty_cache()
+gradio_chat_demo(infer_args)
 ```
 
 
@@ -125,7 +129,7 @@ infer_main(infer_args)
   - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
-# Installation
+# 🛠️ Installation
 
 SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
 
@@ -151,7 +155,7 @@ SWIFT requires torch>=1.13.
 docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
 ```
 
-# Getting Started
+# 🚀 Getting Started
 
 SWIFT supports multiple tuners, as well as tuners provided by [PEFT](https://github.com/huggingface/peft). To use these tuners, simply call:
 
@@ -289,7 +293,7 @@ output
 The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from PEFT, which stores the weights and config of the `default` tuner.
 
 
-# Learn More
+# 🔍 Learn More
 
 - [ModelScope library](https://github.com/modelscope/modelscope/)
 
