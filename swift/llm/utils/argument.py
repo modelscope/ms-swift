@@ -496,5 +496,5 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
             'check_dataset_strategy', 'custom_train_dataset_path',
             'custom_val_dataset_path'
         ]
-    for key in keys:
+    for key in imported_keys:
         setattr(args, key, sft_args.get(key))
