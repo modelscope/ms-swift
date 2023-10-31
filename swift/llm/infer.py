@@ -14,7 +14,7 @@ from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
 logger = get_logger()
 
 
-def merge_lora(args: InferArguments) -> None:
+def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
     assert args.sft_type == 'lora'
     assert not args.model_type.endswith('int4'), 'int4 model is not supported'
     assert not args.model_type.endswith('int8'), 'int8 model is not supported'
@@ -39,7 +39,7 @@ def merge_lora(args: InferArguments) -> None:
     args.sft_type = 'full'
     args.ckpt_dir = merged_lora_path
 
-    if not os.path.exists(args.ckpt_dir):
+    if not os.path.exists(args.ckpt_dir) or replace_if_exists:
         logger.info('Saving merged weights...')
         model.save_pretrained(args.ckpt_dir)
         tokenizer.save_pretrained(args.ckpt_dir)
@@ -107,20 +107,21 @@ def llm_infer(args: InferArguments) -> None:
     if args.eval_human:
         while True:
             query = input('<<< ')
-            data = {'query': query}
-            input_ids = template.encode(data)['input_ids']
-            inference(input_ids, model, tokenizer, args.stream)
+            inference(model, template, query, stream=args.stream)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
         mini_val_dataset = val_dataset.select(
             range(min(args.show_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
-            response = data['response']
-            data['response'] = None
-            input_ids = template.encode(data)['input_ids']
-            inference(input_ids, model, tokenizer, args.stream)
+            inference(
+                model,
+                template,
+                data.get('query'),
+                data.get('history'),
+                data.get('system'),
+                stream=args.stream)
             print()
-            print(f'[LABELS]{response}')
+            print(f"[LABELS]{data.get('response')}")
             print('-' * 80)
             # input('next[ENTER]')

@@ -3,7 +3,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.2-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.3-5D91D4.svg"></a>
 <a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-Build from source-6FEBB9.svg"></a>
 </p>
 
@@ -17,7 +17,7 @@
 
 ## Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
-- Supported Features: quantization, DDP, model parallelism, gradient checkpointing, gradient accumulation, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
+- Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 - Supported Models:
   - 🔥 qwen series: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary), [qwen-7b-chat-int4](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int4/summary), [qwen-14b-chat-int4](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int4/summary), [qwen-7b-chat-int8](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int8/summary), [qwen-14b-chat-int8](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int8/summary)
   - 🔥 qwen-vl series: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary), [qwen-vl-chat-int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)
@@ -29,6 +29,7 @@
   - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
   - mistral series: [mistral-7b](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary), [mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)
   - ziya series: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
+  - skywork series: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
 - Supported Datasets:
   - NLP:
@@ -45,27 +46,28 @@
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
-  - Text Generation: default-generation, chatglm2-generation
-  - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse
+  - Text Generation: default-generation, chatglm-generation
+  - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
 ## News
-- 🔥 2023.10.27: Support for chatglm3 series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
-- 🔥 2023.10.24: Use the registration mechanism to add models, datasets, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
-- 🔥 2023.10.17: Supported int4, int8 models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
-- 2023.10.15: Supported ziya2-13b model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
-- 2023.10.12: Supported mistral-7b model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
-- 🔥 2023.10.7: Supported DeepSpeed ZeRO-2, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
+- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
+- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
+- 🔥 2023.10.24: Use the **registration mechanism** to add models, **datasets**, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
+- 🔥 2023.10.17: Supported **int4, int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
+- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
+- 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
 - 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.18: Supported internlm-20b model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
-- 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
+- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
+- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
+- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
 - 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
-- 2023.9.5: Supported openbuddy-llama2-70b-chat model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
-- 2023.9.3: Supported baichuan2 model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
+- 2023.9.5: Supported **openbuddy-llama2-70b-chat** model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
+- 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
 
 
-## Prepare the Environment
+## Preparing the Environment
 Experimental environment: A10, 3090, V100, A100, ...
 ```bash
 # Setting up a global mirror for pip and installing related Python packages
@@ -89,7 +91,7 @@ pip install bitsandbytes -U
 
 
 ## Basic Usage
-The following examples can be used to test the environment. Please make sure you have read the "Preparing the Experimental Environment" section.
+The following examples can be used to **test the environment**. Please make sure you have read the "Preparing the Environment" section.
 ```python
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory
@@ -122,23 +124,23 @@ infer_main(infer_args)
 ```
 
 ## Run SFT and Inference
-Performace: full(nice) > lora > qlora
+Performace: full(nice) > lora > qlora(auto_gptq) > qlora(bnb)
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
 
 **Tips**:
-- You can set `--gradient_checkpointing true` during training to save GPU memory, but this will slightly decrease the training speed. This is useful if you need to train LLM on consumer-grade GPU, e.g. 3090.
-- If you want to use quantization based on auto_gptq, you need to install auto_gptq first: `pip install auto_gptq -U`.
+- You can set `--gradient_checkpointing true` during training to **save GPU memory**, but this will slightly decrease the training speed. This is useful if you need to train LLM on **consumer-grade GPU**, e.g. 3090.
+- If you want to use quantization based on **auto_gptq**, you need to install auto_gptq first: `pip install auto_gptq -U`.
   The models available with auto_gptq are: `qwen-7b-chat-int4`, `qwen-14b-chat-int4`, `qwen-7b-chat-int8`, `qwen-14b-chat-int8`.
-  If the script provides multiple versions of qlora SFT, including both non-quantized models and int4/int8 models, it is recommended to use the script for the int4/int8 model versions.
+  If the script provides multiple versions of qlora SFT, including both non-quantized models and int4/int8 models, it is **recommended to use the script for the int4/int8 model versions**.
 - If you want to use the quantization parameter `quantization_bit`, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
-- If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can save GPU memory, but this may slightly decrease the training speed.
-- If you are using older GPUs like V100, you need to set `--dtype fp16`, because they do not support bf16.
-- qwen recommends installing [flash-attn](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
-- If you want to perform second pre-training instead of SFT, you can refer to the `DatasetName.tigerbot_law_zh` dataset and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
+- If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can **save GPU memory**, but this may slightly decrease the training speed.
+- If you are using older GPUs like **V100**, you need to set `--dtype fp16`, because they do not support bf16.
+- qwen recommends installing [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
+- If you want to perform **second pre-training** instead of SFT, you can refer to the `DatasetName.tigerbot_law_zh` dataset and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
-- If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is not recommended to merge quantized models, as this can result in performance degradation, specifically in the case of qlora.
-- Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to customize a shell script, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
+- If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is **not recommended to merge quantized models**, as this can result in performance degradation, specifically in the case of qlora.
+- Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to **customize a shell script**, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
 ```bash
 # sft(qlora) and infer qwen-7b-chat-int8, Requires 16GB GPU memory.
 # Recommended experimental environment: V100, A10, 3090
@@ -190,6 +192,7 @@ bash scripts/qwen_7b_chat/full_mp/infer.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 
+# The qlora script based on bnb below is no longer recommended for use. Please prioritize using the qlora script based on auto_gptq.
 # sft(qlora) and infer qwen-7b-chat, Requires 13GB GPU memory.
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
@@ -209,7 +212,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 ## User Guide
 ### Custom Model
-Here is an example of a custom model. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
+Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
 
 ```python
 from swift.llm import (
@@ -268,7 +271,54 @@ The `register_model` function registers the model in `MODEL_MAPPING`, and its pa
 
 
 ### Custom Dataset
-Here is an example of a custom dataset. Running the shell script for this custom dataset can be found in `scripts/custom/tigerbot_13b_chat`.
+We support two methods for **customizing datasets**.
+1. **Command line arguments**: It is **more convenient for supporting local custom datasets**.
+2. **Registering datasets**: It is more flexible and allows for **further extension and development of swift**, but it requires some programming skills. Method 1 relies on Method 2 for implementation.
+
+#### Command Line Arguments
+Explanation of command line arguments:
+1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them. You can also combine public datasets with custom datasets for training: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+2. `--custom_val_dataset_path`: The default value is `None`, which means no custom validation dataset is used. If you specify `custom_train_dataset_path`, the custom dataset's validation set will be split according to the command line argument `dataset_test_ratio`. The format of the command line input can be referred to the `--custom_train_dataset_path` format.
+
+The script supports `csv` and `jsonl` file formats. The files you pass in need to conform to the following dataset formats. The csv format file only supports instruction fine-tuning, which means there is no history. The jsonl format file supports system and history.
+
+Format 1:
+```csv
+instruction,input,output
+11111,22222,33333
+aaaaa,bbbbb,ccccc
+AAAAA,BBBBB,CCCCC
+```
+
+```jsonl
+{"instruction": "11111", "input": "aaaaa", "output": "AAAAA"}
+{"instruction": "22222", "input": "bbbbb", "output": "BBBBB"}
+{"instruction": "33333", "input": "ccccc", "output": "CCCCC"}
+```
+
+Format 2:
+```jsonl
+{"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
+{"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+Format 3:
+```jsonl
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
+{"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
+{"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+```
+
+```Format 4
+{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
+{"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+```
+
+
+#### Registering Datasets
+Here is an example of a **registering a dataset**. Running the shell script for this custom dataset can be found in `scripts/custom/tigerbot_13b_chat`.
 
 ```python
 import ast
@@ -302,7 +352,7 @@ register_dataset(
 
 if __name__ == '__main__':
     train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
-                                   0.)
+                                   0., check_dataset_strategy='warning')
     print(train_dataset)
     print(train_dataset[0].keys())
 ```
@@ -321,7 +371,7 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 
 
 ### Custom Chat Template
-Here is an example of a custom template. Running the shell script for this custom template can be found in `scripts/custom/tigerbot_13b_chat`.
+Here is an example of a **custom template**. Running the shell script for this custom template can be found in `scripts/custom/tigerbot_13b_chat`.
 
 ```python
 from swift.llm import (
@@ -378,6 +428,9 @@ The template initialization function retrieves the complete chat template based 
 - `--train_dataset_sample`: Samples from the complete training dataset, default is `20000`, to speed up training. This parameter is used to avoid the issue of training time being too long for a single epoch when the dataset is large. LoRA convergence is usually fast and does not require a large number of data samples for fine-tuning. If you specify `-1`, the full training dataset will be used for training, which is typically used in the setting of full-parameter fine-tuning.
 - `--system`: The system used in the dialogue template, default is `'you are a helpful assistant!'`.
 - `--max_length`: Maximum token length, default is `2048`. This helps to avoid out-of-memory (OOM) issues caused by individual samples that are too long. If a data sample exceeds the `max_length`, the frontmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, there is no restriction.
+- `--check_dataset_strategy`: The default value is `'none'`, which means no checking will be done. If you are training an LLM model, it is recommended to use `'warning'` as the data checking strategy. If your training objective is sentence classification or Masked LM tasks, it is suggested to set it as `'none'`.
+- `custom_train_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
+- `custom_val_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
 - `--quantization_bit`: Specifies whether to perform quantization and the number of quantization bits, default is `0`, which means no quantization. Quantization is only supported for the lora fine-tuning method and not for full-parameter fine-tuning.
 - `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `None`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_quant_type`: The quantization type for 4-bit quantization, default is `'nf4'`. The possible values are: 'nf4', 'fp4'. This parameter is ignored when `quantization_bit` is 0.
@@ -439,6 +492,9 @@ The template initialization function retrieves the complete chat template based 
 - `--show_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `10`. This parameter only takes effect when `eval_human` is set to False.
 - `--system`: Default value is `'you are a helpful assistant!'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--max_length`: Default value is `2048`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--check_dataset_strategy`: The default value is `'none'`, For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
+- `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: Default value is 0. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--bnb_4bit_comp_dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_quant_type`: Default value is `'nf4'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.

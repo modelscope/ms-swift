@@ -12,8 +12,9 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master)
-from .dataset import DATASET_MAPPING, DatasetName
+                         get_dist_setting, is_dist, is_master, read_from_jsonl)
+from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
+                      register_dataset)
 from .model import MODEL_MAPPING, ModelType, dtype_mapping
 from .template import TEMPLATE_MAPPING
 
@@ -58,6 +59,11 @@ class SftArguments:
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    check_dataset_strategy: str = field(
+        default='none',
+        metadata={'choices': ['none', 'discard', 'error', 'warning']})
+    custom_train_dataset_path: Optional[List[str]] = None
+    custom_val_dataset_path: Optional[List[str]] = None
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -126,6 +132,7 @@ class SftArguments:
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
+    report_to: List[str] = None
 
     # generation config
     max_new_tokens: int = 2048
@@ -135,11 +142,11 @@ class SftArguments:
     top_p: float = 0.9
     repetition_penalty: float = 1.05
 
-    def init_argument(self):
-        # Can be manually initialized, unlike __post_init__
+    def __post_init__(self):
         handle_compatibility(self)
         set_model_type(self)
-        handle_dir(self)
+        register_custom_dataset(self)
+        handle_path(self)
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             if is_master():
@@ -213,6 +220,8 @@ class SftArguments:
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
+        if self.report_to is None:
+            self.report_to == ['all']
 
 
 @dataclass
@@ -247,6 +256,11 @@ class InferArguments:
     show_dataset_sample: int = 10
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    check_dataset_strategy: str = field(
+        default='none',
+        metadata={'choices': ['none', 'discard', 'error', 'warning']})
+    custom_train_dataset_path: Optional[List[str]] = None
+    custom_val_dataset_path: Optional[List[str]] = None
 
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
@@ -269,14 +283,14 @@ class InferArguments:
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
 
-    def init_argument(self):
-        # Can be manually initialized, unlike __post_init__
+    def __post_init__(self):
         handle_compatibility(self)
         if not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         set_model_type(self)
-        handle_dir(self)
+        register_custom_dataset(self)
+        handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
@@ -304,11 +318,10 @@ class RomeArguments(InferArguments):
             'to get the format'
         })
 
-    def init_argument(self):
-        # Can be manually initialized, unlike __post_init__
+    def __post_init__(self):
         handle_compatibility(self)
         set_model_type(self)
-        handle_dir(self)
+        handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type is None:
@@ -376,6 +389,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
     if args.dataset is not None and len(
             args.dataset) == 1 and ',' in args.dataset[0]:
         args.dataset = args.dataset[0].split(',')
+    if args.template_type == 'chatglm2-generation':
+        args.template_type = 'chatglm-generation'
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
@@ -420,7 +435,7 @@ def prepare_push_ms_hub(args: SftArguments) -> None:
         logger.info('hub login successful!')
 
 
-def handle_dir(args: Union[SftArguments, InferArguments]) -> None:
+def handle_path(args: Union[SftArguments, InferArguments]) -> None:
     for k in [
             'model_cache_dir', 'output_dir', 'ckpt_dir',
             'resume_from_checkpoint', 'deepspeed_config_path', 'logging_dir'
@@ -430,3 +445,19 @@ def handle_dir(args: Union[SftArguments, InferArguments]) -> None:
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
             setattr(args, k, value)
+
+
+def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
+    if args.custom_train_dataset_path is None:
+        assert args.custom_val_dataset_path is None
+        return
+    register_dataset(
+        '_custom_dataset',
+        '_custom_dataset',
+        args.custom_train_dataset_path,
+        args.custom_val_dataset_path,
+        get_function=get_custom_dataset)
+    if args.dataset is None:
+        args.dataset = ['_custom_dataset']
+    else:
+        args.dataset.append('_custom_dataset')

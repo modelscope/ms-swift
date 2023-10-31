@@ -12,10 +12,12 @@ python llm_infer.py \
     --eval_human false \
     --dataset blossom-math-zh \
     --max_length 2048 \
+    --check_dataset_strategy warning \
     --use_flash_attn true \
     --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \
     --top_p 0.9 \
+    --repetition_penalty 1.05 \
     --do_sample true \
     --merge_lora_and_save false \

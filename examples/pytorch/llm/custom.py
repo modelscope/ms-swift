@@ -76,7 +76,8 @@ if __name__ == '__main__':
     # The Shell script can view `scripts/custom/tigerbot_13b_chat`.
     # test
     train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
-                                   0.)
+                                   0.,
+                                   check_dataset_strategy='warning')
     model, tokenizer = get_model_tokenizer(
         CustomModelType.tigerbot_13b_chat, use_flash_attn=True)
     template = get_template(CustomTemplateType.tigerbot, tokenizer)

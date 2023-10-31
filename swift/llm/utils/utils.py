@@ -6,7 +6,7 @@ import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import (Any, Callable, Dict, Iterator, List, Optional, Type,
+from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple, Type,
                     TypeVar, Union)
 
 import accelerate
@@ -34,6 +34,7 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, lower_bound, parse_args)
+from .template import History, Template
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -179,18 +180,18 @@ def get_main(
     args_class: Type[_TArgsClass], llm_x: Callable[[_TArgsClass], _T]
 ) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
 
-    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None) -> _T:
+    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
+               **kwargs) -> _T:
         if isinstance(argv, args_class):
             args, remaining_argv = argv, []
         else:
             args, remaining_argv = parse_args(args_class, argv)
-        args.init_argument()
         if len(remaining_argv) > 0:
             if args.ignore_args_error:
                 logger.warning(f'remaining_argv: {remaining_argv}')
             else:
                 raise ValueError(f'remaining_argv: {remaining_argv}')
-        return llm_x(args)
+        return llm_x(args, **kwargs)
 
     return x_main
 
@@ -308,10 +309,17 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
 
 
 def inference_stream(
-    input_ids: List[int],
     model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
-) -> Iterator[str]:
+    template: Template,
+    query: str,
+    history: Optional[History] = None,
+    system: Optional[str] = None,
+) -> Iterator[Tuple[str, History]]:
+    if history is None:
+        history = []
+    example = {'query': query, 'history': history, 'system': system}
+    input_ids = template.encode(example)['input_ids']
+    tokenizer = template.tokenizer
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()
@@ -328,35 +336,51 @@ def inference_stream(
         generation_config=stream_config,
         seed=-1)
     generate_ids = []
+    history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
-        yield tokenizer.decode(generate_ids)
+        response = tokenizer.decode(generate_ids)
+        history[-1] = (query, response)
+        yield response, history
 
 
-def inference(input_ids: List[int],
-              model: PreTrainedModel,
-              tokenizer: PreTrainedTokenizerBase,
+def inference(model: PreTrainedModel,
+              template: Template,
+              query: Optional[str] = None,
+              history: Optional[History] = None,
+              system: Optional[str] = None,
               stream: bool = True,
-              verbose: bool = True) -> str:
-    if verbose:
-        print(f'[PROMPT]{tokenizer.decode(input_ids)}[OUTPUT]', end='')
-    streamer = None
-    if stream:
-        assert verbose
-        streamer = TextStreamer(tokenizer, skip_prompt=True)
-    generation_config = getattr(model, 'generation_config', None)
+              verbose: bool = True,
+              prompt_prefix: str = '[PROMPT]',
+              output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+    if history is None:
+        history = []
+    example = {'query': query, 'history': history, 'system': system}
+    input_ids = template.encode(example)['input_ids']
+    tokenizer = template.tokenizer
     input_ids = torch.tensor(input_ids)[None].cuda()
     attention_mask = torch.ones_like(input_ids)
     model.eval()
+    generation_config = getattr(model, 'generation_config', None)
+    if verbose:
+        print(
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0])}{output_prefix}',
+            end='')
+    else:
+        stream = False
+    streamer = None
+    if stream:
+        streamer = TextStreamer(tokenizer, skip_prompt=True)
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config)
-    output_text = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
+    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
     if verbose and not streamer:
-        print(output_text)
-    return output_text
+        print(response)
+    history.append((query, response))
+    return response, history
 
 
 # monkey patching

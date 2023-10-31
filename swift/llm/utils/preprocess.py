@@ -120,12 +120,6 @@ class ConversationsPreprocessor:
         return dataset
 
 
-class ChatmlPreprocessor:
-
-    def __init__(self):
-        pass
-
-
 class ComposePreprocessor:
 
     def __init__(self, preprocessor_list: List[PreprocessFunc]) -> None:
@@ -163,6 +157,14 @@ class SmartPreprocessor:
             'conversations': {
                 'required': ['conversations'],
                 'preprocessor': ConversationsPreprocessor()
+            },
+            'chatml': {
+                'required': ['messages'],
+                'preprocessor':
+                ConversationsPreprocessor(
+                    conversations_key='messages',
+                    from_key='role',
+                    value_key='content')
             }
         }
 
