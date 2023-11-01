@@ -1,8 +1,7 @@
 # Experimental environment: A10
 # 14GB GPU memory
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path Shanghai_AI_Laboratory/internlm-20b \
     --model_revision master \
     --sft_type lora \

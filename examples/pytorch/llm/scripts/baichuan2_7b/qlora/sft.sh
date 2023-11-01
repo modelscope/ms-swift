@@ -1,8 +1,7 @@
 # Experimental environment: 3090
 # 10GB GPU memory
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path baichuan-inc/Baichuan2-7B-Base \
     --model_revision master \
     --sft_type lora \

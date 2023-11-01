@@ -1,5 +1,4 @@
 # Experimental environment: A10
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python rome_infer.py \
     --model_id_or_path modelscope/Llama-2-13b-chat-ms \

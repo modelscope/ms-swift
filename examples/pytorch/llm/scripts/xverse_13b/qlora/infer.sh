@@ -1,7 +1,6 @@
 # Experimental environment: 3090
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_infer.py \
+swift infer \
     --ckpt_dir "output/xverse-13b/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \

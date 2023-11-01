@@ -1,8 +1,7 @@
 # Experimental environment: A10
 # 12GB GPU memory
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path damo/nlp_seqgpt-560m \
     --model_revision master \
     --sft_type full \

@@ -2,12 +2,10 @@
 # 2 * 13GB GPU memory
 nproc_per_node=2
 
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-torchrun \
-    --nproc_per_node=$nproc_per_node \
-    --master_port 29500 \
-    llm_sft.py \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
+swift sft \
     --model_id_or_path Fengshenbang/Ziya2-13B-Chat \
     --model_revision master \
     --sft_type lora \

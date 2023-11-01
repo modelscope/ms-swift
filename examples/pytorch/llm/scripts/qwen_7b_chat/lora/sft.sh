@@ -2,9 +2,8 @@
 # 60GB GPU memory (use flash_attn)
 # You need to install flash_attn or set gradient_checkpointing to True,
 # otherwise it may result in an OOM (Out of Memory) error.
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --model_revision master \
     --sft_type lora \

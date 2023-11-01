@@ -1,8 +1,7 @@
 # Experimental environment: 2 * 3090
 # 2 * 23GB GPU memory
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path OpenBuddy/openbuddy-llama2-70b-v10.1-bf16 \
     --model_revision master \
     --sft_type lora \

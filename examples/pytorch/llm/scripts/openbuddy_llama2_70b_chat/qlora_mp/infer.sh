@@ -1,7 +1,6 @@
 # Experimental environment: 2 * 3090
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-python llm_infer.py \
+swift infer \
     --ckpt_dir "output/openbuddy-llama2-70b-chat/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \

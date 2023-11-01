@@ -1,8 +1,7 @@
 # Experimental environment: A10
 # 11GB GPU memory (not use flash_attn)
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path qwen/Qwen-VL-Chat-Int4 \
     --model_revision master \
     --sft_type lora \

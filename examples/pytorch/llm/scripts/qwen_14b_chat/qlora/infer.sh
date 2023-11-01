@@ -1,7 +1,6 @@
 # Experimental environment: A10, 3090
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_infer.py \
+swift infer \
     --ckpt_dir "output/qwen-14b-chat/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \

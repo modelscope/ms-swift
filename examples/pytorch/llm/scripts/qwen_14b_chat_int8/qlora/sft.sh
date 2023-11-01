@@ -1,8 +1,7 @@
 # Experimental environment: V100, A10, 3090
 # 19GB GPU memory
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path qwen/Qwen-14B-Chat-Int8 \
     --model_revision master \
     --sft_type lora \

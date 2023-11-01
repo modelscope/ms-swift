@@ -1,8 +1,7 @@
 # Experimental environment: 2 * 3090
 # If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-python llm_infer.py \
+swift infer \
     --ckpt_dir "output/baichuan2-13b-chat/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
