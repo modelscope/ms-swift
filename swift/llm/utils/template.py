@@ -4,13 +4,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from transformers import PreTrainedTokenizerBase
 
 DEFAULT_SYSTEM = 'you are a helpful assistant!'
-History = List[Tuple[str, str]]
+History = List[Union[Tuple[str, str], List[str]]]
 
 
 class TemplateType:
     default = 'default'
     default_generation = 'default-generation'
     chatml = 'chatml'
+    qwen = chatml
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm_generation = 'chatglm-generation'

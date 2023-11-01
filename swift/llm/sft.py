@@ -31,7 +31,7 @@ def llm_sft(args: SftArguments) -> str:
           f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
 
-    # ### Loading Model and Tokenizer
+    # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
     if is_dist() and not is_ddp_plus_mp():
         model_kwargs['device_map'] = {'': local_rank}
@@ -53,7 +53,7 @@ def llm_sft(args: SftArguments) -> str:
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
 
-    # ### Preparing LoRA
+    # Preparing LoRA
     if args.sft_type in ('lora', 'qalora', 'longlora'):
         if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
@@ -110,7 +110,7 @@ def llm_sft(args: SftArguments) -> str:
     print_model_info(model)
     logger.info(model)
 
-    # ### Loading Dataset
+    # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
     train_dataset, val_dataset = get_dataset(
         args.dataset,
@@ -145,7 +145,7 @@ def llm_sft(args: SftArguments) -> str:
     stat_dataset(train_dataset)
     stat_dataset(val_dataset)
 
-    # ### Setting training_args
+    # Setting training_args
     generation_config = GenerationConfig(
         max_length=None,
         max_new_tokens=args.max_new_tokens,
@@ -250,7 +250,7 @@ def llm_sft(args: SftArguments) -> str:
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
 
-    # ### Visualization
+    # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')

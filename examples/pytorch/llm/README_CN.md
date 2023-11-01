@@ -15,7 +15,25 @@
 </p>
 
 
-## 特性
+## 🎉 新闻
+- 2023.10.31: 支持Web UI. 运行命令: `python app.py`.
+- 2023.10.30: 支持**skywork-13b**系列模型: skywork-13b, skywork-13b-chat. 对应的sh脚本可以查看`scripts/skywork_13b`.
+- 🔥 2023.10.27: 支持**chatglm3**系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b_32k`.
+- 🔥 2023.10.24: 使用**注册机制**来新增模型, **数据集**和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom/tigerbot_13b_chat`.
+- 🔥 2023.10.17: 支持**int4, int8**模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 2023.10.15: 支持**ziya2-13b**系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
+- 2023.10.12: 支持**mistral-7b**系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
+- 🔥 2023.10.7: 支持**DeepSpeed ZeRO-2**, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
+- 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
+- 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat. 对应的sh脚本可以查看`scripts/qwen_14b`, `scripts/qwen_14b_chat`.
+- 2023.9.18: 支持**internlm-20b**系列模型: internlm-20b, internlm-20b-chat. 对应的sh脚本可以查看`scripts/internlm_20b`, `scripts/internlm_20b_chat`.
+- 2023.9.12: 支持**MP+DDP**的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
+- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
+- 2023.9.5: 支持**openbuddy-llama2-70b-chat**模型. 对应的sh脚本可以查看`scripts/openbuddy_llama2_70b_chat`.
+- 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
+
+
+## ✨ 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
 - 支持的模型
@@ -50,24 +68,7 @@
   - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
-## 新闻
-- 2023.10.30: 支持**skywork-13b**系列模型: skywork-13b, skywork-13b-chat. T对应的sh脚本可以查看`scripts/skywork_13b`.
-- 🔥 2023.10.27: 支持**chatglm3**系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b_32k`.
-- 🔥 2023.10.24: 使用**注册机制**来新增模型, **数据集**和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom/tigerbot_13b_chat`.
-- 🔥 2023.10.17: 支持**int4, int8**模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
-- 2023.10.15: 支持**ziya2-13b**系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
-- 2023.10.12: 支持**mistral-7b**系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
-- 🔥 2023.10.7: 支持**DeepSpeed ZeRO-2**, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
-- 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat. 对应的sh脚本可以查看`scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.18: 支持**internlm-20b**系列模型: internlm-20b, internlm-20b-chat. 对应的sh脚本可以查看`scripts/internlm_20b`, `scripts/internlm_20b_chat`.
-- 2023.9.12: 支持**MP+DDP**的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
-- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
-- 2023.9.5: 支持**openbuddy-llama2-70b-chat**模型. 对应的sh脚本可以查看`scripts/openbuddy_llama2_70b_chat`.
-- 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
-
-
-## 准备实验环境
+## 🛠️ 准备实验环境
 实验环境: A10, 3090, V100, A100均可.
 ```bash
 # 设置pip全局镜像和安装相关的python包
@@ -90,8 +91,10 @@ pip install bitsandbytes -U
 ```
 
 
-## 简单使用
-以下案例可以用于**测试环境**. 请确保您已经阅读了`准备实验环境`部分.
+## 🚀 简单使用
+快速对LLM进行微调, 推理并搭建Web-UI. 请确保您已经阅读了`准备实验环境`部分.
+
+### 使用python运行
 ```python
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory
@@ -100,8 +103,10 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
-from swift.llm.run import infer_main, sft_main
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments
+)
+from swift.llm.run import infer_main, sft_main, web_ui_main
 
 model_type = ModelType.qwen_7b_chat_int4
 sft_args = SftArguments(
@@ -115,16 +120,47 @@ best_ckpt_dir = sft_main(sft_args)
 print(f'best_ckpt_dir: {best_ckpt_dir}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(
-    model_type=sft_args.model_type,
     ckpt_dir=best_ckpt_dir,
-    dataset=sft_args.dataset,
+    load_args_from_ckpt_dir=True,
     stream=True,
     show_dataset_sample=5)
 infer_main(infer_args)
+torch.cuda.empty_cache()
+web_ui_main(infer_args)
+```
+
+### 使用Swift CLI运行
+**微调**:
+```bash
+# Experimental environment: A10, 3090, A100, ...
+# 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dataset blossom-math-zh
+
+# 使用DDP
+# Experimental environment: 2 * 3090
+# 2 * 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=2 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --dataset blossom-math-zh \
+
+# 使用自己的数据集
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --custom_train_dataset_path chatml.jsonl
+```
+
+**推理**:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+```
+
+**Web-UI**
+```bash
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 
-## 微调和推理
+## 🌟 微调和推理
 性能: full(优) > lora > qlora(auto_gptq) > qlora(bnb)
 
 训练显存: qlora(低,3090) > lora > full(2*A100)
@@ -211,7 +247,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 
-## 使用文档
+## 📝 使用文档
 ### 自定义模型
 以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 
@@ -361,11 +397,11 @@ if __name__ == '__main__':
 `register_dataset`会在`DATASET_MAPPING`中注册数据集, 该函数的参数含义如下:
 - `dataset_name`: 必填项, 表示数据集的名字, 也是数据集的唯一id.
 - `dataset_id_or_path`: 必填项. 表示数据集在ModelScope Hub上的`dataset_id`或者本地的`dataset_dir`.
-- `train_subset_split_list`: 默认值为`None`. 如果你使用`get_dataset_from_repo`作为获取数据集的函数, 该参数是一个`List[Union[str, Tuple[str, str]]]`. 该参数是一个含(subset_name, split)的列表, 我们会将这些子训练数据集进行拼接, 形成完整的训练数据集. 如果list内是字符串, 则默认`subset_name='default'`. 如果你使用其他的`get_function`, 则该参数的含义可以自定义, 例如: 如果`dataset_id_or_path`代表`model_dir`, 则该参数可以代表: 训练集的文件名等.
+- `train_subset_split_list`: 默认值为`None`. 如果你使用`get_dataset_from_repo`作为获取数据集的函数, 该参数是一个`List[Union[str, Tuple[str, str], List[str]]]`. 该参数是一个含(subset_name, split)的列表, 我们会将这些子训练数据集进行拼接, 形成完整的训练数据集. 如果list内是字符串, 则默认`subset_name='default'`. 如果你使用其他的`get_function`, 则该参数的含义可以自定义, 例如: 如果`dataset_id_or_path`代表`model_dir`, 则该参数可以代表: 训练集的文件名等.
 - `train_subset_split_list`: 默认值为`None`. 参数含义类似于`train_subset_split_list`.
 - `preprocess_func`: 默认为`None`. 表示对函数进行预处理的方法.
 - `get_function`: 默认值为`None`. 获取数据集的函数. 如果传入None, 则使用修饰器方案进行数据集注册, `register_dataset`函数将返回`Callable[[GetDatasetFunction], GetDatasetFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 如果从ModelScope Hub导入数据集, 一般使用`get_dataset_from_repo`函数.
-  `get_function`函数不用传入任何参数, 需要返回`HfDataset`或`Tuple[HfDataset, HfDataset]`. 第一种情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 第二种情况下, 返回的两个数据集分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
+  `get_function`函数没有任何限制, 你只需要返回`HfDataset`或`Tuple[HfDataset, Optional[HfDataset]]`即可. 只返回train_dataset的情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 如果返回两个数据集, 则分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
   函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
 - `task`: 注释数据集用作的任务. 该参数一般不需要设置.
 - `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
@@ -424,7 +460,7 @@ if __name__ == '__main__':
 - `--dtype`: 基模型载入时的torch_dtype, 默认为`None`, 即智能选择dtype: 如果机器不支持bf16, 则使用fp16, 如果`MODEL_MAPPING`中对应模型有指定torch_dtype, 则使用其对应dtype, 否则使用bf16. 你可以选择的值包括: 'bf16', 'fp16', 'fp32'.
 - `--dataset`: 用于选择训练的数据集, 默认为`'blossom-math-zh'`. 可以选择的数据集可以查看`DATASET_MAPPING.keys()`. 如果需要使用多个数据集进行训练, 你可以使用','或者' '进行分割, 例如: `alpaca-en,alpaca-zh` or `alpaca-en alpaca-zh`.
 - `--dataset_seed`: 用于指定数据集处理的seed, 默认为`42`. 以random_state形式存在, 不影响全局seed.
-- `--dataset_test_ratio`: 用于指定子数据集切分成训练集和验证集的比例, 默认为`0.01`. 如果子数据集已经进行了训练集和验证集的切分, 则此参数无效. 当`dataset`中指定了多个子数据集时, 且获取子数据集的函数没有进行训练集和验证集的切分(即返回的是`HfDataset`而不是`Tuple[HfDataset, HfDataset]`), 则我们需要对该子数据集进行切分. 最后, 我们会将这些子数据集的训练集和验证集部分分别进行拼接, 生成完整微调数据集的训练集和验证集.
+- `--dataset_test_ratio`: 用于指定子数据集切分成训练集和验证集的比例, 默认为`0.01`. 如果子数据集已经进行了训练集和验证集的切分, 则此参数无效. 当`dataset`中指定了多个子数据集时, 且获取子数据集的函数没有进行训练集和验证集的切分(即返回的是`HfDataset`, `Tuple[HfDataset, None]`, 而不是`Tuple[HfDataset, HfDataset]`), 则我们需要对该子数据集进行切分. 最后, 我们会将这些子数据集的训练集和验证集部分分别进行拼接, 生成完整微调数据集的训练集和验证集.
 - `--train_dataset_sample`: 对完整训练集进行采样, 默认是`20000`, 用于加快训练的速度. 该参数是为了避免数据集过大, 单个epoch训练时间过长的问题. LoRA的收敛通常较快, 不需要过多数据样本的微调. 如果你指定为`-1`, 则使用完整的训练集进行训练, 该情况一般出现在全参数微调的设置下.
 - `--system`: 对话模板中使用的system, 默认为`'you are a helpful assistant!'`.
 - `--max_length`: token的最大长度, 默认为`2048`. 可以避免个别过长的数据样本造成OOM的问题. 如果某数据样本长度超过max_length, 我们会切除最前面的token: `input_ids[-max_length:]`. 如果设置为-1, 则无限制.
@@ -483,6 +519,7 @@ if __name__ == '__main__':
 - `--sft_type`: 默认值为`'lora'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--template_type`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--ckpt_dir`: 必填项, 值为SFT阶段保存的checkpoint路径, e.g. `'/path/to/your/vx_xxx/checkpoint-xxx'`.
+- `--load_args_from_ckpt_dir`: 是否从`ckpt_dir`的`sft_args.json`文件中读取配置信息. 默认是`True`. 导入的keys包括: `model_id_or_path`, `model_revision`, `sft_type`, `template_type`, `dtype`, `system`, `quantization_bit`, `bnb_4bit_comp_dtype`, `bnb_4bit_quant_type`, `bnb_4bit_use_double_quant`. 如果`eval_human`设置为False, 则还会导入`dataset`, `dataset_seed`, `dataset_test_ratio`, `check_dataset_strategy`, `custom_train_dataset_path`, `custom_val_dataset_path`.
 - `--eval_human`: 使用数据集中的验证集部分进行评估还是使用人工的方式评估, 默认值为`False`. 我们可以直观感受到微调后模型的效果.
 - `--seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--dtype`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.

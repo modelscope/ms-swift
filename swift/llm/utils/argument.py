@@ -12,11 +12,11 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master, read_from_jsonl)
+                         get_dist_setting, is_dist, is_master)
 from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
                       register_dataset)
 from .model import MODEL_MAPPING, ModelType, dtype_mapping
-from .template import TEMPLATE_MAPPING
+from .template import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
 
@@ -80,7 +80,7 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
 
-    gradient_checkpointing: bool = False
+    gradient_checkpointing: bool = True
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -132,7 +132,7 @@ class SftArguments:
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
-    report_to: List[str] = None
+    report_to: Optional[List[str]] = None
 
     # generation config
     max_new_tokens: int = 2048
@@ -142,7 +142,7 @@ class SftArguments:
     top_p: float = 0.9
     repetition_penalty: float = 1.05
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         handle_compatibility(self)
         set_model_type(self)
         register_custom_dataset(self)
@@ -193,9 +193,10 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.lora_target_modules is None or 'AUTO' in self.lora_target_modules:
-            if self.lora_target_modules is not None:
-                assert len(self.lora_target_modules) == 1
+        if self.lora_target_modules is None:
+            self.lora_target_modules = ['AUTO']
+        if 'AUTO' in self.lora_target_modules:
+            assert len(self.lora_target_modules) == 1
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_target_modules']
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
@@ -241,7 +242,9 @@ class InferArguments:
         metadata={
             'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
         })
-    ckpt_dir: str = '/path/to/your/vx_xxx/checkpoint-xxx'
+    ckpt_dir: Optional[str] = field(
+        default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
+    load_args_from_ckpt_dir: bool = True
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
@@ -283,11 +286,18 @@ class InferArguments:
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         handle_compatibility(self)
-        if not os.path.isdir(self.ckpt_dir):
+        if self.ckpt_dir is not None and not os.path.isdir(self.ckpt_dir):
             raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
+        if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
+            self.load_args_from_ckpt_dir = False
+            logger.info(
+                'Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.'
+            )
+        if self.load_args_from_ckpt_dir:
+            load_from_ckpt_dir(self)
         set_model_type(self)
         register_custom_dataset(self)
         handle_path(self)
@@ -305,11 +315,13 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
+        if self.ckpt_dir is None and self.overwrite_generation_config:
+            self.overwrite_generation_config = False
+            logger.warning('Setting overwrite_generation_config: False')
 
 
 @dataclass
 class RomeArguments(InferArguments):
-
     rome_request_file: str = field(
         default=None,
         metadata={
@@ -318,7 +330,7 @@ class RomeArguments(InferArguments):
             'to get the format'
         })
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         handle_compatibility(self)
         set_model_type(self)
         handle_path(self)
@@ -328,7 +340,6 @@ class RomeArguments(InferArguments):
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
 
-        assert isinstance(self.dataset, (list, tuple))
         if self.max_length == -1:
             self.max_length = None
 
@@ -392,6 +403,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.dataset = args.dataset[0].split(',')
     if args.template_type == 'chatglm2-generation':
         args.template_type = 'chatglm-generation'
+    if args.template_type == 'qwen':
+        args.template_type = TemplateType.chatml
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
@@ -462,3 +475,25 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
         args.dataset = ['_custom_dataset']
     else:
         args.dataset.append('_custom_dataset')
+
+
+def load_from_ckpt_dir(args: InferArguments) -> None:
+    sft_args_path = os.path.join(args.ckpt_dir, 'sft_args.json')
+    if not os.path.exists(sft_args_path):
+        logger.info(f'{sft_args_path} not found')
+        return
+    with open(sft_args_path, 'r') as f:
+        sft_args = json.load(f)
+    imported_keys = [
+        'model_id_or_path', 'model_revision', 'sft_type', 'template_type',
+        'dtype', 'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
+        'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+    ]
+    if not args.eval_human:
+        imported_keys += [
+            'dataset', 'dataset_seed', 'dataset_test_ratio',
+            'check_dataset_strategy', 'custom_train_dataset_path',
+            'custom_val_dataset_path'
+        ]
+    for key in imported_keys:
+        setattr(args, key, sft_args.get(key))

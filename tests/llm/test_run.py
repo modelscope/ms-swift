@@ -9,8 +9,9 @@ import unittest
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
-from swift.llm.run import infer_main, sft_main
+from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
+                       TemplateType)
+from swift.llm.run import infer_main, sft_main, web_ui_main
 
 
 class TestRun(unittest.TestCase):
@@ -24,14 +25,15 @@ class TestRun(unittest.TestCase):
         shutil.rmtree(self.tmp_dir)
 
     def test_run_1(self):
+        output_dir = 'output'
         if not __name__ == '__main__':
             # ignore citest error in github
+            output_dir = self.tmp_dir
             return
-        output_dir = self.tmp_dir
-        # output_dir = 'output'
-        model_type = ModelType.chatglm2_6b
+        model_type = ModelType.chatglm3_6b
         sft_args = SftArguments(
             model_type=model_type,
+            template_type=TemplateType.chatglm_generation,
             quantization_bit=4,
             eval_steps=5,
             check_dataset_strategy='warning',
@@ -44,21 +46,20 @@ class TestRun(unittest.TestCase):
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
         infer_args = InferArguments(
-            model_type=model_type,
-            quantization_bit=4,
             ckpt_dir=best_ckpt_dir,
-            check_dataset_strategy='warning',
-            dataset=[DatasetName.jd_sentiment_zh],
             stream=False,
             show_dataset_sample=5,
             merge_lora_and_save=True)
         infer_main(infer_args)
+        torch.cuda.empty_cache()
+        web_ui_main(infer_args)
 
     def test_run_2(self):
+        output_dir = 'output'
         if not __name__ == '__main__':
             # ignore citest error in github
+            output_dir = self.tmp_dir
             return
-        output_dir = self.tmp_dir
         best_ckpt_dir = sft_main([
             '--model_type',
             ModelType.qwen_7b_chat_int4,
@@ -84,12 +85,8 @@ class TestRun(unittest.TestCase):
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
         infer_main([
-            '--model_type',
-            ModelType.qwen_7b_chat_int4,
             '--ckpt_dir',
             best_ckpt_dir,
-            '--dataset',
-            DatasetName.leetcode_python_en,
             '--show_dataset_sample',
             '5',
             '--max_new_tokens',

@@ -1,9 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import shutil
+from typing import Tuple
 
+import json
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import PreTrainedModel
 
 from swift.tuners import Swift
 from swift.utils import (get_logger, print_model_info, seed_everything,
@@ -15,17 +18,18 @@ logger = get_logger()
 
 
 def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
+    assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
     assert not args.model_type.endswith('int4'), 'int4 model is not supported'
     assert not args.model_type.endswith('int8'), 'int8 model is not supported'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
-    # ### Loading Model and Tokenizer
+    # Loading Model and Tokenizer
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')
 
-    # ### Preparing LoRA
+    # Preparing LoRA
     model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
     Swift.merge_and_unload(model)
     model = model.model
@@ -48,20 +52,31 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
                 src_path = os.path.join(old_ckpt_dir, fname)
                 tgt_path = os.path.join(args.ckpt_dir, fname)
                 shutil.copy(src_path, tgt_path)
+        # configuration.json
+        configuration_fname = 'configuration.json'
+        old_configuration_path = os.path.join(old_ckpt_dir,
+                                              configuration_fname)
+        new_configuration_path = os.path.join(args.ckpt_dir,
+                                              configuration_fname)
+        if os.path.exists(old_configuration_path):
+            with open(old_configuration_path, 'r') as f:
+                res = json.load(f)
+            res.pop('adapter_cfg', None)
+            with open(new_configuration_path, 'w') as f:
+                json.dump(res, f, ensure_ascii=False, indent=4)
         logger.info('Successfully merged LoRA.')
     else:
         logger.info('The weight directory for the merged LoRA already exists, '
                     'skipping the saving process.')
 
 
-def llm_infer(args: InferArguments) -> None:
-    if args.merge_lora_and_save:
-        merge_lora(args)
+def prepare_model_template(
+        args: InferArguments) -> Tuple[PreTrainedModel, Template]:
     logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
-    # ### Loading Model and Tokenizer
+    # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -73,20 +88,19 @@ def llm_infer(args: InferArguments) -> None:
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
     kwargs = {'use_flash_attn': args.use_flash_attn}
-    if args.sft_type == 'full':
+    if args.sft_type == 'full' and args.ckpt_dir is not None:
         kwargs['model_dir'] = args.ckpt_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
 
-    # ### Preparing LoRA
-    if args.sft_type == 'lora':
+    # Preparing LoRA
+    if args.sft_type == 'lora' and args.ckpt_dir is not None:
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
 
-    show_layers(model)
     print_model_info(model)
+    show_layers(model)
 
-    # ### Inference
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length)
     generation_config = GenerationConfig(
@@ -100,10 +114,18 @@ def llm_infer(args: InferArguments) -> None:
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
-    if args.overwrite_generation_config:
-        generation_config.save_pretrained(args.ckpt_dir)
     model.generation_config = generation_config
+    return model, template
 
+
+def llm_infer(args: InferArguments) -> None:
+    if args.merge_lora_and_save:
+        merge_lora(args)
+    model, template = prepare_model_template(args)
+    if args.overwrite_generation_config:
+        assert args.ckpt_dir is not None
+        model.generation_config.save_pretrained(args.ckpt_dir)
+    # Inference
     if args.eval_human:
         while True:
             query = input('<<< ')

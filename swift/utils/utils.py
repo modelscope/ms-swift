@@ -51,7 +51,6 @@ def add_version_to_work_dir(work_dir: str) -> str:
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
 
     work_dir = os.path.join(work_dir, f'v{version}-{time}')
-    logger.info(f'work_dir: {work_dir}')
     return work_dir
 
 
@@ -74,4 +73,15 @@ def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
             hi = mid
         else:
             lo = mid + 1
+    return lo
+
+
+def upper_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
+    # The upper bound satisfying the condition "cond".
+    while lo < hi:
+        mid = (lo + hi + 1) >> 1  # lo + (hi-lo+1)>>1
+        if cond(mid):
+            lo = mid
+        else:
+            hi = mid - 1
     return lo
