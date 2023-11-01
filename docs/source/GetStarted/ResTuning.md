@@ -20,7 +20,7 @@ The implementation is a pluggable tuner component for [SWIFT](https://github.com
 ### Usage
 
 #### Demo
-- Run our interactive demo using [vision_example](https://github.com/modelscope/swift/blob/main/examples/pytorch/cv/notebook/swift_vision.ipynb). 
+- Run our interactive demo using [vision_example](https://github.com/modelscope/swift/blob/main/examples/pytorch/cv/notebook/swift_vision.ipynb).
 
 #### Init Tuner
 
