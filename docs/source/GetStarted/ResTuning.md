@@ -6,8 +6,9 @@
 
 </div>
 
-This is a pluggable tuner component for [SWIFT](https://github.com/modelscope/swift), designed to be user-friendly.
+Res-Tuning is a flexible and efficient tuning paradigm. We manage to free the design of tuners from the network architecture, facilitating flexible combination of various tuning strategies and further extend a memory-efficient bypass variant, which significantly reduces the memory consumption and multi-task inference cost.
 
+The implementation is a pluggable tuner component for [SWIFT](https://github.com/modelscope/swift), designed to be user-friendly.
 
 ### Catalog
 
@@ -19,7 +20,7 @@ This is a pluggable tuner component for [SWIFT](https://github.com/modelscope/sw
 ### Usage
 
 #### Demo
-- Run our interactive demo using [vision_example](examples/pytorch/cv/notebook/swift_vision.ipynb). 
+- Run our interactive demo using [vision_example](https://github.com/modelscope/swift/blob/main/examples/pytorch/cv/notebook/swift_vision.ipynb). 
 
 #### Init Tuner
 
