@@ -15,7 +15,25 @@
 </p>
 
 
-## Features
+## 🎉 News
+- 2023.10.31: Support Web UI. Run command: python app.py.
+- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
+- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
+- 🔥 2023.10.24: Use the **registration mechanism** to add models, **datasets**, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
+- 🔥 2023.10.17: Supported **int4, int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
+- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
+- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
+- 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
+- 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
+- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
+- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
+- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
+- 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
+- 2023.9.5: Supported **openbuddy-llama2-70b-chat** model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
+- 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
+
+
+## ✨ Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
 - Supported Models:
@@ -50,24 +68,7 @@
   - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
 
 
-## News
-- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
-- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
-- 🔥 2023.10.24: Use the **registration mechanism** to add models, **datasets**, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
-- 🔥 2023.10.17: Supported **int4, int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
-- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
-- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
-- 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
-- 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
-- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
-- 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
-- 2023.9.5: Supported **openbuddy-llama2-70b-chat** model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
-- 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
-
-
-## Preparing the Environment
+## 🛠️ Preparing the Experimental Environment
 Experimental environment: A10, 3090, V100, A100, ...
 ```bash
 # Setting up a global mirror for pip and installing related Python packages
@@ -90,8 +91,10 @@ pip install bitsandbytes -U
 ```
 
 
-## Basic Usage
-The following examples can be used to **test the environment**. Please make sure you have read the "Preparing the Environment" section.
+## 🚀 Basic Usage
+Quickly fine-tune, infer with LLM, and build a Web-UI. Please make sure you have read the "Preparing the Experimental Environment" section.
+
+### Run using Python
 ```python
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory
@@ -100,8 +103,10 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
-from swift.llm.run import infer_main, sft_main
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments
+)
+from swift.llm.run import infer_main, sft_main, web_ui_main
 
 model_type = ModelType.qwen_7b_chat_int4
 sft_args = SftArguments(
@@ -115,15 +120,47 @@ best_ckpt_dir = sft_main(sft_args)
 print(f'best_ckpt_dir: {best_ckpt_dir}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(
-    model_type=sft_args.model_type,
     ckpt_dir=best_ckpt_dir,
-    dataset=sft_args.dataset,
+    load_args_from_ckpt_dir=True,
     stream=True,
     show_dataset_sample=5)
 infer_main(infer_args)
+torch.cuda.empty_cache()
+web_ui_main(infer_args)
 ```
 
-## Run SFT and Inference
+### Run using Swift CLI
+**SFT**:
+```bash
+# Experimental environment: A10, 3090, A100, ...
+# 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dataset blossom-math-zh
+
+# Using DDP
+# Experimental environment: 2 * 3090
+# 2 * 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=2 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --dataset blossom-math-zh \
+
+# Using custom dataset
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --custom_train_dataset_path chatml.jsonl
+```
+
+**Inference**:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+```
+
+**Web-UI**:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+```
+
+
+## 🌟 Run SFT and Inference
 Performace: full(nice) > lora > qlora(auto_gptq) > qlora(bnb)
 
 Training GPU memory: qlora(low,3090) > lora > full(2*A100)
@@ -210,7 +247,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 
-## User Guide
+## 📝 User Guide
 ### Custom Model
 Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
 
@@ -310,7 +347,8 @@ Format 3:
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
-```Format 4
+Format 4:
+```jsonl
 {"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
@@ -359,11 +397,11 @@ if __name__ == '__main__':
 The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. The function parameters are as follows:
 - `dataset_name`: Required parameter that represents the name of the dataset, which is also the unique ID of the dataset.
 - `dataset_id_or_path`: Required. Represents the `dataset_id` on the ModelScope Hub or the local `dataset_dir` where the dataset is located.
-- `train_subset_split_list`: Default value is `None`. If you are using the function `get_dataset_from_repo` to fetch the dataset, this parameter is a `List[Union[str, Tuple[str, str]]]`. It is a list of (subset_name, split) pairs, where we concatenate these subsets to form the complete training dataset. If the elements in the list are strings, the default `subset_name` is 'default'. If you are using a different `get_function`, the meaning of this parameter can be customized, for example, if `dataset_id_or_path` represents `model_dir`, this parameter can represent the filename of the training set.
+- `train_subset_split_list`: Default value is `None`. If you are using the function `get_dataset_from_repo` to fetch the dataset, this parameter is a `List[Union[str, Tuple[str, str], List[str]]]`. It is a list of (subset_name, split) pairs, where we concatenate these subsets to form the complete training dataset. If the elements in the list are strings, the default `subset_name` is 'default'. If you are using a different `get_function`, the meaning of this parameter can be customized, for example, if `dataset_id_or_path` represents `model_dir`, this parameter can represent the filename of the training set.
 - `train_subset_split_list`: Default value is `None`. The meaning of this parameter is similar to `train_subset_split_list`.
 - `preprocess_func`: Default value is `None`. Represents the method for preprocessing the function.
 - `get_function`: Default value is `None`. The function used to retrieve the dataset. If None is passed, the decorator scheme is used for dataset registration, where the `register_dataset` function returns `Callable[[GetDatasetFunction], GetDatasetFunction]`. This scheme requires users with some python knowledge. If a function is passed, the normal registration scheme is used. If importing datasets from the ModelScope Hub, the `get_dataset_from_repo` function is commonly used.
-  The `get_function` does not require any parameters and needs to return an `HfDataset` or `Tuple[HfDataset, HfDataset]`. In the first case, the dataset processing function will split a portion of the dataset as the validation set (based on the command-line hyperparameter `dataset_test_ratio`). In the second case, the two returned datasets will be used as the training and validation sets, respectively. We support fine-tuning with multiple datasets. We concatenate the training and validation parts of each sub-dataset and return the merged training and validation sets.
+  The `get_function` function has no restrictions, you just need to return either `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. In the case where only the `train_dataset` is returned, the data processing function will split a portion of the dataset as the validation dataset (based on the command line hyperparameter `dataset_test_ratio`). If two datasets are returned, they will be used as the training and validation datasets respectively. We support fine-tuning with multiple datasets. The training and validation portions of each sub-dataset will be concatenated separately, and the final merged training and validation datasets will be returned.
   The returned `HfDataset` needs to adhere to certain specifications. If it is for instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, representing the user's query for instruction fine-tuning and the AI assistant's response, respectively. You can refer to the `alpaca-zh` dataset for more details. If it is for multi-turn dialogue, it needs to include an additional `history` field, representing the history of the conversation. You can refer to the `damo-agent-mini-zh` dataset for more details. If each example in the dataset has a different `system`, an additional `system` field is required. You can also refer to the `damo-agent-mini-zh` dataset for more details. We only calculate and optimize the loss for the `response` part.
 - `task`: The task for which the dataset is intended. This parameter is generally not required to be set.
 - `function_kwargs`: Default is `{}`, used to pass arguments to `get_function` to support the `partial` functionality in the decorator scheme. This parameter is generally not required to be set.
@@ -424,7 +462,7 @@ The template initialization function retrieves the complete chat template based 
 - `--dtype`: The torch_dtype used when loading the base model, default is `None`, which means automatic selection of the dtype: if the machine does not support bf16, fp16 will be used instead. If the `MODEL_MAPPING` specifies a torch_dtype for the corresponding model, it will be used; otherwise, bf16 will be used. The available values are: 'bf16', 'fp16', 'fp32'.
 - `--dataset`: Used to select the training dataset, default is `'blossom-math-zh'`. Available datasets can be checked using `DATASET_MAPPING.keys()`. If you want to use multiple datasets for training, you can separate them using ',' or ' ', for example: `alpaca-en,alpaca-zh` or `alpaca-en alpaca-zh`.
 - `--dataset_seed`: Used to specify the seed for dataset processing. The default value is `42`. It is present in the form of `random_state` and does not affect the global seed.
-- `--dataset_test_ratio`: Specifies the ratio for splitting the sub-dataset into training and validation sets, default is `0.01`. This parameter is ignored if the sub-dataset has already been split into training and validation sets. When multiple sub-datasets are specified in `dataset` and the function for retrieving the sub-dataset does not perform the split (i.e., returns `HfDataset` instead of `Tuple[HfDataset, HfDataset]`), we need to split the sub-dataset. Finally, we concatenate the training and validation parts of these sub-datasets to generate the training and validation sets for the complete fine-tuning dataset.
+- `--dataset_test_ratio`: Specifies the ratio for splitting the sub-dataset into training and validation sets, default is `0.01`. This parameter is ignored if the sub-dataset has already been split into training and validation sets. When multiple sub-datasets are specified in `dataset` and the function for retrieving the sub-dataset does not perform the split (i.e., returns `HfDataset` or `Tuple[HfDataset, None]` instead of `Tuple[HfDataset, HfDataset]`), we need to split the sub-dataset. Finally, we concatenate the training and validation parts of these sub-datasets to generate the training and validation sets for the complete fine-tuning dataset.
 - `--train_dataset_sample`: Samples from the complete training dataset, default is `20000`, to speed up training. This parameter is used to avoid the issue of training time being too long for a single epoch when the dataset is large. LoRA convergence is usually fast and does not require a large number of data samples for fine-tuning. If you specify `-1`, the full training dataset will be used for training, which is typically used in the setting of full-parameter fine-tuning.
 - `--system`: The system used in the dialogue template, default is `'you are a helpful assistant!'`.
 - `--max_length`: Maximum token length, default is `2048`. This helps to avoid out-of-memory (OOM) issues caused by individual samples that are too long. If a data sample exceeds the `max_length`, the frontmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, there is no restriction.
@@ -483,6 +521,7 @@ The template initialization function retrieves the complete chat template based 
 - `--sft_type`: Default value is `'lora'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--template_type`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--ckpt_dir`: Required field, value is the checkpoint path saved during the SFT phase, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx'`.
+- `--load_args_from_ckpt_dir`: Whether to load configuration information from the `sft_args.json` file in `ckpt_dir`. The default value is `True`. The imported keys include: `model_id_or_path`, `model_revision`, `sft_type`, `template_type`, `dtype`, `system`, `quantization_bit`, `bnb_4bit_comp_dtype`, `bnb_4bit_quant_type`, `bnb_4bit_use_double_quant`. If `eval_human` is set to False, the following keys will also be imported: `dataset`, `dataset_seed`, `dataset_test_ratio`, `check_dataset_strategy`, `custom_train_dataset_path`, `custom_val_dataset_path`.
 - `--eval_human`: Whether to evaluate using the validation set from the dataset or manually evaluate the model. Default value is `False`. This allows us to get an intuitive understanding of the model's performance after fine-tuning.
 - `--seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.

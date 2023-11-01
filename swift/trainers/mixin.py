@@ -33,8 +33,8 @@ from swift.hub import HubApi, ModelScopeConfig, Repository
 from swift.hub.check_model import check_local_model_is_latest
 from swift.hub.constants import ModelVisibility
 from swift.tuners import SwiftModel
+from swift.utils import check_json_format, get_logger
 from swift.utils.constants import Invoke
-from swift.utils.logger import get_logger
 from .utils import (can_return_loss, find_labels, get_function,
                     is_instance_of_ms_model)
 
@@ -295,17 +295,17 @@ class SwiftMixin:
     def _create_configuration_file(model: Module, output_dir: str) -> None:
         cfg = getattr(model, 'cfg', {})
         configuration_path = os.path.join(output_dir, 'configuration.json')
-        res = {}
+        new_cfg = {}
         if os.path.exists(configuration_path):
             with open(configuration_path, 'r') as f:
-                res = json.load(f)
+                new_cfg = json.load(f)
 
-        if 'framework' not in res:
-            res['framework'] = cfg.get('framework', 'pytorch')
-        if 'task' not in res:
-            res['task'] = cfg.get('task', 'text-generation')
+        if 'framework' not in new_cfg:
+            new_cfg['framework'] = cfg.get('framework', 'pytorch')
+        if 'task' not in new_cfg:
+            new_cfg['task'] = cfg.get('task', 'text-generation')
         with open(configuration_path, 'w') as f:
-            json.dump(res, f, ensure_ascii=False, indent=4)
+            json.dump(new_cfg, f, ensure_ascii=False, indent=4)
 
     def _add_adapter_cfg(self, output_dir: str) -> None:
         if not hasattr(self, 'sft_args'):
@@ -314,17 +314,17 @@ class SwiftMixin:
         if sft_args.sft_type == 'full':
             return
         configuration_path = os.path.join(output_dir, 'configuration.json')
-        res = {}
+        new_cfg = {}
         if os.path.exists(configuration_path):
             with open(configuration_path, 'r') as f:
-                res = json.load(f)
+                new_cfg = json.load(f)
 
         need_to_save = [
             'model_id_or_path', 'model_revision', 'sft_type', 'tuner_backend',
             'template_type', 'dtype', 'system'
         ]
         quantization_bit = sft_args.quantization_bit
-        if quantization_bit != 0:
+        if quantization_bit > 0:
             need_to_save += [
                 'quantization_bit', 'bnb_4bit_comp_dtype',
                 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
@@ -332,9 +332,22 @@ class SwiftMixin:
         adapter_cfg = {}
         for k in need_to_save:
             adapter_cfg[k] = getattr(sft_args, k)
-        res['adapter_cfg'] = adapter_cfg
+        new_cfg['adapter_cfg'] = adapter_cfg
         with open(configuration_path, 'w') as f:
-            json.dump(res, f, ensure_ascii=False, indent=4)
+            json.dump(new_cfg, f, ensure_ascii=False, indent=4)
+
+    def _save_sft_args(self, output_dir: str) -> None:
+        sft_args = getattr(self, 'sft_args', None)
+        if sft_args is None:
+            return
+        fpath = os.path.join(output_dir, 'sft_args.json')
+        with open(fpath, 'w') as f:
+            json.dump(
+                check_json_format(self.sft_args.__dict__),
+                f,
+                ensure_ascii=False,
+                indent=2)
+        return
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -352,6 +365,7 @@ class SwiftMixin:
         else:
             self._create_configuration_file(self.model, output_dir)
         self._add_adapter_cfg(output_dir)
+        self._save_sft_args(output_dir)
         # generation_config
         generation_config = getattr(self.args, 'generation_config', None)
         if generation_config is not None:

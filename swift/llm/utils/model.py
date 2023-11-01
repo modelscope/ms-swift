@@ -174,7 +174,7 @@ def register_model(
 @register_model(ModelType.ziya2_13b_chat, 'Fengshenbang/Ziya2-13B-Chat',
                 LoRATM.ziya, TemplateType.ziya)
 @register_model(ModelType.ziya2_13b, 'Fengshenbang/Ziya2-13B-Base',
-                LoRATM.ziya)
+                LoRATM.ziya, TemplateType.default_generation)
 @register_model(
     ModelType.mistral_7b_chat,
     'AI-ModelScope/Mistral-7B-Instruct-v0.1',
@@ -185,18 +185,21 @@ def register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
     LoRATM.mistral,
+    TemplateType.default_generation,
     requires=['transformers>=4.34'])
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
                 LoRATM.xverse, TemplateType.xverse)
-@register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.xverse)
+@register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.xverse,
+                TemplateType.default_generation)
 @register_model(ModelType.xverse_7b_chat, 'xverse/XVERSE-7B-Chat',
                 LoRATM.xverse, TemplateType.xverse)
-@register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.xverse)
+@register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.xverse,
+                TemplateType.default_generation)
 @register_model(ModelType.internlm_20b_chat,
                 'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.internlm,
                 TemplateType.internlm)
 @register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
-                LoRATM.internlm)
+                LoRATM.internlm, TemplateType.default_generation)
 @register_model(ModelType.internlm_7b_chat_8k,
                 'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.internlm,
                 TemplateType.internlm)
@@ -204,7 +207,7 @@ def register_model(
                 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
                 LoRATM.internlm, TemplateType.internlm)
 @register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
-                LoRATM.internlm)
+                LoRATM.internlm, TemplateType.default_generation)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
     'OpenBuddy/openbuddy-mistral-7b-v13.1',
@@ -230,11 +233,13 @@ def register_model(
     ModelType.llama2_70b,
     'modelscope/Llama-2-70b-ms',
     LoRATM.llama2,
+    TemplateType.default_generation,
     ignore_file_pattern=[r'.+\.bin$'])
 @register_model(
     ModelType.llama2_7b,
     'modelscope/Llama-2-7b-ms',
     LoRATM.llama2,
+    TemplateType.default_generation,
     ignore_file_pattern=[r'.+\.bin$'])
 @register_model(
     ModelType.baichuan_13b_chat,
@@ -246,6 +251,7 @@ def register_model(
     ModelType.baichuan_7b,
     'baichuan-inc/baichuan-7B',
     LoRATM.baichuan,
+    TemplateType.default_generation,
     requires=['transformers<4.34'])
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Dtype,
@@ -307,6 +313,7 @@ def get_model_tokenizer_from_sdk(
     ModelType.baichuan_13b,
     'baichuan-inc/Baichuan-13B-Base',
     LoRATM.baichuan,
+    TemplateType.default_generation,
     requires=['transformers<4.34'])
 def get_model_tokenizer_baichuan_13b(model_dir: str,
                                      torch_dtype: Dtype,
@@ -329,7 +336,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
                 'baichuan-inc/Baichuan2-13B-Chat', LoRATM.baichuan,
                 TemplateType.baichuan)
 @register_model(ModelType.baichuan2_13b, 'baichuan-inc/Baichuan2-13B-Base',
-                LoRATM.baichuan)
+                LoRATM.baichuan, TemplateType.default_generation)
 def get_model_tokenizer_baichuan2_13b(model_dir: str,
                                       torch_dtype: Dtype,
                                       model_kwargs: Dict[str, Any],
@@ -361,7 +368,7 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
 @register_model(ModelType.baichuan2_7b_chat, 'baichuan-inc/Baichuan2-7B-Chat',
                 LoRATM.baichuan, TemplateType.baichuan)
 @register_model(ModelType.baichuan2_7b, 'baichuan-inc/Baichuan2-7B-Base',
-                LoRATM.baichuan)
+                LoRATM.baichuan, TemplateType.default_generation)
 def get_model_tokenizer_baichuan2(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -421,7 +428,7 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
 @register_model(ModelType.chatglm3_6b, 'ZhipuAI/chatglm3-6b', LoRATM.chatglm,
                 TemplateType.chatglm3)
 @register_model(ModelType.chatglm3_6b_base, 'ZhipuAI/chatglm3-6b-base',
-                LoRATM.chatglm)
+                LoRATM.chatglm, TemplateType.chatglm_generation)
 @register_model(ModelType.chatglm2_6b_32k, 'ZhipuAI/chatglm2-6b-32k',
                 LoRATM.chatglm, TemplateType.chatglm2)
 @register_model(ModelType.chatglm2_6b, 'ZhipuAI/chatglm2-6b', LoRATM.chatglm,
@@ -467,6 +474,7 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     ModelType.llama2_13b,
     'modelscope/Llama-2-13b-ms',
     LoRATM.llama2,
+    TemplateType.default_generation,
     ignore_file_pattern=[r'.+\.bin$'])
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
@@ -481,7 +489,7 @@ def get_model_tokenizer_llama2(model_dir: str,
 
 
 @register_model(ModelType.polylm_13b, 'damo/nlp_polylm_13b_text_generation',
-                LoRATM.polylm)
+                LoRATM.polylm, TemplateType.default_generation)
 def get_model_tokenizer_polylm(model_dir: str,
                                torch_dtype: Dtype,
                                model_kwargs: Dict[str, Any],
@@ -507,10 +515,16 @@ dtype_mapping = {
 
 @register_model(ModelType.qwen_14b_chat, 'qwen/Qwen-14B-Chat', LoRATM.qwen,
                 TemplateType.chatml)
-@register_model(ModelType.qwen_14b, 'qwen/Qwen-14B', LoRATM.qwen)
+@register_model(ModelType.qwen_14b, 'qwen/Qwen-14B', LoRATM.qwen,
+                TemplateType.default_generation)
 @register_model(ModelType.qwen_7b_chat, 'qwen/Qwen-7B-Chat', LoRATM.qwen,
                 TemplateType.chatml)
-@register_model(ModelType.qwen_7b, 'qwen/Qwen-7B', LoRATM.qwen)
+@register_model(
+    ModelType.qwen_7b,
+    'qwen/Qwen-7B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+)
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
@@ -545,7 +559,8 @@ def get_model_tokenizer_qwen(model_dir: str,
 
 @register_model(ModelType.qwen_vl_chat, 'qwen/Qwen-VL-Chat', LoRATM.qwen,
                 TemplateType.chatml)
-@register_model(ModelType.qwen_vl, 'qwen/Qwen-VL', LoRATM.qwen)
+@register_model(ModelType.qwen_vl, 'qwen/Qwen-VL', LoRATM.qwen,
+                TemplateType.default_generation)
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -634,7 +649,7 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
 
 
 register_model(ModelType.skywork_13b, 'skywork/Skywork-13B-base',
-               LoRATM.llama2, TemplateType.default,
+               LoRATM.llama2, TemplateType.default_generation,
                get_model_tokenizer_from_repo)
 
 

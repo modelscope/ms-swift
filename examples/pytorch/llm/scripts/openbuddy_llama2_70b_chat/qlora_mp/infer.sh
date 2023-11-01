@@ -2,18 +2,10 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python llm_infer.py \
-    --model_id_or_path OpenBuddy/openbuddy-llama2-70b-v10.1-bf16 \
-    --model_revision master \
-    --sft_type lora \
-    --template_type openbuddy \
-    --dtype bf16 \
     --ckpt_dir "output/openbuddy-llama2-70b-chat/vx_xxx/checkpoint-xxx" \
+    --load_args_from_ckpt_dir true \
     --eval_human false \
-    --dataset blossom-math-zh \
     --max_length 2048 \
-    --check_dataset_strategy warning \
-    --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
     --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \

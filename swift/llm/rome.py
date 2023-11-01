@@ -21,7 +21,7 @@ def rome_infer(args: RomeArguments) -> None:
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
-    # ### Loading Model and Tokenizer
+    # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
     kwargs = {'use_flash_attn': args.use_flash_attn}
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
@@ -48,7 +48,7 @@ def rome_infer(args: RomeArguments) -> None:
     show_layers(model)
     print_model_info(model)
 
-    # ### Inference
+    # Inference
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length)
     generation_config = GenerationConfig(

@@ -22,7 +22,6 @@ from datasets import Dataset as HfDataset
 from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
-from torch import Tensor
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -33,7 +32,8 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, lower_bound, parse_args)
+                         is_local_master, is_master, lower_bound, parse_args,
+                         upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -309,12 +309,12 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
 
 
 def inference_stream(
-    model: PreTrainedModel,
-    template: Template,
-    query: str,
-    history: Optional[History] = None,
-    system: Optional[str] = None,
-) -> Iterator[Tuple[str, History]]:
+        model: PreTrainedModel,
+        template: Template,
+        query: str,
+        history: Optional[History] = None,
+        system: Optional[str] = None,
+        skip_special_tokens: bool = False) -> Iterator[Tuple[str, History]]:
     if history is None:
         history = []
     example = {'query': query, 'history': history, 'system': system}
@@ -329,6 +329,7 @@ def inference_stream(
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
     stream_config = StreamGenerationConfig(
         **generation_config.to_dict(), do_stream=True)
+    stream_config.max_length = int(1e9)  # fix max_length, max_new_tokens bug
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     gen = model.generate_stream(
         input_ids=input_ids,
@@ -339,7 +340,7 @@ def inference_stream(
     history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
-        response = tokenizer.decode(generate_ids)
+        response = tokenizer.decode(generate_ids, skip_special_tokens)
         history[-1] = (query, response)
         yield response, history
 
@@ -351,6 +352,7 @@ def inference(model: PreTrainedModel,
               system: Optional[str] = None,
               stream: bool = True,
               verbose: bool = True,
+              skip_special_tokens: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
     if history is None:
@@ -364,7 +366,7 @@ def inference(model: PreTrainedModel,
     generation_config = getattr(model, 'generation_config', None)
     if verbose:
         print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0])}{output_prefix}',
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0], skip_special_tokens)}{output_prefix}',
             end='')
     else:
         stream = False
@@ -376,11 +378,28 @@ def inference(model: PreTrainedModel,
         attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config)
-    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):])
+    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):],
+                                skip_special_tokens)
     if verbose and not streamer:
         print(response)
     history.append((query, response))
     return response, history
+
+
+def limit_history_length(template: Template, query: str,
+                         history: Optional[History], max_length: int) -> int:
+    """binary search"""
+    if history is None:
+        history = []
+
+    def compute_token_length(history_length: int) -> int:
+        assert history_length != 0
+        example = {'query': query, 'history': history[-history_length:]}
+        input_ids = template.encode(example)['input_ids']
+        return len(input_ids)
+
+    return upper_bound(0, len(history),
+                       lambda mid: compute_token_length(mid) <= max_length)
 
 
 # monkey patching
