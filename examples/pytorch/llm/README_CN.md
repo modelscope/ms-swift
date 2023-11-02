@@ -248,73 +248,18 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 
 ## 📝 使用文档
-### 自定义模型
-以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 
-```python
-from swift.llm import (
-    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
-)
-import torch
-from torch import dtype as Dtype
-from typing import Dict, Any
-
-class CustomModelType:
-    tigerbot_13b_chat = 'tigerbot-13b-chat'
-
-class CustomTemplateType:
-    tigerbot = 'tigerbot'
-
-@register_model(CustomModelType.tigerbot_13b_chat,
-                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-                CustomTemplateType.tigerbot)
-def get_tigerbot_model_tokenizer(model_dir: str,
-                                 torch_dtype: Dtype,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        require_version('transformers>=4.34')
-        logger.info('Setting use_flash_attention_2: True')
-        model_kwargs['use_flash_attention_2'] = True
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
-
-# 不使用修饰器的用法:
-# register_model(CustomModelType.tigerbot_13b_chat,
-#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
-
-if __name__ == '__main__':
-    model_kwargs = {'device_map': 'auto'}
-    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
-    print(model, tokenizer)
-```
-`register_model`会在`MODEL_MAPPING`中注册模型, 该函数的参数含义如下:
-- `model_type`: 必填项. 表示模型的名字, 也是唯一的id.
-- `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`.
-- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules AUTO`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
-- `template`: 默认为`TemplateType.default`. 表示在sh脚本中未指定`--template`情况下默认使用的chat template.
-- `get_function`: 默认值为`None`. 获取model和tokenizer的函数. 如果传入None, 则使用修饰器方案进行模型注册, `register_model`函数将返回`Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 一般使用`get_model_tokenizer_from_repo`作为参数传入, 返回model和tokenizer. 如果出现需要对模型代码打补丁等情况, 则可以通过自定义该函数来实现.
-- `requires`: 默认为`[]`. 表示模型所需要的区别于其他模型的依赖. 该参数一般不需要设置.
-- `torch_dtype`: 默认为`None`. 表示模型所推荐使用的torch_dtype. 该参数一般不需要设置.
-- `automodel_class`: 默认为`AutoModelForCausalLM`. 表示被调用from_pretrained的类. 如果你使用的是`roberta-base`等模型, 则需要修改该参数. 该参数一般不需要设置.
-- `revision`: 默认为`'master'`. 用于指定模型的版本号. 如果`model_id_or_path`是本地的模型目录, 则该参数失效. 该参数一般不需要设置.
-- `ignore_file_pattern`: 默认为`None`. 表示下载的时候需要忽略的文件名的正则pattern, 该参数会传递给`snapshot_download`. 例如`r'.+\.bin$'`, `r'.+\.savetensors$'`等. 该参数一般不需要设置.
-- `max_length`: 默认为`None`. 用于注释模型的max_length. 该参数一般不需要设置.
-- `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
-- `**kwargs`: 其他用于注释模型能力的参数. 该参数一般不需要设置.
-
-
-### 自定义数据集
+### 📌自定义数据集
 我们支持两种**自定义数据集**的方法.
-1. **命令行参数**的形式: **更加方便支持本地自定义数据集**.
+1. 【推荐】**命令行参数**的形式: **更加方便支持本地自定义数据集**.
 2. **注册数据集**的方式: 更加灵活, 可以对swift**进一步拓展和开发**, 但需要一定的编程门槛. 方法一在实现上借助了方法二.
 
-#### 命令行参数的形式
+#### 【推荐】命令行参数的形式
 命令行参数含义介绍:
-1. `--custom_train_dataset_path`: 默认值为`None`, 表示不使用自定义数据集. 你可以像如下形式进行指定: `--custom_train_dataset_path alpaca.csv`或者指定多个训练数据集`--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`, 脚本会进行自动的预处理和拼接. 你也可以通过公开数据集和自定义数据集结合的方式进行训练: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+1. `--custom_train_dataset_path`: 默认值为`None`, 表示不使用自定义数据集. 你可以像如下形式进行指定: `--custom_train_dataset_path alpaca.csv`或者指定多个训练数据集`--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`, 脚本会进行自动的预处理和拼接.
+
+   > 可以通过公开数据集和自定义数据集结合的方式进行训练: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+
 2. `--custom_val_dataset_path`: 默认值为`None`, 表示不使用自定义验证数据集. 如果你指定了`custom_train_dataset_path`, 则自定义数据集的验证集将按照命令行参数`dataset_test_ratio`进行切割. 命令行传入的格式可以参考`--custom_train_dataset_path`.
 
 脚本支持的文件格式包含`csv`和`jsonl`格式. 你需要将传入的文件符合以下数据集格式. csv格式的文件只支持指令微调, 即没有history的情况. jsonl格式的文件支持system, history.
@@ -395,6 +340,7 @@ if __name__ == '__main__':
     print(train_dataset[0].keys())
 ```
 `register_dataset`会在`DATASET_MAPPING`中注册数据集, 该函数的参数含义如下:
+
 - `dataset_name`: 必填项, 表示数据集的名字, 也是数据集的唯一id.
 - `dataset_id_or_path`: 必填项. 表示数据集在ModelScope Hub上的`dataset_id`或者本地的`dataset_dir`.
 - `train_subset_split_list`: 默认值为`None`. 如果你使用`get_dataset_from_repo`作为获取数据集的函数, 该参数是一个`List[Union[str, Tuple[str, str], List[str]]]`. 该参数是一个含(subset_name, split)的列表, 我们会将这些子训练数据集进行拼接, 形成完整的训练数据集. 如果list内是字符串, 则默认`subset_name='default'`. 如果你使用其他的`get_function`, 则该参数的含义可以自定义, 例如: 如果`dataset_id_or_path`代表`model_dir`, 则该参数可以代表: 训练集的文件名等.
@@ -407,7 +353,69 @@ if __name__ == '__main__':
 - `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
 - `**kwargs`: 其他用于注释数据集的参数. 该参数一般不需要设置.
 
+### 自定义模型
+
+以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+
+```python
+from swift.llm import (
+    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
+)
+import torch
+from torch import dtype as Dtype
+from typing import Dict, Any
+
+class CustomModelType:
+    tigerbot_13b_chat = 'tigerbot-13b-chat'
+
+class CustomTemplateType:
+    tigerbot = 'tigerbot'
+
+@register_model(CustomModelType.tigerbot_13b_chat,
+                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+                CustomTemplateType.tigerbot)
+def get_tigerbot_model_tokenizer(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        require_version('transformers>=4.34')
+        logger.info('Setting use_flash_attention_2: True')
+        model_kwargs['use_flash_attention_2'] = True
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+
+# 不使用修饰器的用法:
+# register_model(CustomModelType.tigerbot_13b_chat,
+#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
+
+if __name__ == '__main__':
+    model_kwargs = {'device_map': 'auto'}
+    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
+    print(model, tokenizer)
+```
+
+`register_model`会在`MODEL_MAPPING`中注册模型, 该函数的参数含义如下:
+
+- `model_type`: 必填项. 表示模型的名字, 也是唯一的id.
+- `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`.
+- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules AUTO`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
+- `template`: 默认为`TemplateType.default`. 表示在sh脚本中未指定`--template`情况下默认使用的chat template.
+- `get_function`: 默认值为`None`. 获取model和tokenizer的函数. 如果传入None, 则使用修饰器方案进行模型注册, `register_model`函数将返回`Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 一般使用`get_model_tokenizer_from_repo`作为参数传入, 返回model和tokenizer. 如果出现需要对模型代码打补丁等情况, 则可以通过自定义该函数来实现.
+- `requires`: 默认为`[]`. 表示模型所需要的区别于其他模型的依赖. 该参数一般不需要设置.
+- `torch_dtype`: 默认为`None`. 表示模型所推荐使用的torch_dtype. 该参数一般不需要设置.
+- `automodel_class`: 默认为`AutoModelForCausalLM`. 表示被调用from_pretrained的类. 如果你使用的是`roberta-base`等模型, 则需要修改该参数. 该参数一般不需要设置.
+- `revision`: 默认为`'master'`. 用于指定模型的版本号. 如果`model_id_or_path`是本地的模型目录, 则该参数失效. 该参数一般不需要设置.
+- `ignore_file_pattern`: 默认为`None`. 表示下载的时候需要忽略的文件名的正则pattern, 该参数会传递给`snapshot_download`. 例如`r'.+\.bin$'`, `r'.+\.savetensors$'`等. 该参数一般不需要设置.
+- `max_length`: 默认为`None`. 用于注释模型的max_length. 该参数一般不需要设置.
+- `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
+- `**kwargs`: 其他用于注释模型能力的参数. 该参数一般不需要设置.
+
 ### 自定义对话模板
+
 以下是一个**自定义对话模板**的案例. 运行该自定义对话模板的sh可以查看`scripts/custom/tigerbot_13b_chat`.
 
 ```python
