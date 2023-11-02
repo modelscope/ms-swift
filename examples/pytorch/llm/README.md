@@ -248,73 +248,18 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 
 ## 📝 User Guide
-### Custom Model
-Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
-
-```python
-from swift.llm import (
-    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
-)
-import torch
-from torch import dtype as Dtype
-from typing import Dict, Any
-
-class CustomModelType:
-    tigerbot_13b_chat = 'tigerbot-13b-chat'
-
-class CustomTemplateType:
-    tigerbot = 'tigerbot'
-
-@register_model(CustomModelType.tigerbot_13b_chat,
-                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-                CustomTemplateType.tigerbot)
-def get_tigerbot_model_tokenizer(model_dir: str,
-                                 torch_dtype: Dtype,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        require_version('transformers>=4.34')
-        logger.info('Setting use_flash_attention_2: True')
-        model_kwargs['use_flash_attention_2'] = True
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
-
-# Usage without decorators:
-# register_model(CustomModelType.tigerbot_13b_chat,
-#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
-
-if __name__ == '__main__':
-    model_kwargs = {'device_map': 'auto'}
-    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
-    print(model, tokenizer)
-```
-The `register_model` function registers the model in `MODEL_MAPPING`, and its parameters are as follows:
-- `model_type`: Required. It represents the name of the model, which is also the unique ID.
-- `model_id_or_path`: Required. It represents the `model_id` of the model in the ModelScope Hub or the local model directory `model_dir`.
-- `lora_target_modules`: Default is `None`. It represents the `lora_target_modules` used when specified as `--lora_target_modules AUTO` in the shell script or when not specified.
-- `template`: Default is `TemplateType.default`. It represents the default chat template used when not specified as `--template` in the shell script.
-- `get_function`: Default is `None`. It is a function used to retrieve the model and tokenizer. If `None` is passed, the decorator approach is used for model registration, and the `register_model` function will return `Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`. This approach is intended for users with some Python knowledge. If a function is passed, the regular approach is used for registration. Typically, `get_model_tokenizer_from_repo` is used as a parameter, which returns the model and tokenizer. If there is a need for patching the model code or other customization requirements, it can be achieved by customizing this function.
-- `requires`: Default is `[]`. It represents the dependencies specific to the model, different from other models. This parameter is generally not required.
-- `torch_dtype`: Default is `None`. It represents the recommended `torch_dtype` used by the model. This parameter is generally not required.
-- `automodel_class`: Default is `AutoModelForCausalLM`. It represents the class called by `from_pretrained`. If you are using models like `roberta-base`, this parameter needs to be modified. This parameter is generally not required.
-- `revision`: Default is `'master'`. It is used to specify the version number of the model. This parameter is not effective if `model_id_or_path` is a local model directory. This parameter is generally not required.
-- `ignore_file_pattern`: Default is `None`. It represents the regular expression pattern of the file names to be ignored during downloading, which is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter is generally not required.
-- `max_length`: Default is `None`. It is used to annotate the maximum length of the model. This parameter is generally not required.
-- `function_kwargs`: Default is `{}`. It is used to pass arguments to `get_function` to support the `partial` functionality in the decorator approach. This parameter is generally not required.
-- `**kwargs`: Other parameters used to annotate model capabilities. This parameter is generally not required.
-
 
 ### Custom Dataset
 We support two methods for **customizing datasets**.
-1. **Command line arguments**: It is **more convenient for supporting local custom datasets**.
+1. [Recommended] **Command line arguments**: It is **more convenient for supporting local custom datasets**.
 2. **Registering datasets**: It is more flexible and allows for **further extension and development of swift**, but it requires some programming skills. Method 1 relies on Method 2 for implementation.
 
-#### Command Line Arguments
+#### 📌[Recommended] Command Line Arguments
 Explanation of command line arguments:
-1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them. You can also combine public datasets with custom datasets for training: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them.
+
+   > You can also combine public datasets with custom datasets for training: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
+
 2. `--custom_val_dataset_path`: The default value is `None`, which means no custom validation dataset is used. If you specify `custom_train_dataset_path`, the custom dataset's validation set will be split according to the command line argument `dataset_test_ratio`. The format of the command line input can be referred to the `--custom_train_dataset_path` format.
 
 The script supports `csv` and `jsonl` file formats. The files you pass in need to conform to the following dataset formats. The csv format file only supports instruction fine-tuning, which means there is no history. The jsonl format file supports system and history.
@@ -407,8 +352,69 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 - `function_kwargs`: Default is `{}`, used to pass arguments to `get_function` to support the `partial` functionality in the decorator scheme. This parameter is generally not required to be set.
 - `**kwargs`: Other parameters used for annotating the dataset. This parameter is generally not required to be set.
 
+### Custom Model
+
+Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom/tigerbot_13b_chat`.
+
+```python
+from swift.llm import (
+    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
+)
+import torch
+from torch import dtype as Dtype
+from typing import Dict, Any
+
+class CustomModelType:
+    tigerbot_13b_chat = 'tigerbot-13b-chat'
+
+class CustomTemplateType:
+    tigerbot = 'tigerbot'
+
+@register_model(CustomModelType.tigerbot_13b_chat,
+                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+                CustomTemplateType.tigerbot)
+def get_tigerbot_model_tokenizer(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        require_version('transformers>=4.34')
+        logger.info('Setting use_flash_attention_2: True')
+        model_kwargs['use_flash_attention_2'] = True
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+
+# Usage without decorators:
+# register_model(CustomModelType.tigerbot_13b_chat,
+#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
+
+if __name__ == '__main__':
+    model_kwargs = {'device_map': 'auto'}
+    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
+    print(model, tokenizer)
+```
+
+The `register_model` function registers the model in `MODEL_MAPPING`, and its parameters are as follows:
+
+- `model_type`: Required. It represents the name of the model, which is also the unique ID.
+- `model_id_or_path`: Required. It represents the `model_id` of the model in the ModelScope Hub or the local model directory `model_dir`.
+- `lora_target_modules`: Default is `None`. It represents the `lora_target_modules` used when specified as `--lora_target_modules AUTO` in the shell script or when not specified.
+- `template`: Default is `TemplateType.default`. It represents the default chat template used when not specified as `--template` in the shell script.
+- `get_function`: Default is `None`. It is a function used to retrieve the model and tokenizer. If `None` is passed, the decorator approach is used for model registration, and the `register_model` function will return `Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`. This approach is intended for users with some Python knowledge. If a function is passed, the regular approach is used for registration. Typically, `get_model_tokenizer_from_repo` is used as a parameter, which returns the model and tokenizer. If there is a need for patching the model code or other customization requirements, it can be achieved by customizing this function.
+- `requires`: Default is `[]`. It represents the dependencies specific to the model, different from other models. This parameter is generally not required.
+- `torch_dtype`: Default is `None`. It represents the recommended `torch_dtype` used by the model. This parameter is generally not required.
+- `automodel_class`: Default is `AutoModelForCausalLM`. It represents the class called by `from_pretrained`. If you are using models like `roberta-base`, this parameter needs to be modified. This parameter is generally not required.
+- `revision`: Default is `'master'`. It is used to specify the version number of the model. This parameter is not effective if `model_id_or_path` is a local model directory. This parameter is generally not required.
+- `ignore_file_pattern`: Default is `None`. It represents the regular expression pattern of the file names to be ignored during downloading, which is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter is generally not required.
+- `max_length`: Default is `None`. It is used to annotate the maximum length of the model. This parameter is generally not required.
+- `function_kwargs`: Default is `{}`. It is used to pass arguments to `get_function` to support the `partial` functionality in the decorator approach. This parameter is generally not required.
+- `**kwargs`: Other parameters used to annotate model capabilities. This parameter is generally not required.
 
 ### Custom Chat Template
+
 Here is an example of a **custom template**. Running the shell script for this custom template can be found in `scripts/custom/tigerbot_13b_chat`.
 
 ```python
