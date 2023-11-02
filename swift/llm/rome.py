@@ -65,23 +65,25 @@ def rome_infer(args: RomeArguments) -> None:
         generation_config.save_pretrained(args.ckpt_dir)
     model.generation_config = generation_config
 
+    # Inference
     if args.eval_human:
         while True:
             query = input('<<< ')
-            data = {'query': query}
-            input_ids = template.encode(data)['input_ids']
-            inference(input_ids, model, tokenizer, args.stream)
+            inference(model, template, query, stream=args.stream)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
         mini_val_dataset = val_dataset.select(
             range(min(args.show_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
-            response = data['response']
-            data['response'] = None
-            input_ids = template.encode(data)['input_ids']
-            inference(input_ids, model, tokenizer, args.stream)
+            inference(
+                model,
+                template,
+                data.get('query'),
+                data.get('history'),
+                data.get('system'),
+                stream=args.stream)
             print()
-            print(f'[LABELS]{response}')
+            print(f"[LABELS]{data.get('response')}")
             print('-' * 80)
             # input('next[ENTER]')
