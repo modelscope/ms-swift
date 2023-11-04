@@ -172,9 +172,9 @@ def register_model(
     return _register_model
 
 
-@register_model(ModelType.seqgpt_560m, '01ai/Yi-34B', LoRATM.yi,
+@register_model(ModelType.yi_34b, '01ai/Yi-34B', LoRATM.yi,
                 TemplateType.default_generation)
-@register_model(ModelType.seqgpt_560m, '01ai/Yi-6B', LoRATM.yi,
+@register_model(ModelType.yi_6b, '01ai/Yi-6B', LoRATM.yi,
                 TemplateType.default_generation)
 @register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
                 TemplateType.default_generation)
