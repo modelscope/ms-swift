@@ -10,8 +10,8 @@ python llm_sft.py \
     --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
-    --dataset advertise-gen-zh \
-    --train_dataset_sample 20000 \
+    --dataset dureader-robust-zh \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 256 \
     --check_dataset_strategy warning \
