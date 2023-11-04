@@ -2,8 +2,8 @@
 import datetime as dt
 import os
 import re
-from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
-                    Type, TypeVar)
+from typing import (Any, Callable, List, Mapping, Optional, Sequence,
+                    Tuple, Type, TypeVar)
 
 from transformers import HfArgumentParser
 

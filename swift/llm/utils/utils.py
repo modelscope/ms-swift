@@ -33,7 +33,7 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, lower_bound, parse_args,
-                         upper_bound)
+                         upper_bound, stat_array)
 from .template import History, Template
 
 logger = get_logger()
@@ -201,14 +201,8 @@ def stat_dataset(dataset: HfDataset) -> None:
     _token_len = []
     for d in dataset:
         _token_len.append(len(d['input_ids']))
-    _token_len = np.array(_token_len)
-    mean = _token_len.mean().item()
-    std = _token_len.std().item()
-    min_ = _token_len.min().item()
-    max_ = _token_len.max().item()
-    logger.info(
-        f'Dataset Token Length: {mean:.6f}±{std:.6f}, min={min_:.6f}, max={max_:.6f}, size={_token_len.shape[0]}'
-    )
+    _, stat_str = stat_array(_token_len)    
+    logger.info(f'Dataset Token Length: {stat_str}')
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
