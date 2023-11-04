@@ -22,6 +22,7 @@ class TemplateType:
     xverse = 'xverse'
     ziya = 'ziya'
     skywork = 'skywork'
+    yi = 'yi'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
