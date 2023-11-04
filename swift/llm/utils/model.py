@@ -92,6 +92,8 @@ class ModelType:
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
+    yi_6b = 'yi-6b'
+    yi_34b = 'yi-34b'
 
 
 class LoRATM(NamedTuple):
@@ -106,6 +108,7 @@ class LoRATM(NamedTuple):
     xverse = ['q_proj', 'k_proj', 'v_proj']
     mistral = ['q_proj', 'k_proj', 'v_proj']
     ziya = ['q_proj', 'k_proj', 'v_proj']
+    yi = ['q_proj', 'k_proj', 'v_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -169,6 +172,10 @@ def register_model(
     return _register_model
 
 
+@register_model(ModelType.seqgpt_560m, '01ai/Yi-34B', LoRATM.yi,
+                TemplateType.default_generation)
+@register_model(ModelType.seqgpt_560m, '01ai/Yi-6B', LoRATM.yi,
+                TemplateType.default_generation)
 @register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
                 TemplateType.default_generation)
 @register_model(ModelType.ziya2_13b_chat, 'Fengshenbang/Ziya2-13B-Chat',
