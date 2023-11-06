@@ -4,7 +4,7 @@ from .io_utils import read_from_jsonl
 from .logger import get_logger
 from .metric import (compute_acc_metrics, compute_nlg_metrics,
                      preprocess_logits_for_metrics)
-from .np_utils import get_seed, transform_jsonl_to_df, stat_array
+from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .tb_utils import (TB_COLOR, TB_COLOR_SMOOTH, plot_images,
                        read_tensorboard_file, tensorboard_smoothing)
 from .torch_utils import (broadcast_string, get_dist_setting, is_ddp_plus_mp,

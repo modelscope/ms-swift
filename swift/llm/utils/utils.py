@@ -33,7 +33,7 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, lower_bound, parse_args,
-                         upper_bound, stat_array)
+                         stat_array, upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -199,9 +199,9 @@ def get_main(
 def stat_dataset(dataset: HfDataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
-    for d in dataset:
+    for d in tqdm(dataset):
         _token_len.append(len(d['input_ids']))
-    _, stat_str = stat_array(_token_len)    
+    _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
 
 
