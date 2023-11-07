@@ -1,7 +1,7 @@
-# Experimental environment: 3090
-# 12GB GPU memory
+# Experimental environment: 2 * 100
+# 2 * 23GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 python llm_sft.py \
     --model_id_or_path xverse/XVERSE-65B \
     --model_revision v1.0.0 \
