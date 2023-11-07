@@ -36,6 +36,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 ## 🎉 新闻
 
+- 🔥 2023.11.07: 支持yi-6b模型的训练和推理流程，脚本在`scripts/yi_6b`.
+
 - 🔥 2023.10.30: 支持 QA-LoRA 和 LongLoRA两种新的tuners
 - 🔥 2023.10.30: 支持使用ROME(Rank One Model Editing)来编辑模型，在无需训练的情况下即可给模型灌注新知识！
 - 🔥 2023.10.27: 支持chatglm3系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b_32k`.
