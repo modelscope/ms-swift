@@ -1,4 +1,4 @@
-# Experimental environment: 3090
+# Experimental environment: A100
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
