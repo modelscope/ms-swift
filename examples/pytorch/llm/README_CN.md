@@ -84,7 +84,9 @@ pip install deepspeed -U
 
 # 如果你想要使用基于auto_gptq的qlora训练. (推荐, 效果优于bnb)
 # 使用auto_gptq的模型: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8
-pip install auto_gptq optimum -U
+# auto_gptq和cuda版本有对应关系，请按照https://github.com/PanQiWei/AutoGPTQ#quick-installation选择版本
+pip install auto_gptq
+pip install optimum -U
 
 # 如果你想要使用基于bnb的qlora训练.
 pip install bitsandbytes -U
