@@ -4,7 +4,7 @@ PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_id_or_path xverse/XVERSE-65B \
-    --model_revision master \
+    --model_revision v1.0.0 \
     --sft_type lora \
     --tuner_backend swift \
     --template_type default-generation \
