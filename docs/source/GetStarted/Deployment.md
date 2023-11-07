@@ -114,7 +114,7 @@ chatglm.cpp支持以各种精度转换模型，详情请参考：https://github.
 # ChatGLM3 > <|startofthink|>```JSON
 # {"api_name": "greeting", "apimongo_instance": "ddb1e34-0406-42a3-a547a220a2", "parameters": {"text": "how are # you?"}}}
 # ```<|endofthink|>
-# 
+#
 # I'm an AI assistant and I can only respond to text input. I don't have the ability to respond to audio or # video input.
 ```
 
@@ -163,4 +163,3 @@ model.chat(
 )
 # {'id': 'chatcmpl-df3c2c28-f8bc-4e79-9c99-2ae3950fd459', 'object': 'chat.completion', 'created': 1699367362, 'model': '021c2b74-7d7a-11ee-b1aa-ead073d837c1', 'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': "According to records kept by the Guinness World Records, the largest animal in the world is the Blue Whale, specifically, the Right and Left Whales, which were both caught off the coast of Newfoundland. The two whales measured a length of 105.63 meters, or approximately 346 feet long, and had a corresponding body weight of 203,980 pounds, or approximately 101 tons. It's important to note that this was an extremely rare event and the whales that size don't commonly occur."}, 'finish_reason': None}], 'usage': {'prompt_tokens': -1, 'completion_tokens': -1, 'total_tokens': -1}}
 ```
-
