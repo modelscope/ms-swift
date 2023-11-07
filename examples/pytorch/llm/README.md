@@ -83,8 +83,9 @@ cd examples/pytorch/llm
 pip install deepspeed -U
 
 # If you want to use qlora training based on auto_gptq (recommended, better performance than bnb):
-# Models using auto_gptq: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8
-pip install auto_gptq optimum -U
+# auto_gptq has version mapping with cuda versions，please refer to https://github.com/PanQiWei/AutoGPTQ#quick-installation
+pip install auto_gptq
+pip install optimum -U
 
 # If you want to use qlora training based on bnb:
 pip install bitsandbytes -U
