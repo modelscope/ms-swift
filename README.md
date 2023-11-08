@@ -37,7 +37,7 @@ Key features:
 Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
 
 ### 🎉 News
-
+- 🔥 2023.11.08: Support the finetuning of xverse-65b model, scripts can be found at: `scripts/xverse_65b`.
 - 🔥 2023.11.07: Support the finetuning of yi-6b model, scripts can be found at: `scripts/yi_6b`.
 - 🔥 2023.10.30: Support QA-LoRA and LongLoRA to decrease memory usage in training.
 - 🔥 2023.10.30: Support ROME(Rank One Model Editing) to add/modify knowledges, training is not needed!
