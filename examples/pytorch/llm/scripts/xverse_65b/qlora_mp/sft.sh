@@ -1,4 +1,4 @@
-# Experimental environment: 2 * 100
+# Experimental environment: 2 * A100
 # 2 * 23GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -10,8 +10,8 @@ python llm_sft.py \
     --template_type default-generation \
     --dtype bf16 \
     --output_dir output \
-    --dataset advertise-gen-zh \
-    --train_dataset_sample 20000 \
+    --dataset dureader-robust-zh \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \
