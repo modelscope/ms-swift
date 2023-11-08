@@ -80,6 +80,7 @@ class ModelType:
     xverse_7b_chat = 'xverse-7b-chat'
     xverse_13b = 'xverse-13b'
     xverse_13b_chat = 'xverse-13b-chat'
+    xverse_65b = 'xverse-65b'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
@@ -197,6 +198,8 @@ def register_model(
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
                 LoRATM.xverse, TemplateType.xverse)
 @register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.xverse,
+                TemplateType.default_generation)
+@register_model(ModelType.xverse_65b, 'xverse/XVERSE-65B', LoRATM.xverse,
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_7b_chat, 'xverse/XVERSE-7B-Chat',
                 LoRATM.xverse, TemplateType.xverse)
