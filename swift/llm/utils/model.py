@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 from functools import partial
 from types import MethodType
@@ -7,11 +8,14 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import transformers
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
                         Model, read_config, snapshot_download)
+from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
+from torch.nn import Module
 from transformers import (PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.models.auto.auto_factory import _BaseAutoModelClass
@@ -179,6 +183,14 @@ def register_model(
     return _register_model
 
 
+@register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
+                LoRATM.bluelm, TemplateType.bluelm)
+@register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
+                LoRATM.bluelm, TemplateType.bluelm)
+@register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
+                LoRATM.bluelm, TemplateType.default_generation)
+@register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
+                TemplateType.default_generation)
 @register_model(ModelType.yi_34b, '01ai/Yi-34B', LoRATM.yi,
                 TemplateType.default_generation)
 @register_model(ModelType.yi_6b, '01ai/Yi-6B', LoRATM.yi,
@@ -685,24 +697,13 @@ def get_skywork_model_tokenizer(model_dir: str,
     return model, tokenizer
 
 
-@register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
-                LoRATM.bluelm, TemplateType.bluelm)
-@register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
-                LoRATM.bluelm, TemplateType.bluelm)
-@register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
-                LoRATM.bluelm, TemplateType.default_generation)
-@register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
-                TemplateType.default_generation)
-def get_bluelm_model_tokenizer(model_dir: str,
-                               torch_dtype: Dtype,
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               **kwargs):
-    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     model_kwargs, load_model,
-                                                     **kwargs)
-    model.__class__._set_gradient_checkpointing = PreTrainedModel._set_gradient_checkpointing
-    return model, tokenizer
+def fix_transformers_upgrade(module: PreTrainedModel) -> None:
+    # from 4.35.0, transformers changes its arguments of _set_gradient_checkpointing
+    if version.parse(transformers.__version__) >= version.parse('4.35.0'):
+        if isinstance(module, PreTrainedModel) and hasattr(module, '_set_gradient_checkpointing') \
+                and 'value' in inspect.signature(module._set_gradient_checkpointing).parameters.keys():
+            module._set_gradient_checkpointing = MethodType(
+                PreTrainedModel._set_gradient_checkpointing, module)
 
 
 def get_model_tokenizer(
@@ -753,6 +754,8 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = model_info['automodel_class']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
+    if model is not None:
+        fix_transformers_upgrade(model)
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
