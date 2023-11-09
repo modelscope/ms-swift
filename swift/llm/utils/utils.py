@@ -200,7 +200,7 @@ def stat_dataset(dataset: HfDataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
     input_ids = dataset['input_ids']
-    for i in tqdm(range(len(dataset))):
+    for i in range(len(dataset)):
         _token_len.append(len(input_ids[i]))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
@@ -292,12 +292,13 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
 
 
 def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
-    dataset_len = [len(d['input_ids']) for d in tqdm(dataset)]
+    input_ids = dataset['input_ids']
+    dataset_len = [len(input_ids[i]) for i in range(len(dataset))]
     idx = heapq.nlargest(
         num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
     input_ids = []
     labels = []
-    for i in tqdm(idx):
+    for i in idx:
         input_ids.append(dataset[i]['input_ids'])
         labels.append(dataset[i]['labels'])
     return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
