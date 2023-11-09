@@ -31,6 +31,6 @@ python llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id yi-6b-qlora \
+    --hub_model_id yi-6b-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
