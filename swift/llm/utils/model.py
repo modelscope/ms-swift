@@ -81,6 +81,11 @@ class ModelType:
     xverse_13b = 'xverse-13b'
     xverse_13b_chat = 'xverse-13b-chat'
     xverse_65b = 'xverse-65b'
+    # vivo
+    bluelm_7b = 'bluelm-7b'
+    bluelm_7b_32k = 'bluelm-7b-32k'
+    bluelm_7b_chat = 'bluelm-7b-chat'
+    bluelm_7b_chat_32k = 'bluelm-7b-chat-32k'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
@@ -110,6 +115,7 @@ class LoRATM(NamedTuple):
     mistral = ['q_proj', 'k_proj', 'v_proj']
     ziya = ['q_proj', 'k_proj', 'v_proj']
     yi = ['q_proj', 'k_proj', 'v_proj']
+    bluelm = ['q_proj', 'k_proj', 'v_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -676,6 +682,27 @@ def get_skywork_model_tokenizer(model_dir: str,
     tokenizer.add_tokens('[USER]')
     tokenizer.add_tokens('[BOT]')
     tokenizer.add_tokens('[SEP]')
+    return model, tokenizer
+
+
+@register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
+                LoRATM.bluelm, TemplateType.bluelm)
+@register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
+                LoRATM.bluelm, TemplateType.bluelm)
+@register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
+                LoRATM.bluelm, TemplateType.default_generation)
+@register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
+                TemplateType.default_generation)
+def get_bluelm_model_tokenizer(model_dir: str,
+                               torch_dtype: Dtype,
+                               model_kwargs: Dict[str, Any],
+                               load_model: bool = True,
+                               **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     model_kwargs, load_model,
+                                                     **kwargs)
+    from transformers import PreTrainedModel
+    model.__class__._set_gradient_checkpointing = PreTrainedModel._set_gradient_checkpointing
     return model, tokenizer
 
 

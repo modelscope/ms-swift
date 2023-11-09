@@ -23,6 +23,7 @@ class TemplateType:
     ziya = 'ziya'
     skywork = 'skywork'
     yi = 'yi'
+    bluelm = 'bluelm'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -142,6 +143,10 @@ register_template(
     TemplateType.skywork,
     Template([], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None, ['[SEP]</s>']))
 
+register_template(
+    TemplateType.bluelm,
+    Template([['bos_token_id']], ['[|Human|]:{{QUERY}}[|AI|]:'], [],
+             [['eos_token_id']]))
 Context = Union[str, List[int]]
 
 

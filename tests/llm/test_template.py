@@ -180,6 +180,30 @@ you are a helpful assistant!<|im_end|>
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
 
+    def test_bluelm_template(self):
+        if not __name__ == '__main__':
+            # avoid ci test
+            return
+        model_type = ModelType.bluelm_7b_chat
+        template_type = TemplateType.bluelm
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        model.generation_config = GenerationConfig(
+            max_new_tokens=128,
+            temperature=0.9,
+            top_k=20,
+            top_p=0.9,
+            repetition_penalt=1.05,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        response, _ = inference(model, template, query, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat(tokenizer, query)[0]
+        print(f'official response: {response}')
+
 
 if __name__ == '__main__':
     unittest.main()
