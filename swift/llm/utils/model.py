@@ -701,7 +701,6 @@ def get_bluelm_model_tokenizer(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
-    from transformers import PreTrainedModel
     model.__class__._set_gradient_checkpointing = PreTrainedModel._set_gradient_checkpointing
     return model, tokenizer
 

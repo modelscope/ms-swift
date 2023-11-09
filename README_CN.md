@@ -43,7 +43,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 🔥 2023.10.17: 支持int4, int8模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
 - 2023.10.15: 支持ziya2-13b系列模型: ziya2-13b, ziya2-13b-chat.
 - 2023.10.12: 支持mistral-7b系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat.
-- 🔥 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP.sft.sh`.
+- 🔥 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP.
 - 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat.
 - 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度.
 
