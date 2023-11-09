@@ -1,8 +1,8 @@
-# Experimental environment: A10
+# Experimental environment: A10, 3090
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "output/yi-6b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/bluelm-7b-chat/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
     --max_length 2048 \

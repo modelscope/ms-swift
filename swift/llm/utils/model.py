@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 from functools import partial
 from types import MethodType
@@ -7,11 +8,14 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import transformers
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
                         Model, read_config, snapshot_download)
+from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
+from torch.nn import Module
 from transformers import (PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.models.auto.auto_factory import _BaseAutoModelClass
@@ -81,6 +85,11 @@ class ModelType:
     xverse_13b = 'xverse-13b'
     xverse_13b_chat = 'xverse-13b-chat'
     xverse_65b = 'xverse-65b'
+    # vivo
+    bluelm_7b = 'bluelm-7b'
+    bluelm_7b_32k = 'bluelm-7b-32k'
+    bluelm_7b_chat = 'bluelm-7b-chat'
+    bluelm_7b_chat_32k = 'bluelm-7b-chat-32k'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
@@ -110,6 +119,7 @@ class LoRATM(NamedTuple):
     mistral = ['q_proj', 'k_proj', 'v_proj']
     ziya = ['q_proj', 'k_proj', 'v_proj']
     yi = ['q_proj', 'k_proj', 'v_proj']
+    bluelm = ['q_proj', 'k_proj', 'v_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -118,7 +128,7 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
 
 def register_model(
     model_type: str,
-    model_id_or_path: str,
+    model_id_or_path: Optional[str],
     lora_target_modules: Optional[List[str]] = None,
     template: str = TemplateType.default,
     get_function: Optional[GetModelTokenizerFunction] = None,
@@ -173,6 +183,14 @@ def register_model(
     return _register_model
 
 
+@register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
+                LoRATM.bluelm, TemplateType.bluelm)
+@register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
+                LoRATM.bluelm, TemplateType.bluelm)
+@register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
+                LoRATM.bluelm, TemplateType.default_generation)
+@register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
+                TemplateType.default_generation)
 @register_model(ModelType.yi_34b, '01ai/Yi-34B', LoRATM.yi,
                 TemplateType.default_generation)
 @register_model(ModelType.yi_6b, '01ai/Yi-6B', LoRATM.yi,
@@ -679,6 +697,15 @@ def get_skywork_model_tokenizer(model_dir: str,
     return model, tokenizer
 
 
+def fix_transformers_upgrade(module: PreTrainedModel) -> None:
+    # from 4.35.0, transformers changes its arguments of _set_gradient_checkpointing
+    if version.parse(transformers.__version__) >= version.parse('4.35.0'):
+        if isinstance(module, PreTrainedModel) and hasattr(module, '_set_gradient_checkpointing') \
+                and 'value' in inspect.signature(module._set_gradient_checkpointing).parameters.keys():
+            module._set_gradient_checkpointing = MethodType(
+                PreTrainedModel._set_gradient_checkpointing, module)
+
+
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
@@ -711,7 +738,8 @@ def get_model_tokenizer(
         if is_dist() and not is_local_master():
             dist.barrier()
         model_dir = model_id_or_path
-        if not os.path.exists(model_id_or_path):
+        if model_id_or_path is not None and not os.path.exists(
+                model_id_or_path):
             revision = model_info['revision']
             model_dir = snapshot_download(
                 model_id_or_path,
@@ -726,10 +754,12 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = model_info['automodel_class']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
+    if model is not None:
+        fix_transformers_upgrade(model)
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    if model is not None:
+    if model is not None and model_dir is not None:
         generation_config_path = os.path.join(model_dir,
                                               'generation_config.json')
         generation_config = getattr(model, 'generation_config', None)

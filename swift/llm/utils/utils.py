@@ -33,7 +33,7 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, lower_bound, parse_args,
-                         upper_bound)
+                         stat_array, upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -199,16 +199,11 @@ def get_main(
 def stat_dataset(dataset: HfDataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
-    for d in dataset:
-        _token_len.append(len(d['input_ids']))
-    _token_len = np.array(_token_len)
-    mean = _token_len.mean().item()
-    std = _token_len.std().item()
-    min_ = _token_len.min().item()
-    max_ = _token_len.max().item()
-    logger.info(
-        f'Dataset Token Length: {mean:.6f}±{std:.6f}, min={min_:.6f}, max={max_:.6f}, size={_token_len.shape[0]}'
-    )
+    input_ids = dataset['input_ids']
+    for i in range(len(dataset)):
+        _token_len.append(len(input_ids[i]))
+    _, stat_str = stat_array(_token_len)
+    logger.info(f'Dataset Token Length: {stat_str}')
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
@@ -297,12 +292,13 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
 
 
 def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
-    dataset_len = [len(d['input_ids']) for d in tqdm(dataset)]
+    input_ids = dataset['input_ids']
+    dataset_len = [len(input_ids[i]) for i in range(len(dataset))]
     idx = heapq.nlargest(
         num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
     input_ids = []
     labels = []
-    for i in tqdm(idx):
+    for i in idx:
         input_ids.append(dataset[i]['input_ids'])
         labels.append(dataset[i]['labels'])
     return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})

@@ -46,10 +46,10 @@ you are a helpful assistant!<|im_end|>
 <|endoftext|>"""
             self.assertTrue(result == text)
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
     def test_chatglm3_template(self):
-        if not __name__ == '__main__':
-            # avoid ci test
-            return
         model_type = ModelType.chatglm3_6b
         template_type = TemplateType.chatglm3
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
@@ -70,10 +70,10 @@ you are a helpful assistant!<|im_end|>
         response = model.chat(tokenizer, query, max_length=None)[0]
         print(f'official response: {response}')
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
     def test_qwen_template(self):
-        if not __name__ == '__main__':
-            # avoid ci test
-            return
         model_type = ModelType.qwen_7b_chat
         template_type = TemplateType.chatml
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
@@ -87,10 +87,10 @@ you are a helpful assistant!<|im_end|>
         response = model.chat(tokenizer, query, None, max_length=None)[0]
         print(f'official response: {response}')
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
     def test_llama_template(self):
-        if not __name__ == '__main__':
-            # avoid ci test
-            return
         model_type = ModelType.llama2_7b_chat
         template_type = TemplateType.llama
         _, tokenizer = get_model_tokenizer(model_type, load_model=False)
@@ -117,10 +117,10 @@ you are a helpful assistant!<|im_end|>
         response = model.chat({'text': query}, tokenizer)['response']
         print(f'official response: {response}')
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
     def test_baichuan_template(self):
-        if not __name__ == '__main__':
-            # avoid ci test
-            return
         model_type = ModelType.baichuan2_7b_chat
         template_type = TemplateType.baichuan
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
@@ -132,10 +132,10 @@ you are a helpful assistant!<|im_end|>
         response = model.chat(tokenizer, [{'role': 'user', 'content': query}])
         print(f'official response: {response}')
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
     def test_chatglm2_template(self):
-        if not __name__ == '__main__':
-            # avoid ci test
-            return
         model_type = ModelType.chatglm2_6b
         template_type = TemplateType.chatglm2
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
@@ -156,12 +156,36 @@ you are a helpful assistant!<|im_end|>
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
     def test_internlm_template(self):
-        if not __name__ == '__main__':
-            # avoid ci test
-            return
         model_type = ModelType.internlm_20b_chat
         template_type = TemplateType.internlm
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        model.generation_config = GenerationConfig(
+            max_new_tokens=128,
+            temperature=0.9,
+            top_k=20,
+            top_p=0.9,
+            repetition_penalt=1.05,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id)
+        query = '12345+234=？'
+        print(f'query: {query}')
+        response, _ = inference(model, template, query, verbose=False)
+        print(f'swift response: {response}')
+        response = model.chat(tokenizer, query)[0]
+        print(f'official response: {response}')
+
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_bluelm_template(self):
+        model_type = ModelType.bluelm_7b_chat
+        template_type = TemplateType.bluelm
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         model.generation_config = GenerationConfig(

@@ -1,13 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import InferArguments, RomeArguments, SftArguments
-from .dataset import (DATASET_MAPPING, AlpacaPreprocessor,
-                      ConversationsPreprocessor, DatasetName,
-                      GetDatasetFunction, get_dataset, get_dataset_from_repo,
-                      register_dataset)
+from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
+                      get_dataset, get_dataset_from_repo, register_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
                     ModelType, get_model_tokenizer,
                     get_model_tokenizer_from_repo,
                     get_model_tokenizer_from_sdk, register_model)
+from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
+                         ComposePreprocessor, ConversationsPreprocessor,
+                         PreprocessFunc, RenameColumnsPreprocessor,
+                         SmartPreprocessor, SwiftPreprocessor,
+                         TextGenerationPreprocessor)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        Template, TemplateType, get_template, register_template)
 from .utils import (data_collate_fn, dataset_map, download_dataset,
