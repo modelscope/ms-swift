@@ -199,8 +199,9 @@ def get_main(
 def stat_dataset(dataset: HfDataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
-    for d in tqdm(dataset):
-        _token_len.append(len(d['input_ids']))
+    input_ids = dataset['input_ids']
+    for i in tqdm(range(len(dataset))):
+        _token_len.append(len(input_ids[i]))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
 
