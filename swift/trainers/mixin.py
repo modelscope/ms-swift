@@ -522,8 +522,9 @@ class SwiftMixin:
             self.control.should_log = False
             logs: Dict[str, float] = {}
             metrics_log = {'loss': tr_loss}  # loss first
-            metrics_log.update(self._custom_metrics)
-            self._custom_metrics = {}
+            if hasattr(self, '_custom_metrics'):
+                metrics_log.update(self._custom_metrics)
+                self._custom_metrics = {}
             for k, v in metrics_log.items():
                 # all_gather + mean() to get average loss over all processes
                 v_scalar = self._nested_gather(v).mean().item()

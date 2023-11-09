@@ -54,13 +54,14 @@ Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch
 
 ### Basic Usage
 Quickly fine-tune, infer with LLM, and build a Web-UI.
-#### Run using Python
+
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install .[llm]
 ```
 
+#### Run using Python
 ```python
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory

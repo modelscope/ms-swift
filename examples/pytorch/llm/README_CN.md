@@ -458,7 +458,7 @@ if __name__ == '__main__':
 - `--model_type`: 表示你选择的模型类型, 默认是`None`, 即如果没有指定`model_id_or_path`, 则选择`'qwen-7b-chat'`, 如果指定了, 则会根据`model_id_or_path`以及`MODEL_MAPPING`推断`model_type`. 这两个参数不能同时指定. 可以选择的`model_type`可以查看`MODEL_MAPPING.keys()`.
 - `--model_id_or_path`: 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`, 不区分大小写, 默认为`None`. 如果`--model_id_or_path`未被注册, 则会抛出异常. 你可以使用`model_type`的方式指定模型类型, 也可以通过`model_id_or_path`的方式指定模型类型.
 - `--model_revision`: 表示模型在ModelScope Hub中对应`model_id`的版本号, 默认为`None`. 如果`model_id_or_path`使用本地的模型目录, 则该参数失效. model_revision指定为None, 则使用注册在`MODEL_MAPPING`中的revision. 否则强制使用model_revision.
-- `model_cache_dir`: 默认为`None`. 如果模型在本地已经有缓存, 且缓存路径并非ModelScope默认cache路径, 可以通过指定该参数从cache_dir中导入model和tokenizer.
+- `--model_cache_dir`: 默认为`None`. 如果模型在本地已经有缓存, 且缓存路径并非ModelScope默认cache路径, 可以通过指定该参数从cache_dir中导入model和tokenizer.
 - `--sft_type`: 表示微调的方式, 默认是`'lora'`. 你可以选择的值包括: 'lora', 'full'. 如果你要使用lora或qlora, 你需要选择`--sft_type lora`. qlora需额外设置`--quantization_bit 4`. 如果你要使用全参数微调, 则需选择`--sft_type full`.
 - `--tuner_backend`: 表示lora, qlora的后端支持, 默认是`'swift'`. 你可以选择的值包括: 'swift', 'peft'.
 - `--template_type`: 表示使用的对话模板的类型, 默认是`None`, 即根据`model_type`查找`MODEL_MAPPING`中的`template`. 可以选择的`template_type`可以查看`TEMPLATE_MAPPING.keys()`.

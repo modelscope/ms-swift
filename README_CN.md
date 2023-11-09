@@ -52,13 +52,14 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 ### 简单使用
 快速对LLM进行微调, 推理并搭建Web-UI.
-#### 使用python运行
+
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install .[llm]
 ```
 
+#### 使用python运行
 ```python
 # Experimental environment: A10, 3090, A100, ...
 # 16GB GPU memory

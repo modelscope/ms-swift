@@ -118,7 +118,7 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
 
 def register_model(
     model_type: str,
-    model_id_or_path: str,
+    model_id_or_path: Optional[str],
     lora_target_modules: Optional[List[str]] = None,
     template: str = TemplateType.default,
     get_function: Optional[GetModelTokenizerFunction] = None,
@@ -711,7 +711,8 @@ def get_model_tokenizer(
         if is_dist() and not is_local_master():
             dist.barrier()
         model_dir = model_id_or_path
-        if not os.path.exists(model_id_or_path):
+        if model_id_or_path is not None and not os.path.exists(
+                model_id_or_path):
             revision = model_info['revision']
             model_dir = snapshot_download(
                 model_id_or_path,
@@ -729,7 +730,7 @@ def get_model_tokenizer(
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    if model is not None:
+    if model is not None and model_dir is not None:
         generation_config_path = os.path.join(model_dir,
                                               'generation_config.json')
         generation_config = getattr(model, 'generation_config', None)

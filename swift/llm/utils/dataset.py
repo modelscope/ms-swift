@@ -699,13 +699,15 @@ def _check_dataset(
 
 
 def get_dataset(
-    dataset_name_list: List[str],
+    dataset_name_list: Union[List[str], str],
     dataset_test_ratio: float = 0.,
     dataset_seed: Union[RandomState, int] = 42,
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none'
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
+    if isinstance(dataset_name_list, str):
+        dataset_name_list = [dataset_name_list]
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
     random_state = dataset_seed
