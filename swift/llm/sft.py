@@ -5,6 +5,7 @@ from functools import partial
 import json
 import numpy as np
 import torch
+from swift.tuners import NEFTuneConfig
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
@@ -106,6 +107,7 @@ def llm_sft(args: SftArguments) -> str:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
 
+    model = Swift.prepare_model(model, NEFTuneConfig())
     show_layers(model)
     print_model_info(model)
     logger.info(model)
