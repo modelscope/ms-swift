@@ -8,13 +8,15 @@ History = List[Union[Tuple[str, str], List[str]]]
 
 
 class TemplateType:
-    default = 'default'
+    # text-generation
     default_generation = 'default-generation'
+    chatglm_generation = 'chatglm-generation'
+    # chat
+    default = 'default'
     chatml = 'chatml'
     qwen = chatml
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
-    chatglm_generation = 'chatglm-generation'
     chatglm3 = 'chatglm3'
     llama = 'llama'
     openbuddy = 'openbuddy'
@@ -22,7 +24,6 @@ class TemplateType:
     xverse = 'xverse'
     ziya = 'ziya'
     skywork = 'skywork'
-    yi = 'yi'
     bluelm = 'bluelm'
 
 

@@ -1,5 +1,5 @@
-# Experimental environment: 2 * A100
-# 2 * 35GB GPU memory
+# Experimental environment: 2 * 3090
+# 2 * 20GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -8,15 +8,15 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_id_or_path ZhipuAI/chatglm2-6b \
+    --model_id_or_path ZhipuAI/chatglm3-6b \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type chatglm2 \
+    --template_type chatglm3 \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset damo-agent-mini-zh \
+    --dataset leetcode-python-en \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \
@@ -24,8 +24,8 @@ torchrun \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
-    --gradient_checkpointing false \
+    --lora_target_modules AUTO \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-4 \
@@ -37,6 +37,8 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id chatglm2-6b-lora \
+    --hub_model_id chatglm3-6b-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --deepspeed_config_path 'ds_config/zero2.json' \
+    --only_save_model true \

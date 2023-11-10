@@ -19,7 +19,7 @@
 - 🔥 2023.10.15: Support for **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. The corresponding shell script can be found in `scripts/bluelm_7b_chat`.
 - 2023.10.31: Support Web UI. Run command: python app.py.
 - 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
-- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b_32k`.
+- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b`.
 - 🔥 2023.10.24: Use the **registration mechanism** to add models, **datasets**, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom/tigerbot_13b_chat`.
 - 🔥 2023.10.17: Supported **int4, int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
 - 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
@@ -61,13 +61,13 @@
     - Math: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
     - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), 🔥[sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
     - Text Generation: 🔥[advertise-gen-zh](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), 🔥[dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
-    - Classification: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+    - Classification: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), 🔥[jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
     - Other: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, chatglm-generation
-  - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
+  - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 
 ## 🛠️ Preparing the Experimental Environment

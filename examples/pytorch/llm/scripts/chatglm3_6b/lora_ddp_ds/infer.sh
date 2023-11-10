@@ -2,7 +2,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "output/chatglm3-6b-32k/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/chatglm3-6b/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
     --max_length 4096 \
