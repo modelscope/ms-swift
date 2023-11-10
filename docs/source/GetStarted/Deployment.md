@@ -108,7 +108,7 @@ chatglm.cpp支持以各种精度转换模型，详情请参考：https://github.
 之后就可以拉起模型推理：
 
 ```shell
-./build/bin/main -m chatglm-ggml.bin -p 我想找个地 方游玩 --top_p 0.8 --temp 0.8
+./build/bin/main -m chatglm-ggml.bin -p 我想找个地方游玩 --top_p 0.8 --temp 0.8
 
 #好的，我为您总结了五个游玩的目的地，每个目的地都对应了一段合适的游玩推荐语，供您参考
 #
