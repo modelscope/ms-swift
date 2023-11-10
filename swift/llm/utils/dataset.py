@@ -96,7 +96,7 @@ def register_dataset(
         dataset_id_or_path: str,
         train_subset_split_list: Optional[List[SubsetSplit]] = None,
         val_subset_split_list: Optional[List[SubsetSplit]] = None,
-        preprocess_func: PreprocessFunc = SmartPreprocessor(),
+        preprocess_func: Optional[PreprocessFunc] = SmartPreprocessor(),
         get_function: Optional[GetDatasetFunction] = None,
         *,
         task: Optional[str] = None,

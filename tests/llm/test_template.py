@@ -129,7 +129,14 @@ you are a helpful assistant!<|im_end|>
         print(f'query: {query}')
         response, _ = inference(model, template, query, verbose=False)
         print(f'swift response: {response}')
-        response = model.chat(tokenizer, [{'role': 'user', 'content': query}])
+        response = model.chat(tokenizer,
+                              [{
+                                  'role': 'system',
+                                  'content': 'you are a helpful assistant!'
+                              }, {
+                                  'role': 'user',
+                                  'content': query
+                              }])
         print(f'official response: {response}')
 
     @unittest.skip(

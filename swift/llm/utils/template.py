@@ -99,7 +99,8 @@ register_template(
         ['<|im_end|>\n'], ['<|im_end|>\n<|endoftext|>']))
 register_template(
     TemplateType.baichuan,
-    Template([], [[195], '{{QUERY}}', [196]], [], [['eos_token_id']]))
+    Template(['{{SYSTEM}}'], [[195], '{{QUERY}}', [196]], [],
+             [['eos_token_id']]))
 register_template(
     TemplateType.chatglm2,
     Template([[64790, 64792]], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'],
