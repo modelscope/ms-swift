@@ -100,7 +100,7 @@ python tools/merge_lora_weights_to_model.py --model_id_or_path /dir/to/your/base
 
 ```shell
 # 先将文件夹cd到chatglm.cpp根目录中
-python3 chatglm_cpp/convert.py -i {ckpt_dir}-merged -t q4_0 -o chatglm-ggml.bin
+python3 chatglm_cpp/convert.py -i {ckpt_dir}-merged -t f16 -o chatglm-ggml.bin
 ```
 
 chatglm.cpp支持以各种精度转换模型，详情请参考：https://github.com/li-plus/chatglm.cpp#getting-started
@@ -108,14 +108,34 @@ chatglm.cpp支持以各种精度转换模型，详情请参考：https://github.
 之后就可以拉起模型推理：
 
 ```shell
-./build/bin/main -m chatglm-ggml.bin -i
-# 以下对话为使用agent数据集训练后的效果
-# Prompt   > how are you?
-# ChatGLM3 > <|startofthink|>```JSON
-# {"api_name": "greeting", "apimongo_instance": "ddb1e34-0406-42a3-a547a220a2", "parameters": {"text": "how are # you?"}}}
-# ```<|endofthink|>
+./build/bin/main -m chatglm-ggml.bin -p 我想找个地方游玩 --top_p 0.8 --temp 0.8
+
+#好的，我为您总结了五个游玩的目的地，每个目的地都对应了一段合适的游玩推荐语，供您参考
 #
-# I'm an AI assistant and I can only respond to text input. I don't have the ability to respond to audio or # video input.
+#1. 主题公园：北京迪士尼度假区
+#推荐语：
+#
+#来北京，不去迪士尼，怎么行？带上你的家人和朋友们，来北京迪士尼度假区，开启一场奇幻的冒险之旅！
+#
+#2. 历史遗址：秦始皇兵马俑
+#推荐语：
+#
+#秦始皇兵马俑，中国历史上的一件重要文物，是中国古代文化宝库中的一颗璀璨明珠。在这里，你可以感受到秦朝的强大和威严，同时也可以感受到中国古代文化的深厚和悠久。
+#
+#3. 风景名胜：黄山
+#推荐语：
+#
+#黄山，中国的五岳之一，位于安徽省黄山市。在这里，你可以欣赏到绝美的山水风光，感受到大自然的神奇魅力。同时，你也可以在这里感受到中华民族深厚的文化底蕴和丰富的精神世界。
+#
+#4. 自然景观：九寨沟
+#推荐语：
+#
+#九寨沟，中国四川省阿坝藏族羌族自治州九寨沟县境内，位于岷山山麓，是中国著名的风景名胜区和世界自然遗产地。在这里，你可以欣赏到绝美的山水风光，感受到大自然的神奇魅力。同时，你也可以在这里感受到中华民族深厚的文化底蕴和丰富的精神世界。
+#
+#5. 文化古迹：西安城墙
+#推荐语：
+#
+#西安城墙，位于陕西省西安市，是中国著名的古代城池之一。在这里，你可以感受到中国古代城市建筑的雄伟和壮丽，同时也可以感受到中华民族深厚的文化底蕴和丰富的精神世界。
 ```
 
 ## XInference
@@ -125,6 +145,7 @@ XInference是XOrbits开源的推理框架，支持大多数LLM模型的python格
 首先安装依赖：
 
 ```shell
+# xinference使用了chatglm.cpp的pipeline推理能力，因此需要依赖chatglm.cpp
 pip install git+https://github.com/li-plus/chatglm.cpp.git@main
 pip install xinference -U
 ```
