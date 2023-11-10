@@ -405,6 +405,10 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = 'chatglm-generation'
     if args.template_type == 'qwen':
         args.template_type = TemplateType.chatml
+    if (isinstance(args.lora_target_modules,
+                   (list, tuple)) and 'AUTO' in args.lora_target_modules
+            and len(args.lora_target_modules) == 1):
+        args.lora_target_modules = ['DEFAULT']
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
