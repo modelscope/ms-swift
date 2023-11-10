@@ -194,8 +194,8 @@ class SftArguments:
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         if self.lora_target_modules is None:
-            self.lora_target_modules = ['AUTO']
-        if 'AUTO' in self.lora_target_modules:
+            self.lora_target_modules = ['DEFAULT']
+        if 'DEFAULT' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_target_modules']

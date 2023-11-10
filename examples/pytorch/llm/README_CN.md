@@ -405,7 +405,7 @@ if __name__ == '__main__':
 
 - `model_type`: 必填项. 表示模型的名字, 也是唯一的id.
 - `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`.
-- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules AUTO`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
+- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules DEFAULT`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
 - `template`: 默认为`TemplateType.default`. 表示在sh脚本中未指定`--template`情况下默认使用的chat template.
 - `get_function`: 默认值为`None`. 获取model和tokenizer的函数. 如果传入None, 则使用修饰器方案进行模型注册, `register_model`函数将返回`Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 一般使用`get_model_tokenizer_from_repo`作为参数传入, 返回model和tokenizer. 如果出现需要对模型代码打补丁等情况, 则可以通过自定义该函数来实现.
 - `requires`: 默认为`[]`. 表示模型所需要的区别于其他模型的依赖. 该参数一般不需要设置.
@@ -482,7 +482,7 @@ if __name__ == '__main__':
 - `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`None`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_quant_type`: 4bit量化时的量化方式, 默认是`'nf4'`. 可选择的值包括: 'nf4', 'fp4'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_use_double_quant`: 是否在4bit量化时开启double量化, 默认为`True`. 当quantization_bit为0时, 该参数无效.
-- `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入AUTO, 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
+- `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入'DEFAULT', 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
 - `--lora_rank`: 默认为`8`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_alpha`: 默认为`32`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_dropout_p`: 默认为`0.05`, 只有当`sft_type`指定为'lora'时才生效.
