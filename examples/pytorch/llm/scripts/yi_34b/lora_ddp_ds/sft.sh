@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 15GB GPU memory
+# 2 * 70GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
