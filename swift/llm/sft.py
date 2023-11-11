@@ -107,8 +107,9 @@ def llm_sft(args: SftArguments) -> str:
                 model, args.resume_from_checkpoint, is_trainable=True)
 
     if args.neftune_alpha > 0.001:
-        model = Swift.prepare_model(
-            model, NEFTuneConfig(noise_alpha=args.neftune_alpha))
+        neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
+        model = Swift.prepare_model(model, neftune_config)
+        logger.info(f'neftune_config: {neftune_config}')
 
     show_layers(model)
     print_model_info(model)
