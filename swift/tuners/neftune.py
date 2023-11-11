@@ -52,25 +52,18 @@ class NEFTune:
         """Prepare a model with `NEFTuneConfig`"""
         for sub_module in model.modules():
             if isinstance(sub_module, torch.nn.Embedding):
-                def noised_embed(orig_embed, noise_alpha):
-                    def new_func(x):
-                        # during training, we add noise to the embedding
-                        # during generation, we don't add noise to the embedding
-                        if model.training and getattr(orig_embed, 'nef_activated'):
-                            embed_init = orig_embed.forward_origin(x)
-                            dims = torch.tensor(embed_init.size(1) * embed_init.size(2))
-                            mag_norm = noise_alpha / torch.sqrt(dims)
-                            return embed_init + torch.zeros_like(embed_init).uniform_(-mag_norm, mag_norm)
-                        else:
-                            return orig_embed.forward_origin(x)
 
-                    return new_func
+                def neftune_hook(module, args, output):
+                    if model.training and getattr(module, 'nef_activated'):
+                        dims = torch.tensor(output.size(1) * output.size(2))
+                        mag_norm = config.noise_alpha / torch.sqrt(dims)
+                        output = output + torch.zeros_like(output).uniform_(-mag_norm, mag_norm)
+                    return output
 
                 if hasattr(sub_module, 'nef_activated'):
                     raise ValueError(f'NEFTune does not support a second tuner.')
 
-                sub_module.forward_origin = sub_module.forward
-                sub_module.forward = noised_embed(sub_module, config.noise_alpha)
+                sub_module.register_forward_hook(neftune_hook)
                 sub_module.nef_activated = True
 
         def state_dict_callback(state_dict, adapter_name):
