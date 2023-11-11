@@ -21,13 +21,10 @@ logger = get_logger()
 @dataclass
 class NEFTuneConfig(SwiftConfig):
     """
-    The configuration class for the side module.
+    The configuration class for the NEFTune module.
 
-    Side-Tuning only needs to train one side network and
-    weights the output of pre-trained model and side network.
-    'Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks'
-    by Zhang et al.(2019)
-    See https://arxiv.org/abs/1912.13503
+    NEFTune adds slightly noises to embedding outputs.
+    See https://arxiv.org/abs/2310.05914
 
     Args:
         noise_alpha(`float`): The noise alpha value used for the NEFTune, default 5.0

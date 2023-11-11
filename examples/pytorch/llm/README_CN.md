@@ -485,6 +485,7 @@ if __name__ == '__main__':
 - `--lora_rank`: 默认为`8`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_alpha`: 默认为`32`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_dropout_p`: 默认为`0.05`, 只有当`sft_type`指定为'lora'时才生效.
+- `--neftune_alpha`: `NEFTune`添加的噪声系数.
 - `--gradient_checkpointing`: 是否开启gradient checkpointing, 默认为`False`. 该参数可以用于节约显存, 虽然这会略微降低训练速度. 该参数在max_length较大, batch_size较大时作用显著.
 - `--deepspeed_config_path`: 用于指定deepspeed的配置文件的路径, 默认为`None`, 即不开启deepspeed. deepspeed可以节约显存. 我们书写了默认的ZeRO-2的配置文件: `ds_config/zero2.json`.
 - `--batch_size`: 训练时的batch_size, 默认为`1`. 增大batch_size可以增加GPU的利用率, 但不一定会增加训练速度, 因为在一个batch中, 需要对较短的句子按该batch中最长句子的长度进行padding, 从而引入无效的计算量.

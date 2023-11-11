@@ -26,7 +26,8 @@ Currently supported approches (and counting):
 6. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
 7. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
 8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. All tuners offered on [PEFT](https://github.com/huggingface/peft)
+9. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
+10. All tuners offered on [PEFT](https://github.com/huggingface/peft)
 
 Key features:
 
@@ -37,6 +38,7 @@ Key features:
 Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
 
 ### 🎉 News
+- 🔥 2023.11.11: NEFTune Supported, Use is with `Swift.prepare_model(model, NEFTuneConfig())`
 - 🔥 2023.11.08: Support the finetuning of xverse-65b model, scripts can be found at: `scripts/xverse_65b`.
 - 🔥 2023.11.07: Support the finetuning of yi-6b model, scripts can be found at: `scripts/yi_6b`.
 - 🔥 2023.10.30: Support QA-LoRA and LongLoRA to decrease memory usage in training.

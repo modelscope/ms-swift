@@ -25,7 +25,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 6. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
 7. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
 8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. 所有在[PEFT](https://github.com/huggingface/peft)上提供的tuners
+9. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
+10. 所有在[PEFT](https://github.com/huggingface/peft)上提供的tuners
 
 主要能力：
 1. 可以通过model-id使SWIFT或PEFT的方法使用ModelScope Hub中的模型
@@ -35,6 +36,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 用户可以查看 [Swift官方文档](docs/source/GetStarted/Introduction.md) 来了解详细信息。
 
 ## 🎉 新闻
+- 🔥 2023.11.11: 支持NEFTune, 使用`Swift.prepare_model(model, NEFTuneConfig())`即可开启.
 - 🔥 2023.11.08: 支持xverse-65b模型的训练和推理流程，脚本在`scripts/xverse_65b`.
 - 🔥 2023.11.07: 支持yi-6b模型的训练和推理流程，脚本在`scripts/yi_6b`.
 - 🔥 2023.10.30: 支持 QA-LoRA 和 LongLoRA两种新的tuners
