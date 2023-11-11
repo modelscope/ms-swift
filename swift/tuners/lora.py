@@ -16,7 +16,7 @@ from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftAdapter
 
 if is_bnb_available():
     import bitsandbytes as bnb
@@ -218,7 +218,7 @@ class LoRAConfig(SwiftConfig):
         self.swift_type = SwiftTuners.LORA
 
 
-class LoRA:
+class LoRA(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):

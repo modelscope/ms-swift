@@ -12,7 +12,7 @@ from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .restuning_components import (ResTuner, detach_tensors,
                                    probe_input_pre_hook, probe_output_hook)
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftConfig
 
 logger = get_logger()
 
@@ -124,7 +124,7 @@ class ResTuningConfig(SwiftConfig):
         self.target_hidden_pos = 0 if self.target_hidden_pos is None else self.target_hidden_pos
 
 
-class ResTuning:
+class ResTuning(SwiftConfig):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: ResTuningConfig,

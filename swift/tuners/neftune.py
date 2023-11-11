@@ -13,7 +13,7 @@ from torch import nn
 
 from swift.utils.logger import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftAdapter
 
 logger = get_logger()
 
@@ -44,7 +44,7 @@ class NEFTuneConfig(SwiftConfig):
         self.swift_type = SwiftTuners.NEFTUNE
 
 
-class NEFTune:
+class NEFTune(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: NEFTuneConfig,
@@ -81,3 +81,7 @@ class NEFTune:
         for sub_module in module.modules():
             if isinstance(sub_module, torch.nn.Embedding):
                 sub_module.nef_activated = activate
+
+    @staticmethod
+    def freeze_model():
+        return False

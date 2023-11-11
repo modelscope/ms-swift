@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 python llm_sft.py \
     --model_id_or_path ZhipuAI/chatglm3-6b-32k \
     --model_revision master \
-    --sft_type full \
+    --sft_type lora \
     --tuner_backend swift \
     --template_type chatglm3 \
     --dtype bf16 \
