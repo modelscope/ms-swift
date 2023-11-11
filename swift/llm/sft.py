@@ -107,7 +107,7 @@ def llm_sft(args: SftArguments) -> str:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
 
-    model = Swift.prepare_model(model, NEFTuneConfig())
+    model = Swift.prepare_model(model, NEFTuneConfig(noise_alpha=1.))
     show_layers(model)
     print_model_info(model)
     logger.info(model)
