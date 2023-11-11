@@ -20,7 +20,7 @@
 - 2023.10.31: 支持Web UI. 运行命令: `python app.py`.
 - 2023.10.30: 支持**skywork-13b**系列模型: skywork-13b, skywork-13b-chat. 对应的sh脚本可以查看`scripts/skywork_13b`.
 - 🔥 2023.10.27: 支持**chatglm3**系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b`.
-- 🔥 2023.10.24: 使用**注册机制**来新增模型, **数据集**和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom/tigerbot_13b_chat`.
+- 🔥 2023.10.24: 使用**注册机制**来新增模型, **数据集**和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom`.
 - 🔥 2023.10.17: 支持**int4, int8**模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
 - 2023.10.15: 支持**ziya2-13b**系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
 - 2023.10.12: 支持**mistral-7b**系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
@@ -54,7 +54,7 @@
 - 支持的数据集:
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
-    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
     - 代码: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - 医疗: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
     - 法律: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
@@ -304,7 +304,7 @@ AAAAA,BBBBB,CCCCC
 
 
 #### 注册数据集的方式
-以下是一个**注册数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+以下是一个**注册数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom`.
 
 ```python
 import ast
@@ -358,7 +358,7 @@ if __name__ == '__main__':
 
 ### 自定义模型
 
-以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom`.
 
 ```python
 from swift.llm import (
@@ -419,7 +419,7 @@ if __name__ == '__main__':
 
 ### 自定义对话模板
 
-以下是一个**自定义对话模板**的案例. 运行该自定义对话模板的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+以下是一个**自定义对话模板**的案例. 运行该自定义对话模板的sh可以查看`scripts/custom`.
 
 ```python
 from swift.llm import (
