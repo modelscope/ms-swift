@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 from swift import SwiftConfig
-from swift.tuners.utils import SwiftOutput, SwiftAdapter
+from swift.tuners.utils import SwiftAdapter, SwiftOutput
 from swift.utils import get_logger
 from .compute_u import compute_u
 from .compute_v import compute_v
@@ -88,7 +88,7 @@ class Rome(SwiftAdapter):
 
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
-    
+
     @staticmethod
     def freeze_model():
         return False

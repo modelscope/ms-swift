@@ -11,7 +11,7 @@ from transformers.activations import ACT2CLS
 
 from swift import get_logger
 from swift.utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftAdapter
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 

@@ -295,12 +295,12 @@ class SwiftModel(nn.Module):
         from .mapping import SWIFT_MAPPING
 
         adatper_cls = SWIFT_MAPPING[config.swift_type][1]
-        if adatper_cls.freeze_model() and not getattr(model, 'model_freezed', False):
+        if adatper_cls.freeze_model() and not getattr(model, 'model_freezed',
+                                                      False):
             for _, p in model.named_parameters():
                 p.requires_grad = False
             model.model_freezed = True
-        return adatper_cls.prepare_model(
-            model, config, adapter_name)
+        return adatper_cls.prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """

@@ -12,7 +12,7 @@ from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .restuning_components import (ResTuner, detach_tensors,
                                    probe_input_pre_hook, probe_output_hook)
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftConfig
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 

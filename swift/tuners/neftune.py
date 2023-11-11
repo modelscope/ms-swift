@@ -13,7 +13,7 @@ from torch import nn
 
 from swift.utils.logger import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftAdapter
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -34,10 +34,7 @@ class NEFTuneConfig(SwiftConfig):
     """
     noise_alpha: float = field(
         default=5.0,
-        metadata={
-            'help':
-            'The noise alpha value used for the NEFTune'
-        })
+        metadata={'help': 'The noise alpha value used for the NEFTune'})
 
     def __post_init__(self):
         from .mapping import SwiftTuners
@@ -57,11 +54,13 @@ class NEFTune(SwiftAdapter):
                     if module.training and getattr(module, 'nef_activated'):
                         dims = torch.tensor(output.size(1) * output.size(2))
                         mag_norm = config.noise_alpha / torch.sqrt(dims)
-                        output = output + torch.zeros_like(output).uniform_(-mag_norm, mag_norm)
+                        output = output + torch.zeros_like(output).uniform_(
+                            -mag_norm, mag_norm)
                     return output
 
                 if hasattr(sub_module, 'nef_activated'):
-                    raise ValueError(f'NEFTune does not support a second tuner.')
+                    raise ValueError(
+                        'NEFTune does not support a second tuner.')
 
                 sub_module.register_forward_hook(neftune_hook)
                 sub_module.nef_activated = True

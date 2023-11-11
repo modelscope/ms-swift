@@ -8,8 +8,9 @@ from types import FunctionType
 from typing import Dict
 
 import json
-from peft.utils import CONFIG_NAME
 import torch
+from peft.utils import CONFIG_NAME
+
 from swift.hub.snapshot_download import snapshot_download
 from swift.utils.constants import BIN_EXTENSIONS
 
@@ -101,7 +102,6 @@ class SwiftConfig:
         return json_object
 
 
-
 @dataclass
 class SwiftOutput:
     """The output class returned by all tuners.
@@ -159,7 +159,7 @@ class SwiftAdapter:
     def activate_adapter(module: torch.nn.Module, adapter_name: str,
                          activate: bool):
         raise NotImplementedError
-    
+
     @staticmethod
     def freeze_model():
         return True

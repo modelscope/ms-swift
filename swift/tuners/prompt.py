@@ -10,7 +10,7 @@ from torch import nn
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftConfig
+from .utils import ActivationMixin, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 

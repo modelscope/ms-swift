@@ -80,6 +80,8 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
 
+    neftune_alpha: float = 0.0
+
     gradient_checkpointing: bool = True
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1

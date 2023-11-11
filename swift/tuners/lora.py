@@ -16,7 +16,7 @@ from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput, SwiftAdapter
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 if is_bnb_available():
     import bitsandbytes as bnb
