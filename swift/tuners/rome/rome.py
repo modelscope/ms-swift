@@ -46,7 +46,9 @@ class RomeConfig(SwiftConfig):
         default=None, metadata={'help': 'The tokenizer matching this model'})
 
     knowledge: List[Dict] = field(
-        default=False, metadata={'help': 'The knowledge to be '})
+        default=False, metadata={'help': 'The knowledge to be used'})
+
+    batch_first: bool = field(default=True, metadata={'help': 'Batch first'})
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
@@ -75,7 +77,8 @@ class Rome(SwiftAdapter):
 
             hparams = ROMEHyperParams.from_name(config.model_type)
             modified_keys = apply_rome_to_model(model, config.tokenizer,
-                                                config.knowledge, hparams)
+                                                config.knowledge, hparams,
+                                                config.batch_first)
 
         def state_dict_callback(state_dict, adapter_name):
             return {
@@ -99,6 +102,7 @@ def apply_rome_to_model(
     tokenizer: Any,
     kownledge: List[Dict],
     hparams: ROMEHyperParams,
+    batch_first: bool,
 ) -> None:
     """
     Returns a model with the desired changes.
@@ -110,7 +114,7 @@ def apply_rome_to_model(
     """
     modified_keys = set()
     for i, request in enumerate(kownledge):
-        deltas = execute_rome(model, tokenizer, request, hparams)
+        deltas = execute_rome(model, tokenizer, request, hparams, batch_first)
 
         with torch.no_grad():
             for w_name, (delta_u, delta_v) in deltas.items():
@@ -127,6 +131,7 @@ def execute_rome(
     tok: Any,
     knowledge: Dict,
     hparams: ROMEHyperParams,
+    batch_first: bool,
 ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
     """
     Executes the ROME update algorithm for the specified update at the specified layer
@@ -161,6 +166,7 @@ def execute_rome(
             hparams,
             layer,
             context_template,
+            batch_first=batch_first,
         )
         logger.info(f'Left vector shape: {left_vector.shape}')
         right_vector: torch.Tensor = compute_v(
@@ -171,6 +177,7 @@ def execute_rome(
             layer,
             left_vector,
             context_template,
+            batch_first=batch_first,
         )
         logger.info(f'Right vector shape: {right_vector.shape}')
         right_vector = right_vector.to(left_vector.dtype)

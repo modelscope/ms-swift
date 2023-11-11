@@ -34,14 +34,20 @@ def rome_infer(args: RomeArguments) -> None:
     if args.model_type in ('llama2-13b-chat', 'llama2-13b', 'llama-13b-chat',
                            'llama-13b'):
         rome_type = 'llama-13b'
+        batch_first = True
     elif args.model_type in ('llama2-7b-chat', 'llama2-7b', 'llama-7b-chat',
                              'llama-7b'):
         rome_type = 'llama-7b'
+        batch_first = True
+    elif 'chatglm' in args.model_type and '6b' in args.model_type:
+        rome_type = 'chatglm-6b'
+        batch_first = False
 
     config = RomeConfig(
         model_type=rome_type,
         knowledge=request,
         tokenizer=tokenizer,
+        batch_first=batch_first,
     )
     model = Swift.prepare_model(model, config, inference_mode=True)
 
