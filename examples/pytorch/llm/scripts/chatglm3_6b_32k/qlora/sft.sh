@@ -1,5 +1,5 @@
 # Experimental environment: A10, 3090
-# 16GB GPU memory
+# 10GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
@@ -13,7 +13,7 @@ python llm_sft.py \
     --dataset agent-instruct-all-en \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 8192 \
+    --max_length 4096 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype bf16 \
