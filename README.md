@@ -344,5 +344,5 @@ This project is licensed under the [Apache License (Version 2.0)](https://github
 You can contact and communicate with us by joining our WeChat Group:
 
 <p align="left">
-<img src="/Users/huangjintao/Downloads/wechat.png" width="250" style="display: inline-block;">
+<img src="asset/wechat.png" width="250" style="display: inline-block;">
 </p>
