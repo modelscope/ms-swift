@@ -338,3 +338,9 @@ The config/weights stored in the output dir is the config of `extra_state_keys` 
 # License
 
 This project is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE).
+
+
+# Contact Us
+You can contact and communicate with us by joining our WeChat Group:
+
+![wechat](asset/wechat.jpg)

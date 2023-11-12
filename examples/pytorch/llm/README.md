@@ -307,41 +307,52 @@ Format 4:
 Here is an example of a **registering a dataset**. Running the shell script for this custom dataset can be found in `scripts/custom`.
 
 ```python
-import ast
-from swift.llm import (
-    register_dataset, get_dataset, ConversationsPreprocessor, get_dataset_from_repo
-)
+from typing import Optional, Tuple
+
+from datasets import Dataset as HfDataset
+from modelscope import MsDataset
+
+from swift.llm import get_dataset, register_dataset
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class CustomDatasetName:
-    agent_instruct_all_en = 'agent-instruct-all-en'
+    stsb_en = 'stsb-en'
 
-_agent_instruct_subset_list = [
-    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
-]
+def _preprocess_stsb(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
+Sentence 1: {text1}
+Sentence 2: {text2}
+Similarity score: """
+    query = []
+    response = []
+    for d in dataset:
+        query.append(prompt.format(text1=d['text1'], text2=d['text2']))
+        response.append(f"{d['label']:.1f}")
+    return HfDataset.from_dict({'query': query, 'response': response})
 
-def repair_conversations_agent_instruct(s: str) -> str:
-    s = s.replace('}\n {', '},\n {')
-    return ast.literal_eval(s)
 
+@register_dataset(
+    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
+def get_stsb_dataset(dataset_id_or_path: str,
+                     **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    dataset_dict = MsDataset.load(dataset_id_or_path)
+    train_dataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    return tuple(
+        _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
 
-register_dataset(
-    CustomDatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy',
-    [(subset, 'train') for subset in _agent_instruct_subset_list],
-    None,
-    ConversationsPreprocessor(
-        'human',
-        'gpt',
-        repair_conversations=repair_conversations_agent_instruct),
-    get_dataset_from_repo,
-    task='chat')
 
 if __name__ == '__main__':
-    train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
-                                   0., check_dataset_strategy='warning')
-    print(train_dataset)
-    print(train_dataset[0].keys())
+    # test dataset
+    train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en],
+                                             check_dataset_strategy='warning')
+    print(f'train_dataset: {train_dataset}')
+    print(f'val_dataset: {val_dataset}')
 ```
+
 The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. The function parameters are as follows:
 - `dataset_name`: Required parameter that represents the name of the dataset, which is also the unique ID of the dataset.
 - `dataset_id_or_path`: Required. Represents the `dataset_id` on the ModelScope Hub or the local `dataset_dir` where the dataset is located.
@@ -360,19 +371,35 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom`.
 
 ```python
-from swift.llm import (
-    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
-)
-import torch
+from typing import Any, Dict
+
+from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
 from torch import dtype as Dtype
-from typing import Dict, Any
+from transformers.utils.versions import require_version
+
+from swift.llm import LoRATM, TemplateType, get_model_tokenizer, register_model
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class CustomModelType:
+    tigerbot_7b = 'tigerbot-7b'
+    tigerbot_13b = 'tigerbot-13b'
     tigerbot_13b_chat = 'tigerbot-13b-chat'
+
 
 class CustomTemplateType:
     tigerbot = 'tigerbot'
 
+
+@register_model(CustomModelType.tigerbot_7b,
+                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+                TemplateType.default_generation)
+@register_model(CustomModelType.tigerbot_13b,
+                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+                TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b_chat,
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
                 CustomTemplateType.tigerbot)
@@ -386,18 +413,33 @@ def get_tigerbot_model_tokenizer(model_dir: str,
         require_version('transformers>=4.34')
         logger.info('Setting use_flash_attention_2: True')
         model_kwargs['use_flash_attention_2'] = True
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    model_config.torch_dtype = torch_dtype
+    logger.info(f'model_config: {model_config}')
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model = None
+    if load_model:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+    return model, tokenizer
 
-# Usage without decorators:
-# register_model(CustomModelType.tigerbot_13b_chat,
-#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
 
 if __name__ == '__main__':
-    model_kwargs = {'device_map': 'auto'}
-    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
-    print(model, tokenizer)
+    # test model base
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_7b, use_flash_attn=False)
+    print(model.__class__.__name__)
+    # test model chat
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_13b_chat, use_flash_attn=False)
+    print(model.__class__.__name__)
 ```
 
 The `register_model` function registers the model in `MODEL_MAPPING`, and its parameters are as follows:
@@ -421,11 +463,17 @@ The `register_model` function registers the model in `MODEL_MAPPING`, and its pa
 Here is an example of a **custom template**. Running the shell script for this custom template can be found in `scripts/custom`.
 
 ```python
-from swift.llm import (
-    register_template, Template, get_template, get_model_tokenizer, ModelType, inference
-)
+from swift.llm import (Template, ModelType, dataset_map,
+                       get_model_tokenizer, get_template, get_dataset,
+                       print_example, register_template, DatasetName)
+from swift.utils import get_logger
+
+logger = get_logger()
+
+
 class CustomTemplateType:
     tigerbot = 'tigerbot'
+
 
 # Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
 register_template(
@@ -434,14 +482,13 @@ register_template(
              [['eos_token_id']]))
 
 if __name__ == '__main__':
-    # only for test
+    # test template
+    train_dataset, _ = get_dataset(DatasetName.blossom_math_zh)
     _, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat, load_model=False)
     template = get_template(CustomTemplateType.tigerbot, tokenizer)
-    inputs = {'query': '浙江的省会在哪里?', 'response': '杭州',
-              'system': 'you are a helpful assistant!',
-              'history': [('你好!', '你好! 我是AI智能助手. '),
-                          ('1+1=?', '2')]}
-    print(tokenizer.decode(template.encode(inputs)['input_ids']))
+    train_dataset = dataset_map(train_dataset, template.encode)
+    print_example(train_dataset[0], tokenizer)
+
 ```
 The `register_template` function registers the conversation template in the `TEMPLATE_MAPPING`. The function takes the following arguments:
 - `template_type`: Required. It represents the name of the conversation template and serves as the unique ID for the template.
@@ -452,7 +499,6 @@ The template initialization function retrieves the complete chat template based 
 - `prompt`: Represents a round of dialogue in the chat template. We use `{{QUERY}}` as a placeholder for the human inquiry part in each round of dialogue, `{{ROUND0}}` represents the placeholder for the current round of dialogue, counting from 0, and `{{ROUND1}}` counting from 1. The assistant's reply is concatenated after the `prompt`, so we did not design a placeholder for it.
 - `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc. If set to None, the Template does not support multi-turn conversations.
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue. Only the response part of the last round will calculate the loss and be optimized, while the other parts will not calculate the loss.
-
 
 
 ### sft.sh Command Line Arguments

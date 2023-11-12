@@ -99,7 +99,7 @@ def get_stsb_dataset(dataset_id_or_path: str,
 
 
 if __name__ == '__main__':
-    # The Shell script can view `scripts/custom/tigerbot_13b_chat`.
+    # The Shell script can view `scripts/custom`.
     # test dataset
     train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en],
                                              check_dataset_strategy='warning')

@@ -307,41 +307,53 @@ AAAAA,BBBBB,CCCCC
 以下是一个**注册数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom`.
 
 ```python
-import ast
-from swift.llm import (
-    register_dataset, get_dataset, ConversationsPreprocessor, get_dataset_from_repo
-)
+from typing import Optional, Tuple
+
+from datasets import Dataset as HfDataset
+from modelscope import MsDataset
+
+from swift.llm import get_dataset, register_dataset
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class CustomDatasetName:
-    agent_instruct_all_en = 'agent-instruct-all-en'
+    stsb_en = 'stsb-en'
 
-_agent_instruct_subset_list = [
-    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
-]
+def _preprocess_stsb(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
+Sentence 1: {text1}
+Sentence 2: {text2}
+Similarity score: """
+    query = []
+    response = []
+    for d in dataset:
+        query.append(prompt.format(text1=d['text1'], text2=d['text2']))
+        response.append(f"{d['label']:.1f}")
+    return HfDataset.from_dict({'query': query, 'response': response})
 
-def repair_conversations_agent_instruct(s: str) -> str:
-    s = s.replace('}\n {', '},\n {')
-    return ast.literal_eval(s)
 
+@register_dataset(
+    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
+def get_stsb_dataset(dataset_id_or_path: str,
+                     **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    dataset_dict = MsDataset.load(dataset_id_or_path)
+    train_dataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    return tuple(
+        _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
 
-register_dataset(
-    CustomDatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy',
-    [(subset, 'train') for subset in _agent_instruct_subset_list],
-    None,
-    ConversationsPreprocessor(
-        'human',
-        'gpt',
-        repair_conversations=repair_conversations_agent_instruct),
-    get_dataset_from_repo,
-    task='chat')
 
 if __name__ == '__main__':
-    train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
-                                   0., check_dataset_strategy='warning')
-    print(train_dataset)
-    print(train_dataset[0].keys())
+    # test dataset
+    train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en],
+                                             check_dataset_strategy='warning')
+    print(f'train_dataset: {train_dataset}')
+    print(f'val_dataset: {val_dataset}')
+
 ```
+
 `register_dataset`会在`DATASET_MAPPING`中注册数据集, 该函数的参数含义如下:
 
 - `dataset_name`: 必填项, 表示数据集的名字, 也是数据集的唯一id.
@@ -361,19 +373,35 @@ if __name__ == '__main__':
 以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom`.
 
 ```python
-from swift.llm import (
-    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
-)
-import torch
+from typing import Any, Dict
+
+from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
 from torch import dtype as Dtype
-from typing import Dict, Any
+from transformers.utils.versions import require_version
+
+from swift.llm import LoRATM, TemplateType, get_model_tokenizer, register_model
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class CustomModelType:
+    tigerbot_7b = 'tigerbot-7b'
+    tigerbot_13b = 'tigerbot-13b'
     tigerbot_13b_chat = 'tigerbot-13b-chat'
+
 
 class CustomTemplateType:
     tigerbot = 'tigerbot'
 
+
+@register_model(CustomModelType.tigerbot_7b,
+                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+                TemplateType.default_generation)
+@register_model(CustomModelType.tigerbot_13b,
+                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+                TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b_chat,
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
                 CustomTemplateType.tigerbot)
@@ -387,18 +415,33 @@ def get_tigerbot_model_tokenizer(model_dir: str,
         require_version('transformers>=4.34')
         logger.info('Setting use_flash_attention_2: True')
         model_kwargs['use_flash_attention_2'] = True
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    model_config.torch_dtype = torch_dtype
+    logger.info(f'model_config: {model_config}')
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model = None
+    if load_model:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+    return model, tokenizer
 
-# 不使用修饰器的用法:
-# register_model(CustomModelType.tigerbot_13b_chat,
-#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
 
 if __name__ == '__main__':
-    model_kwargs = {'device_map': 'auto'}
-    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
-    print(model, tokenizer)
+    # test model base
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_7b, use_flash_attn=False)
+    print(model.__class__.__name__)
+    # test model chat
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_13b_chat, use_flash_attn=False)
+    print(model.__class__.__name__)
 ```
 
 `register_model`会在`MODEL_MAPPING`中注册模型, 该函数的参数含义如下:
@@ -422,11 +465,17 @@ if __name__ == '__main__':
 以下是一个**自定义对话模板**的案例. 运行该自定义对话模板的sh可以查看`scripts/custom`.
 
 ```python
-from swift.llm import (
-    register_template, Template, get_template, get_model_tokenizer, ModelType, inference
-)
+from swift.llm import (Template, ModelType, dataset_map,
+                       get_model_tokenizer, get_template, get_dataset,
+                       print_example, register_template, DatasetName)
+from swift.utils import get_logger
+
+logger = get_logger()
+
+
 class CustomTemplateType:
     tigerbot = 'tigerbot'
+
 
 # Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
 register_template(
@@ -435,15 +484,14 @@ register_template(
              [['eos_token_id']]))
 
 if __name__ == '__main__':
-    # only for test
+    # test template
+    train_dataset, _ = get_dataset(DatasetName.blossom_math_zh)
     _, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat, load_model=False)
     template = get_template(CustomTemplateType.tigerbot, tokenizer)
-    inputs = {'query': '浙江的省会在哪里?', 'response': '杭州',
-              'system': 'you are a helpful assistant!',
-              'history': [('你好!', '你好! 我是AI智能助手. '),
-                          ('1+1=?', '2')]}
-    print(tokenizer.decode(template.encode(inputs)['input_ids']))
+    train_dataset = dataset_map(train_dataset, template.encode)
+    print_example(train_dataset[0], tokenizer)
 ```
+
 `register_template`会在`TEMPLATE_MAPPING`中注册对话模板, 该函数的参数含义如下:
 - `template_type`: 必填项, 表示对话模板的名字, 也是template的唯一id.
 - `template`: 必填项, 需要传入一个`Template`. 初始化`Template`需要传入4个参数: `prefix`, `prompt`, `chat_sep`, `suffix`.
