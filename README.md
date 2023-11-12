@@ -343,4 +343,4 @@ This project is licensed under the [Apache License (Version 2.0)](https://github
 # Contact Us
 You can contact and communicate with us by joining our WeChat Group:
 
-![wechat](asset/wechat.jpg)
+![wechat](asset/wechat.png)

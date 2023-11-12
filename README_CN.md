@@ -335,4 +335,4 @@ output
 
 您可以通过加我们的微信群, 来和我们联系和交流:
 
-![wechat](asset/wechat.jpg)
+![wechat](asset/wechat.png)
