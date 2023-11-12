@@ -59,6 +59,8 @@ class SftArguments:
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    truncation_strategy: str = field(
+        default='ignore', metadata={'choices': ['ignore', 'truncation_left']})
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
@@ -259,6 +261,8 @@ class InferArguments:
     show_dataset_sample: int = 10
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    truncation_strategy: str = field(
+        default='ignore', metadata={'choices': ['ignore', 'truncation_left']})
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
