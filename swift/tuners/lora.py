@@ -10,6 +10,7 @@ from typing import Dict, List, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from packaging import version
 from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
@@ -17,6 +18,22 @@ from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
+
+
+class LinearWrapper:
+
+    def __init__(self, module: torch.nn.Module):
+        self.module = module
+
+    def __getattr__(self, name):
+        return getattr(self.module, name)
+    
+    def forward(self, *args, **kwargs):
+        return self.module.forward_origin(*args, **kwargs)
+    
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
 
 if is_bnb_available():
     import bitsandbytes as bnb
@@ -47,6 +64,7 @@ if is_bnb_available():
 
 
 if is_bnb_4bit_available():
+    import peft
     from peft.tuners.lora import Linear4bit as _Linear4bit
 
     class Linear4bit(ActivationMixin, _Linear4bit):
@@ -54,16 +72,20 @@ if is_bnb_4bit_available():
         def __init__(
             self,
             adapter_name,
-            in_features,
-            out_features,
+            base_layer,
             r: int = 0,
             lora_alpha: int = 1,
             lora_dropout: float = 0.0,
             **kwargs,
         ):
-            super(ActivationMixin,
-                  self).__init__(adapter_name, in_features, out_features, r,
-                                 lora_alpha, lora_dropout, **kwargs)
+            if version.parse(peft.__version__) >= version.parse('0.6.0'):
+                super(ActivationMixin,
+                    self).__init__(adapter_name, LinearWrapper(base_layer), r,
+                                    lora_alpha, lora_dropout, **kwargs)
+            else:
+                super(ActivationMixin,
+                    self).__init__(adapter_name, base_layer.in_features, base_layer.out_features, r,
+                                    lora_alpha, lora_dropout, **kwargs)
             super(Linear4bit, self).__init__()
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -99,50 +121,44 @@ if is_auto_gptq_available():
                 if not self.use_qa_lora else quant_linear_module.infeatures
                 // self.group_size,
                 out_features=quant_linear_module.outfeatures)
-            self.quant_linear_module = quant_linear_module
+            self.quant_linear_module = LinearWrapper(quant_linear_module)
             self.weight = quant_linear_module.qweight
             init_lora_weights = kwargs.pop('init_lora_weights', True)
             self.update_layer(adapter_name, r, lora_alpha, lora_dropout,
                               init_lora_weights)
-            self.active_adapter = adapter_name
+            self.set_adapter(adapter_name)
             super(QuantLinear, self).__init__()
             if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
                     self.group_size
                 )  # using pooling layer to conduct sum operation
 
-            def call_quant_linear_module(*args, **kwargs):
-                return quant_linear_module.forward_origin(*args, **kwargs)
-
-            self.call_quant_linear_module = call_quant_linear_module
-            self.quant_linear_module = None
-
         def forward(self, x: torch.Tensor):
-            result = self.call_quant_linear_module(x)
+            result = self.quant_linear_module(x)
             if not self.is_activated(
-            ) or self.disable_adapters or self.active_adapter not in self.lora_A.keys(
+            ) or self.disable_adapters or self.active_adapter[0] not in self.lora_A.keys(
             ):
                 return result
-            elif self.r[self.active_adapter] > 0:
+            elif self.r[self.active_adapter[0]] > 0:
                 result = result.clone()
                 if not torch.is_autocast_enabled():
                     expected_dtype = result.dtype
-                    x = x.to(self.lora_A[self.active_adapter].weight.dtype)
+                    x = x.to(self.lora_A[self.active_adapter[0]].weight.dtype)
                     if self.use_qa_lora:
                         x = self.qa_pool(x) * self.group_size
                     output = (
-                        self.lora_B[self.active_adapter](
-                            self.lora_A[self.active_adapter](self.lora_dropout[
-                                self.active_adapter](x))).to(expected_dtype)
-                        * self.scaling[self.active_adapter])
+                        self.lora_B[self.active_adapter[0]](
+                            self.lora_A[self.active_adapter[0]](self.lora_dropout[
+                                self.active_adapter[0]](x))).to(expected_dtype)
+                        * self.scaling[self.active_adapter[0]])
                 else:
                     if self.use_qa_lora:
                         x = self.qa_pool(x) * self.group_size
                     output = (
-                        self.lora_B[self.active_adapter](
-                            self.lora_A[self.active_adapter](
-                                self.lora_dropout[self.active_adapter](x)))
-                        * self.scaling[self.active_adapter])
+                        self.lora_B[self.active_adapter[0]](
+                            self.lora_A[self.active_adapter[0]](
+                                self.lora_dropout[self.active_adapter[0]](x)))
+                        * self.scaling[self.active_adapter[0]])
                 result += output
             return result
 
@@ -321,8 +337,7 @@ class LoRA(SwiftAdapter):
                     })
                     lora_module = Linear4bit(
                         'default',
-                        sub_module.in_features,
-                        sub_module.out_features,
+                        sub_module,
                         bias=hasattr(sub_module, 'bias')
                         and sub_module.bias is not None,
                         **four_bit_kwargs)

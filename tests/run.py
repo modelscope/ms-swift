@@ -551,6 +551,27 @@ def print_table_result(df):
         print(df.to_string(justify='left', formatters=formatters, index=False))
 
 
+def install_latest_packages():
+    def install_package(line):
+        if '>' in line:
+            package = line.split('>')[0].strip()
+            print(f'reinstall requirement: {package} -U')
+            os.system(f'pip install {package} -U')
+        else:
+            print(f'No need to reinstall requirement because the version is limited: {line}')
+    
+    with open('requirements/framework.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            install_package(line)
+    
+    with open('requirements/llm.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            install_package(line)
+
+
+
 def main(args):
     runner = TimeCostTextTestRunner()
     if args.suites is not None and len(args.suites) > 0:
@@ -614,9 +635,20 @@ if __name__ == '__main__':
         '--suites',
         nargs='*',
         help='Run specified test suites(test suite files list split by space)')
+    parser.add_argument(
+        '--test_compatibility',
+        default=True,
+        help='Re-run with latest requirements to test compatibility')
     args = parser.parse_args()
     print(args)
     if args.run_config is not None or args.subprocess:
         run_in_subprocess(args)
     else:
         main(args)
+    
+    if args.test_compatibility:
+        install_latest_packages()
+        if args.run_config is not None or args.subprocess:
+            run_in_subprocess(args)
+        else:
+            main(args)
