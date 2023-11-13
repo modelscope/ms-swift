@@ -564,6 +564,7 @@ def install_latest_packages():
         lines = f.readlines()
         for line in lines:
             install_package(line)
+    os.system(f'pip install auto_gptq -U')
 
 
 def main(args):
@@ -629,20 +630,10 @@ if __name__ == '__main__':
         '--suites',
         nargs='*',
         help='Run specified test suites(test suite files list split by space)')
-    parser.add_argument(
-        '--test_compatibility',
-        default=True,
-        help='Re-run with latest requirements to test compatibility')
     args = parser.parse_args()
     print(args)
+    install_latest_packages()
     if args.run_config is not None or args.subprocess:
         run_in_subprocess(args)
     else:
         main(args)
-    
-    if args.test_compatibility:
-        install_latest_packages()
-        if args.run_config is not None or args.subprocess:
-            run_in_subprocess(args)
-        else:
-            main(args)
