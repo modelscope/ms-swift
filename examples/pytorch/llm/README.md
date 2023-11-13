@@ -15,25 +15,6 @@
 </p>
 
 
-## 🎉 News
-- 🔥 2023.10.15: Support for **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. The corresponding shell script can be found in `scripts/bluelm_7b_chat`.
-- 2023.10.31: Support Web UI. Run command: python app.py.
-- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in `scripts/skywork_13b`.
-- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in `scripts/chatglm3_6b`.
-- 🔥 2023.10.24: Use the **registration mechanism** to add models, **datasets**, and chat templates. To customize models, datasets, and chat templates, refer to the "User Guide" section. The corresponding Python file can be found in `custom.py`, and the corresponding shell script can be found in `scripts/custom`.
-- 🔥 2023.10.17: Supported **int4, int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. The corresponding shell script can be found at `scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
-- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat. The corresponding shell script can be found at `scripts/ziya2_13b_chat`.
-- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. The corresponding shell script can be found at `scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
-- 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10. The corresponding shell script can be found at `scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
-- 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat. The corresponding shell script can be found at `scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat. The corresponding shell script can be found at `scripts/internlm_20b`, `scripts/internlm_20b_chat`.
-- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed. The corresponding shell script can be found at `scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
-- 2023.9.5: Supported training that only saves model weights without saving intermediate states such as optimizer weights required for checkpoint resumption, avoiding long checkpoint-saving times and large storage space in full-parameter fine-tuning. You can check the command-line parameter `--only_save_model` in the `sft.sh` script.
-- 2023.9.5: Supported **openbuddy-llama2-70b-chat** model. The corresponding shell script can be found at `scripts/openbuddy_llama2_70b_chat`.
-- 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. The corresponding shell script can be found at `scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
-
-
 ## ✨ Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
@@ -532,7 +513,6 @@ The template initialization function retrieves the complete chat template based 
 - `--lora_rank`: Default is `8`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--lora_alpha`: Default is `32`. This parameter only takes effect when `sft_type` is set to `'lora'`.
 - `--lora_dropout_p`: Default is `0.05`. This parameter only takes effect when `sft_type` is set to `'lora'`.
-- `--neftune_alpha`: The noise_alpha value used for `NEFTune`.
 - `--gradient_checkpointing`: Whether to enable gradient checkpointing, default is `False`. This parameter can be used to save GPU memory, although it slightly slows down the training speed. This parameter is particularly effective when `max_length` and `batch_size` are large.
 - `--deepspeed_config_path`: Used to specify the path to the DeepSpeed configuration file. Default is `None`, which means DeepSpeed is not enabled. DeepSpeed can help save GPU memory. We have provided a default configuration file for ZeRO-2: `ds_config/zero2.json`.
 - `--batch_size`: Batch size during training, default is `1`. Increasing the batch size can improve GPU utilization but may not necessarily speed up training because within a batch, padding is applied to shorter sentences based on the length of the longest sentence in the batch, introducing unnecessary computations.
