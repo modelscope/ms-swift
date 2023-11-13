@@ -37,21 +37,29 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 用户可以查看 [Swift官方文档](docs/source/GetStarted/Introduction.md) 来了解详细信息。
 
+
 ## 🎉 新闻
-- 🔥 2023.11.11: 支持NEFTune, 使用`Swift.prepare_model(model, NEFTuneConfig())`即可开启.
-- 🔥 2023.11.11: 支持命令行训练推理和Web-UI推理, 详情可以查看下方的`使用Swift CLI运行`章节.
-- 🔥 2023.11.11: 支持模型训练后的部署链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/Deployment.md).
-- 🔥 2023.11.08: 支持xverse-65b模型的训练和推理流程，脚本在`scripts/xverse_65b`.
-- 🔥 2023.11.07: 支持yi-6b模型的训练和推理流程，脚本在`scripts/yi_6b`.
-- 🔥 2023.10.30: 支持 QA-LoRA 和 LongLoRA两种新的tuners.
-- 🔥 2023.10.30: 支持使用ROME(Rank One Model Editing)来编辑模型，在无需训练的情况下即可给模型灌注新知识！
-- 🔥 2023.10.27: 支持chatglm3系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
-- 🔥 2023.10.17: 支持int4, int8模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
-- 2023.10.15: 支持ziya2-13b系列模型: ziya2-13b, ziya2-13b-chat.
-- 2023.10.12: 支持mistral-7b系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat.
-- 🔥 2023.10.7: 支持DeepSpeed ZeRO-2, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP.
+- 🔥 2023.11.11: 支持**NEFTune**, 使用`Swift.prepare_model(model, NEFTuneConfig())`即可开启.
+- 🔥 2023.11.11: 支持**命令行**训练推理和**Web-UI**推理, 详情可以查看下方的`使用Swift CLI运行`章节.
+- 🔥 2023.11.11: 支持模型训练后的**部署**链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/Deployment.md).
+- 🔥 2023.11.10: 支持**bluelm**系列模型: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. 对应的sh脚本可以查看[bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
+- 🔥 2023.11.08: 支持**xverse-65b**模型的训练和推理流程，脚本在[xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).
+- 🔥 2023.11.07: 支持**yi-6b**, **yi-34b**模型的训练和推理流程，脚本在[yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).
+- 🔥 2023.10.30: 支持 **QA-LoRA** 和 **LongLoRA**两种新的tuners.
+- 🔥 2023.10.30: 支持使用**ROME**(Rank One Model Editing)来编辑模型，在无需训练的情况下即可给模型灌注新知识！
+- 2023.10.30: 支持**skywork-13b**系列模型: skywork-13b, skywork-13b-chat. 对应的sh脚本可以查看[skywork_13b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/skywork_13b).
+- 🔥 2023.10.27: 支持**chatglm3**系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看[chatglm3_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b).
+- 🔥 2023.10.17: 支持**int4**, **int8**模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
+- 2023.10.15: 支持**ziya2-13b**系列模型: ziya2-13b, ziya2-13b-chat.
+- 2023.10.12: 支持**mistral-7b**系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat.
+- 🔥 2023.10.7: 支持**DeepSpeed ZeRO-2**, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP.
+- 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat.
-- 2023.9.12: 支持MP+DDP的方式训练, 加快全参数微调的速度.
+- 2023.9.18: 支持**internlm-20b**系列模型: internlm-20b, internlm-20b-chat.
+- 2023.9.12: 支持**MP+DDP**的方式训练, 加快全参数微调的速度.
+- 2023.9.5: 支持**openbuddy-llama2-70b-chat**模型.
+- 2023.9.3: 支持**baichuan2**系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
+
 
 ## ✨ 大模型微调的例子
 可以[在这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) 查看LLM微调的使用文档。
@@ -152,21 +160,20 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 - 支持的数据集:
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
-    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
     - 代码: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - 医疗: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
     - 法律: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
     - 数学: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
     - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), 🔥[sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
     - 文本生成: 🔥[advertise-gen-zh](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), 🔥[dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
-    - 分类: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+    - 分类: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), 🔥[jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
     - 其他: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
   - 多模态: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, chatglm-generation
-  - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
-
+  - 对话: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 # 🛠️ 安装
 
@@ -337,3 +344,11 @@ output
 # License
 
 本项目使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。
+
+# Contact Us
+
+您可以通过加我们的微信群, 来和我们联系和交流:
+
+<p align="left">
+<img src="asset/wechat.png" width="250" style="display: inline-block;">
+</p>

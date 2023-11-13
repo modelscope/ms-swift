@@ -39,21 +39,30 @@ Key features:
 
 Users can check the [documentation of Swift](docs/source/GetStarted/Introduction.md) to get detail tutorials.
 
+
 ### 🎉 News
-- 🔥 2023.11.11: NEFTune Supported, Use is with `Swift.prepare_model(model, NEFTuneConfig())`
-- 🔥 2023.11.11: Support training and inference with CLI, and inference with Web-UI. Check the `Run using Swift CLI` chapter for details.
-- 🔥 2023.11.11: Support model deployment(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/Deployment.md) for details.
-- 🔥 2023.11.08: Support the finetuning of xverse-65b model, scripts can be found at: `scripts/xverse_65b`.
-- 🔥 2023.11.07: Support the finetuning of yi-6b model, scripts can be found at: `scripts/yi_6b`.
-- 🔥 2023.10.30: Support QA-LoRA and LongLoRA to decrease memory usage in training.
-- 🔥 2023.10.30: Support ROME(Rank One Model Editing) to add/modify knowledges, training is not needed!
-- 🔥 2023.10.27: Support for chatglm3 series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
-- 🔥 2023.10.17: Supported int4, int8 models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
-- 2023.10.15: Supported ziya2-13b model series: ziya2-13b, ziya2-13b-chat.
-- 2023.10.12: Supported mistral-7b model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat.
-- 🔥 2023.10.7: Supported DeepSpeed ZeRO-2, enabling LoRA (not just QLoRA) to run DDP on 2*A10.
-- 🔥 2023.9.25: Supported qwen-14b model series: qwen-14b, qwen-14b-chat.
+- 🔥 2023.11.11: **NEFTune** Supported, Use is with `Swift.prepare_model(model, NEFTuneConfig())`
+- 🔥 2023.11.11: Support training and inference with **CLI**, and inference with **Web-UI**. Check the [Run using Swift CLI](https://github.com/modelscope/swift/tree/main#run-using-swift-cli) chapter for details.
+- 🔥 2023.11.11: Support model **deployment**(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/Deployment.md) for details.
+- 🔥 2023.11.10: Support for **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. The corresponding shell script can be found in [bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
+- 🔥 2023.11.08: Support the finetuning of **xverse-65b** model, scripts can be found at: [xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).
+- 🔥 2023.11.07: Support the finetuning of **yi-6b**, **yi-34b** model, scripts can be found at: [yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).
+- 🔥 2023.10.30: Support **QA-LoRA** and **LongLoRA** to decrease memory usage in training.
+- 🔥 2023.10.30: Support **ROME**(Rank One Model Editing) to add/modify knowledges, training is not needed!
+- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in [skywork_13b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/skywork_13b).
+- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in [chatglm3_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b).
+- 🔥 2023.10.17: Supported **int4**, **int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
+- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat.
+- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat.
+- 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10.
+- 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
+- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat.
 - 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed.
+- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat.
+- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed.
+- 2023.9.5: Supported **openbuddy-llama2-70b-chat** model.
+- 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
+
 
 ## ✨ LLM SFT Example
 Press [this link](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) to view the detail documentation of these examples.
@@ -153,20 +162,20 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 - Supported Datasets:
   - NLP:
     - General: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
-    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
     - Coding: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - Medical: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
     - Law: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
     - Math: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
     - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), 🔥[sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
     - Text Generation: 🔥[advertise-gen-zh](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), 🔥[dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
-    - Classification: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+    - Classification: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), 🔥[jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
     - Other: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, chatglm-generation
-  - Chat: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
+  - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 
 # 🛠️ Installation
@@ -344,3 +353,11 @@ The config/weights stored in the output dir is the config of `extra_state_keys` 
 # License
 
 This project is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE).
+
+
+# Contact Us
+You can contact and communicate with us by joining our WeChat Group:
+
+<p align="left">
+<img src="asset/wechat.png" width="250" style="display: inline-block;">
+</p>

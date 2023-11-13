@@ -32,8 +32,8 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, lower_bound, parse_args,
-                         stat_array, upper_bound)
+                         is_local_master, is_master, parse_args, stat_array,
+                         upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -153,7 +153,7 @@ def dataset_map(
     labels = []
     for d in tqdm(dataset):
         d = map_func(d)
-        if d['input_ids'] is None:
+        if d is None or d['input_ids'] is None:
             continue
         input_ids.append(d['input_ids'])
         labels.append(d['labels'])
@@ -253,10 +253,29 @@ def print_example(example: Dict[str, Any],
     logger.info(f'[INPUT_IDS] {input_ids}')
     logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
     if labels is not None:
-        n_mask = lower_bound(0, len(labels), lambda i: labels[i] != -100)
         logger.info(f'[LABLES_IDS] {labels}')
-        logger.info(
-            f'[LABLES] [-100 * {n_mask}]{tokenizer.decode(labels[n_mask:])}')
+        labels_str = '[LABLES] '
+        if len(labels) == 0:
+            logger.info(labels_str)
+            return
+        for i in range(len(labels)):
+            if i == 0:
+                if labels[i] == -100:
+                    s = 0
+                else:
+                    e = 0
+                continue
+            if labels[i] == -100 and labels[i - 1] != -100:
+                s = i
+                labels_str += tokenizer.decode(labels[e:s])
+            if labels[i] != -100 and labels[i - 1] == -100:
+                e = i
+                labels_str += f'[-100 * {e - s}]'
+        if labels[-1] == -100:
+            labels_str += f'[-100 * {len(labels) - s}]'
+        else:
+            labels_str += tokenizer.decode(labels[e:])
+        logger.info(labels_str)
 
 
 def find_all_linear_for_lora(model: Module, quantization_bit: int,

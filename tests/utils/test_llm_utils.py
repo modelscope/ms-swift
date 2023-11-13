@@ -2,7 +2,8 @@ import os
 import unittest
 
 from swift.llm import (MODEL_MAPPING, ModelType, get_model_tokenizer,
-                       get_template, inference, inference_stream)
+                       get_template, inference, inference_stream,
+                       print_example)
 from swift.utils import lower_bound, seed_everything
 
 
@@ -48,6 +49,17 @@ class TestLlmUtils(unittest.TestCase):
             print(f'[HISTORY]: {history3}')
             self.assertTrue(gen_text_stream == gen_text_stream2 == gen_text)
             self.assertTrue(history == history2 == history3)
+
+    def test_print_example(self):
+        input_ids = [1000, 2000, 3000, 4000, 5000, 6000]
+        labels = [-100, -100, 1000, 2000, 3000, -100, -100, 4000, 5000, 6000]
+        _, tokenizer = get_model_tokenizer(
+            ModelType.chatglm3_6b, load_model=False)
+        print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
+        labels = [-100, -100, -100]
+        print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
+        labels = [1000, 2000, 3000, 4000, 5000, 6000]
+        print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
 
 
 if __name__ == '__main__':

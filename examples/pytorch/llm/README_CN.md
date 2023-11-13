@@ -15,25 +15,6 @@
 </p>
 
 
-## 🎉 新闻
-- 🔥 2023.10.15: 支持**bluelm**系列模型: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. 对应的sh脚本可以查看`scripts/bluelm_7b_chat`.
-- 2023.10.31: 支持Web UI. 运行命令: `python app.py`.
-- 2023.10.30: 支持**skywork-13b**系列模型: skywork-13b, skywork-13b-chat. 对应的sh脚本可以查看`scripts/skywork_13b`.
-- 🔥 2023.10.27: 支持**chatglm3**系列模型: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. 对应的sh脚本可以查看`scripts/chatglm3_6b_32k`.
-- 🔥 2023.10.24: 使用**注册机制**来新增模型, **数据集**和对话模板. 如何自定义模型, 数据集和对话模板可以查看`使用文档`部分, 其对应的py文件可以查看`custom.py`, 其对应的sh脚本可以查看`scripts/custom/tigerbot_13b_chat`.
-- 🔥 2023.10.17: 支持**int4, int8**模型的SFT: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8. 对应的sh脚本可以查看`scripts/qwen_7b_chat_int4`, `scripts/qwen_14b_chat_int4`, `scripts/qwen_vl_chat_int4`, `scripts/qwen_7b_chat_int8`, `scripts/qwen_14b_chat_int8`.
-- 2023.10.15: 支持**ziya2-13b**系列模型: ziya2-13b, ziya2-13b-chat. 对应的sh脚本可以查看`scripts/ziya2_13b_chat`.
-- 2023.10.12: 支持**mistral-7b**系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat. 对应的sh脚本可以查看`scripts/openbuddy_mistral_7b_chat`, `scripts/mistral_7b_chat`.
-- 🔥 2023.10.7: 支持**DeepSpeed ZeRO-2**, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP. 对应的sh脚本可以查看`scripts/qwen_7b_chat/lora_ddp_ds/sft.sh`.
-- 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.9.25: 支持**qwen-14b**系列模型: qwen-14b, qwen-14b-chat. 对应的sh脚本可以查看`scripts/qwen_14b`, `scripts/qwen_14b_chat`.
-- 2023.9.18: 支持**internlm-20b**系列模型: internlm-20b, internlm-20b-chat. 对应的sh脚本可以查看`scripts/internlm_20b`, `scripts/internlm_20b_chat`.
-- 2023.9.12: 支持**MP+DDP**的方式训练, 加快全参数微调的速度, 对应的sh脚本可以查看`scripts/qwen_7b_chat/full_mp_ddp/sft.sh`.
-- 2023.9.5: 支持训练只保存模型权重, 而不保存断点续训所需的优化器权重等中间状态, 避免全参数微调保存checkpoint所需时间过长和空间过大的问题. 可以查看`sft.sh`中的命令行参数: `--only_save_model`.
-- 2023.9.5: 支持**openbuddy-llama2-70b-chat**模型. 对应的sh脚本可以查看`scripts/openbuddy_llama2_70b_chat`.
-- 2023.9.3: 支持baichuan2系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat. 对应的sh脚本可以查看`scripts/baichuan2_7b`, `scripts/baichuan2_7b_chat`, `scripts/baichuan2_13b_chat`.
-
-
 ## ✨ 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
@@ -54,21 +35,20 @@
 - 支持的数据集:
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
-    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)
+    - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
     - 代码: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - 医疗: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
     - 法律: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
     - 数学: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
     - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), 🔥[sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
     - 文本生成: 🔥[advertise-gen-zh](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), 🔥[dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
-    - 分类: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), [jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
+    - 分类: [cmnli-zh](https://www.modelscope.cn/datasets/modelscope/clue/summary), 🔥[jd-sentiment-zh](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)
     - 其他: [finance-en](https://www.modelscope.cn/datasets/wyj123456/finance_en/summary), [poetry-zh](https://www.modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary), [cls-fudan-news-zh](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary), [ner-jave-zh](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)
   - 多模态: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, chatglm-generation
-  - 对话: chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy-llama, default, internlm, xverse, skywork
-
+  - 对话: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 ## 🛠️ 准备实验环境
 实验环境: A10, 3090, V100, A100均可.
@@ -305,44 +285,56 @@ AAAAA,BBBBB,CCCCC
 
 
 #### 注册数据集的方式
-以下是一个**注册数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+以下是一个**注册数据集**的案例. 运行该自定义数据集的sh可以查看`scripts/custom`.
 
 ```python
-import ast
-from swift.llm import (
-    register_dataset, get_dataset, ConversationsPreprocessor, get_dataset_from_repo
-)
+from typing import Optional, Tuple
+
+from datasets import Dataset as HfDataset
+from modelscope import MsDataset
+
+from swift.llm import get_dataset, register_dataset
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class CustomDatasetName:
-    agent_instruct_all_en = 'agent-instruct-all-en'
+    stsb_en = 'stsb-en'
 
-_agent_instruct_subset_list = [
-    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
-]
+def _preprocess_stsb(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
+Sentence 1: {text1}
+Sentence 2: {text2}
+Similarity score: """
+    query = []
+    response = []
+    for d in dataset:
+        query.append(prompt.format(text1=d['text1'], text2=d['text2']))
+        response.append(f"{d['label']:.1f}")
+    return HfDataset.from_dict({'query': query, 'response': response})
 
-def repair_conversations_agent_instruct(s: str) -> str:
-    s = s.replace('}\n {', '},\n {')
-    return ast.literal_eval(s)
 
+@register_dataset(
+    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
+def get_stsb_dataset(dataset_id_or_path: str,
+                     **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    dataset_dict = MsDataset.load(dataset_id_or_path)
+    train_dataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    return tuple(
+        _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
 
-register_dataset(
-    CustomDatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy',
-    [(subset, 'train') for subset in _agent_instruct_subset_list],
-    None,
-    ConversationsPreprocessor(
-        'human',
-        'gpt',
-        repair_conversations=repair_conversations_agent_instruct),
-    get_dataset_from_repo,
-    task='chat')
 
 if __name__ == '__main__':
-    train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
-                                   0., check_dataset_strategy='warning')
-    print(train_dataset)
-    print(train_dataset[0].keys())
+    # test dataset
+    train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en],
+                                             check_dataset_strategy='warning')
+    print(f'train_dataset: {train_dataset}')
+    print(f'val_dataset: {val_dataset}')
+
 ```
+
 `register_dataset`会在`DATASET_MAPPING`中注册数据集, 该函数的参数含义如下:
 
 - `dataset_name`: 必填项, 表示数据集的名字, 也是数据集的唯一id.
@@ -352,29 +344,45 @@ if __name__ == '__main__':
 - `preprocess_func`: 默认为`None`. 表示对函数进行预处理的方法.
 - `get_function`: 默认值为`None`. 获取数据集的函数. 如果传入None, 则使用修饰器方案进行数据集注册, `register_dataset`函数将返回`Callable[[GetDatasetFunction], GetDatasetFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 如果从ModelScope Hub导入数据集, 一般使用`get_dataset_from_repo`函数.
   `get_function`函数没有任何限制, 你只需要返回`HfDataset`或`Tuple[HfDataset, Optional[HfDataset]]`即可. 只返回train_dataset的情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 如果返回两个数据集, 则分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
-  函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
+  函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集.
 - `task`: 注释数据集用作的任务. 该参数一般不需要设置.
 - `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
 - `**kwargs`: 其他用于注释数据集的参数. 该参数一般不需要设置.
 
 ### 自定义模型
 
-以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+以下是一个**自定义模型**的案例. 运行该自定义模型的sh可以查看`scripts/custom`.
 
 ```python
-from swift.llm import (
-    register_model, LoRATM, get_model_tokenizer_from_repo, get_model_tokenizer
-)
-import torch
+from typing import Any, Dict
+
+from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
 from torch import dtype as Dtype
-from typing import Dict, Any
+from transformers.utils.versions import require_version
+
+from swift.llm import LoRATM, TemplateType, get_model_tokenizer, register_model
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class CustomModelType:
+    tigerbot_7b = 'tigerbot-7b'
+    tigerbot_13b = 'tigerbot-13b'
     tigerbot_13b_chat = 'tigerbot-13b-chat'
+
 
 class CustomTemplateType:
     tigerbot = 'tigerbot'
 
+
+@register_model(CustomModelType.tigerbot_7b,
+                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+                TemplateType.default_generation)
+@register_model(CustomModelType.tigerbot_13b,
+                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+                TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b_chat,
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
                 CustomTemplateType.tigerbot)
@@ -388,25 +396,40 @@ def get_tigerbot_model_tokenizer(model_dir: str,
         require_version('transformers>=4.34')
         logger.info('Setting use_flash_attention_2: True')
         model_kwargs['use_flash_attention_2'] = True
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    model_config.torch_dtype = torch_dtype
+    logger.info(f'model_config: {model_config}')
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model = None
+    if load_model:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+    return model, tokenizer
 
-# 不使用修饰器的用法:
-# register_model(CustomModelType.tigerbot_13b_chat,
-#                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
-#                CustomTemplateType.tigerbot, get_tigerbot_model_tokenizer)
 
 if __name__ == '__main__':
-    model_kwargs = {'device_map': 'auto'}
-    model, tokenizer = get_model_tokenizer(CustomModelType.tigerbot_13b_chat, torch.bfloat16, use_flash_attn=False)
-    print(model, tokenizer)
+    # test model base
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_7b, use_flash_attn=False)
+    print(model.__class__.__name__)
+    # test model chat
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_13b_chat, use_flash_attn=False)
+    print(model.__class__.__name__)
 ```
 
 `register_model`会在`MODEL_MAPPING`中注册模型, 该函数的参数含义如下:
 
 - `model_type`: 必填项. 表示模型的名字, 也是唯一的id.
 - `model_id_or_path`: 必填项. 表示模型在ModelScope Hub中的`model_id`, 或者是本地的模型目录`model_dir`.
-- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules AUTO`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
+- `lora_target_modules`: 默认为`None`. 表示在sh脚本中指定`--lora_target_modules DEFAULT`或未指定`--lora_target_modules`情况下默认使用的lora_target_modules.
 - `template`: 默认为`TemplateType.default`. 表示在sh脚本中未指定`--template`情况下默认使用的chat template.
 - `get_function`: 默认值为`None`. 获取model和tokenizer的函数. 如果传入None, 则使用修饰器方案进行模型注册, `register_model`函数将返回`Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 一般使用`get_model_tokenizer_from_repo`作为参数传入, 返回model和tokenizer. 如果出现需要对模型代码打补丁等情况, 则可以通过自定义该函数来实现.
 - `requires`: 默认为`[]`. 表示模型所需要的区别于其他模型的依赖. 该参数一般不需要设置.
@@ -420,14 +443,20 @@ if __name__ == '__main__':
 
 ### 自定义对话模板
 
-以下是一个**自定义对话模板**的案例. 运行该自定义对话模板的sh可以查看`scripts/custom/tigerbot_13b_chat`.
+以下是一个**自定义对话模板**的案例. 运行该自定义对话模板的sh可以查看`scripts/custom`.
 
 ```python
-from swift.llm import (
-    register_template, Template, get_template, get_model_tokenizer, ModelType, inference
-)
+from swift.llm import (Template, ModelType, dataset_map,
+                       get_model_tokenizer, get_template, get_dataset,
+                       print_example, register_template, DatasetName)
+from swift.utils import get_logger
+
+logger = get_logger()
+
+
 class CustomTemplateType:
     tigerbot = 'tigerbot'
+
 
 # Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
 register_template(
@@ -436,15 +465,14 @@ register_template(
              [['eos_token_id']]))
 
 if __name__ == '__main__':
-    # only for test
+    # test template
+    train_dataset, _ = get_dataset(DatasetName.blossom_math_zh)
     _, tokenizer = get_model_tokenizer(ModelType.qwen_7b_chat, load_model=False)
     template = get_template(CustomTemplateType.tigerbot, tokenizer)
-    inputs = {'query': '浙江的省会在哪里?', 'response': '杭州',
-              'system': 'you are a helpful assistant!',
-              'history': [('你好!', '你好! 我是AI智能助手. '),
-                          ('1+1=?', '2')]}
-    print(tokenizer.decode(template.encode(inputs)['input_ids']))
+    train_dataset = dataset_map(train_dataset, template.encode)
+    print_example(train_dataset[0], tokenizer)
 ```
+
 `register_template`会在`TEMPLATE_MAPPING`中注册对话模板, 该函数的参数含义如下:
 - `template_type`: 必填项, 表示对话模板的名字, 也是template的唯一id.
 - `template`: 必填项, 需要传入一个`Template`. 初始化`Template`需要传入4个参数: `prefix`, `prompt`, `chat_sep`, `suffix`.
@@ -453,7 +481,7 @@ if __name__ == '__main__':
 - `prefix`: 表示对话模板中的前缀部分, 一般为system部分及其相关格式, 前缀token, bos token等内容. 我们使用`{{SYSTEM}}`作为system部分的占位符.
 - `prompt`: 表示对话模板中的一轮对话. 我们使用`{{QUERY}}`作为每轮对话中, human询问部分的占位符, `{{ROUND0}}`则表示本次对话是第几轮的占位符, 从0开始计数, `{{ROUND1}}`从1开始计数. AI助手的回复部分会拼接在`prompt`的后面, 因此我们没有设计其占位符.
 - `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等. 如果设置为None, 则该Template不支持多轮对话.
-- `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面. 只有最后一轮对话的reponse部分和`suffix`会计算loss并优化, 其余部分不计算损失.
+- `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面.
 
 
 ### sft.sh 命令行参数
@@ -483,7 +511,7 @@ if __name__ == '__main__':
 - `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`None`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_quant_type`: 4bit量化时的量化方式, 默认是`'nf4'`. 可选择的值包括: 'nf4', 'fp4'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_use_double_quant`: 是否在4bit量化时开启double量化, 默认为`True`. 当quantization_bit为0时, 该参数无效.
-- `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入AUTO, 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
+- `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入'DEFAULT', 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
 - `--lora_rank`: 默认为`8`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_alpha`: 默认为`32`. 只有当`sft_type`指定为'lora'时才生效.
 - `--lora_dropout_p`: 默认为`0.05`, 只有当`sft_type`指定为'lora'时才生效.

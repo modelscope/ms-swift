@@ -87,7 +87,9 @@ def prepare_model_template(
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
-    kwargs = {'use_flash_attn': args.use_flash_attn}
+    kwargs = {}
+    if args.use_flash_attn is not None:
+        kwargs['use_flash_attn'] = args.use_flash_attn
     if args.sft_type == 'full' and args.ckpt_dir is not None:
         kwargs['model_dir'] = args.ckpt_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
@@ -102,7 +104,8 @@ def prepare_model_template(
     show_layers(model)
 
     template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length)
+                                      args.system, args.max_length,
+                                      args.truncation_strategy)
     generation_config = GenerationConfig(
         max_length=None,
         max_new_tokens=args.max_new_tokens,

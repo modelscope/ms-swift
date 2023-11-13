@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 60GB GPU memory
+# 2 * 53GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -16,15 +16,15 @@ torchrun \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset damo-agent-mini-zh \
+    --dataset sql-create-context-en \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \

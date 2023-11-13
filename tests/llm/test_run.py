@@ -33,13 +33,13 @@ class TestRun(unittest.TestCase):
         model_type = ModelType.chatglm3_6b
         sft_args = SftArguments(
             model_type=model_type,
-            template_type=TemplateType.chatglm_generation,
+            template_type=TemplateType.chatglm3,
             quantization_bit=4,
             eval_steps=5,
             check_dataset_strategy='warning',
             train_dataset_sample=200,
             predict_with_generate=False,
-            dataset=[DatasetName.jd_sentiment_zh],
+            dataset=[DatasetName.agent_instruct_all_en],
             output_dir=output_dir,
             gradient_checkpointing=True)
         best_ckpt_dir = sft_main(sft_args)

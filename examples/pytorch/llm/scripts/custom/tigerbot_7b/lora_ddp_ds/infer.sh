@@ -1,11 +1,11 @@
-# Experimental environment: A10, 3090
+# Experimental environment: A10
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "output/chatglm2-6b/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/tigerbot-13b/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
-    --max_length 4096 \
+    --max_length 2048 \
     --max_new_tokens 2048 \
     --temperature 0.9 \
     --top_k 20 \

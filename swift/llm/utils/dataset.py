@@ -59,6 +59,7 @@ class DatasetName:
     # agent
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
+    agent_instruct_all_en = 'agent-instruct-all-en'
     # coding
     code_alpaca_en = 'code-alpaca-en'
     code_python_zh = 'code-python-zh'
@@ -96,7 +97,7 @@ def register_dataset(
         dataset_id_or_path: str,
         train_subset_split_list: Optional[List[SubsetSplit]] = None,
         val_subset_split_list: Optional[List[SubsetSplit]] = None,
-        preprocess_func: PreprocessFunc = SmartPreprocessor(),
+        preprocess_func: Optional[PreprocessFunc] = SmartPreprocessor(),
         get_function: Optional[GetDatasetFunction] = None,
         *,
         task: Optional[str] = None,
@@ -635,6 +636,28 @@ register_dataset(
     'AI-ModelScope/leetcode-solutions-python', ['train'],
     None,
     _preprocess_leetcode_python,
+    get_dataset_from_repo,
+    task='chat')
+
+_agent_instruct_subset_list = [
+    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
+]
+
+
+def _repair_conversations_agent_instruct(s: str) -> str:
+    s = s.replace('}\n {', '},\n {')
+    return ast.literal_eval(s)
+
+
+register_dataset(
+    DatasetName.agent_instruct_all_en,
+    'huangjintao/AgentInstruct_copy',
+    [(subset, 'train') for subset in _agent_instruct_subset_list],
+    None,
+    ConversationsPreprocessor(
+        'human',
+        'gpt',
+        repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     task='chat')
 

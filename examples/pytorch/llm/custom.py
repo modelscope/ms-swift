@@ -1,21 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import ast
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
+from datasets import Dataset as HfDataset
+from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                        MsDataset)
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
-from swift.llm import (ConversationsPreprocessor, LoRATM, Template,
-                       dataset_map, get_dataset, get_dataset_from_repo,
-                       get_model_tokenizer, get_model_tokenizer_from_repo,
-                       get_template, print_example, register_dataset,
-                       register_model, register_template)
+from swift.llm import (LoRATM, Template, TemplateType, dataset_map,
+                       get_dataset, get_model_tokenizer, get_template,
+                       print_example, register_dataset, register_model,
+                       register_template)
 from swift.utils import get_logger
 
 logger = get_logger()
 
 
 class CustomModelType:
+    tigerbot_7b = 'tigerbot-7b'
+    tigerbot_13b = 'tigerbot-13b'
     tigerbot_13b_chat = 'tigerbot-13b-chat'
 
 
@@ -24,9 +27,15 @@ class CustomTemplateType:
 
 
 class CustomDatasetName:
-    agent_instruct_all_en = 'agent-instruct-all-en'
+    stsb_en = 'stsb-en'
 
 
+@register_model(CustomModelType.tigerbot_7b,
+                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+                TemplateType.default_generation)
+@register_model(CustomModelType.tigerbot_13b,
+                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+                TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b_chat,
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
                 CustomTemplateType.tigerbot)
@@ -40,8 +49,22 @@ def get_tigerbot_model_tokenizer(model_dir: str,
         require_version('transformers>=4.34')
         logger.info('Setting use_flash_attention_2: True')
         model_kwargs['use_flash_attention_2'] = True
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    model_config.torch_dtype = torch_dtype
+    logger.info(f'model_config: {model_config}')
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model = None
+    if load_model:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+    return model, tokenizer
 
 
 # Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
@@ -50,36 +73,45 @@ register_template(
     Template([], ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
              [['eos_token_id']]))
 
-_agent_instruct_subset_list = [
-    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
-]
+
+def _preprocess_stsb(dataset: HfDataset) -> HfDataset:
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
+Sentence 1: {text1}
+Sentence 2: {text2}
+Similarity score: """
+    query = []
+    response = []
+    for d in dataset:
+        query.append(prompt.format(text1=d['text1'], text2=d['text2']))
+        response.append(f"{d['label']:.1f}")
+    return HfDataset.from_dict({'query': query, 'response': response})
 
 
-def repair_conversations_agent_instruct(s: str) -> str:
-    s = s.replace('}\n {', '},\n {')
-    return ast.literal_eval(s)
+@register_dataset(
+    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
+def get_stsb_dataset(dataset_id_or_path: str,
+                     **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    dataset_dict = MsDataset.load(dataset_id_or_path)
+    train_dataset = dataset_dict['train'].to_hf_dataset()
+    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    return tuple(
+        _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
 
-
-register_dataset(
-    CustomDatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy',
-    [(subset, 'train') for subset in _agent_instruct_subset_list],
-    None,
-    ConversationsPreprocessor(
-        'human',
-        'gpt',
-        repair_conversations=repair_conversations_agent_instruct),
-    get_dataset_from_repo,
-    task='chat')
 
 if __name__ == '__main__':
-    # The Shell script can view `scripts/custom/tigerbot_13b_chat`.
-    # test
-    train_dataset, _ = get_dataset([CustomDatasetName.agent_instruct_all_en],
-                                   0.,
-                                   check_dataset_strategy='warning')
+    # The Shell script can view `scripts/custom`.
+    # test dataset
+    train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en],
+                                             check_dataset_strategy='warning')
+    print(f'train_dataset: {train_dataset}')
+    print(f'val_dataset: {val_dataset}')
+    # test model base
     model, tokenizer = get_model_tokenizer(
-        CustomModelType.tigerbot_13b_chat, use_flash_attn=True)
+        CustomModelType.tigerbot_13b, use_flash_attn=False)
+    # test model chat
+    model, tokenizer = get_model_tokenizer(
+        CustomModelType.tigerbot_13b_chat, use_flash_attn=False)
+    # test template
     template = get_template(CustomTemplateType.tigerbot, tokenizer)
     train_dataset = dataset_map(train_dataset, template.encode)
     print_example(train_dataset[0], tokenizer)

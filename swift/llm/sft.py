@@ -47,7 +47,9 @@ def llm_sft(args: SftArguments) -> str:
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
 
-    kwargs = {'use_flash_attn': args.use_flash_attn}
+    kwargs = {}
+    if args.use_flash_attn is not None:
+        kwargs['use_flash_attn'] = args.use_flash_attn
     if args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
@@ -135,7 +137,8 @@ def llm_sft(args: SftArguments) -> str:
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length)
+                                      args.system, args.max_length,
+                                      args.truncation_strategy)
     train_dataset = dataset_map(train_dataset, template.encode)
     if val_dataset is not None:
         val_dataset = dataset_map(val_dataset, template.encode)

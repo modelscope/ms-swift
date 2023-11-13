@@ -59,6 +59,9 @@ class SftArguments:
     train_dataset_sample: int = 20000  # -1: all dataset
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    truncation_strategy: str = field(
+        default='truncation_left',
+        metadata={'choices': ['ignore', 'truncation_left']})
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
@@ -196,8 +199,8 @@ class SftArguments:
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         if self.lora_target_modules is None:
-            self.lora_target_modules = ['AUTO']
-        if 'AUTO' in self.lora_target_modules:
+            self.lora_target_modules = ['DEFAULT']
+        if 'DEFAULT' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
             self.lora_target_modules = MODEL_MAPPING[
                 self.model_type]['lora_target_modules']
@@ -261,6 +264,9 @@ class InferArguments:
     show_dataset_sample: int = 10
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
+    truncation_strategy: str = field(
+        default='truncation_left',
+        metadata={'choices': ['ignore', 'truncation_left']})
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
@@ -407,6 +413,11 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = 'chatglm-generation'
     if args.template_type == 'qwen':
         args.template_type = TemplateType.chatml
+    if (isinstance(args, SftArguments) and isinstance(args.lora_target_modules,
+                                                      (list, tuple))
+            and 'AUTO' in args.lora_target_modules
+            and len(args.lora_target_modules) == 1):
+        args.lora_target_modules = ['DEFAULT']
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:

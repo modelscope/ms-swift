@@ -56,7 +56,8 @@ def rome_infer(args: RomeArguments) -> None:
 
     # Inference
     template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length)
+                                      args.system, args.max_length,
+                                      args.truncation_strategy)
     generation_config = GenerationConfig(
         max_length=None,
         max_new_tokens=args.max_new_tokens,

@@ -1,9 +1,8 @@
-# Experimental environment: A100
-# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
+# Experimental environment: 3090
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "output/internlm-20b-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/chatglm3-6b-base/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
     --max_length 2048 \
