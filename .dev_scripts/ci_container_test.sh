@@ -24,6 +24,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
 
     # test with install
     pip install .
+    pip install auto_gptq -U -i https://mirrors.aliyun.com/pypi/simple/
 else
     echo "Running case in release image, run case directly!"
 fi
