@@ -50,7 +50,8 @@ class Template:
         tokenizer: PreTrainedTokenizerBase,
         system: Optional[str] = None,
         max_length: Optional[int] = None,
-        truncation_strategy: Literal['ignore', 'truncation_left'] = 'ignore'
+        truncation_strategy: Literal['ignore',
+                                     'truncation_left'] = 'truncation_left'
     ) -> None:
         self._is_init = True
         self.tokenizer = tokenizer
@@ -302,7 +303,8 @@ def get_template(
     tokenizer: PreTrainedTokenizerBase,
     system: str = DEFAULT_SYSTEM,
     max_length: Optional[int] = None,
-    truncation_strategy: Literal['ignore', 'truncation_left'] = 'ignore'
+    truncation_strategy: Literal['ignore',
+                                 'truncation_left'] = 'truncation_left'
 ) -> Template:
     template = TEMPLATE_MAPPING[template_type]
     template.init_template(tokenizer, system, max_length, truncation_strategy)
