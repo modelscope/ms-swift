@@ -553,7 +553,7 @@ def print_table_result(df):
 
 def install_latest_packages():
     def install_package(line):
-        if '>' in line:
+        if '<' not in line and '==' not in line:
             package = line.split('>')[0].strip()
             print(f'reinstall requirement: {package} -U')
             os.system(f'pip install {package} -U')
