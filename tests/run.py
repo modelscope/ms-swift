@@ -564,12 +564,6 @@ def install_latest_packages():
         lines = f.readlines()
         for line in lines:
             install_package(line)
-    
-    with open('requirements/llm.txt', 'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            install_package(line)
-
 
 
 def main(args):
