@@ -20,10 +20,11 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         fi
     fi
 
-    pip install -r  requirements/framework.txt -i https://mirrors.aliyun.com/pypi/simple/
+    pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
 
     # test with install
     pip install .
+    pip install auto_gptq -U -i https://mirrors.aliyun.com/pypi/simple/
 else
     echo "Running case in release image, run case directly!"
 fi

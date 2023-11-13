@@ -1,7 +1,0 @@
-charset_normalizer
-cpm_kernels
-gradio
-modelscope>=1.9.3
-optimum
-sentencepiece
-tiktoken

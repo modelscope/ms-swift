@@ -73,7 +73,7 @@ Quickly fine-tune, infer with LLM, and build a Web-UI.
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .[llm]
+pip install .
 ```
 
 #### Run using Python

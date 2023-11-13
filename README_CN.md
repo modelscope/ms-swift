@@ -70,7 +70,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .[llm]
+pip install .
 ```
 
 #### 使用python运行
