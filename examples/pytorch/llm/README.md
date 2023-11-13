@@ -58,7 +58,7 @@ Experimental environment: A10, 3090, V100, A100, ...
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .[llm]
+pip install .
 # The following script needs to be executed in this directory.
 cd examples/pytorch/llm
 

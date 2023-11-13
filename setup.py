@@ -117,26 +117,9 @@ def parse_requirements(fname='requirements.txt', with_version=True):
     return gen_packages_items()
 
 
-def pack_resource():
-    # pack resource such as configs and tools
-    root_dir = 'package/'
-    if os.path.isdir(root_dir):
-        shutil.rmtree(root_dir)
-    os.makedirs(root_dir)
-
-    proj_dir = root_dir + 'swift/'
-    shutil.copytree('./swift', proj_dir)
-    shutil.copytree('./requirements', 'package/requirements')
-    shutil.copy('./requirements.txt', 'package/requirements.txt')
-    shutil.copy('./MANIFEST.in', 'package/MANIFEST.in')
-    shutil.copy('./README.md', 'package/README.md')
-
-
 if __name__ == '__main__':
-    pack_resource()
-    os.chdir('package')
     install_requires, deps_link = parse_requirements('requirements.txt')
-    extra_requires = {'llm': parse_requirements('requirements/llm.txt')}
+    extra_requires = {}
     all_requires = []
 
     setup(
