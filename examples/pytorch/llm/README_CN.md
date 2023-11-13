@@ -363,7 +363,7 @@ if __name__ == '__main__':
 - `preprocess_func`: 默认为`None`. 表示对函数进行预处理的方法.
 - `get_function`: 默认值为`None`. 获取数据集的函数. 如果传入None, 则使用修饰器方案进行数据集注册, `register_dataset`函数将返回`Callable[[GetDatasetFunction], GetDatasetFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 如果从ModelScope Hub导入数据集, 一般使用`get_dataset_from_repo`函数.
   `get_function`函数没有任何限制, 你只需要返回`HfDataset`或`Tuple[HfDataset, Optional[HfDataset]]`即可. 只返回train_dataset的情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 如果返回两个数据集, 则分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
-  函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集. 我们只会对`response`部分进行loss的计算和优化.
+  函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集.
 - `task`: 注释数据集用作的任务. 该参数一般不需要设置.
 - `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
 - `**kwargs`: 其他用于注释数据集的参数. 该参数一般不需要设置.
@@ -500,7 +500,7 @@ if __name__ == '__main__':
 - `prefix`: 表示对话模板中的前缀部分, 一般为system部分及其相关格式, 前缀token, bos token等内容. 我们使用`{{SYSTEM}}`作为system部分的占位符.
 - `prompt`: 表示对话模板中的一轮对话. 我们使用`{{QUERY}}`作为每轮对话中, human询问部分的占位符, `{{ROUND0}}`则表示本次对话是第几轮的占位符, 从0开始计数, `{{ROUND1}}`从1开始计数. AI助手的回复部分会拼接在`prompt`的后面, 因此我们没有设计其占位符.
 - `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等. 如果设置为None, 则该Template不支持多轮对话.
-- `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面. 只有最后一轮对话的reponse部分和`suffix`会计算loss并优化, 其余部分不计算损失.
+- `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面.
 
 
 ### sft.sh 命令行参数
