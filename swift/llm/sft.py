@@ -9,7 +9,7 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, Swift)
+                          LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          is_ddp_plus_mp, is_dist, is_master, plot_images,
@@ -105,6 +105,11 @@ def llm_sft(args: SftArguments) -> str:
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
+
+    if args.neftune_alpha > 0.001:
+        neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
+        model = Swift.prepare_model(model, neftune_config)
+        logger.info(f'neftune_config: {neftune_config}')
 
     show_layers(model)
     print_model_info(model)

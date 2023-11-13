@@ -45,6 +45,14 @@ class ROMEHyperParams(HyperParams):
                     rewrite_module_tmp='model.layers.{}.mlp.down_proj',
                     mlp_module_tmp='model.layers.{}.mlp',
                 ))
+        elif name == 'chatglm-6b':
+            data.update(
+                dict(
+                    layers=[5],
+                    rewrite_module_tmp=
+                    'transformer.encoder.layers.{}.mlp.dense_4h_to_h',
+                    mlp_module_tmp='transformer.encoder.layers.{}.mlp',
+                ))
         else:
             raise NotImplementedError(f'{name} not supported.')
 

@@ -3,6 +3,7 @@
 from .adapter import Adapter, AdapterConfig
 from .longlora.longlora import LongLoRA, LongLoRAConfig
 from .lora import LoRA, LoRAConfig
+from .neftune import NEFTune, NEFTuneConfig
 from .prompt import Prompt, PromptConfig
 from .restuning import ResTuning, ResTuningConfig
 from .rome import Rome, RomeConfig
@@ -17,6 +18,7 @@ class SwiftTuners:
     RESTUNING = 'RESTUNING'
     ROME = 'ROME'
     LONGLORA = 'longlora'
+    NEFTUNE = 'neftune'
 
 
 SWIFT_MAPPING = {
@@ -27,4 +29,5 @@ SWIFT_MAPPING = {
     SwiftTuners.RESTUNING: (ResTuningConfig, ResTuning),
     SwiftTuners.ROME: (RomeConfig, Rome),
     SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
+    SwiftTuners.NEFTUNE: (NEFTuneConfig, NEFTune),
 }

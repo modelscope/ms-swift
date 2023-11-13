@@ -19,6 +19,7 @@ def compute_u(
     hparams: ROMEHyperParams,
     layer: int,
     context_templates: List[str],
+    batch_first=True,
 ) -> torch.Tensor:
     """
     Computes the left vector used in constructing the rank-1 update matrix.
@@ -33,6 +34,7 @@ def compute_u(
         layer=layer,
         module_template=hparams.rewrite_module_tmp,
         track='in',
+        batch_first=batch_first,
     )
     if 'subject_' in hparams.fact_token and hparams.fact_token.index(
             'subject_') == 0:

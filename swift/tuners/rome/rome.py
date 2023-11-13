@@ -2,13 +2,13 @@
 # Part of the implementation is borrowed from kmeng01/rome.
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import torch
 import torch.nn as nn
 
 from swift import SwiftConfig
-from swift.tuners.utils import SwiftOutput
+from swift.tuners.utils import SwiftAdapter, SwiftOutput
 from swift.utils import get_logger
 from .compute_u import compute_u
 from .compute_v import compute_v
@@ -46,7 +46,10 @@ class RomeConfig(SwiftConfig):
         default=None, metadata={'help': 'The tokenizer matching this model'})
 
     knowledge: List[Dict] = field(
-        default=False, metadata={'help': 'The knowledge to be '})
+        default=False, metadata={'help': 'The knowledge to be used'})
+
+    batch_first: bool = field(
+        default=True, metadata={'help': 'Batch at the first dimension or not'})
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
@@ -59,7 +62,7 @@ class RomeConfig(SwiftConfig):
         return _dict
 
 
-class Rome:
+class Rome(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: RomeConfig, adapter_name: str):
@@ -75,7 +78,8 @@ class Rome:
 
             hparams = ROMEHyperParams.from_name(config.model_type)
             modified_keys = apply_rome_to_model(model, config.tokenizer,
-                                                config.knowledge, hparams)
+                                                config.knowledge, hparams,
+                                                config.batch_first)
 
         def state_dict_callback(state_dict, adapter_name):
             return {
@@ -89,24 +93,30 @@ class Rome:
         return SwiftOutput(config, state_dict_callback,
                            mark_trainable_callback)
 
+    @staticmethod
+    def freeze_model():
+        return False
+
 
 def apply_rome_to_model(
     model: torch.nn.Module,
     tokenizer: Any,
-    kownledge: List[Dict],
+    knowledge: List[Dict],
     hparams: ROMEHyperParams,
-) -> None:
-    """
-    Returns a model with the desired changes.
+    batch_first: bool,
+) -> Set:
+    """Apply ROME to a model
 
-    :param copy: If true, will preserve the original model while creating a new one to edit.
-        Note that you are responsible for deallocating the new model's memory to avoid leaks.
-
-    :return: (1) the updated model, (2) an original copy of the weights that changed
+    Args:
+        model(`torch.nn.Module`): The model instance.
+        tokenizer(`Any`): The tokenizer.
+        knowledge(`List[Dict]`): The knowledge to be filled into the model.
+        hparams(`ROMEHyperParams`): The hyperparameter of ROME
+        batch_first(`bool`): Batch first of not.
     """
     modified_keys = set()
-    for i, request in enumerate(kownledge):
-        deltas = execute_rome(model, tokenizer, request, hparams)
+    for i, request in enumerate(knowledge):
+        deltas = execute_rome(model, tokenizer, request, hparams, batch_first)
 
         with torch.no_grad():
             for w_name, (delta_u, delta_v) in deltas.items():
@@ -123,6 +133,7 @@ def execute_rome(
     tok: Any,
     knowledge: Dict,
     hparams: ROMEHyperParams,
+    batch_first: bool,
 ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
     """
     Executes the ROME update algorithm for the specified update at the specified layer
@@ -157,6 +168,7 @@ def execute_rome(
             hparams,
             layer,
             context_template,
+            batch_first=batch_first,
         )
         logger.info(f'Left vector shape: {left_vector.shape}')
         right_vector: torch.Tensor = compute_v(
@@ -167,6 +179,7 @@ def execute_rome(
             layer,
             left_vector,
             context_template,
+            batch_first=batch_first,
         )
         logger.info(f'Right vector shape: {right_vector.shape}')
         right_vector = right_vector.to(left_vector.dtype)
