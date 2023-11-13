@@ -551,22 +551,6 @@ def print_table_result(df):
         print(df.to_string(justify='left', formatters=formatters, index=False))
 
 
-def install_latest_packages():
-    def install_package(line):
-        if '<' not in line and '==' not in line:
-            package = line.split('>')[0].strip()
-            print(f'reinstall requirement: {package} -U')
-            os.system(f'pip install {package} -U')
-        else:
-            print(f'No need to reinstall requirement because the version is limited: {line}')
-    
-    with open('requirements/framework.txt', 'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            install_package(line)
-    os.system(f'pip install auto_gptq -U')
-
-
 def main(args):
     runner = TimeCostTextTestRunner()
     if args.suites is not None and len(args.suites) > 0:
@@ -632,7 +616,6 @@ if __name__ == '__main__':
         help='Run specified test suites(test suite files list split by space)')
     args = parser.parse_args()
     print(args)
-    install_latest_packages()
     if args.run_config is not None or args.subprocess:
         run_in_subprocess(args)
     else:

@@ -20,7 +20,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         fi
     fi
 
-    pip install -r  requirements/framework.txt -i https://mirrors.aliyun.com/pypi/simple/
+    pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
 
     # test with install
     pip install .
