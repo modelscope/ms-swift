@@ -27,10 +27,10 @@ class LinearWrapper:
 
     def __getattr__(self, name):
         return getattr(self.module, name)
-    
+
     def forward(self, *args, **kwargs):
         return self.module.forward_origin(*args, **kwargs)
-    
+
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
@@ -45,16 +45,21 @@ if is_bnb_available():
         def __init__(
             self,
             adapter_name,
-            in_features,
-            out_features,
+            base_layer,
             r: int = 0,
             lora_alpha: int = 1,
             lora_dropout: float = 0.0,
             **kwargs,
         ):
-            super(ActivationMixin,
-                  self).__init__(adapter_name, in_features, out_features, r,
-                                 lora_alpha, lora_dropout, **kwargs)
+            if version.parse(peft.__version__) >= version.parse('0.6.0'):
+                super(ActivationMixin,
+                      self).__init__(adapter_name, LinearWrapper(base_layer),
+                                     r, lora_alpha, lora_dropout, **kwargs)
+            else:
+                super(ActivationMixin,
+                      self).__init__(adapter_name, base_layer.in_features,
+                                     base_layer.out_features, r, lora_alpha,
+                                     lora_dropout, **kwargs)
             super(Linear8bitLt, self).__init__()
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -80,12 +85,13 @@ if is_bnb_4bit_available():
         ):
             if version.parse(peft.__version__) >= version.parse('0.6.0'):
                 super(ActivationMixin,
-                    self).__init__(adapter_name, LinearWrapper(base_layer), r,
-                                    lora_alpha, lora_dropout, **kwargs)
+                      self).__init__(adapter_name, LinearWrapper(base_layer),
+                                     r, lora_alpha, lora_dropout, **kwargs)
             else:
                 super(ActivationMixin,
-                    self).__init__(adapter_name, base_layer.in_features, base_layer.out_features, r,
-                                    lora_alpha, lora_dropout, **kwargs)
+                      self).__init__(adapter_name, base_layer.in_features,
+                                     base_layer.out_features, r, lora_alpha,
+                                     lora_dropout, **kwargs)
             super(Linear4bit, self).__init__()
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -136,8 +142,8 @@ if is_auto_gptq_available():
         def forward(self, x: torch.Tensor):
             result = self.quant_linear_module(x)
             if not self.is_activated(
-            ) or self.disable_adapters or self.active_adapter[0] not in self.lora_A.keys(
-            ):
+            ) or self.disable_adapters or self.active_adapter[
+                    0] not in self.lora_A.keys():
                 return result
             elif self.r[self.active_adapter[0]] > 0:
                 result = result.clone()
@@ -148,8 +154,9 @@ if is_auto_gptq_available():
                         x = self.qa_pool(x) * self.group_size
                     output = (
                         self.lora_B[self.active_adapter[0]](
-                            self.lora_A[self.active_adapter[0]](self.lora_dropout[
-                                self.active_adapter[0]](x))).to(expected_dtype)
+                            self.lora_A[self.active_adapter[0]](
+                                self.lora_dropout[self.active_adapter[0]]
+                                (x))).to(expected_dtype)
                         * self.scaling[self.active_adapter[0]])
                 else:
                     if self.use_qa_lora:
@@ -318,8 +325,7 @@ class LoRA(SwiftAdapter):
                     })
                     lora_module = Linear8bitLt(
                         'default',
-                        sub_module.in_features,
-                        sub_module.out_features,
+                        sub_module,
                         bias=hasattr(sub_module, 'bias')
                         and sub_module.bias is not None,
                         **eight_bit_kwargs)
