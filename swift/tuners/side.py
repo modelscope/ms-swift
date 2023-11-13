@@ -13,7 +13,7 @@ from torch import nn
 
 from swift.utils.logger import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -65,7 +65,7 @@ class SideConfig(SwiftConfig):
         self.swift_type = SwiftTuners.SIDE
 
 
-class Side:
+class Side(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: SideConfig,

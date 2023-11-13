@@ -10,7 +10,7 @@ from torch import nn
 
 from swift import get_logger
 from ..utils.torch_utils import find_sub_module
-from .utils import ActivationMixin, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -79,7 +79,7 @@ class PromptConfig(SwiftConfig):
         self.swift_type = SwiftTuners.PROMPT
 
 
-class Prompt:
+class Prompt(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: PromptConfig,

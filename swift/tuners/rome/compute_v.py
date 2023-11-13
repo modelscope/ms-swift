@@ -91,7 +91,10 @@ def compute_v(model: torch.nn.Module,
             target_init = cur_out[0, lookup_idxs[0]].detach().clone()
 
         for i, idx in enumerate(lookup_idxs):
-            cur_out[i, idx, :] += delta
+            if batch_first:
+                cur_out[i, idx, :] += delta
+            else:
+                cur_out[idx, i, :] += delta
 
         return cur_out
 

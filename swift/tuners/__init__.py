@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .lora import LoRA, LoRAConfig
     from .mapping import SWIFT_MAPPING, SwiftTuners
     from .side import Side, SideConfig, SideModule
+    from .neftune import NEFTune, NEFTuneConfig
     from .longlora.longlora import LongLoRAModelType, LongLoRAConfig, LongLoRA
     from .restuning import ResTuning, ResTuningConfig, ResTuningBypassModule
     from .peft import (LoraConfig, PeftConfig, PeftModel, PeftModelForCausalLM,
@@ -29,6 +30,7 @@ else:
         ['LongLoRAModelType', 'LongLoRAConfig', 'LongLoRA'],
         'mapping': ['SWIFT_MAPPING', 'SwiftTuners'],
         'side': ['Side', 'SideConfig', 'SideModule'],
+        'neftune': ['NEFTune', 'NEFTuneConfig'],
         'restuning': ['ResTuning', 'ResTuningConfig', 'ResTuningBypassModule'],
         'peft': [
             'LoraConfig', 'PeftConfig', 'PeftModel', 'PeftModelForCausalLM',

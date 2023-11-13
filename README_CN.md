@@ -25,16 +25,22 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 6. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
 7. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
 8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. 所有在[PEFT](https://github.com/huggingface/peft)上提供的tuners
+9. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
+10. 所有在[PEFT](https://github.com/huggingface/peft)上提供的tuners
 
 主要能力：
 1. 可以通过model-id使SWIFT或PEFT的方法使用ModelScope Hub中的模型
 2. 在单次训练或推理中可以使用多个tuners
 3. 支持调用`activate_adapter`或`deactivate_adapter`或`set_active_adapters`来使部分tuner激活或失活，用户可以在推理时同时加载多个独立的tuners在不同线程中并行使用。
+4. 支持通过脚本方式和命令行方式开启训练和推理，同时支持Web-UI方式进行推理。
+5. 支持模型训练后的部署链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/Deployment.md)。
 
 用户可以查看 [Swift官方文档](docs/source/GetStarted/Introduction.md) 来了解详细信息。
 
 ## 🎉 新闻
+- 🔥 2023.11.11: 支持NEFTune, 使用`Swift.prepare_model(model, NEFTuneConfig())`即可开启.
+- 🔥 2023.11.11: 支持命令行训练推理和Web-UI推理, 详情可以查看下方的`使用Swift CLI运行`章节.
+- 🔥 2023.11.11: 支持模型训练后的部署链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/Deployment.md).
 - 🔥 2023.11.08: 支持xverse-65b模型的训练和推理流程，脚本在`scripts/xverse_65b`.
 - 🔥 2023.11.07: 支持yi-6b模型的训练和推理流程，脚本在`scripts/yi_6b`.
 - 🔥 2023.10.30: 支持 QA-LoRA 和 LongLoRA两种新的tuners.

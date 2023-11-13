@@ -53,9 +53,6 @@ class SwiftModel(nn.Module):
             from accelerate.hooks import remove_hook_from_submodules
             remove_hook_from_submodules(model)
 
-        for _, p in model.named_parameters():
-            p.requires_grad = False
-
         if isinstance(config, SwiftConfig):
             self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
                 model, config, DEFAULT_ADAPTER)
@@ -296,8 +293,14 @@ class SwiftModel(nn.Module):
     ):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
-        return SWIFT_MAPPING[config.swift_type][1].prepare_model(
-            model, config, adapter_name)
+
+        adatper_cls = SWIFT_MAPPING[config.swift_type][1]
+        if adatper_cls.freeze_model() and not getattr(model, 'model_freezed',
+                                                      False):
+            for _, p in model.named_parameters():
+                p.requires_grad = False
+            model.model_freezed = True
+        return adatper_cls.prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
