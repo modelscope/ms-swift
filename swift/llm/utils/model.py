@@ -407,9 +407,12 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                                      model_kwargs, load_model,
                                                      model_config, **kwargs)
     if model is not None:
-        model.lm_head.forward = MethodType(patch_baichuan2_lm_head_forward,
-                                           model.lm_head)
-
+        new_forward = MethodType(patch_baichuan2_lm_head_forward,
+                                 model.lm_head)
+        if hasattr(model, '_old_forward'):
+            model.lm_head._old_forward = new_forward
+        else:
+            model.lm_head.forward = new_forward
     return model, tokenizer
 
 
@@ -461,11 +464,11 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
                 LoRATM.chatglm, TemplateType.chatglm2)
 @register_model(ModelType.chatglm2_6b, 'ZhipuAI/chatglm2-6b', LoRATM.chatglm,
                 TemplateType.chatglm2)
-def get_model_tokenizer_chatglm2(model_dir: str,
-                                 torch_dtype: Dtype,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
+def get_model_tokenizer_chatglm(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
     if model_kwargs.get('quantization_config') is not None:
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
@@ -473,6 +476,9 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
+    # fix transformers>=4.34 bug
+    if version.parse(transformers.__version__) >= version.parse('4.34'):
+        tokenizer.__class__.special_tokens_map = {}
     if model is not None:
         from torch.nn import CrossEntropyLoss
         _old_forward = CrossEntropyLoss.forward
@@ -658,8 +664,12 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                   **kwargs):
 
     logger.info('use gptq, ignore bnb arguments')
-    model_kwargs['quantization_config'] = GPTQConfig(
-        bits=4, disable_exllama=True)
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=4, use_exllama=False)
+    else:
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=4, disable_exllama=True)
 
     # fix quantlinear bug
     from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
@@ -698,8 +708,8 @@ def get_skywork_model_tokenizer(model_dir: str,
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
-    # from 4.35.0, transformers changes its arguments of _set_gradient_checkpointing
-    if version.parse(transformers.__version__) >= version.parse('4.35.0'):
+    # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
         if isinstance(module, PreTrainedModel) and hasattr(module, '_set_gradient_checkpointing') \
                 and 'value' in inspect.signature(module._set_gradient_checkpointing).parameters.keys():
             module._set_gradient_checkpointing = MethodType(

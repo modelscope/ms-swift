@@ -167,7 +167,8 @@ class SftArguments:
                 raise ValueError('not supported, please use `nccl`')
 
             # Initialize in advance
-            dist.init_process_group(backend=self.ddp_backend)
+            if not dist.is_initialized():
+                dist.init_process_group(backend=self.ddp_backend)
             # Make sure to set the same output_dir when using DDP.
             self.output_dir = broadcast_string(self.output_dir)
 

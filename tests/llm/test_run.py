@@ -27,9 +27,7 @@ class TestRun(unittest.TestCase):
     def test_run_1(self):
         output_dir = 'output'
         if not __name__ == '__main__':
-            # ignore citest error in github
             output_dir = self.tmp_dir
-            return
         model_type = ModelType.chatglm3_6b
         sft_args = SftArguments(
             model_type=model_type,
@@ -52,7 +50,8 @@ class TestRun(unittest.TestCase):
             merge_lora_and_save=True)
         infer_main(infer_args)
         torch.cuda.empty_cache()
-        web_ui_main(infer_args)
+        if __name__ == '__main__':
+            web_ui_main(infer_args)
 
     def test_run_2(self):
         output_dir = 'output'
