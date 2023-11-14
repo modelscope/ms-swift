@@ -512,11 +512,11 @@ class SwiftMixin:
     def _load_best_model(self):
         # Compatible with transformers>=4.35 (deepspeed)
         try:
-            logger.info(
-                f'Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).'
-            )
             model = self.model
             if isinstance(model, SwiftModel):
+                logger.info(
+                    f'Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).'
+                )
                 adapters = model.adapters
                 for adapter_name in adapters.keys():
                     sub_folder = os.path.join(self.state.best_model_checkpoint,
