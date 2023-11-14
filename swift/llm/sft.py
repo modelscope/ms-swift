@@ -190,7 +190,7 @@ def llm_sft(args: SftArguments) -> str:
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
-        load_best_model_at_end=False,
+        load_best_model_at_end=True,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
         greater_is_better=args.predict_with_generate,

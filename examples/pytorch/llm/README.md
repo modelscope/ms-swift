@@ -68,7 +68,6 @@ pip install deepspeed -U
 # If you want to use qlora training based on auto_gptq (recommended, better performance than bnb):
 # auto_gptq has version mapping with cuda versions，please refer to https://github.com/PanQiWei/AutoGPTQ#quick-installation
 pip install auto_gptq
-pip install optimum -U
 
 # If you want to use qlora training based on bnb:
 pip install bitsandbytes -U
@@ -230,8 +229,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
-
-## 📝 User Guide
+## 🌈 Expanding
 
 ### Custom Dataset
 We support two methods for **customizing datasets**.
@@ -285,7 +283,7 @@ Format 4:
 
 
 #### Registering Datasets
-Here is an example of a **registering a dataset**. Running the shell script for this custom dataset can be found in `scripts/custom`.
+Here is an example of **registering a custom dataset**. Running the shell script for this custom dataset can be found in `scripts/custom`.
 
 ```python
 from typing import Optional, Tuple
@@ -349,7 +347,7 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 
 ### Custom Model
 
-Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom`.
+Here is an example of **registering a custom model**. Running the shell script for this custom model can be found in `scripts/custom`.
 
 ```python
 from typing import Any, Dict
@@ -441,7 +439,7 @@ The `register_model` function registers the model in `MODEL_MAPPING`, and its pa
 
 ### Custom Chat Template
 
-Here is an example of a **custom template**. Running the shell script for this custom template can be found in `scripts/custom`.
+Here is an example of **registering a custom template**. Running the shell script for this custom template can be found in `scripts/custom`.
 
 ```python
 from swift.llm import (Template, ModelType, dataset_map,
@@ -481,6 +479,7 @@ The template initialization function retrieves the complete chat template based 
 - `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc. If set to None, the Template does not support multi-turn conversations.
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue.
 
+## 📝 User Guide
 
 ### sft.sh Command Line Arguments
 - `--model_type`: Represents the selected model type. The default value is `None`, which means if `model_id_or_path` is not specified, `'qwen-7b-chat'` will be chosen. If `model_id_or_path` is specified, the `model_type` will be inferred based on `model_id_or_path` and `MODEL_MAPPING`. These two parameters cannot be specified simultaneously. The available `model_type` options can be found in `MODEL_MAPPING.keys()`.
