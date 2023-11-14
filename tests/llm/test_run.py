@@ -43,13 +43,14 @@ class TestRun(unittest.TestCase):
         best_ckpt_dir = sft_main(sft_args)
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
-        infer_args = InferArguments(
-            ckpt_dir=best_ckpt_dir,
-            stream=False,
-            show_dataset_sample=5,
-            merge_lora_and_save=True)
-        infer_main(infer_args)
-        torch.cuda.empty_cache()
+        if __name__ == '__main__':
+            infer_args = InferArguments(
+                ckpt_dir=best_ckpt_dir,
+                stream=False,
+                show_dataset_sample=5,
+                merge_lora_and_save=True)
+            infer_main(infer_args)
+            torch.cuda.empty_cache()
         # if __name__ == '__main__':
         #     web_ui_main(infer_args)
 
