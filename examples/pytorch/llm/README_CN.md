@@ -230,7 +230,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 
-## 📝 使用文档
+## 🌈 拓展
 
 ### 自定义数据集
 我们支持两种**自定义数据集**的方法.
@@ -482,6 +482,7 @@ if __name__ == '__main__':
 - `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等. 如果设置为None, 则该Template不支持多轮对话.
 - `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面.
 
+## 📝 用户文档
 
 ### sft.sh 命令行参数
 - `--model_type`: 表示你选择的模型类型, 默认是`None`, 即如果没有指定`model_id_or_path`, 则选择`'qwen-7b-chat'`, 如果指定了, 则会根据`model_id_or_path`以及`MODEL_MAPPING`推断`model_type`. 这两个参数不能同时指定. 可以选择的`model_type`可以查看`MODEL_MAPPING.keys()`.
