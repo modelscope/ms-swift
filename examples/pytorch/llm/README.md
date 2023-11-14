@@ -67,8 +67,7 @@ pip install deepspeed -U
 
 # If you want to use qlora training based on auto_gptq (recommended, better performance than bnb):
 # auto_gptq has version mapping with cuda versions，please refer to https://github.com/PanQiWei/AutoGPTQ#quick-installation
-pip install auto_gptq
-pip install optimum -U
+pip install auto_gptq -U
 
 # If you want to use qlora training based on bnb:
 pip install bitsandbytes -U

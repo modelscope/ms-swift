@@ -37,7 +37,7 @@ class TestRun(unittest.TestCase):
             check_dataset_strategy='warning',
             train_dataset_sample=200,
             predict_with_generate=False,
-            dataset=[DatasetName.agent_instruct_all_en],
+            dataset=[DatasetName.jd_sentiment_zh],
             output_dir=output_dir,
             gradient_checkpointing=True)
         best_ckpt_dir = sft_main(sft_args)
@@ -50,8 +50,8 @@ class TestRun(unittest.TestCase):
             merge_lora_and_save=True)
         infer_main(infer_args)
         torch.cuda.empty_cache()
-        if __name__ == '__main__':
-            web_ui_main(infer_args)
+        # if __name__ == '__main__':
+        #     web_ui_main(infer_args)
 
     def test_run_2(self):
         output_dir = 'output'
