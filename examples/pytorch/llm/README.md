@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ## 🌟 Run SFT and Inference
 Performace: full(nice) > lora > qlora(auto_gptq) > qlora(bnb)
 
-Training GPU memory: full(high,2*A100) > lora > qlora(low,3090)
+Training GPU memory: qlora(low,3090) < lora < full(high,2*A100)
 
 **Tips**:
 - You can set `--gradient_checkpointing true` during training to **save GPU memory**, but this will slightly decrease the training speed. This is useful if you need to train LLM on **consumer-grade GPU**, e.g. 3090.

@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ## 🌟 微调和推理
 性能: full(优) > lora > qlora(auto_gptq) > qlora(bnb)
 
-训练显存: full(高,2*A100) > lora > qlora(低,3090)
+训练显存: qlora(低,3090) < lora < full(高,2*A100)
 
 **提示**:
 - 你可以在训练时设置`--gradient_checkpointing true`来**节约显存**, 但这会略微降低训练速度. 如果你需要在**消费级显卡**中训练大模型, 这很有用, 例如: 3090.
