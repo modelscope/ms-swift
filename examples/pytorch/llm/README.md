@@ -182,23 +182,23 @@ bash scripts/qwen_7b_chat_int4/qlora/infer.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
 
-# sft(lora) and infer qwen-7b-chat, Requires 60GB GPU memory.
-# Recommended experimental environment: A100
+# sft(lora) and infer qwen-7b-chat, Requires 18GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*60GB GPU memory.
-# Recommended experimental environment: A100
+# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*18GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # sft(lora+ddp+deepspeed) and infer qwen-7b-chat, Requires 2*18GB GPU memory.
-# Recommended experimental environment: A10, 3090
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
-# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*15GB GPU memory.
-# Recommended experimental environment: A10, 3090
+# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*20GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
@@ -213,12 +213,12 @@ bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 
 # The qlora script based on bnb below is no longer recommended for use. Please prioritize using the qlora script based on auto_gptq.
-# sft(qlora) and infer qwen-7b-chat, Requires 13GB GPU memory.
+# sft(qlora) and infer qwen-7b-chat, Requires 18GB GPU memory.
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
+# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*20B GPU memory.
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
@@ -505,7 +505,7 @@ The template initialization function retrieves the complete chat template based 
 - `custom_train_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
 - `custom_val_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
 - `--quantization_bit`: Specifies whether to perform quantization and the number of quantization bits, default is `0`, which means no quantization. Quantization is only supported for the lora fine-tuning method and not for full-parameter fine-tuning.
-- `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `None`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
+- `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `'AUTO'`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_quant_type`: The quantization type for 4-bit quantization, default is `'nf4'`. The possible values are: 'nf4', 'fp4'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization during 4-bit quantization, default is `True`. This parameter is ignored when `quantization_bit` is 0.
 - `--lora_target_modules`: Specifies the LoRA module, default is `None`. If `lora_target_modules` is `None` or set to `DEFAULT`, it will look for `lora_target_modules` in `MODEL_MAPPING` based on `model_type` (default is set to qkv). If set to `ALL`, all Linear layers (excluding the head) will be specified as LoRA modules. This parameter only takes effect when `sft_type` is set to 'lora'.
@@ -570,7 +570,7 @@ The template initialization function retrieves the complete chat template based 
 - `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: Default value is 0. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
-- `--bnb_4bit_comp_dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
+- `--bnb_4bit_comp_dtype`: Default value is `'AUTO'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_quant_type`: Default value is `'nf4'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_use_double_quant`: Default value is `True`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--max_new_tokens`: Maximum number of new tokens to generate. Default value is `2048`.

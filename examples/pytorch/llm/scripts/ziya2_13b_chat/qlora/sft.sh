@@ -17,7 +17,7 @@ python llm_sft.py \
     --max_length 2048 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --bnb_4bit_comp_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \

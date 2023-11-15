@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A10
-# 2 * 14GB GPU memory
+# 2 * 20GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -16,13 +16,13 @@ torchrun \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset advertise-gen-zh \
+    --dataset damo-agent-mini-zh \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 4096 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --bnb_4bit_comp_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \

@@ -182,23 +182,23 @@ bash scripts/qwen_7b_chat_int4/qlora/infer.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
 
-# 微调(lora)+推理 qwen-7b-chat, 需要60GB显存.
-# 推荐的实验环境: A100
+# 微调(lora)+推理 qwen-7b-chat, 需要18GB显存.
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*60GB显存.
-# 推荐的实验环境: A100
+# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*18GB显存.
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # 微调(lora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*18GB显存.
-# 推荐的实验环境: A10, 3090
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
-# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*15GB显存.
-# 推荐的实验环境: A10, 3090
+# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*20GB显存.
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
@@ -213,12 +213,12 @@ bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 
 # 以下基于bnb的qlora脚本已不再推荐使用. 请优先使用基于auto_gptq的qlora脚本.
-# 微调(qlora)+推理 qwen-7b-chat, 需要13GB显存.
+# 微调(qlora)+推理 qwen-7b-chat, 需要18GB显存.
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
+# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*20GB显存.
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
@@ -508,7 +508,7 @@ if __name__ == '__main__':
 - `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: 用于指定是否进行量化和量化的bit数, 默认为`0`, 即不进行量化. 量化情况下, 只支持lora的微调方式, 不支持全参数的微调方式.
-- `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`None`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
+- `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`'AUTO'`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_quant_type`: 4bit量化时的量化方式, 默认是`'nf4'`. 可选择的值包括: 'nf4', 'fp4'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_use_double_quant`: 是否在4bit量化时开启double量化, 默认为`True`. 当quantization_bit为0时, 该参数无效.
 - `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入'DEFAULT', 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
@@ -574,7 +574,7 @@ if __name__ == '__main__':
 - `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: 默认值为0. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
-- `--bnb_4bit_comp_dtype`: 默认值为`None`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
+- `--bnb_4bit_comp_dtype`: 默认值为`'AUTO'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_quant_type`: 默认值为`'nf4'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_use_double_quant`: 默认值为`True`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--max_new_tokens`: 生成新token的最大数量, 默认值为`2048`.

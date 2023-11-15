@@ -1,5 +1,5 @@
-# Experimental environment: A10, V100, 3090
-# 22GB GPU memory
+# Experimental environment: V100, A10, 3090
+# 18GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
@@ -19,7 +19,7 @@ python llm_sft.py \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules DEFAULT \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-4 \

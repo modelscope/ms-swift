@@ -22,7 +22,7 @@ torchrun \
     --max_length 4096 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --bnb_4bit_comp_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \

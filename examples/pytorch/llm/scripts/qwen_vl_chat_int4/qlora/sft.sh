@@ -1,5 +1,5 @@
 # Experimental environment: A10
-# 11GB GPU memory (not use flash_attn)
+# 11GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \

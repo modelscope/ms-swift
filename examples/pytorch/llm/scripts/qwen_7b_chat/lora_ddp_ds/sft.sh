@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A10
-# 2 * 18GB GPU memory (not use flash_attn)
+# 2 * 18GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -16,7 +16,7 @@ torchrun \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset advertise-gen-zh \
+    --dataset blossom-math-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
@@ -24,7 +24,7 @@ torchrun \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \

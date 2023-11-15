@@ -1,5 +1,5 @@
 # Experimental environment: 4 * 3090
-# 4 * 15GB GPU memory (not use flash_attn)
+# 4 * 20GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -16,15 +16,15 @@ torchrun \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset advertise-gen-zh \
-    --train_dataset_sample -1 \
+    --dataset damo-agent-mini-zh \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 4096 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules c_attn \
+    --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \

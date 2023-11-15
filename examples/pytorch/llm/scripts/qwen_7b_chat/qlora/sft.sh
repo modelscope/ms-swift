@@ -1,5 +1,5 @@
 # Experimental environment: A10, 3090
-# 13GB GPU memory
+# 18GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
@@ -10,13 +10,13 @@ python llm_sft.py \
     --template_type chatml \
     --dtype AUTO \
     --output_dir output \
-    --dataset leetcode-python-en \
-    --train_dataset_sample -1 \
+    --dataset damo-agent-mini-zh \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 4096 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --bnb_4bit_comp_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
