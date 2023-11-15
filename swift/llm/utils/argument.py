@@ -222,6 +222,7 @@ class SftArguments:
 
         self.deepspeed = None
         if self.deepspeed_config_path is not None:
+            require_version('deepspeed')
             with open(self.deepspeed_config_path, 'r') as f:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
@@ -397,8 +398,10 @@ def select_bnb(
         torch.float16, torch.bfloat16, torch.float32
     }
     if quantization_bit == 4:
+        require_version('bitsandbytes')
         load_in_4bit, load_in_8bit = True, False
     elif quantization_bit == 8:
+        require_version('bitsandbytes')
         load_in_4bit, load_in_8bit = False, True
     else:
         load_in_4bit, load_in_8bit = False, False
