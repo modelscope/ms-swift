@@ -7,7 +7,7 @@ python llm_sft.py \
     --model_revision master \
     --sft_type full \
     --template_type default-generation \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --dataset ner-jave-zh \
     --train_dataset_sample -1 \
