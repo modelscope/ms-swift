@@ -37,7 +37,7 @@ Key features:
 4. Support training and inference with scripts/CLI，meanwhile support inference with Web-UI.
 5. Support model deployment(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/部署指南.md) for details.
 
-Users can check the [documentation of Swift](docs/source/GetStarted/快速开始.md) to get detail tutorials.
+Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用.md) to get detail tutorials.
 
 
 ### 🎉 News

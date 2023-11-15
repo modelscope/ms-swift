@@ -35,7 +35,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 4. 支持通过脚本方式和命令行方式开启训练和推理，同时支持Web-UI方式进行推理。
 5. 支持模型训练后的部署链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/部署指南.md)。
 
-用户可以查看 [Swift官方文档](docs/source/GetStarted/快速开始.md) 来了解详细信息。
+用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
 
 
 ## 🎉 新闻
