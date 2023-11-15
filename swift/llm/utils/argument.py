@@ -48,8 +48,8 @@ class SftArguments:
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: str = field(
+        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -254,8 +254,8 @@ class InferArguments:
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: str = field(
+        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -358,14 +358,14 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    if args.dtype is None and not torch.cuda.is_bf16_supported():
+    if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
         args.dtype = 'fp16'
-    if args.dtype is None and (args.model_type.endswith('int4')
+    if args.dtype == 'AUTO' and (args.model_type.endswith('int4')
                                or args.model_type.endswith('int8')):
         model_torch_dtype = MODEL_MAPPING[args.model_type]['torch_dtype']
         if model_torch_dtype is not None:
             args.dtype = dtype_mapping[model_torch_dtype]
-    if args.dtype is None:
+    if args.dtype == 'AUTO':
         args.dtype = 'bf16'
 
     torch_dtype = dtype_mapping_reversed[args.dtype]

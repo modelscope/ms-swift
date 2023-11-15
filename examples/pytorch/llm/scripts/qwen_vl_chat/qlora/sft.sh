@@ -8,7 +8,7 @@ python llm_sft.py \
     --sft_type lora \
     --tuner_backend swift \
     --template_type chatml \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --dataset coco-en \
     --train_dataset_sample 20000 \

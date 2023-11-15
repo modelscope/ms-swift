@@ -9,7 +9,7 @@ python llm_sft.py \
     --sft_type lora \
     --tuner_backend swift \
     --template_type ziya \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --dataset lawyer-llama-zh \
     --train_dataset_sample -1 \
