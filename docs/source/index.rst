@@ -9,12 +9,12 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Get Started
 
-   GetStarted/Introduction.md
-   GetStarted/Installation.md
-   GetStarted/Use in train and infer.md
-   GetStarted/Examples.md
-   GetStarted/Work with Peft.md
-   GetStarted/Deployment.md
+   GetStarted/快速使用.md
+   GetStarted/SWIFT安装.md
+   GetStarted/使用tuners.md
+   GetStarted/训练推理脚手架.md
+   GetStarted/在SWIFT内使用PEFT.md
+   GetStarted/部署指南.md
 
 .. toctree::
    :maxdepth: 2
