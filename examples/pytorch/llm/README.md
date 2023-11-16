@@ -152,7 +152,7 @@ Training GPU memory: qlora(low,3090) < lora < full(high,2*A100)
 **Tips**:
 - You can set `--gradient_checkpointing true` during training to **save GPU memory**, but this will slightly decrease the training speed. This is useful if you need to train LLM on **consumer-grade GPU**, e.g. 3090.
 - If you want to use quantization based on **auto_gptq**, you need to install auto_gptq first: `pip install auto_gptq -U`.
-  The models available with auto_gptq are: `qwen-7b-chat-int4`, `qwen-14b-chat-int4`, `qwen-7b-chat-int8`, `qwen-14b-chat-int8`.
+  The models available with auto_gptq are: 'qwen-7b-chat-int4, 'qwen-14b-chat-int4', 'qwen-7b-chat-int8', 'qwen-14b-chat-int8', 'qwen-vl-chat-int4'.
   If the script provides multiple versions of qlora SFT, including both non-quantized models and int4/int8 models, it is **recommended to use the script for the int4/int8 model versions**.
 - If you want to use the quantization parameter `quantization_bit`, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
 - If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can **save GPU memory**, but this may slightly decrease the training speed.
@@ -580,7 +580,7 @@ The template initialization function retrieves the complete chat template based 
 - `--top_k`: Default value is `20`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_p`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
 - `--repetition_penalty`: Default value is `1.05`.
-- `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. The models that support 'flash_attn' include: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series.
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--stream`: Whether to use streaming output. Default value is `True`.
 - `--merge_lora_and_save`: Whether to merge the lora weights into the base model and save the complete weights. Default value is `False`. The weights will be saved in a directory named `checkpoint-xxx-merged` at the same level as `ckpt_dir`, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`.

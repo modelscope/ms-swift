@@ -34,5 +34,12 @@ def stat_array(
     std = array.std().item()
     min_ = array.min().item()
     max_ = array.max().item()
-    string = f'{mean:.6f}±{std:.6f}, min={min_:.6f}, max={max_:.6f}, size={array.shape[0]}'
-    return {'mean': mean, 'std': std, 'min': min_, 'max': max_}, string
+    size = array.shape[0]
+    string = f'{mean:.6f}±{std:.6f}, min={min_:.6f}, max={max_:.6f}, size={size}'
+    return {
+        'mean': mean,
+        'std': std,
+        'min': min_,
+        'max': max_,
+        'size': size
+    }, string
