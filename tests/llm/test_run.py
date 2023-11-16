@@ -31,7 +31,7 @@ class TestRun(unittest.TestCase):
         model_type = ModelType.chatglm3_6b
         sft_args = SftArguments(
             model_type=model_type,
-            template_type=TemplateType.chatglm3,
+            template_type='AUTO',
             quantization_bit=4,
             eval_steps=5,
             check_dataset_strategy='warning',

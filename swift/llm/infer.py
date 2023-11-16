@@ -20,8 +20,8 @@ logger = get_logger()
 def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
-    assert not args.model_type.endswith('int4'), 'int4 model is not supported'
-    assert not args.model_type.endswith('int8'), 'int8 model is not supported'
+    assert 'int4' not in args.model_type, 'int4 model is not supported'
+    assert 'int8' not in args.model_type, 'int8 model is not supported'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
