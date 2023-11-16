@@ -8,7 +8,7 @@ python llm_sft.py \
     --sft_type lora \
     --tuner_backend swift \
     --template_type chatglm3 \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --dataset agent-instruct-all-en \
     --train_dataset_sample -1 \
@@ -16,7 +16,7 @@ python llm_sft.py \
     --max_length 4096 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --bnb_4bit_comp_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \

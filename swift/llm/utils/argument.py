@@ -48,8 +48,8 @@ class SftArguments:
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: str = field(
+        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -73,7 +73,7 @@ class SftArguments:
     # note: bf16 and quantization have requirements for gpu architecture
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': ['fp16', 'bf16', 'fp32']})
+        default='AUTO', metadata={'choices': ['fp16', 'bf16', 'fp32', 'AUTO']})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
@@ -255,8 +255,8 @@ class InferArguments:
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: str = field(
+        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -277,7 +277,7 @@ class InferArguments:
 
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': ['fp16', 'bf16', 'fp32']})
+        default='AUTO', metadata={'choices': ['fp16', 'bf16', 'fp32', 'AUTO']})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
@@ -359,14 +359,14 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    if args.dtype is None and not torch.cuda.is_bf16_supported():
+    if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
         args.dtype = 'fp16'
-    if args.dtype is None and (args.model_type.endswith('int4')
-                               or args.model_type.endswith('int8')):
+    if args.dtype == 'AUTO' and (args.model_type.endswith('int4')
+                                 or args.model_type.endswith('int8')):
         model_torch_dtype = MODEL_MAPPING[args.model_type]['torch_dtype']
         if model_torch_dtype is not None:
             args.dtype = dtype_mapping[model_torch_dtype]
-    if args.dtype is None:
+    if args.dtype == 'AUTO':
         args.dtype = 'bf16'
 
     torch_dtype = dtype_mapping_reversed[args.dtype]
@@ -389,7 +389,7 @@ def select_dtype(
 
 def select_bnb(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    if args.bnb_4bit_comp_dtype is None:
+    if args.bnb_4bit_comp_dtype == 'AUTO':
         args.bnb_4bit_comp_dtype = args.dtype
 
     quantization_bit = args.quantization_bit

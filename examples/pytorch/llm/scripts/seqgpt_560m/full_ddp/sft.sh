@@ -12,7 +12,7 @@ torchrun \
     --model_revision master \
     --sft_type full \
     --template_type default-generation \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
     --dataset ner-jave-zh \

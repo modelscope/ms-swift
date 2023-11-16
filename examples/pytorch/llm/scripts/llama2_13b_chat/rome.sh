@@ -5,7 +5,7 @@ python rome_infer.py \
     --model_id_or_path modelscope/Llama-2-13b-chat-ms \
     --model_revision master \
     --template_type llama \
-    --dtype bf16 \
+    --dtype AUTO \
     --eval_human true \
     --max_new_tokens 128 \
     --temperature 0.1 \

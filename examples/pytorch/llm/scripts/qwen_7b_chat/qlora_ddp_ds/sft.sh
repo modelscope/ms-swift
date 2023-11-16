@@ -13,7 +13,7 @@ torchrun \
     --sft_type lora \
     --tuner_backend swift \
     --template_type chatml \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
     --dataset damo-agent-mini-zh \
@@ -22,7 +22,7 @@ torchrun \
     --max_length 4096 \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
-    --bnb_4bit_comp_dtype bf16 \
+    --bnb_4bit_comp_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
