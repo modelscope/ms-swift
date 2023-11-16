@@ -5,7 +5,7 @@
 可以使用pip进行安装：
 
 ```shell
-pip install ms-swift
+pip install ms-swift -U
 ```
 
 ## 源代码安装
