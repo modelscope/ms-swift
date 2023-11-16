@@ -3,31 +3,31 @@
 为了支持习惯Peft的用户，Swift提供了对于Peft的兼容性。用户可以从swift中import peft组件：
 
 >PeftModel
-> 
+>
 >PeftConfig
-> 
+>
 >PeftModelForSeq2SeqLM
-> 
+>
 >PeftModelForSequenceClassification
-> 
+>
 >PeftModelForTokenClassification
-> 
+>
 >PeftModelForCausalLM
-> 
+>
 >PromptEncoderConfig
-> 
+>
 >PromptTuningConfig
-> 
+>
 >PrefixTuningConfig
-> 
+>
 >PromptLearningConfig
-> 
+>
 >LoraConfig
-> 
+>
 >get_peft_config
-> 
+>
 >get_peft_model_state_dict
-> 
+>
 >get_peft_model
 
 以上组件均可以从swift中import：
