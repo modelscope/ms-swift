@@ -36,10 +36,11 @@ class SftArguments:
         metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
-    template_type: Optional[str] = field(
-        default=None,
+    template_type: str = field(
+        default='AUTO',
         metadata={
-            'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
+            'help':
+            f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     output_dir: str = 'output'
     add_output_dir_suffix: bool = True
@@ -190,7 +191,7 @@ class SftArguments:
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
-        if self.template_type is None:
+        if self.template_type == 'AUTO':
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
@@ -244,10 +245,11 @@ class InferArguments:
     sft_type: str = field(
         default='lora',
         metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
-    template_type: Optional[str] = field(
-        default=None,
+    template_type: str = field(
+        default='AUTO',
         metadata={
-            'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
+            'help':
+            f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
@@ -313,7 +315,7 @@ class InferArguments:
         handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
-        if self.template_type is None:
+        if self.template_type == 'AUTO':
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
@@ -346,7 +348,7 @@ class RomeArguments(InferArguments):
         handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
-        if self.template_type is None:
+        if self.template_type == 'AUTO':
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
 

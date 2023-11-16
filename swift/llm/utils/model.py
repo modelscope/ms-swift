@@ -115,12 +115,12 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
-    internlm = ['q_proj', 'k_proj', 'v_proj']
-    xverse = ['q_proj', 'k_proj', 'v_proj']
-    mistral = ['q_proj', 'k_proj', 'v_proj']
-    ziya = ['q_proj', 'k_proj', 'v_proj']
-    yi = ['q_proj', 'k_proj', 'v_proj']
-    bluelm = ['q_proj', 'k_proj', 'v_proj']
+    internlm = llama2
+    xverse = llama2
+    mistral = llama2
+    ziya = llama2
+    yi = llama2
+    bluelm = llama2
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
