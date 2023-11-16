@@ -157,7 +157,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练).
-- 如果你要进行**二次预训练**而不是SFT, 你可以参考`DatasetName.tigerbot_law_zh`数据集和其对于的sh文件: `scripts/qwen_7b/qlora_ddp`.
+- 如果你要进行**二次预训练**而不是SFT, 你需要在注册数据集时只设置'response'而不设置'query', 你可以参考`'tigerbot-law-zh'`数据集和其对于的sh文件: `scripts/qwen_7b/qlora_ddp`.
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对量化的模型进行merge**, 这会存在精度损失, 即qlora.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要**自定义sh脚本**, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
@@ -343,7 +343,7 @@ if __name__ == '__main__':
 - `preprocess_func`: 默认为`None`. 表示对函数进行预处理的方法.
 - `get_function`: 默认值为`None`. 获取数据集的函数. 如果传入None, 则使用修饰器方案进行数据集注册, `register_dataset`函数将返回`Callable[[GetDatasetFunction], GetDatasetFunction]`, 该方案需要有一定python基础的用户使用. 如果传入一个函数, 则使用正常方案进行注册. 如果从ModelScope Hub导入数据集, 一般使用`get_dataset_from_repo`函数.
   `get_function`函数没有任何限制, 你只需要返回`HfDataset`或`Tuple[HfDataset, Optional[HfDataset]]`即可. 只返回train_dataset的情况下, 数据集处理函数会切分一部分的数据集作为验证集 (根据命令行超参数`dataset_test_ratio`); 如果返回两个数据集, 则分别作为其训练集和验证集. 我们支持使用多个数据集进行微调. 我们会将各个子数据集的训练集和验证集部分分别进行拼接, 最终返回合并后的训练集和验证集.
-  函数返回的`HfDataset`需要符合一定的规范. 如果是指令微调(单轮对话)的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`alpaca-zh`数据集. 如果是多轮对话, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`damo-agent-mini-zh`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`damo-agent-mini-zh`数据集.
+  函数返回的`HfDataset`需要符合一定的规范. 如果你要进行**预训练**, 那么只需要包含`response`字段, 具体可以参考`'tigerbot-law-zh'`数据集. 如果是**指令微调(单轮对话)**的情况下, 需包含`query`, `response`字段, 分别代表指令微调的用户询问和AI助手的回答, 具体可以参考`'alpaca-zh'`数据集. 如果是**多轮对话**, 则需要额外加上`history`字段, 代表对话的历史信息, 具体可以参考`'damo-agent-mini-zh'`数据集. 如果每个数据集样例具有不同的`system`, 则需要额外加上system字段, 具体你也可以参考`'damo-agent-mini-zh'`数据集.
 - `task`: 注释数据集用作的任务. 该参数一般不需要设置.
 - `function_kwargs`: 默认为`{}`, 用于传递给`get_function`, 用于支持修饰器情况下的`partial`功能. 该参数一般不需要设置.
 - `**kwargs`: 其他用于注释数据集的参数. 该参数一般不需要设置.
