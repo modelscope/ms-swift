@@ -6,11 +6,39 @@
 
 
 ## Model
+下表介绍了swift介入的模型的相关信息.
+- Model List: 模型在swift中注册的model_name的列表.
+- Default Lora Target Modules: 对应模型的默认lora_target_modules.
+- Default Template: 对应模型的默认template.
+- Requires: 对应模型所需的额外依赖要求.
 
-
+| Model List | Default Lora Target Modules | Default Template | Requires |
+| ---------  | --------------------------- | ---------------- | -------- |
+|qwen-7b, qwen-14b, qwen-vl, polylm-13b|c_attn|default-generation|-|
+|qwen-7b-chat, qwen-14b-chat, qwen-vl-chat|c_attn|chatml|-|
+|qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8, qwen-vl-chat-int4|c_attn|chatml|auto_gptq>=0.4.2|
+|baichuan-7b, baichuan-13b|W_pack|default-generation|transformers<4.34|
+|baichuan-13b-chat|W_pack|baichuan|transformers<4.34|
+|baichuan2-7b, baichuan2-13b|W_pack|default-generation|-|
+|baichuan2-7b-chat, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4|W_pack|baichuan|-|
+|chatglm2-6b, chatglm2-6b-32k|query_key_value|chatglm2|-|
+|chatglm3-6b-base|query_key_value|chatglm-generation|-|
+|chatglm3-6b, chatglm3-6b-32k|query_key_value|chatglm3|-|
+|llama2-7b, llama2-13b, llama2-70b, internlm-7b, internlm-20b, xverse-7b, xverse-13b, xverse-65b, bluelm-7b, bluelm-7b-32k, yi-6b, yi-34b, ziya2-13b, skywork-13b|q_proj, k_proj, v_proj|default-generation|-|
+|llama2-7b-chat, llama2-13b-chat, llama2-70b-chat|q_proj, k_proj, v_proj|llama|-|
+|openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat|q_proj, k_proj, v_proj|openbuddy|-|
+|openbuddy-mistral-7b-chat|q_proj, k_proj, v_proj|openbuddy|transformers>=4.34|
+|internlm-7b-chat, internlm-7b-chat-8k, internlm-20b-chat|q_proj, k_proj, v_proj|internlm|-|
+|xverse-7b-chat, xverse-13b-chat|q_proj, k_proj, v_proj|xverse|-|
+|bluelm-7b-chat, bluelm-7b-chat-32k|q_proj, k_proj, v_proj|bluelm|-|
+|mistral-7b|q_proj, k_proj, v_proj|default-generation|transformers>=4.34|
+|mistral-7b-chat|q_proj, k_proj, v_proj|llama|transformers>=4.34|
+|ziya2-13b-chat|q_proj, k_proj, v_proj|ziya|-|
+|skywork-13b-chat|q_proj, k_proj, v_proj|skywork|-|
+|seqgpt-560m|query_key_value|default-generation|-|
 
 ## Dataset
-以下介绍了swift接入的数据集的相关信息.
+下表介绍了swift接入的数据集的相关信息.
 - Dataset Name: 数据集在swift中注册的dataset_name.
 - Dataset ID: 数据集在[ModelScope](https://www.modelscope.cn/my/overview)上的dataset_id.
 - Size: 数据集中的数据样本数量.

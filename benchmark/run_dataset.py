@@ -19,7 +19,6 @@ def get_dataset_name_list() -> List[str]:
 
 
 def write_dataset_info(fpath: str, model_type: str) -> None:
-    """Statistical analysis was performed on the dataset"""
     if not os.path.exists(fpath):
         with open(fpath, 'w') as f:
             f.write("""| Dataset Name | Dataset ID | Size | Statistic (token) |
@@ -56,4 +55,4 @@ def write_dataset_info(fpath: str, model_type: str) -> None:
 
 
 if __name__ == '__main__':
-    write_dataset_info('dataset_info.txt', ModelType.qwen_7b_chat)
+    write_dataset_info('dataset_info.md', ModelType.qwen_7b_chat)
