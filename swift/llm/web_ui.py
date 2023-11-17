@@ -38,11 +38,8 @@ def gradio_chat_demo(args: InferArguments) -> None:
     model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:
-        history_length = limit_history_length(template, query, history,
-                                              args.max_length)
-        # avoid history_length == 0
-        old_history = history[:len(history) - history_length]
-        history = history[len(history) - history_length:]
+        old_history, history = limit_history_length(template, query, history,
+                                                    args.max_length)
         gen = inference_stream(
             model, template, query, history, skip_special_tokens=True)
         for _, history in gen:

@@ -418,8 +418,11 @@ def limit_history_length(template: Template, query: str,
         input_ids = template.encode(example)['input_ids']
         return len(input_ids)
 
-    return upper_bound(0, len(history),
-                       lambda mid: compute_token_length(mid) <= max_length)
+    history_length = upper_bound(
+        0, len(history), lambda mid: compute_token_length(mid) <= max_length)
+    old_history = history[:len(history) - history_length]
+    history = history[len(history) - history_length:]
+    return old_history, history
 
 
 # monkey patching
