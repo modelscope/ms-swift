@@ -13,6 +13,7 @@ Swift DOCUMENTATION
    GetStarted/SWIFT安装.md
    GetStarted/使用tuners.md
    GetStarted/训练推理脚手架.md
+   GetStarted/Benchmark.md
    GetStarted/ResTuning.md
    GetStarted/在SWIFT内使用PEFT.md
    GetStarted/部署指南.md
