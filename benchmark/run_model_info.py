@@ -46,7 +46,7 @@ def write_model_info_table(fpath: str) -> None:
         model_info = MODEL_MAPPING[model_name]
         lora_target_modules = model_info['lora_target_modules']
         template = model_info['template']
-        support_flash_attn = model_info['support_flash_attn']
+        support_flash_attn = model_info.get('support_flash_attn', False)
         requires = model_info['requires']
         key = (tuple(lora_target_modules), template, support_flash_attn,
                tuple(requires))

@@ -55,7 +55,7 @@ class DatasetName:
     instruct_en = 'instruct-en'
     gpt4all_en = 'gpt4all-en'
     sharegpt_en = 'sharegpt-en'
-    sharegpt_zh = 'sharegpt_zh'
+    sharegpt_zh = 'sharegpt-zh'
     # agent
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
@@ -100,7 +100,6 @@ def register_dataset(
         preprocess_func: Optional[PreprocessFunc] = SmartPreprocessor(),
         get_function: Optional[GetDatasetFunction] = None,
         *,
-        task: Optional[str] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
@@ -116,7 +115,6 @@ def register_dataset(
         'train_subset_split_list': train_subset_split_list,
         'val_subset_split_list': val_subset_split_list,
         'preprocess_func': preprocess_func,
-        'task': task,
         **kwargs
     }
     if get_function is not None:
@@ -158,32 +156,39 @@ def load_ms_dataset(
 @register_dataset(
     DatasetName.text2sql_en,
     'AI-ModelScope/texttosqlv2_25000_v2', ['train'],
-    task='chat')
+    tags=['chat', 'sql'])
 @register_dataset(
     DatasetName.school_math_zh,
     'AI-ModelScope/school_math_0.25M', ['train'],
-    task='chat')
+    tags=['chat', 'math'])
 @register_dataset(
-    DatasetName.gpt4all_en, 'wyj123456/GPT4all', ['train'], task='chat')
+    DatasetName.gpt4all_en,
+    'wyj123456/GPT4all', ['train'],
+    tags=['chat', 'general'])
 @register_dataset(
-    DatasetName.cot_zh, 'YorickHe/CoT_zh', ['train'], task='chat')
-@register_dataset(DatasetName.cot_en, 'YorickHe/CoT', ['train'], task='chat')
+    DatasetName.cot_zh, 'YorickHe/CoT_zh', ['train'], tags=['chat', 'general'])
+@register_dataset(
+    DatasetName.cot_en, 'YorickHe/CoT', ['train'], tags=['chat', 'general'])
 @register_dataset(
     DatasetName.instinwild_en,
     'wyj123456/instinwild', [('subset', 'train')],
-    task='chat')
+    tags=['chat', 'general'])
 @register_dataset(
-    DatasetName.instinwild_zh, 'wyj123456/instinwild', ['train'], task='chat')
+    DatasetName.instinwild_zh,
+    'wyj123456/instinwild', ['train'],
+    tags=['chat', 'general'])
 @register_dataset(
     DatasetName.code_alpaca_en,
     'wyj123456/code_alpaca_en', ['train'],
-    task='chat')
+    tags=['chat', 'coding'])
 @register_dataset(
-    DatasetName.finance_en, 'wyj123456/finance_en', ['train'], task='chat')
+    DatasetName.finance_en,
+    'wyj123456/finance_en', ['train'],
+    tags=['chat', 'financial'])
 @register_dataset(
     DatasetName.alpaca_en,
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
-    task='chat')
+    tags=['chat', 'general', '🔥'])
 def get_dataset_from_repo(
     dataset_id: str,
     train_subset_split_list: List[SubsetSplit],
@@ -219,7 +224,7 @@ register_dataset(
     None,
     SmartPreprocessor(),
     get_dataset_from_repo,
-    task='chat',
+    tags=['chat', 'general'],
     help="""language_list
     Language-key	Language	# examples
     ar	Arabic	14,671
@@ -248,7 +253,7 @@ register_dataset(
     None,
     AlpacaPreprocessor(concat_inst_inp=_concat_inst_inp_alpaca_zh),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'general', '🔥'])
 
 
 def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
@@ -277,7 +282,7 @@ register_dataset(
         image_key='image',
         response_key='caption'),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'multi-modal', '🔥'])
 
 
 def _repair_agent_conversations(conversations: str,
@@ -307,7 +312,7 @@ register_dataset(
         repair_conversations=partial(
             _repair_agent_conversations, use_mini=True)),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'agent', 'multi-round', '🔥'])
 register_dataset(
     DatasetName.damo_agent_zh,
     'damo/MSAgent-Bench', ['train'], ['validation'],
@@ -315,7 +320,7 @@ register_dataset(
         repair_conversations=partial(
             _repair_agent_conversations, use_mini=False)),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'agent', 'multi-round'])
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
@@ -325,7 +330,7 @@ register_dataset(
     'lvjianjin/AdvertiseGen', ['train'], ['validation'],
     TextGenerationPreprocessor(advertise_gen_prompt, 'content', 'summary'),
     get_dataset_from_repo,
-    task='text-generation')
+    tags=['text-generation', '🔥'])
 
 _firefly_kind_list = [
     'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection',
@@ -357,7 +362,7 @@ def _preprocess_firefly(dataset: List[Dict[str, str]],
     DatasetName.firefly_all_zh,
     'wyj123456/firefly',
     preprocess_func=_preprocess_firefly,
-    task='chat',
+    tags=['chat', 'general'],
     function_kwargs={'kind_list': _firefly_kind_list})
 def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
                            kind_list: List[str], **kwargs) -> HfDataset:
@@ -377,7 +382,7 @@ register_dataset(
     'modelscope/chinese-poetry-collection', ['train'], ['test'],
     RenameColumnsPreprocessor({'text1': 'response'}),
     get_dataset_from_repo,
-    task='text-generation')
+    tags=['text-generation', 'other'])
 
 register_dataset(
     DatasetName.instruct_en,
@@ -388,7 +393,7 @@ register_dataset(
         'completion': 'response'
     }),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'general'])
 
 register_dataset(
     DatasetName.cmnli_zh,
@@ -396,7 +401,7 @@ register_dataset(
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
-    task='text-generation')
+    tags=['text-generation', 'classification'])
 
 register_dataset(
     DatasetName.jd_sentiment_zh,
@@ -404,7 +409,7 @@ register_dataset(
     ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification',
                     False),
     get_dataset_from_repo,
-    task='text-generation')
+    tags=['text-generation', 'classification', '🔥'])
 
 
 def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
@@ -427,7 +432,7 @@ register_dataset(
     'modelscope/DuReader_robust-QG', ['train', 'validation'], ['test'],
     _preprocess_dureader_robust,
     get_dataset_from_repo,
-    task='text-generation')
+    tags=['text-generation', '🔥'])
 
 register_dataset(
     DatasetName.medical_en,
@@ -438,7 +443,7 @@ register_dataset(
         'output': 'response'
     }),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'medical'])
 
 register_dataset(
     DatasetName.medical_zh,
@@ -449,7 +454,7 @@ register_dataset(
         'output': 'response'
     }),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'medical'])
 
 register_dataset(
     DatasetName.medical_mini_zh,
@@ -460,7 +465,7 @@ register_dataset(
         'output': 'response'
     }),
     partial(get_dataset_from_repo, dataset_sample=100000),
-    task='chat')
+    tags=['chat', 'medical'])
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
@@ -493,7 +498,7 @@ register_dataset(
     None,
     _preprocess_sharegpt,
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'general', 'multi-round'])
 
 register_dataset(
     DatasetName.sharegpt_en,
@@ -502,7 +507,7 @@ register_dataset(
     None,
     _preprocess_sharegpt,
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'general', 'multi-round'])
 
 register_dataset(
     DatasetName.cls_fudan_news_zh,
@@ -513,7 +518,7 @@ register_dataset(
         'answer': 'response'
     }),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'classification'])
 
 register_dataset(
     DatasetName.ner_java_zh,
@@ -524,7 +529,7 @@ register_dataset(
         'answer': 'response'
     }),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'ner'])
 
 register_dataset(
     DatasetName.code_python_zh,
@@ -537,7 +542,7 @@ register_dataset(
         from_key='role',
         value_key='content'),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'coding'])
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
@@ -557,7 +562,7 @@ register_dataset(
     None,
     _preprocess_blossom_math,
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'math', '🔥'])
 
 register_dataset(
     DatasetName.sql_create_context_en,
@@ -572,7 +577,7 @@ register_dataset(
         AlpacaPreprocessor(),
     ]),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'sql', '🔥'])
 
 register_dataset(
     DatasetName.lawyer_llama_zh,
@@ -584,7 +589,7 @@ register_dataset(
         'history': '_'
     }),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'law', '🔥'])
 
 
 def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
@@ -611,7 +616,7 @@ register_dataset(
     None,
     _preprocess_tigerbot_law,
     get_dataset_from_repo,
-    task='text-generation')
+    tags=['text-generation', 'law', 'pretrained', '🔥'])
 
 
 def _preprocess_leetcode_python(dataset: HfDataset) -> HfDataset:
@@ -638,7 +643,7 @@ register_dataset(
     None,
     _preprocess_leetcode_python,
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'coding', '🔥'])
 
 _agent_instruct_subset_list = [
     'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
@@ -660,7 +665,7 @@ register_dataset(
         'gpt',
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
-    task='chat')
+    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 
 def _check_dataset(

@@ -138,8 +138,6 @@ def register_model(
     automodel_class: Type[_BaseAutoModelClass] = AutoModelForCausalLM,
     revision: str = 'master',
     ignore_file_pattern: Optional[List[str]] = None,
-    max_length: Optional[int] = None,
-    support_flash_attn: bool = False,
     function_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
@@ -161,8 +159,6 @@ def register_model(
         'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
         'revision': revision,
-        'max_length': max_length,
-        'support_flash_attn': support_flash_attn,
         **kwargs
     }
 
@@ -838,12 +834,6 @@ def get_model_tokenizer(
     else:
         model_dir = os.path.expanduser(model_dir)
         assert os.path.isdir(model_dir)
-    use_flash_attn = kwargs.get('use_flash_attn', False)
-    support_flash_attn = model_info['support_flash_attn']
-    if use_flash_attn and not support_flash_attn:
-        logger.warning(
-            f'use_flash_attn: {use_flash_attn}, but support_flash_attn: {support_flash_attn}'
-        )
     kwargs['automodel_class'] = model_info['automodel_class']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)

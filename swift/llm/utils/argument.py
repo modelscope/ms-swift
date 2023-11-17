@@ -153,6 +153,7 @@ class SftArguments:
         set_model_type(self)
         register_custom_dataset(self)
         handle_path(self)
+        check_flash_attn(self)
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             if is_master():
@@ -313,6 +314,7 @@ class InferArguments:
         set_model_type(self)
         register_custom_dataset(self)
         handle_path(self)
+        check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -346,6 +348,7 @@ class RomeArguments(InferArguments):
         handle_compatibility(self)
         set_model_type(self)
         handle_path(self)
+        check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -519,3 +522,11 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         ]
     for key in imported_keys:
         setattr(args, key, sft_args.get(key))
+
+
+def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
+    model_info = MODEL_MAPPING[args.model_type]
+    support_flash_attn = model_info.get('support_flash_attn', False)
+    if args.use_flash_attn and not support_flash_attn:
+        logger.warning(f'use_flash_attn: {args.use_flash_attn}, '
+                       f'but support_flash_attn: {support_flash_attn}')
