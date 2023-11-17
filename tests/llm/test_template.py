@@ -211,6 +211,25 @@ you are a helpful assistant!<|im_end|>
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
 
+    @unittest.skip(
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_qwen_generation_template(self):
+        model_type = ModelType.qwen_7b
+        template_type = TemplateType.default_generation
+        model, tokenizer = get_model_tokenizer(model_type, load_model=True)
+        template = get_template(template_type, tokenizer)
+        query = '蒙古国的首都是乌兰巴托（Ulaanbaatar）\n冰岛的首都是雷克雅未克（Reykjavik）\n埃塞俄比亚的首都是'
+        print(f'query: {query}')
+        response, _ = inference(model, template, query, verbose=False)
+        print(f'swift response: {response}')
+        model.generation_config.chat_format = 'raw'
+        model.generation_config.max_window_size = 1024
+        inputs = tokenizer(query, return_tensors='pt').to('cuda')
+        response = tokenizer.decode(
+            model.generate(**inputs)[0, len(inputs['input_ids'][0]):])
+        print(f'official response: {response}')
+
 
 if __name__ == '__main__':
     unittest.main()
