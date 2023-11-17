@@ -340,8 +340,9 @@ def inference_stream(
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
-    input_ids = torch.tensor(input_ids)[None].cuda()
-    attention_mask = torch.ones_like(input_ids)
+    device = next(model.parameters()).device
+    input_ids = torch.tensor(input_ids)[None].to(device)
+    attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
     generation_config = getattr(model, 'generation_config', None)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
@@ -380,8 +381,9 @@ def inference(model: PreTrainedModel,
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
-    input_ids = torch.tensor(input_ids)[None].cuda()
-    attention_mask = torch.ones_like(input_ids)
+    device = next(model.parameters()).device
+    input_ids = torch.tensor(input_ids)[None].to(device)
+    attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
     generation_config = getattr(model, 'generation_config', None)
     if verbose:

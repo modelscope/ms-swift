@@ -51,7 +51,7 @@ def gradio_chat_demo(args: InferArguments) -> None:
         gr.Markdown(f'<center><font size=8>{model_name} Bot</center>')
 
         chatbot = gr.Chatbot(label=f'{model_name}')
-        message = gr.Textbox(lines=3)
+        message = gr.Textbox(lines=3, label='Input')
         with gr.Row():
             clear_history = gr.Button('🧹 清除历史对话')
             send = gr.Button('🚀 发送')

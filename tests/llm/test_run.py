@@ -9,9 +9,8 @@ import unittest
 
 import torch
 
-from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
-                       TemplateType)
-from swift.llm.run import infer_main, sft_main, web_ui_main
+from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm.run import infer_main, sft_main
 
 
 class TestRun(unittest.TestCase):
