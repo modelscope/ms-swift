@@ -132,7 +132,10 @@ if is_auto_gptq_available():
             init_lora_weights = kwargs.pop('init_lora_weights', True)
             self.update_layer(adapter_name, r, lora_alpha, lora_dropout,
                               init_lora_weights)
-            self.set_adapter(adapter_name)
+            if version.parse(peft.__version__) >= version.parse('0.6.0'):
+                self.set_adapter(adapter_name)
+            else:
+                self.active_adapter = adapter_name
             super(QuantLinear, self).__init__()
             if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
