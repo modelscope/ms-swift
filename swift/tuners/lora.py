@@ -132,7 +132,10 @@ if is_auto_gptq_available():
             init_lora_weights = kwargs.pop('init_lora_weights', True)
             self.update_layer(adapter_name, r, lora_alpha, lora_dropout,
                               init_lora_weights)
-            self.set_adapter(adapter_name)
+            if version.parse(peft.__version__) >= version.parse('0.6.0'):
+                self.set_adapter(adapter_name)
+            else:
+                self.active_adapter = adapter_name
             super(QuantLinear, self).__init__()
             if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
@@ -140,32 +143,36 @@ if is_auto_gptq_available():
                 )  # using pooling layer to conduct sum operation
 
         def forward(self, x: torch.Tensor):
+            if version.parse(peft.__version__) >= version.parse('0.6.0'):
+                active_adapter = self.active_adapter[0]
+            else:
+                active_adapter = self.active_adapter
             result = self.quant_linear_module(x)
             if not self.is_activated(
-            ) or self.disable_adapters or self.active_adapter[
-                    0] not in self.lora_A.keys():
+            ) or self.disable_adapters or active_adapter not in self.lora_A.keys(
+            ):
                 return result
-            elif self.r[self.active_adapter[0]] > 0:
+            elif self.r[active_adapter] > 0:
                 result = result.clone()
                 if not torch.is_autocast_enabled():
                     expected_dtype = result.dtype
-                    x = x.to(self.lora_A[self.active_adapter[0]].weight.dtype)
+                    x = x.to(self.lora_A[active_adapter].weight.dtype)
                     if self.use_qa_lora:
                         x = self.qa_pool(x) * self.group_size
                     output = (
-                        self.lora_B[self.active_adapter[0]](
-                            self.lora_A[self.active_adapter[0]](
-                                self.lora_dropout[self.active_adapter[0]]
+                        self.lora_B[active_adapter](
+                            self.lora_A[active_adapter](
+                                self.lora_dropout[active_adapter]
                                 (x))).to(expected_dtype)
-                        * self.scaling[self.active_adapter[0]])
+                        * self.scaling[active_adapter])
                 else:
                     if self.use_qa_lora:
                         x = self.qa_pool(x) * self.group_size
                     output = (
-                        self.lora_B[self.active_adapter[0]](
-                            self.lora_A[self.active_adapter[0]](
-                                self.lora_dropout[self.active_adapter[0]](x)))
-                        * self.scaling[self.active_adapter[0]])
+                        self.lora_B[active_adapter](
+                            self.lora_A[active_adapter](
+                                self.lora_dropout[active_adapter](x)))
+                        * self.scaling[active_adapter])
                 result += output
             return result
 
