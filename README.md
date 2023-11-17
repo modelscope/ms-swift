@@ -58,7 +58,6 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 🔥 2023.10.7: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10.
 - 2023.10.4: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
 - 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat.
-- 2023.9.12: Supported training with MP+DDP to accelerate full-parameter fine-tuning speed.
 - 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat.
 - 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed.
 - 2023.9.5: Supported **openbuddy-llama2-70b-chat** model.
