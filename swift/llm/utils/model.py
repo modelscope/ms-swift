@@ -15,7 +15,6 @@ from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
-from torch.nn import Module
 from transformers import (PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.models.auto.auto_factory import _BaseAutoModelClass
@@ -175,11 +174,12 @@ def register_model(
     def _register_model(
             get_function: GetModelTokenizerFunction
     ) -> GetModelTokenizerFunction:
+        _old_get_function = get_function
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
         model_info['get_function'] = get_function
         MODEL_MAPPING[model_type] = model_info
-        return get_function
+        return _old_get_function
 
     return _register_model
 

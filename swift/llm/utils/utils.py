@@ -297,7 +297,7 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
         linear_cls = Linear8bitLt
     else:
         linear_cls = Linear
-    if model_type.endswith('int4') or model_type.endswith('int8'):
+    if 'int4' in model_type or 'int8' in model_type:
         from bitsandbytes.nn import Linear4bit
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')
@@ -340,8 +340,9 @@ def inference_stream(
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
-    input_ids = torch.tensor(input_ids)[None].cuda()
-    attention_mask = torch.ones_like(input_ids)
+    device = next(model.parameters()).device
+    input_ids = torch.tensor(input_ids)[None].to(device)
+    attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
     generation_config = getattr(model, 'generation_config', None)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
@@ -380,8 +381,9 @@ def inference(model: PreTrainedModel,
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
-    input_ids = torch.tensor(input_ids)[None].cuda()
-    attention_mask = torch.ones_like(input_ids)
+    device = next(model.parameters()).device
+    input_ids = torch.tensor(input_ids)[None].to(device)
+    attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
     generation_config = getattr(model, 'generation_config', None)
     if verbose:
@@ -418,8 +420,11 @@ def limit_history_length(template: Template, query: str,
         input_ids = template.encode(example)['input_ids']
         return len(input_ids)
 
-    return upper_bound(0, len(history),
-                       lambda mid: compute_token_length(mid) <= max_length)
+    history_length = upper_bound(
+        0, len(history), lambda mid: compute_token_length(mid) <= max_length)
+    old_history = history[:len(history) - history_length]
+    history = history[len(history) - history_length:]
+    return old_history, history
 
 
 # monkey patching

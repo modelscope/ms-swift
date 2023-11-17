@@ -9,9 +9,8 @@ import unittest
 
 import torch
 
-from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
-                       TemplateType)
-from swift.llm.run import infer_main, sft_main, web_ui_main
+from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
+from swift.llm.run import infer_main, sft_main
 
 
 class TestRun(unittest.TestCase):
@@ -31,7 +30,7 @@ class TestRun(unittest.TestCase):
         model_type = ModelType.chatglm3_6b
         sft_args = SftArguments(
             model_type=model_type,
-            template_type=TemplateType.chatglm3,
+            template_type='AUTO',
             quantization_bit=4,
             eval_steps=5,
             check_dataset_strategy='warning',

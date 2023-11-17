@@ -128,11 +128,12 @@ def register_dataset(
 
     def _register_dataset(
             get_function: GetDatasetFunction) -> GetDatasetFunction:
+        _old_get_function = get_function
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
         dataset_info['get_function'] = get_function
         DATASET_MAPPING[dataset_name] = dataset_info
-        return get_function
+        return _old_get_function
 
     return _register_dataset
 

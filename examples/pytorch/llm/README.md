@@ -21,8 +21,8 @@
 - Supported Models:
   - qwen series: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary), [qwen-7b-chat-int4](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int4/summary), [qwen-14b-chat-int4](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int4/summary), [qwen-7b-chat-int8](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int8/summary), [qwen-14b-chat-int8](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int8/summary)
   - qwen-vl series: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary), [qwen-vl-chat-int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)
-  - baichuan series: [baichuan-7b](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary), [baichuan-13b](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary), [baichuan-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary), [baichuan2-7b](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary), [baichuan2-7b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary), [baichuan2-13b](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary), [baichuan2-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary), [baichuan2-7b-chat-int4](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat-4bits/summary), [baichuan2-13b-chat-int4](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat-4bits/summary)
   - chatglm series: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), [chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary), [chatglm3-6b-base](https://modelscope.cn/models/ZhipuAI/chatglm3-6b-base/summary), [chatglm3-6b](https://modelscope.cn/models/ZhipuAI/chatglm3-6b/summary), [chatglm3-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm3-6b-32k/summary)
+  - baichuan series: [baichuan-7b](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary), [baichuan-13b](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary), [baichuan-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary), [baichuan2-7b](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary), [baichuan2-7b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary), [baichuan2-13b](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary), [baichuan2-13b-chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary), [baichuan2-7b-chat-int4](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat-4bits/summary), [baichuan2-13b-chat-int4](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat-4bits/summary)
   - llama series: [llama2-7b](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary), [llama2-7b-chat](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary), [llama2-13b](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary), [llama2-13b-chat](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary), [llama2-70b](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary), [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
   - openbuddy series: [openbuddy-llama2-13b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary), [openbuddy-mistral-7b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-mistral-7b-v13.1/summary)
   - internlm series: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
@@ -92,7 +92,7 @@ from swift.llm import (
 )
 from swift.llm.run import infer_main, sft_main, web_ui_main
 
-model_type = ModelType.qwen_7b_chat_int4
+model_type = ModelType.qwen_7b_chat
 sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
@@ -118,7 +118,7 @@ web_ui_main(infer_args)
 ```bash
 # Experimental environment: A10, 3090, A100, ...
 # 10GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # Using DDP
 # Experimental environment: 2 * 3090
@@ -126,11 +126,11 @@ CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dat
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset blossom-math-zh \
 
 # Using custom dataset
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --custom_train_dataset_path chatml.jsonl
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --custom_train_dataset_path chatml.jsonl
 ```
 
 **Inference**:
@@ -152,13 +152,13 @@ Training GPU memory: qlora(low,3090) < lora < full(high,2*A100)
 **Tips**:
 - You can set `--gradient_checkpointing true` during training to **save GPU memory**, but this will slightly decrease the training speed. This is useful if you need to train LLM on **consumer-grade GPU**, e.g. 3090.
 - If you want to use quantization based on **auto_gptq**, you need to install auto_gptq first: `pip install auto_gptq -U`.
-  The models available with auto_gptq are: `qwen-7b-chat-int4`, `qwen-14b-chat-int4`, `qwen-7b-chat-int8`, `qwen-14b-chat-int8`.
+  The models available with auto_gptq are: 'qwen-7b-chat-int4, 'qwen-14b-chat-int4', 'qwen-7b-chat-int8', 'qwen-14b-chat-int8', 'qwen-vl-chat-int4'.
   If the script provides multiple versions of qlora SFT, including both non-quantized models and int4/int8 models, it is **recommended to use the script for the int4/int8 model versions**.
 - If you want to use the quantization parameter `quantization_bit`, you need to install `bitsandbytes` first: `pip install bitsandbytes -U`.
 - If you want to use deepspeed, you need to `pip install deepspeed -U`. Using deepspeed can **save GPU memory**, but this may slightly decrease the training speed.
 - If you are using older GPUs like **V100**, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
-- If you want to perform **second pre-training** instead of SFT, you can refer to the `DatasetName.tigerbot_law_zh` dataset and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
+- If you want to conduct **secondary pre-training** instead of SFT, you need to only set 'response' during dataset registration, without setting 'query'. You can refer to the dataset `'tigerbot-law-zh'` and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is **not recommended to merge quantized models**, as this can result in performance degradation, specifically in the case of qlora.
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to **customize a shell script**, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
@@ -340,8 +340,8 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 - `train_subset_split_list`: Default value is `None`. The meaning of this parameter is similar to `train_subset_split_list`.
 - `preprocess_func`: Default value is `None`. Represents the method for preprocessing the function.
 - `get_function`: Default value is `None`. The function used to retrieve the dataset. If None is passed, the decorator scheme is used for dataset registration, where the `register_dataset` function returns `Callable[[GetDatasetFunction], GetDatasetFunction]`. This scheme requires users with some python knowledge. If a function is passed, the normal registration scheme is used. If importing datasets from the ModelScope Hub, the `get_dataset_from_repo` function is commonly used.
-  The `get_function` function has no restrictions, you just need to return either `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. In the case where only the `train_dataset` is returned, the data processing function will split a portion of the dataset as the validation dataset (based on the command line hyperparameter `dataset_test_ratio`). If two datasets are returned, they will be used as the training and validation datasets respectively. We support fine-tuning with multiple datasets. The training and validation portions of each sub-dataset will be concatenated separately, and the final merged training and validation datasets will be returned.
-  The returned `HfDataset` needs to adhere to certain specifications. If it is for instruction fine-tuning (single-turn dialogue), it should include the `query` and `response` fields, representing the user's query for instruction fine-tuning and the AI assistant's response, respectively. You can refer to the `alpaca-zh` dataset for more details. If it is for multi-turn dialogue, it needs to include an additional `history` field, representing the history of the conversation. You can refer to the `damo-agent-mini-zh` dataset for more details. If each example in the dataset has a different `system`, an additional `system` field is required. You can also refer to the `damo-agent-mini-zh` dataset for more details.
+  The `get_function` function has no restrictions, you just need to return `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. If only the train_dataset is returned, the data processing function will split a portion of the dataset as the validation set (based on the command line hyperparameter `dataset_test_ratio`). If two datasets are returned, they will be used as the training set and validation set respectively. We support fine-tuning with multiple datasets. The training and validation parts of each sub-dataset will be concatenated and the merged training set and validation set will be returned.
+  The returned `HfDataset` needs to follow certain specifications. If you are doing **pre-training**, it only needs to include the `response` field, as seen in the `'tigerbot-law-zh'` dataset. If it is **instruction-based fine-tuning (single-turn dialogue)**, it needs to include the `query` and `response` fields, representing the user's query for instruction-based fine-tuning and the AI assistant's response, as seen in the `'alpaca-zh'` dataset. If it is **multi-turn dialogue**, the `history` field needs to be added to represent the dialogue history, as seen in the `'damo-agent-mini-zh'` dataset. If each example in the dataset has a different `system`, the `system` field needs to be added as well, as seen in the `'damo-agent-mini-zh'` dataset.
 - `task`: The task for which the dataset is intended. This parameter is generally not required to be set.
 - `function_kwargs`: Default is `{}`, used to pass arguments to `get_function` to support the `partial` functionality in the decorator scheme. This parameter is generally not required to be set.
 - `**kwargs`: Other parameters used for annotating the dataset. This parameter is generally not required to be set.
@@ -580,7 +580,7 @@ The template initialization function retrieves the complete chat template based 
 - `--top_k`: Default value is `20`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_p`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
 - `--repetition_penalty`: Default value is `1.05`.
-- `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. The models that support 'flash_attn' include: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series.
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--stream`: Whether to use streaming output. Default value is `True`.
 - `--merge_lora_and_save`: Whether to merge the lora weights into the base model and save the complete weights. Default value is `False`. The weights will be saved in a directory named `checkpoint-xxx-merged` at the same level as `ckpt_dir`, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`.

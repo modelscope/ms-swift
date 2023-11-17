@@ -38,11 +38,8 @@ def gradio_chat_demo(args: InferArguments) -> None:
     model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:
-        history_length = limit_history_length(template, query, history,
-                                              args.max_length)
-        # avoid history_length == 0
-        old_history = history[:len(history) - history_length]
-        history = history[len(history) - history_length:]
+        old_history, history = limit_history_length(template, query, history,
+                                                    args.max_length)
         gen = inference_stream(
             model, template, query, history, skip_special_tokens=True)
         for _, history in gen:
@@ -54,7 +51,7 @@ def gradio_chat_demo(args: InferArguments) -> None:
         gr.Markdown(f'<center><font size=8>{model_name} Bot</center>')
 
         chatbot = gr.Chatbot(label=f'{model_name}')
-        message = gr.Textbox(lines=3)
+        message = gr.Textbox(lines=3, label='Input')
         with gr.Row():
             clear_history = gr.Button('🧹 清除历史对话')
             send = gr.Button('🚀 发送')
