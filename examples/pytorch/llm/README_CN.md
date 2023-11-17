@@ -91,7 +91,7 @@ from swift.llm import (
 )
 from swift.llm.run import infer_main, sft_main, web_ui_main
 
-model_type = ModelType.qwen_7b_chat_int4
+model_type = ModelType.qwen_7b_chat
 sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
@@ -117,7 +117,7 @@ web_ui_main(infer_args)
 ```bash
 # Experimental environment: A10, 3090, A100, ...
 # 10GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # 使用DDP
 # Experimental environment: 2 * 3090
@@ -125,11 +125,11 @@ CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --dat
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
+    --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset blossom-math-zh \
 
 # 使用自己的数据集
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat-Int4 --custom_train_dataset_path chatml.jsonl
+CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --custom_train_dataset_path chatml.jsonl
 ```
 
 **推理**:
