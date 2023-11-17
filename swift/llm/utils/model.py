@@ -167,8 +167,8 @@ def register_model(
 
     if get_function is not None:
         if len(function_kwargs) > 0:
-            get_function = partial(get_function, **function_kwargs)
-        model_info['get_function'] = get_function
+            new_get_function = partial(get_function, **function_kwargs)
+        model_info['get_function'] = new_get_function
         MODEL_MAPPING[model_type] = model_info
         return
 
@@ -176,8 +176,8 @@ def register_model(
             get_function: GetModelTokenizerFunction
     ) -> GetModelTokenizerFunction:
         if len(function_kwargs) > 0:
-            get_function = partial(get_function, **function_kwargs)
-        model_info['get_function'] = get_function
+            new_get_function = partial(get_function, **function_kwargs)
+        model_info['get_function'] = new_get_function
         MODEL_MAPPING[model_type] = model_info
         return get_function
 
