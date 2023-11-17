@@ -13,7 +13,7 @@ torchrun \
     --sft_type lora \
     --tuner_backend swift \
     --template_type internlm \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
     --dataset sql-create-context-en \

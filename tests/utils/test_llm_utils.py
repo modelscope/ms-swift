@@ -52,14 +52,21 @@ class TestLlmUtils(unittest.TestCase):
 
     def test_print_example(self):
         input_ids = [1000, 2000, 3000, 4000, 5000, 6000]
-        labels = [-100, -100, 1000, 2000, 3000, -100, -100, 4000, 5000, 6000]
         _, tokenizer = get_model_tokenizer(
             ModelType.chatglm3_6b, load_model=False)
+        from swift.llm.utils.utils import _get_labels_str
+        labels = [-100, -100, 1000, 2000, 3000, -100, -100, 4000, 5000, 6000]
         print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
+        assert _get_labels_str(
+            labels, tokenizer
+        ) == '[-100 * 2]before States appe[-100 * 2]innov developingishes'
         labels = [-100, -100, -100]
         print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
+        assert _get_labels_str(labels, tokenizer) == '[-100 * 3]'
         labels = [1000, 2000, 3000, 4000, 5000, 6000]
         print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
+        assert _get_labels_str(
+            labels, tokenizer) == 'before States appe innov developingishes'
 
 
 if __name__ == '__main__':

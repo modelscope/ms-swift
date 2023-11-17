@@ -1,3 +1,5 @@
+# Res-Tuning组件
+
 <div align="center">
 
 ## [NeurIPS 2023] Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone
@@ -6,23 +8,24 @@
 
 </div>
 
-Res-Tuning is a flexible and efficient tuning paradigm. We manage to free the design of tuners from the network architecture, facilitating flexible combination of various tuning strategies and further extend a memory-efficient bypass variant, which significantly reduces the memory consumption and multi-task inference cost.
+Res-Tuning 是一种灵活高效的微调tuner。我们把tuner的设计从模型网络结构中解耦出来以便灵活地组合，
+并进一步扩展实现了一种新的节省内存的旁路tuner，大大减少了显存消耗和多任务推理成本。
 
-The implementation is a pluggable tuner component for [SWIFT](https://github.com/modelscope/swift), designed to be user-friendly.
+目前Res-Tuning在[SWIFT](https://github.com/modelscope/swift)中以可插拔的tuner算法组件提供，开发者可以直接使用它。
 
-### Catalog
+### 支持的组件列表
 
 - [x] Res-Adapter
 - [x] Res-Tuning-Bypass
 - [ ] Res-Prefix
 - [ ] Res-Prompt
 
-### Usage
+### 使用方式
 
 #### Demo
-- Run our interactive demo using [vision_example](https://github.com/modelscope/swift/blob/main/examples/pytorch/cv/notebook/swift_vision.ipynb).
+- 可以使用我们提供的 [可视化例子](https://github.com/modelscope/swift/blob/main/examples/pytorch/cv/notebook/swift_vision.ipynb).
 
-#### Init Tuner
+#### 初始化Tuner
 
 ```Python
 from swift import ResTuningConfig
@@ -40,7 +43,7 @@ config = ResTuningConfig(
 - target_modules: The target module to be replaced.
 - tuner_cfg: The configuration of the tuning module.
 
-#### Load Model
+#### 加载模型
 
 ```Python
 from swift import Swift
@@ -52,7 +55,7 @@ print(model(torch.ones(1, 3, 224, 224)).shape)
 ```
 
 
-### Citation
+### 引用
 ```
 @inproceedings{jiang2023restuning,
   title={Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone},

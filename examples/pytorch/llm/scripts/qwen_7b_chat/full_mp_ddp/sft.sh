@@ -14,7 +14,7 @@ torchrun \
     --model_revision master \
     --sft_type full \
     --template_type chatml \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --dataset medical-en medical-zh \
     --train_dataset_sample 200000 \

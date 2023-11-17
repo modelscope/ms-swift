@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A10
-# 2 * 21GB GPU memory (not use flash_attn)
+# 2 * 21GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -13,7 +13,7 @@ torchrun \
     --sft_type lora \
     --tuner_backend swift \
     --template_type chatml \
-    --dtype bf16 \
+    --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
     --dataset coco-en \

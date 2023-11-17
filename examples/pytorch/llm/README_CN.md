@@ -26,9 +26,10 @@
   - llama 系列: [llama2-7b](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary), [llama2-7b-chat](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary), [llama2-13b](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary), [llama2-13b-chat](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary), [llama2-70b](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary), [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
   - openbuddy 系列: [openbuddy-llama2-13b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary), [openbuddy-mistral-7b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-mistral-7b-v13.1/summary)
   - internlm 系列: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
-  - xverse 系列: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
+  - xverse 系列: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary), [xverse-65b](https://modelscope.cn/models/xverse/XVERSE-65B/summary)
   - bluelm 系列: [bluelm-7b](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base/summary), [bluelm-7b-chat](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat/summary), [bluelm-7b-32k](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base-32K/summary), [bluelm-7b-chat-32k](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat-32K/summary)
   - mistral 系列: [mistral-7b](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary), [mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)
+  - yi 系列: [yi-6b](https://modelscope.cn/models/01ai/Yi-6B/summary), [yi-34b](https://modelscope.cn/models/01ai/Yi-34B/summary)
   - ziya 系列: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork 系列: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
@@ -68,7 +69,6 @@ pip install deepspeed -U
 # 使用auto_gptq的模型: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8
 # auto_gptq和cuda版本有对应关系，请按照https://github.com/PanQiWei/AutoGPTQ#quick-installation选择版本
 pip install auto_gptq
-pip install optimum -U
 
 # 如果你想要使用基于bnb的qlora训练.
 pip install bitsandbytes -U
@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ## 🌟 微调和推理
 性能: full(优) > lora > qlora(auto_gptq) > qlora(bnb)
 
-训练显存: qlora(低,3090) > lora > full(2*A100)
+训练显存: qlora(低,3090) < lora < full(高,2*A100)
 
 **提示**:
 - 你可以在训练时设置`--gradient_checkpointing true`来**节约显存**, 但这会略微降低训练速度. 如果你需要在**消费级显卡**中训练大模型, 这很有用, 例如: 3090.
@@ -183,23 +183,23 @@ bash scripts/qwen_7b_chat_int4/qlora/infer.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
 
-# 微调(lora)+推理 qwen-7b-chat, 需要60GB显存.
-# 推荐的实验环境: A100
+# 微调(lora)+推理 qwen-7b-chat, 需要18GB显存.
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*60GB显存.
-# 推荐的实验环境: A100
+# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*18GB显存.
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # 微调(lora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*18GB显存.
-# 推荐的实验环境: A10, 3090
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
-# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*15GB显存.
-# 推荐的实验环境: A10, 3090
+# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*20GB显存.
+# 推荐的实验环境: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
@@ -214,12 +214,12 @@ bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 
 # 以下基于bnb的qlora脚本已不再推荐使用. 请优先使用基于auto_gptq的qlora脚本.
-# 微调(qlora)+推理 qwen-7b-chat, 需要13GB显存.
+# 微调(qlora)+推理 qwen-7b-chat, 需要18GB显存.
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*14GB显存.
+# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*20GB显存.
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
@@ -231,7 +231,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 
-## 📝 使用文档
+## 🌈 拓展
 
 ### 自定义数据集
 我们支持两种**自定义数据集**的方法.
@@ -483,6 +483,7 @@ if __name__ == '__main__':
 - `chat_sep`: 如果需要进行多轮对话, `chat_sep`会作为每轮对话之间的分隔符, 例如: 换行等. 如果设置为None, 则该Template不支持多轮对话.
 - `suffix`: 作为对话模板的后缀部分, 一般为eos token. 会拼接在最后一轮的对话后面.
 
+## 📝 用户文档
 
 ### sft.sh 命令行参数
 - `--model_type`: 表示你选择的模型类型, 默认是`None`, 即如果没有指定`model_id_or_path`, 则选择`'qwen-7b-chat'`, 如果指定了, 则会根据`model_id_or_path`以及`MODEL_MAPPING`推断`model_type`. 这两个参数不能同时指定. 可以选择的`model_type`可以查看`MODEL_MAPPING.keys()`.
@@ -497,7 +498,7 @@ if __name__ == '__main__':
 - `--ddp_backend`: 表示分布式的后端支持, 默认是`'nccl'`. 你可以选择的值包括: 'nccl', 'gloo', 'mpi', 'ccl'.
 - `--seed`: 全局的seed, 默认使用42. 在分布式训练中, 为避免每个进程使用相同的dropout等情况, 我们会令`seed=seed+rank`.
 - `--resume_from_checkpoint`: 用于断点续训, 默认为`None`. 你可以将其设置为checkpoint的路径, 例如: `'output/qwen-7b-chat/vx_xxx/checkpoint-xxx'`, 来进行断点续训.
-- `--dtype`: 基模型载入时的torch_dtype, 默认为`None`, 即智能选择dtype: 如果机器不支持bf16, 则使用fp16, 如果`MODEL_MAPPING`中对应模型有指定torch_dtype, 则使用其对应dtype, 否则使用bf16. 你可以选择的值包括: 'bf16', 'fp16', 'fp32'.
+- `--dtype`: 基模型载入时的torch_dtype, 默认为`'AUTO'`, 即智能选择dtype: 如果机器不支持bf16, 则使用fp16, 如果`MODEL_MAPPING`中对应模型有指定torch_dtype, 则使用其对应dtype, 否则使用bf16. 你可以选择的值包括: 'bf16', 'fp16', 'fp32'.
 - `--dataset`: 用于选择训练的数据集, 默认为`'blossom-math-zh'`. 可以选择的数据集可以查看`DATASET_MAPPING.keys()`. 如果需要使用多个数据集进行训练, 你可以使用','或者' '进行分割, 例如: `alpaca-en,alpaca-zh` or `alpaca-en alpaca-zh`.
 - `--dataset_seed`: 用于指定数据集处理的seed, 默认为`42`. 以random_state形式存在, 不影响全局seed.
 - `--dataset_test_ratio`: 用于指定子数据集切分成训练集和验证集的比例, 默认为`0.01`. 如果子数据集已经进行了训练集和验证集的切分, 则此参数无效. 当`dataset`中指定了多个子数据集时, 且获取子数据集的函数没有进行训练集和验证集的切分(即返回的是`HfDataset`, `Tuple[HfDataset, None]`, 而不是`Tuple[HfDataset, HfDataset]`), 则我们需要对该子数据集进行切分. 最后, 我们会将这些子数据集的训练集和验证集部分分别进行拼接, 生成完整微调数据集的训练集和验证集.
@@ -508,7 +509,7 @@ if __name__ == '__main__':
 - `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: 用于指定是否进行量化和量化的bit数, 默认为`0`, 即不进行量化. 量化情况下, 只支持lora的微调方式, 不支持全参数的微调方式.
-- `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`None`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
+- `--bnb_4bit_comp_dtype`: 在进行4bit量化时, 我们需要在模型的forward和backward时, 将其进行反量化. 该参数用于指定反量化后的torch_dtype. 默认为`'AUTO'`, 即与`dtype`保持一致. 可选择的值包括: 'fp16', 'bf16', 'fp32'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_quant_type`: 4bit量化时的量化方式, 默认是`'nf4'`. 可选择的值包括: 'nf4', 'fp4'. 当quantization_bit为0时, 该参数无效.
 - `--bnb_4bit_use_double_quant`: 是否在4bit量化时开启double量化, 默认为`True`. 当quantization_bit为0时, 该参数无效.
 - `--lora_target_modules`: 指定lora模块, 默认为`None`. 如果lora_target_modules为None, 或者传入'DEFAULT', 则根据`model_type`查找`MODEL_MAPPING`中的`lora_target_modules`(默认指定为qkv). 如果传入`ALL`, 则将所有的Linear层都指定为lora模块(不含head). 该参数只有当`sft_type`指定为'lora'时才生效.
@@ -563,7 +564,7 @@ if __name__ == '__main__':
 - `--load_args_from_ckpt_dir`: 是否从`ckpt_dir`的`sft_args.json`文件中读取配置信息. 默认是`True`. 导入的keys包括: `model_id_or_path`, `model_revision`, `sft_type`, `template_type`, `dtype`, `system`, `quantization_bit`, `bnb_4bit_comp_dtype`, `bnb_4bit_quant_type`, `bnb_4bit_use_double_quant`. 如果`eval_human`设置为False, 则还会导入`dataset`, `dataset_seed`, `dataset_test_ratio`, `check_dataset_strategy`, `custom_train_dataset_path`, `custom_val_dataset_path`.
 - `--eval_human`: 使用数据集中的验证集部分进行评估还是使用人工的方式评估, 默认值为`False`. 我们可以直观感受到微调后模型的效果.
 - `--seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
-- `--dtype`: 默认值为`None`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
+- `--dtype`: 默认值为`'AUTO`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--dataset`: 默认值为`'blossom-math-zh'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_test_ratio`: 默认值为`0.01`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
@@ -574,7 +575,7 @@ if __name__ == '__main__':
 - `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: 默认值为0. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
-- `--bnb_4bit_comp_dtype`: 默认值为`None`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
+- `--bnb_4bit_comp_dtype`: 默认值为`'AUTO'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_quant_type`: 默认值为`'nf4'`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--bnb_4bit_use_double_quant`: 默认值为`True`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--max_new_tokens`: 生成新token的最大数量, 默认值为`2048`.

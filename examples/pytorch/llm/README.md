@@ -26,9 +26,10 @@
   - llama series: [llama2-7b](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary), [llama2-7b-chat](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary), [llama2-13b](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary), [llama2-13b-chat](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary), [llama2-70b](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary), [llama2-70b-chat](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)
   - openbuddy series: [openbuddy-llama2-13b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary), [openbuddy-llama-65b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary), [openbuddy-llama2-70b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary), [openbuddy-mistral-7b-chat](https://modelscope.cn/models/OpenBuddy/openbuddy-mistral-7b-v13.1/summary)
   - internlm series: [internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary), [internlm-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary), [internlm-7b-chat-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary), [internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary), [internlm-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)
-  - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)
+  - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary), [xverse-65b](https://modelscope.cn/models/xverse/XVERSE-65B/summary)
   - bluelm series: [bluelm-7b](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base/summary), [bluelm-7b-chat](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat/summary), [bluelm-7b-32k](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base-32K/summary), [bluelm-7b-chat-32k](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat-32K/summary)
   - mistral series: [mistral-7b](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary), [mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)
+  - yi series: [yi-6b](https://modelscope.cn/models/01ai/Yi-6B/summary), [yi-34b](https://modelscope.cn/models/01ai/Yi-34B/summary)
   - ziya series: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork series: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
@@ -68,7 +69,6 @@ pip install deepspeed -U
 # If you want to use qlora training based on auto_gptq (recommended, better performance than bnb):
 # auto_gptq has version mapping with cuda versions，please refer to https://github.com/PanQiWei/AutoGPTQ#quick-installation
 pip install auto_gptq
-pip install optimum -U
 
 # If you want to use qlora training based on bnb:
 pip install bitsandbytes -U
@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ## 🌟 Run SFT and Inference
 Performace: full(nice) > lora > qlora(auto_gptq) > qlora(bnb)
 
-Training GPU memory: qlora(low,3090) > lora > full(2*A100)
+Training GPU memory: qlora(low,3090) < lora < full(high,2*A100)
 
 **Tips**:
 - You can set `--gradient_checkpointing true` during training to **save GPU memory**, but this will slightly decrease the training speed. This is useful if you need to train LLM on **consumer-grade GPU**, e.g. 3090.
@@ -183,23 +183,23 @@ bash scripts/qwen_7b_chat_int4/qlora/infer.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
 
-# sft(lora) and infer qwen-7b-chat, Requires 60GB GPU memory.
-# Recommended experimental environment: A100
+# sft(lora) and infer qwen-7b-chat, Requires 18GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora/sft.sh
 bash scripts/qwen_7b_chat/lora/infer.sh
 
-# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*60GB GPU memory.
-# Recommended experimental environment: A100
+# sft(lora+ddp) and infer qwen-7b-chat, Requires 2*18GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp/infer.sh
 
 # sft(lora+ddp+deepspeed) and infer qwen-7b-chat, Requires 2*18GB GPU memory.
-# Recommended experimental environment: A10, 3090
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 
-# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*15GB GPU memory.
-# Recommended experimental environment: A10, 3090
+# sft(lora+mp+ddp) and infer qwen-7b-chat, Requires 4*20GB GPU memory.
+# Recommended experimental environment: V100, A10, 3090
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
@@ -214,12 +214,12 @@ bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
 
 # The qlora script based on bnb below is no longer recommended for use. Please prioritize using the qlora script based on auto_gptq.
-# sft(qlora) and infer qwen-7b-chat, Requires 13GB GPU memory.
+# sft(qlora) and infer qwen-7b-chat, Requires 18GB GPU memory.
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora/sft.sh
 bash scripts/qwen_7b_chat/qlora/infer.sh
 
-# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*14GB GPU memory.
+# sft(qlora+ddp) and infer qwen-7b-chat, Requires 2*20B GPU memory.
 # Recommended experimental environment: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
@@ -230,8 +230,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
-
-## 📝 User Guide
+## 🌈 Expanding
 
 ### Custom Dataset
 We support two methods for **customizing datasets**.
@@ -285,7 +284,7 @@ Format 4:
 
 
 #### Registering Datasets
-Here is an example of a **registering a dataset**. Running the shell script for this custom dataset can be found in `scripts/custom`.
+Here is an example of **registering a custom dataset**. Running the shell script for this custom dataset can be found in `scripts/custom`.
 
 ```python
 from typing import Optional, Tuple
@@ -349,7 +348,7 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 
 ### Custom Model
 
-Here is an example of a **custom model**. Running the shell script for this custom model can be found in `scripts/custom`.
+Here is an example of **registering a custom model**. Running the shell script for this custom model can be found in `scripts/custom`.
 
 ```python
 from typing import Any, Dict
@@ -441,7 +440,7 @@ The `register_model` function registers the model in `MODEL_MAPPING`, and its pa
 
 ### Custom Chat Template
 
-Here is an example of a **custom template**. Running the shell script for this custom template can be found in `scripts/custom`.
+Here is an example of **registering a custom template**. Running the shell script for this custom template can be found in `scripts/custom`.
 
 ```python
 from swift.llm import (Template, ModelType, dataset_map,
@@ -481,6 +480,7 @@ The template initialization function retrieves the complete chat template based 
 - `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc. If set to None, the Template does not support multi-turn conversations.
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue.
 
+## 📝 User Guide
 
 ### sft.sh Command Line Arguments
 - `--model_type`: Represents the selected model type. The default value is `None`, which means if `model_id_or_path` is not specified, `'qwen-7b-chat'` will be chosen. If `model_id_or_path` is specified, the `model_type` will be inferred based on `model_id_or_path` and `MODEL_MAPPING`. These two parameters cannot be specified simultaneously. The available `model_type` options can be found in `MODEL_MAPPING.keys()`.
@@ -495,7 +495,7 @@ The template initialization function retrieves the complete chat template based 
 - `--ddp_backend`: Represents the backend support for distributed training, default is `'nccl'`. The possible values are: 'nccl', 'gloo', 'mpi', 'ccl'.
 - `--seed`: Global seed value, default is 42. In distributed training, to avoid each process using the same dropout, etc., we set `seed=seed+rank`.
 - `--resume_from_checkpoint`: Used for resuming training from a checkpoint, default is `None`. You can set it to the path of the checkpoint, for example: `'output/qwen-7b-chat/vx_xxx/checkpoint-xxx'`, to resume training from that checkpoint.
-- `--dtype`: The torch_dtype used when loading the base model, default is `None`, which means automatic selection of the dtype: if the machine does not support bf16, fp16 will be used instead. If the `MODEL_MAPPING` specifies a torch_dtype for the corresponding model, it will be used; otherwise, bf16 will be used. The available values are: 'bf16', 'fp16', 'fp32'.
+- `--dtype`: The torch_dtype used when loading the base model, default is `'AUTO'`, which means automatic selection of the dtype: if the machine does not support bf16, fp16 will be used instead. If the `MODEL_MAPPING` specifies a torch_dtype for the corresponding model, it will be used; otherwise, bf16 will be used. The available values are: 'bf16', 'fp16', 'fp32'.
 - `--dataset`: Used to select the training dataset, default is `'blossom-math-zh'`. Available datasets can be checked using `DATASET_MAPPING.keys()`. If you want to use multiple datasets for training, you can separate them using ',' or ' ', for example: `alpaca-en,alpaca-zh` or `alpaca-en alpaca-zh`.
 - `--dataset_seed`: Used to specify the seed for dataset processing. The default value is `42`. It is present in the form of `random_state` and does not affect the global seed.
 - `--dataset_test_ratio`: Specifies the ratio for splitting the sub-dataset into training and validation sets, default is `0.01`. This parameter is ignored if the sub-dataset has already been split into training and validation sets. When multiple sub-datasets are specified in `dataset` and the function for retrieving the sub-dataset does not perform the split (i.e., returns `HfDataset` or `Tuple[HfDataset, None]` instead of `Tuple[HfDataset, HfDataset]`), we need to split the sub-dataset. Finally, we concatenate the training and validation parts of these sub-datasets to generate the training and validation sets for the complete fine-tuning dataset.
@@ -506,7 +506,7 @@ The template initialization function retrieves the complete chat template based 
 - `custom_train_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
 - `custom_val_dataset_path`: The default value is `None`. Please refer to the `Custom Dataset` module in the README.md for specific meanings.
 - `--quantization_bit`: Specifies whether to perform quantization and the number of quantization bits, default is `0`, which means no quantization. Quantization is only supported for the lora fine-tuning method and not for full-parameter fine-tuning.
-- `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `None`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
+- `--bnb_4bit_comp_dtype`: When performing 4-bit quantization, we need to dequantize it during the model's forward and backward passes. This parameter specifies the torch_dtype after dequantization. Default is `'AUTO'`, which means it remains consistent with `dtype`. The possible values are: 'fp16', 'bf16', 'fp32'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_quant_type`: The quantization type for 4-bit quantization, default is `'nf4'`. The possible values are: 'nf4', 'fp4'. This parameter is ignored when `quantization_bit` is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization during 4-bit quantization, default is `True`. This parameter is ignored when `quantization_bit` is 0.
 - `--lora_target_modules`: Specifies the LoRA module, default is `None`. If `lora_target_modules` is `None` or set to `DEFAULT`, it will look for `lora_target_modules` in `MODEL_MAPPING` based on `model_type` (default is set to qkv). If set to `ALL`, all Linear layers (excluding the head) will be specified as LoRA modules. This parameter only takes effect when `sft_type` is set to 'lora'.
@@ -560,7 +560,7 @@ The template initialization function retrieves the complete chat template based 
 - `--load_args_from_ckpt_dir`: Whether to load configuration information from the `sft_args.json` file in `ckpt_dir`. The default value is `True`. The imported keys include: `model_id_or_path`, `model_revision`, `sft_type`, `template_type`, `dtype`, `system`, `quantization_bit`, `bnb_4bit_comp_dtype`, `bnb_4bit_quant_type`, `bnb_4bit_use_double_quant`. If `eval_human` is set to False, the following keys will also be imported: `dataset`, `dataset_seed`, `dataset_test_ratio`, `check_dataset_strategy`, `custom_train_dataset_path`, `custom_val_dataset_path`.
 - `--eval_human`: Whether to evaluate using the validation set from the dataset or manually evaluate the model. Default value is `False`. This allows us to get an intuitive understanding of the model's performance after fine-tuning.
 - `--seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
-- `--dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
+- `--dtype`: Default value is `'AUTO'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--dataset`: Default value is `'blossom-math-zh'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
@@ -571,7 +571,7 @@ The template initialization function retrieves the complete chat template based 
 - `--custom_train_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--custom_val_dataset_path`: 默认值为`None`. 具体的含义参考README.md中的`自定义数据集`模块.
 - `--quantization_bit`: Default value is 0. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
-- `--bnb_4bit_comp_dtype`: Default value is `None`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
+- `--bnb_4bit_comp_dtype`: Default value is `'AUTO'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_quant_type`: Default value is `'nf4'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--bnb_4bit_use_double_quant`: Default value is `True`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--max_new_tokens`: Maximum number of new tokens to generate. Default value is `2048`.

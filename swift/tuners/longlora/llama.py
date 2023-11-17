@@ -3,6 +3,7 @@
 
 import math
 import warnings
+from types import MethodType
 from typing import Optional, Tuple
 
 import torch
@@ -402,7 +403,17 @@ def forward_flashattn_inference_s2_attn(
                                            padding_mask)
 
 
-def replace_llama_attn(use_flash_attn=True):
+def patch_llama_forward(model: nn.Module, forward_function) -> None:
+    # Compatible with transformers device_map
+    for m in model.model.layers:
+        new_forward = MethodType(forward_function, m.self_attn)
+        if hasattr(model, '_old_forward'):
+            m.self_attn._old_forward = new_forward
+        else:
+            m.self_attn.forward = new_forward
+
+
+def replace_llama_attn(model: nn.Module, use_flash_attn=True):
     if use_flash_attn:
         cuda_major, cuda_minor = torch.cuda.get_device_capability()
         if cuda_major < 8:
@@ -412,6 +423,6 @@ def replace_llama_attn(use_flash_attn=True):
             )
         transformers.models.llama.modeling_llama.LlamaModel._prepare_decoder_attention_mask = (
             _prepare_decoder_attention_mask)
-        transformers.models.llama.modeling_llama.LlamaAttention.forward = forward_flashattn_inference_s2_attn
+        patch_llama_forward(model, forward_flashattn_inference_s2_attn)
     else:
-        transformers.models.llama.modeling_llama.LlamaAttention.forward = forward_noflashattn
+        patch_llama_forward(model, forward_noflashattn)

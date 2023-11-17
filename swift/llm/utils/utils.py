@@ -247,6 +247,31 @@ def data_collate_fn(batch: List[Dict[str, Any]],
     }
 
 
+def _get_labels_str(labels: List[int],
+                    tokenizer: PreTrainedTokenizerBase) -> str:
+    if len(labels) == 0:
+        return ''
+    labels_str = ''
+    for i in range(len(labels)):
+        if i == 0:
+            if labels[i] == -100:
+                s = 0
+            else:
+                e = 0
+            continue
+        if labels[i] == -100 and labels[i - 1] != -100:
+            s = i
+            labels_str += tokenizer.decode(labels[e:s])
+        if labels[i] != -100 and labels[i - 1] == -100:
+            e = i
+            labels_str += f'[-100 * {e - s}]'
+    if labels[-1] == -100:
+        labels_str += f'[-100 * {len(labels) - s}]'
+    else:
+        labels_str += tokenizer.decode(labels[e:])
+    return labels_str
+
+
 def print_example(example: Dict[str, Any],
                   tokenizer: PreTrainedTokenizerBase) -> None:
     input_ids, labels = example['input_ids'], example.get('labels')
@@ -254,35 +279,15 @@ def print_example(example: Dict[str, Any],
     logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = '[LABLES] '
-        if len(labels) == 0:
-            logger.info(labels_str)
-            return
-        for i in range(len(labels)):
-            if i == 0:
-                if labels[i] == -100:
-                    s = 0
-                else:
-                    e = 0
-                continue
-            if labels[i] == -100 and labels[i - 1] != -100:
-                s = i
-                labels_str += tokenizer.decode(labels[e:s])
-            if labels[i] != -100 and labels[i - 1] == -100:
-                e = i
-                labels_str += f'[-100 * {e - s}]'
-        if labels[-1] == -100:
-            labels_str += f'[-100 * {len(labels) - s}]'
-        else:
-            labels_str += tokenizer.decode(labels[e:])
-        logger.info(labels_str)
+        labels_str = _get_labels_str(labels, tokenizer)
+        logger.info(f'[LABLES] {labels_str}')
 
 
 def find_all_linear_for_lora(model: Module, quantization_bit: int,
                              model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
-    if model_type.startswith('chatglm2-6b'):
+    if model_type.startswith('chatglm'):
         head_module_name = 'output_layer'
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit

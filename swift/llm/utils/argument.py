@@ -36,10 +36,11 @@ class SftArguments:
         metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
-    template_type: Optional[str] = field(
-        default=None,
+    template_type: str = field(
+        default='AUTO',
         metadata={
-            'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
+            'help':
+            f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     output_dir: str = 'output'
     add_output_dir_suffix: bool = True
@@ -48,8 +49,8 @@ class SftArguments:
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: str = field(
+        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -73,7 +74,7 @@ class SftArguments:
     # note: bf16 and quantization have requirements for gpu architecture
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': ['fp16', 'bf16', 'fp32']})
+        default='AUTO', metadata={'choices': ['fp16', 'bf16', 'fp32', 'AUTO']})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
@@ -167,7 +168,8 @@ class SftArguments:
                 raise ValueError('not supported, please use `nccl`')
 
             # Initialize in advance
-            dist.init_process_group(backend=self.ddp_backend)
+            if not dist.is_initialized():
+                dist.init_process_group(backend=self.ddp_backend)
             # Make sure to set the same output_dir when using DDP.
             self.output_dir = broadcast_string(self.output_dir)
 
@@ -189,7 +191,7 @@ class SftArguments:
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
-        if self.template_type is None:
+        if self.template_type == 'AUTO':
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
@@ -221,6 +223,7 @@ class SftArguments:
 
         self.deepspeed = None
         if self.deepspeed_config_path is not None:
+            require_version('deepspeed')
             with open(self.deepspeed_config_path, 'r') as f:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
@@ -242,10 +245,11 @@ class InferArguments:
     sft_type: str = field(
         default='lora',
         metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
-    template_type: Optional[str] = field(
-        default=None,
+    template_type: str = field(
+        default='AUTO',
         metadata={
-            'help': f'template_type choices: {list(TEMPLATE_MAPPING.keys())}'
+            'help':
+            f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
@@ -253,8 +257,8 @@ class InferArguments:
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
-    dtype: Optional[str] = field(
-        default=None, metadata={'choices': ['bf16', 'fp16', 'fp32']})
+    dtype: str = field(
+        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
 
     dataset: Optional[List[str]] = field(
         default=None,
@@ -275,7 +279,7 @@ class InferArguments:
 
     quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
     bnb_4bit_comp_dtype: str = field(
-        default=None, metadata={'choices': ['fp16', 'bf16', 'fp32']})
+        default='AUTO', metadata={'choices': ['fp16', 'bf16', 'fp32', 'AUTO']})
     bnb_4bit_quant_type: str = field(
         default='nf4', metadata={'choices': ['fp4', 'nf4']})
     bnb_4bit_use_double_quant: bool = True
@@ -311,7 +315,7 @@ class InferArguments:
         handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
-        if self.template_type is None:
+        if self.template_type == 'AUTO':
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
@@ -344,7 +348,7 @@ class RomeArguments(InferArguments):
         handle_path(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
-        if self.template_type is None:
+        if self.template_type == 'AUTO':
             self.template_type = MODEL_MAPPING[self.model_type]['template']
             logger.info(f'Setting template_type: {self.template_type}')
 
@@ -357,14 +361,14 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    if args.dtype is None and not torch.cuda.is_bf16_supported():
+    if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
         args.dtype = 'fp16'
-    if args.dtype is None and (args.model_type.endswith('int4')
-                               or args.model_type.endswith('int8')):
+    if args.dtype == 'AUTO' and (args.model_type.endswith('int4')
+                                 or args.model_type.endswith('int8')):
         model_torch_dtype = MODEL_MAPPING[args.model_type]['torch_dtype']
         if model_torch_dtype is not None:
             args.dtype = dtype_mapping[model_torch_dtype]
-    if args.dtype is None:
+    if args.dtype == 'AUTO':
         args.dtype = 'bf16'
 
     torch_dtype = dtype_mapping_reversed[args.dtype]
@@ -387,7 +391,7 @@ def select_dtype(
 
 def select_bnb(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    if args.bnb_4bit_comp_dtype is None:
+    if args.bnb_4bit_comp_dtype == 'AUTO':
         args.bnb_4bit_comp_dtype = args.dtype
 
     quantization_bit = args.quantization_bit
@@ -396,8 +400,10 @@ def select_bnb(
         torch.float16, torch.bfloat16, torch.float32
     }
     if quantization_bit == 4:
+        require_version('bitsandbytes')
         load_in_4bit, load_in_8bit = True, False
     elif quantization_bit == 8:
+        require_version('bitsandbytes')
         load_in_4bit, load_in_8bit = False, True
     else:
         load_in_4bit, load_in_8bit = False, False

@@ -27,9 +27,7 @@ class TestRun(unittest.TestCase):
     def test_run_1(self):
         output_dir = 'output'
         if not __name__ == '__main__':
-            # ignore citest error in github
             output_dir = self.tmp_dir
-            return
         model_type = ModelType.chatglm3_6b
         sft_args = SftArguments(
             model_type=model_type,
@@ -39,20 +37,22 @@ class TestRun(unittest.TestCase):
             check_dataset_strategy='warning',
             train_dataset_sample=200,
             predict_with_generate=False,
-            dataset=[DatasetName.agent_instruct_all_en],
+            dataset=[DatasetName.jd_sentiment_zh],
             output_dir=output_dir,
             gradient_checkpointing=True)
         best_ckpt_dir = sft_main(sft_args)
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
-        infer_args = InferArguments(
-            ckpt_dir=best_ckpt_dir,
-            stream=False,
-            show_dataset_sample=5,
-            merge_lora_and_save=True)
-        infer_main(infer_args)
-        torch.cuda.empty_cache()
-        web_ui_main(infer_args)
+        if __name__ == '__main__':
+            infer_args = InferArguments(
+                ckpt_dir=best_ckpt_dir,
+                stream=False,
+                show_dataset_sample=5,
+                merge_lora_and_save=True)
+            infer_main(infer_args)
+            torch.cuda.empty_cache()
+        # if __name__ == '__main__':
+        #     web_ui_main(infer_args)
 
     def test_run_2(self):
         output_dir = 'output'

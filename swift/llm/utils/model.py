@@ -93,6 +93,9 @@ class ModelType:
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
+    # yi
+    yi_6b = 'yi-6b'
+    yi_34b = 'yi-34b'
     # ziya
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
@@ -102,8 +105,6 @@ class ModelType:
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
-    yi_6b = 'yi-6b'
-    yi_34b = 'yi-34b'
 
 
 class LoRATM(NamedTuple):
@@ -114,12 +115,12 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
-    internlm = ['q_proj', 'k_proj', 'v_proj']
-    xverse = ['q_proj', 'k_proj', 'v_proj']
-    mistral = ['q_proj', 'k_proj', 'v_proj']
-    ziya = ['q_proj', 'k_proj', 'v_proj']
-    yi = ['q_proj', 'k_proj', 'v_proj']
-    bluelm = ['q_proj', 'k_proj', 'v_proj']
+    internlm = llama2
+    xverse = llama2
+    mistral = llama2
+    ziya = llama2
+    yi = llama2
+    bluelm = llama2
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -191,28 +192,8 @@ def register_model(
                 LoRATM.bluelm, TemplateType.default_generation)
 @register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
                 TemplateType.default_generation)
-@register_model(ModelType.yi_34b, '01ai/Yi-34B', LoRATM.yi,
-                TemplateType.default_generation)
-@register_model(ModelType.yi_6b, '01ai/Yi-6B', LoRATM.yi,
-                TemplateType.default_generation)
 @register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
                 TemplateType.default_generation)
-@register_model(ModelType.ziya2_13b_chat, 'Fengshenbang/Ziya2-13B-Chat',
-                LoRATM.ziya, TemplateType.ziya)
-@register_model(ModelType.ziya2_13b, 'Fengshenbang/Ziya2-13B-Base',
-                LoRATM.ziya, TemplateType.default_generation)
-@register_model(
-    ModelType.mistral_7b_chat,
-    'AI-ModelScope/Mistral-7B-Instruct-v0.1',
-    LoRATM.mistral,
-    TemplateType.llama,
-    requires=['transformers>=4.34'])
-@register_model(
-    ModelType.mistral_7b,
-    'AI-ModelScope/Mistral-7B-v0.1',
-    LoRATM.mistral,
-    TemplateType.default_generation,
-    requires=['transformers>=4.34'])
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
                 LoRATM.xverse, TemplateType.xverse)
 @register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.xverse,
@@ -236,39 +217,6 @@ def register_model(
                 LoRATM.internlm, TemplateType.internlm)
 @register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
                 LoRATM.internlm, TemplateType.default_generation)
-@register_model(
-    ModelType.openbuddy_mistral_7b_chat,
-    'OpenBuddy/openbuddy-mistral-7b-v13.1',
-    LoRATM.mistral,
-    TemplateType.openbuddy,
-    requires=['transformers>=4.34'])
-@register_model(ModelType.openbuddy_llama2_70b_chat,
-                'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16', LoRATM.llama2,
-                TemplateType.openbuddy)
-@register_model(ModelType.openbuddy_llama2_65b_chat,
-                'OpenBuddy/openbuddy-llama-65b-v8-bf16', LoRATM.llama2,
-                TemplateType.openbuddy)
-@register_model(ModelType.openbuddy_llama2_13b_chat,
-                'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16', LoRATM.llama2,
-                TemplateType.openbuddy)
-@register_model(
-    ModelType.llama2_7b_chat,
-    'modelscope/Llama-2-7b-chat-ms',
-    LoRATM.llama2,
-    TemplateType.llama,
-    ignore_file_pattern=[r'.+\.bin$'])
-@register_model(
-    ModelType.llama2_70b,
-    'modelscope/Llama-2-70b-ms',
-    LoRATM.llama2,
-    TemplateType.default_generation,
-    ignore_file_pattern=[r'.+\.bin$'])
-@register_model(
-    ModelType.llama2_7b,
-    'modelscope/Llama-2-7b-ms',
-    LoRATM.llama2,
-    TemplateType.default_generation,
-    ignore_file_pattern=[r'.+\.bin$'])
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
@@ -407,9 +355,12 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                                      model_kwargs, load_model,
                                                      model_config, **kwargs)
     if model is not None:
-        model.lm_head.forward = MethodType(patch_baichuan2_lm_head_forward,
-                                           model.lm_head)
-
+        new_forward = MethodType(patch_baichuan2_lm_head_forward,
+                                 model.lm_head)
+        if hasattr(model, '_old_forward'):
+            model.lm_head._old_forward = new_forward
+        else:
+            model.lm_head.forward = new_forward
     return model, tokenizer
 
 
@@ -461,11 +412,11 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
                 LoRATM.chatglm, TemplateType.chatglm2)
 @register_model(ModelType.chatglm2_6b, 'ZhipuAI/chatglm2-6b', LoRATM.chatglm,
                 TemplateType.chatglm2)
-def get_model_tokenizer_chatglm2(model_dir: str,
-                                 torch_dtype: Dtype,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
+def get_model_tokenizer_chatglm(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
     if model_kwargs.get('quantization_config') is not None:
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
@@ -473,6 +424,9 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
+    # fix transformers>=4.34 bug
+    if version.parse(transformers.__version__) >= version.parse('4.34'):
+        tokenizer.__class__.special_tokens_map = {}
     if model is not None:
         from torch.nn import CrossEntropyLoss
         _old_forward = CrossEntropyLoss.forward
@@ -486,9 +440,77 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     return model, tokenizer
 
 
+@register_model(ModelType.yi_34b, '01ai/Yi-34B', LoRATM.yi,
+                TemplateType.default_generation)
+@register_model(ModelType.yi_6b, '01ai/Yi-6B', LoRATM.yi,
+                TemplateType.default_generation)
+@register_model(ModelType.ziya2_13b_chat, 'Fengshenbang/Ziya2-13B-Chat',
+                LoRATM.ziya, TemplateType.ziya)
+@register_model(ModelType.ziya2_13b, 'Fengshenbang/Ziya2-13B-Base',
+                LoRATM.ziya, TemplateType.default_generation)
 @register_model(
-    ModelType.llama2_70b_chat,
-    'modelscope/Llama-2-70b-chat-ms',
+    ModelType.openbuddy_mistral_7b_chat,
+    'OpenBuddy/openbuddy-mistral-7b-v13.1',
+    LoRATM.mistral,
+    TemplateType.openbuddy,
+    requires=['transformers>=4.34'])
+@register_model(ModelType.openbuddy_llama2_70b_chat,
+                'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16', LoRATM.llama2,
+                TemplateType.openbuddy)
+@register_model(ModelType.openbuddy_llama2_65b_chat,
+                'OpenBuddy/openbuddy-llama-65b-v8-bf16', LoRATM.llama2,
+                TemplateType.openbuddy)
+@register_model(ModelType.openbuddy_llama2_13b_chat,
+                'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16', LoRATM.llama2,
+                TemplateType.openbuddy)
+@register_model(
+    ModelType.mistral_7b_chat,
+    'AI-ModelScope/Mistral-7B-Instruct-v0.1',
+    LoRATM.mistral,
+    TemplateType.llama,
+    requires=['transformers>=4.34'])
+@register_model(
+    ModelType.mistral_7b,
+    'AI-ModelScope/Mistral-7B-v0.1',
+    LoRATM.mistral,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'])
+def get_model_tokenizer_with_flash_attn(model_dir: str,
+                                        torch_dtype: Dtype,
+                                        model_kwargs: Dict[str, Any],
+                                        load_model: bool = True,
+                                        model_config=None,
+                                        **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    _flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
+    model_config._flash_attn_2_enabled = _flash_attn_2_enabled
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, model_config, **kwargs)
+
+
+@register_model(
+    ModelType.llama2_7b,
+    'modelscope/Llama-2-7b-ms',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    ignore_file_pattern=[r'.+\.bin$'])
+@register_model(
+    ModelType.llama2_13b,
+    'modelscope/Llama-2-13b-ms',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    ignore_file_pattern=[r'.+\.bin$'])
+@register_model(
+    ModelType.llama2_70b,
+    'modelscope/Llama-2-70b-ms',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    ignore_file_pattern=[r'.+\.bin$'])
+@register_model(
+    ModelType.llama2_7b_chat,
+    'modelscope/Llama-2-7b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'])
@@ -499,10 +521,10 @@ def get_model_tokenizer_chatglm2(model_dir: str,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'])
 @register_model(
-    ModelType.llama2_13b,
-    'modelscope/Llama-2-13b-ms',
+    ModelType.llama2_70b_chat,
+    'modelscope/Llama-2-70b-chat-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'])
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
@@ -512,8 +534,9 @@ def get_model_tokenizer_llama2(model_dir: str,
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     model_config.pretraining_tp = 1
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, **kwargs)
+    return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
+                                               model_kwargs, load_model,
+                                               model_config, **kwargs)
 
 
 @register_model(ModelType.polylm_13b, 'damo/nlp_polylm_13b_text_generation',
@@ -658,8 +681,12 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                   **kwargs):
 
     logger.info('use gptq, ignore bnb arguments')
-    model_kwargs['quantization_config'] = GPTQConfig(
-        bits=4, disable_exllama=True)
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=4, use_exllama=False)
+    else:
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=4, disable_exllama=True)
 
     # fix quantlinear bug
     from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
@@ -698,8 +725,8 @@ def get_skywork_model_tokenizer(model_dir: str,
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
-    # from 4.35.0, transformers changes its arguments of _set_gradient_checkpointing
-    if version.parse(transformers.__version__) >= version.parse('4.35.0'):
+    # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
         if isinstance(module, PreTrainedModel) and hasattr(module, '_set_gradient_checkpointing') \
                 and 'value' in inspect.signature(module._set_gradient_checkpointing).parameters.keys():
             module._set_gradient_checkpointing = MethodType(
