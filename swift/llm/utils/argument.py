@@ -150,8 +150,8 @@ class SftArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
-        set_model_type(self)
         handle_path(self)
+        set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
         if self.add_output_dir_suffix:
@@ -301,8 +301,8 @@ class InferArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
-        set_model_type(self)
         handle_path(self)
+        set_model_type(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -344,8 +344,8 @@ class RomeArguments(InferArguments):
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
-        set_model_type(self)
         handle_path(self)
+        set_model_type(self)
         check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
@@ -437,8 +437,10 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         model_id_or_path = args.model_id_or_path
         model_id_or_path_lower = model_id_or_path.lower()
         if model_id_or_path_lower not in model_mapping_reversed:
-            raise ValueError(
-                f'model_id_or_path: {model_id_or_path} is not registered.')
+            error_msg = f"`model_id_or_path`: '{model_id_or_path}' is not registered."
+            if os.path.exists(model_id_or_path):
+                error_msg += ' Please use `model_cache_dir` to specify the local cache path for the model.'
+            raise ValueError(error_msg)
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
@@ -494,6 +496,10 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
         'deepspeed_config_path', 'custom_train_dataset_path',
         'custom_val_dataset_path'
     ]
+    if args.model_id_or_path is not None and (
+            args.model_id_or_path.startswith('~')
+            or args.model_id_or_path.startswith('/')):
+        check_exist_path.append('model_id_or_path')
     check_exist_path_set = set(check_exist_path)
     other_path = ['output_dir', 'logging_dir']
     for k in check_exist_path + other_path:
