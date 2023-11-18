@@ -253,7 +253,7 @@ Explanation of command line arguments:
 
 The script supports `csv` and `jsonl` file formats. The files you pass in need to conform to the following dataset formats. The csv format file only supports instruction fine-tuning, which means there is no history. The jsonl format file supports system and history.
 
-Format 1:
+**Format 1:**
 ```csv
 instruction,input,output
 11111,22222,33333
@@ -261,8 +261,9 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-Format 2:
-**Pretraining**
+**Format 2:**
+
+Pretraining
 ```csv
 response
 11111
@@ -276,7 +277,7 @@ AAAAA
 {"response": "AAAAA"}
 ```
 
-**Single-Round Dialogue**
+Single-Round Dialogue
 ```csv
 query,response
 11111,22222
@@ -290,21 +291,21 @@ AAAAA,BBBBB
 {"query": "AAAAA", "response": "BBBBB"}
 ```
 
-**Multi-Round Dialogue**
+Multi-Round Dialogue
 ```jsonl
 {"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
 {"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-Format 3:
+**Format 3:**
 ```jsonl
 {"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
-Format 4:
+**Format 4:**
 ```jsonl
 {"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}

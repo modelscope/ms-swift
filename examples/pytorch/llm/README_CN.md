@@ -253,7 +253,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 脚本支持的文件格式包含`csv`和`jsonl`格式. 你需要将传入的文件符合以下数据集格式. csv格式的文件只支持指令微调, 即没有history的情况. jsonl格式的文件支持system, history.
 
-格式1:
+**格式1:**
 ```csv
 instruction,input,output
 11111,22222,33333
@@ -261,8 +261,9 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-格式2:
-**Pretraining**
+**格式2:**
+
+Pretraining
 ```csv
 response
 11111
@@ -276,7 +277,7 @@ AAAAA
 {"response": "AAAAA"}
 ```
 
-**Single-Round Dialogue**
+Single-Round Dialogue
 ```csv
 query,response
 11111,22222
@@ -290,21 +291,21 @@ AAAAA,BBBBB
 {"query": "AAAAA", "response": "BBBBB"}
 ```
 
-**Multi-Round Dialogue**
+Multi-Round Dialogue
 ```jsonl
 {"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
 {"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-格式3:
+**格式3:**
 ```jsonl
 {"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
-格式4:
+**格式4:**
 ```jsonl
 {"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
