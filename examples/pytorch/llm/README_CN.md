@@ -33,6 +33,8 @@
   - ziya 系列: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork 系列: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
+  - 特定领域系列:
+    - **金融**: [tongyi-finance-14b](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary), [tongyi-finance-14b-chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary), [tongyi-finance-14b-chat-int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)
 - 支持的数据集:
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
@@ -77,10 +79,12 @@ pip install bitsandbytes -U
 ## 🚀 简单使用
 快速对LLM进行微调, 推理并搭建Web-UI. 请确保您已经阅读了`准备实验环境`部分.
 
+更多sh启动脚本可以查看: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+
 ### 使用python运行
 ```python
 # Experimental environment: A10, 3090, A100, ...
-# 16GB GPU memory
+# 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -96,7 +100,7 @@ sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
     train_dataset_sample=2000,
-    dataset=[DatasetName.leetcode_python_en],
+    dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
 best_ckpt_dir = sft_main(sft_args)
@@ -116,12 +120,12 @@ web_ui_main(infer_args)
 **微调**:
 ```bash
 # Experimental environment: A10, 3090, A100, ...
-# 10GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # 使用DDP
 # Experimental environment: 2 * 3090
-# 2 * 10GB GPU memory
+# 2 * 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
@@ -238,6 +242,8 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 2. **注册数据集**的方式: 更加灵活, 可以对swift**进一步拓展和开发**, 但需要一定的编程门槛. 方法一在实现上借助了方法二.
 
 #### 📌 【推荐】命令行参数的形式
+对应的sh案例脚本可以查看[这里](./scripts/tongyi_finance_14b_chat_int4/qlora/sft.sh).
+
 命令行参数含义介绍:
 1. `--custom_train_dataset_path`: 默认值为`None`, 表示不使用自定义数据集. 你可以像如下形式进行指定: `--custom_train_dataset_path alpaca.csv`或者指定多个训练数据集`--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`, 脚本会进行自动的预处理和拼接.
 

@@ -33,6 +33,8 @@
   - ziya series: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork series: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
+  - Domain-Specific:
+    - Financial: [tongyi-finance-14b](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary), [tongyi-finance-14b-chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary), [tongyi-finance-14b-chat-int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)
 - Supported Datasets:
   - NLP:
     - General: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
@@ -78,10 +80,12 @@ pip install bitsandbytes -U
 ## 🚀 Basic Usage
 Quickly fine-tune, infer with LLM, and build a Web-UI. Please make sure you have read the "Preparing the Experimental Environment" section.
 
+To see more sh startup scripts, please refer to: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+
 ### Run using Python
 ```python
 # Experimental environment: A10, 3090, A100, ...
-# 16GB GPU memory
+# 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -97,7 +101,7 @@ sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
     train_dataset_sample=2000,
-    dataset=[DatasetName.leetcode_python_en],
+    dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
 best_ckpt_dir = sft_main(sft_args)
@@ -117,12 +121,12 @@ web_ui_main(infer_args)
 **SFT**:
 ```bash
 # Experimental environment: A10, 3090, A100, ...
-# 10GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # Using DDP
 # Experimental environment: 2 * 3090
-# 2 * 10GB GPU memory
+# 2 * 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
@@ -238,6 +242,8 @@ We support two methods for **customizing datasets**.
 2. **Registering datasets**: It is more flexible and allows for **further extension and development of swift**, but it requires some programming skills. Method 1 relies on Method 2 for implementation.
 
 #### 📌 [Recommended] Command Line Arguments
+You can check the corresponding sh example script [here](./scripts/tongyi_finance_14b_chat_int4/qlora/sft.sh).
+
 Explanation of command line arguments:
 1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them.
 
