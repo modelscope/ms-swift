@@ -234,6 +234,8 @@ def llm_sft(args: SftArguments) -> str:
         trainer_kwargs['compute_metrics'] = compute_acc_metrics
         trainer_kwargs[
             'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
+    if args.check_local_model_is_latest is False:
+        trainer_kwargs['check_model'] = False
 
     trainer = Seq2SeqTrainer(
         model=model,
