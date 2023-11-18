@@ -151,8 +151,8 @@ class SftArguments:
     def __post_init__(self) -> None:
         handle_compatibility(self)
         set_model_type(self)
-        register_custom_dataset(self)
         handle_path(self)
+        register_custom_dataset(self)
         check_flash_attn(self)
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
@@ -302,9 +302,7 @@ class InferArguments:
     def __post_init__(self) -> None:
         handle_compatibility(self)
         set_model_type(self)
-        register_custom_dataset(self)
         handle_path(self)
-        check_flash_attn(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -313,6 +311,8 @@ class InferArguments:
             )
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
+        register_custom_dataset(self)
+        check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
