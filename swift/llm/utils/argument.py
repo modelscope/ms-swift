@@ -140,7 +140,7 @@ class SftArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
     report_to: Optional[List[str]] = None
-    check_local_model_is_latest: bool = True
+    check_model_is_latest: bool = True
 
     # generation config
     max_new_tokens: int = 2048

@@ -163,6 +163,7 @@ Training GPU memory: qlora(low,3090) < lora < full(high,2*A100)
 - If you are using older GPUs like **V100**, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
 - If you want to conduct **secondary pre-training** instead of SFT, you need to only set 'response' during dataset registration, without setting 'query'. You can refer to the dataset `'tigerbot-law-zh'` and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
+- If you need to train without internet connection, please use `--model_cache_dir` and set `--check_model_is_latest false`. For specific parameter meanings, please refer to the [user documentation](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-user-guide).
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is **not recommended to merge quantized models**, as this can result in performance degradation, specifically in the case of qlora.
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to **customize a shell script**, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
@@ -570,6 +571,7 @@ The template initialization function retrieves the complete chat template based 
 - `--use_flash_attn`: Whether to use flash attention. The default value is `None`. For installation steps of flash attention, please refer to https://github.com/Dao-AILab/flash-attention.
 - `--ignore_args_error`: Whether to ignore errors raised by command-line argument mismatch, default is `False`. If you need to copy the code to a notebook for execution, you should set it to True.
 - `--logging_dir`: Default is `None`. If not specified, it is set to `f'{self.output_dir}/runs'`, which represents the directory where TensorBoard files are stored.
+-- `check_model_is_latest`: Check if the model is the latest, default is `True`. If you need to train without internet connection, please set this parameter to `False`.
 - `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Whether to use sampling during generation. The default value is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.

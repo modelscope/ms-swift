@@ -69,7 +69,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 ### 简单使用
 快速对LLM进行微调, 推理并搭建Web-UI.
 
-更多sh启动脚本可以查看: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+更多sh启动脚本可以查看: [微调和推理](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/README_CN.md#-%E5%BE%AE%E8%B0%83%E5%92%8C%E6%8E%A8%E7%90%86)
 
 ```bash
 git clone https://github.com/modelscope/swift.git
