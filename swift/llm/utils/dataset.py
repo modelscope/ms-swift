@@ -702,7 +702,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['query']: {d['query']}, i: {i}")
-        if has_history and not isinstance(d['history'], list):
+        if has_history and not isinstance(d['history'], (list, type(None))):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
