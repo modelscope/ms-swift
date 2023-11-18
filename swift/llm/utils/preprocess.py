@@ -39,7 +39,8 @@ class AlpacaPreprocessor:
         query: List[str] = []
         response = []
         for d in tqdm(dataset):
-            inst, inp, output = d['instruction'], d['input'], d['output']
+            inst, inp, output = d['instruction'], d.get('input',
+                                                        None), d['output']
             if output is None:
                 continue
             if inp is None or len(inp) == 0:
@@ -85,6 +86,7 @@ class ConversationsPreprocessor:
         system: List[Optional[str]] = []
         has_system = False
         history: List[History] = []
+        has_history = False
 
         for d in tqdm(dataset):
             conversations = d[self.conversations_key]
@@ -109,13 +111,16 @@ class ConversationsPreprocessor:
                 assert r[self.from_key] == self.assistant_role
                 h.append([q[self.value_key], r[self.value_key]])
             history.append(h)
+            if len(h) > 0:
+                has_history = True
         kwargs = {}
         if has_system:
             kwargs['system'] = system
+        if has_history:
+            kwargs['history'] = history
         kwargs.update({
             'query': query,
             'response': response,
-            'history': history
         })
         dataset = HfDataset.from_dict({**kwargs})
         return dataset
@@ -152,7 +157,7 @@ class SmartPreprocessor:
                 'preprocessor': SwiftPreprocessor()
             },
             'alpaca': {
-                'required': ['instruction', 'input', 'output'],
+                'required': ['instruction', 'output'],
                 'preprocessor': AlpacaPreprocessor()
             },
             'conversations': {

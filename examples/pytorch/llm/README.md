@@ -17,7 +17,7 @@
 
 ## ✨ Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
-- Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
+- Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, multi-round chat, ...
 - Supported Models:
   - qwen series: [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary), [qwen-7b-chat-int4](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int4/summary), [qwen-14b-chat-int4](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int4/summary), [qwen-7b-chat-int8](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int8/summary), [qwen-14b-chat-int8](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int8/summary)
   - qwen-vl series: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary), [qwen-vl-chat-int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)
@@ -33,13 +33,15 @@
   - ziya series: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork series: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
+  - Domain-Specific:
+    - Financial: [tongyi-finance-14b](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary), [tongyi-finance-14b-chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary), [tongyi-finance-14b-chat-int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)
 - Supported Datasets:
   - NLP:
     - General: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
     - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
     - Coding: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - Medical: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
-    - Law: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
+    - Law: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), 🔥[tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
     - Math: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
     - SQL: [text2sql-en](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary), 🔥[sql-create-context-en](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)
     - Text Generation: 🔥[advertise-gen-zh](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary), 🔥[dureader-robust-zh](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)
@@ -78,10 +80,12 @@ pip install bitsandbytes -U
 ## 🚀 Basic Usage
 Quickly fine-tune, infer with LLM, and build a Web-UI. Please make sure you have read the "Preparing the Experimental Environment" section.
 
+To see more sh startup scripts, please refer to: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+
 ### Run using Python
 ```python
 # Experimental environment: A10, 3090, A100, ...
-# 16GB GPU memory
+# 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -97,7 +101,7 @@ sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
     train_dataset_sample=2000,
-    dataset=[DatasetName.leetcode_python_en],
+    dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
 best_ckpt_dir = sft_main(sft_args)
@@ -117,12 +121,12 @@ web_ui_main(infer_args)
 **SFT**:
 ```bash
 # Experimental environment: A10, 3090, A100, ...
-# 10GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # Using DDP
 # Experimental environment: 2 * 3090
-# 2 * 10GB GPU memory
+# 2 * 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
@@ -238,6 +242,8 @@ We support two methods for **customizing datasets**.
 2. **Registering datasets**: It is more flexible and allows for **further extension and development of swift**, but it requires some programming skills. Method 1 relies on Method 2 for implementation.
 
 #### 📌 [Recommended] Command Line Arguments
+You can check the corresponding sh example script [here](./scripts/tongyi_finance_14b_chat_int4/qlora/sft.sh).
+
 Explanation of command line arguments:
 1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them.
 
@@ -341,8 +347,7 @@ The `register_dataset` function registers the dataset in the `DATASET_MAPPING`. 
 - `preprocess_func`: Default value is `None`. Represents the method for preprocessing the function.
 - `get_function`: Default value is `None`. The function used to retrieve the dataset. If None is passed, the decorator scheme is used for dataset registration, where the `register_dataset` function returns `Callable[[GetDatasetFunction], GetDatasetFunction]`. This scheme requires users with some python knowledge. If a function is passed, the normal registration scheme is used. If importing datasets from the ModelScope Hub, the `get_dataset_from_repo` function is commonly used.
   The `get_function` function has no restrictions, you just need to return `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. If only the train_dataset is returned, the data processing function will split a portion of the dataset as the validation set (based on the command line hyperparameter `dataset_test_ratio`). If two datasets are returned, they will be used as the training set and validation set respectively. We support fine-tuning with multiple datasets. The training and validation parts of each sub-dataset will be concatenated and the merged training set and validation set will be returned.
-  The returned `HfDataset` needs to follow certain specifications. If you are doing **pre-training**, it only needs to include the `response` field, as seen in the `'tigerbot-law-zh'` dataset. If it is **instruction-based fine-tuning (single-turn dialogue)**, it needs to include the `query` and `response` fields, representing the user's query for instruction-based fine-tuning and the AI assistant's response, as seen in the `'alpaca-zh'` dataset. If it is **multi-turn dialogue**, the `history` field needs to be added to represent the dialogue history, as seen in the `'damo-agent-mini-zh'` dataset. If each example in the dataset has a different `system`, the `system` field needs to be added as well, as seen in the `'damo-agent-mini-zh'` dataset.
-- `task`: The task for which the dataset is intended. This parameter is generally not required to be set.
+  The returned `HfDataset` needs to follow certain specifications. If you are doing **pre-training**, it only needs to include the `response` field, as seen in the `'tigerbot-law-zh'` dataset. If it is **instruction-based fine-tuning (single-round dialogue)**, it needs to include the `query` and `response` fields, representing the user's query for instruction-based fine-tuning and the AI assistant's response, as seen in the `'alpaca-zh'` dataset. If it is **multi-round dialogue**, the `history` field needs to be added to represent the dialogue history, as seen in the `'damo-agent-mini-zh'` dataset. If each example in the dataset has a different `system`, the `system` field needs to be added as well, as seen in the `'damo-agent-mini-zh'` dataset.
 - `function_kwargs`: Default is `{}`, used to pass arguments to `get_function` to support the `partial` functionality in the decorator scheme. This parameter is generally not required to be set.
 - `**kwargs`: Other parameters used for annotating the dataset. This parameter is generally not required to be set.
 
@@ -434,7 +439,6 @@ The `register_model` function registers the model in `MODEL_MAPPING`, and its pa
 - `automodel_class`: Default is `AutoModelForCausalLM`. It represents the class called by `from_pretrained`. If you are using models like `roberta-base`, this parameter needs to be modified. This parameter is generally not required.
 - `revision`: Default is `'master'`. It is used to specify the version number of the model. This parameter is not effective if `model_id_or_path` is a local model directory. This parameter is generally not required.
 - `ignore_file_pattern`: Default is `None`. It represents the regular expression pattern of the file names to be ignored during downloading, which is passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter is generally not required.
-- `max_length`: Default is `None`. It is used to annotate the maximum length of the model. This parameter is generally not required.
 - `function_kwargs`: Default is `{}`. It is used to pass arguments to `get_function` to support the `partial` functionality in the decorator approach. This parameter is generally not required.
 - `**kwargs`: Other parameters used to annotate model capabilities. This parameter is generally not required.
 
@@ -477,7 +481,7 @@ The `register_template` function registers the conversation template in the `TEM
 The template initialization function retrieves the complete chat template based on these four components, enabling support for pre-training, text generation-style SFT, and various chat-based SFT. The meanings of these four configuration components are as follows:
 - `prefix`: Represents the prefix part of the chat template, usually including the system part and relevant formats, prefix tokens, BOS token, etc. We use `{{SYSTEM}}` as a placeholder for the system part.
 - `prompt`: Represents a round of dialogue in the chat template. We use `{{QUERY}}` as a placeholder for the human inquiry part in each round of dialogue, `{{ROUND0}}` represents the placeholder for the current round of dialogue, counting from 0, and `{{ROUND1}}` counting from 1. The assistant's reply is concatenated after the `prompt`, so we did not design a placeholder for it.
-- `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc. If set to None, the Template does not support multi-turn conversations.
+- `chat_sep`: If multiple rounds of dialogue are needed, `chat_sep` serves as the separator between each round of dialogue, such as a newline, etc. If set to None, the Template does not support multi-round conversations.
 - `suffix`: Serves as the suffix part of the chat template, usually the EOS token. It is appended after the last round of dialogue.
 
 ## 📝 User Guide

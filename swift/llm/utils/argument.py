@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Set, Tuple, Union
 
 import json
 import torch
@@ -150,9 +150,10 @@ class SftArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
+        handle_path(self)
         set_model_type(self)
         register_custom_dataset(self)
-        handle_path(self)
+        check_flash_attn(self)
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             if is_master():
@@ -300,8 +301,8 @@ class InferArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
-        if self.ckpt_dir is not None and not os.path.isdir(self.ckpt_dir):
-            raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
+        handle_path(self)
+        set_model_type(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -310,9 +311,8 @@ class InferArguments:
             )
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
-        set_model_type(self)
         register_custom_dataset(self)
-        handle_path(self)
+        check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -344,8 +344,9 @@ class RomeArguments(InferArguments):
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
-        set_model_type(self)
         handle_path(self)
+        set_model_type(self)
+        check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -436,11 +437,16 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         model_id_or_path = args.model_id_or_path
         model_id_or_path_lower = model_id_or_path.lower()
         if model_id_or_path_lower not in model_mapping_reversed:
-            raise ValueError(f'{model_id_or_path} not in MODEL_MAPPING')
+            error_msg = f"`model_id_or_path`: '{model_id_or_path}' is not registered."
+            if os.path.exists(model_id_or_path):
+                error_msg += ' Please use `model_cache_dir` to specify the local cache path for the model.'
+            raise ValueError(error_msg)
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
         args.model_type = ModelType.qwen_7b_chat
+    if args.model_type not in MODEL_MAPPING:
+        raise ValueError(f'model_type: {args.model_type} is not registered.')
     model_info = MODEL_MAPPING[args.model_type]
     if args.model_revision is None:
         args.model_revision = model_info['revision']
@@ -468,16 +474,40 @@ def prepare_push_ms_hub(args: SftArguments) -> None:
         logger.info('hub login successful!')
 
 
+def _check_path(
+        k: str, value: Union[str, List[str]],
+        check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    if isinstance(value, str):
+        value = os.path.expanduser(value)
+        value = os.path.abspath(value)
+        if k in check_exist_path_set and not os.path.exists(value):
+            raise FileNotFoundError(f"`{k}`: '{value}'")
+    elif isinstance(value, list):
+        res = []
+        for v in value:
+            res.append(_check_path(k, v, check_exist_path_set))
+        value = res
+    return value
+
+
 def handle_path(args: Union[SftArguments, InferArguments]) -> None:
-    for k in [
-            'model_cache_dir', 'output_dir', 'ckpt_dir',
-            'resume_from_checkpoint', 'deepspeed_config_path', 'logging_dir'
-    ]:
+    check_exist_path = [
+        'model_cache_dir', 'ckpt_dir', 'resume_from_checkpoint',
+        'deepspeed_config_path', 'custom_train_dataset_path',
+        'custom_val_dataset_path'
+    ]
+    if args.model_id_or_path is not None and (
+            args.model_id_or_path.startswith('~')
+            or args.model_id_or_path.startswith('/')):
+        check_exist_path.append('model_id_or_path')
+    check_exist_path_set = set(check_exist_path)
+    other_path = ['output_dir', 'logging_dir']
+    for k in check_exist_path + other_path:
         value = getattr(args, k, None)
-        if isinstance(value, str):
-            value = os.path.expanduser(value)
-            value = os.path.abspath(value)
-            setattr(args, k, value)
+        if value is None:
+            continue
+        value = _check_path(k, value, check_exist_path_set)
+        setattr(args, k, value)
 
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
@@ -516,3 +546,11 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         ]
     for key in imported_keys:
         setattr(args, key, sft_args.get(key))
+
+
+def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
+    model_info = MODEL_MAPPING[args.model_type]
+    support_flash_attn = model_info.get('support_flash_attn', False)
+    if args.use_flash_attn and not support_flash_attn:
+        logger.warning(f'use_flash_attn: {args.use_flash_attn}, '
+                       f'but support_flash_attn: {support_flash_attn}')
