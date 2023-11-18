@@ -138,7 +138,6 @@ def register_model(
     automodel_class: Type[_BaseAutoModelClass] = AutoModelForCausalLM,
     revision: str = 'master',
     ignore_file_pattern: Optional[List[str]] = None,
-    max_length: Optional[int] = None,
     function_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
@@ -160,7 +159,6 @@ def register_model(
         'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
         'revision': revision,
-        'max_length': max_length,
         **kwargs
     }
 
@@ -440,41 +438,69 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
-@register_model(ModelType.yi_34b, '01ai/Yi-34B', LoRATM.yi,
-                TemplateType.default_generation)
-@register_model(ModelType.yi_6b, '01ai/Yi-6B', LoRATM.yi,
-                TemplateType.default_generation)
-@register_model(ModelType.ziya2_13b_chat, 'Fengshenbang/Ziya2-13B-Chat',
-                LoRATM.ziya, TemplateType.ziya)
-@register_model(ModelType.ziya2_13b, 'Fengshenbang/Ziya2-13B-Base',
-                LoRATM.ziya, TemplateType.default_generation)
+@register_model(
+    ModelType.yi_34b,
+    '01ai/Yi-34B',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yi_6b,
+    '01ai/Yi-6B',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.ziya2_13b_chat,
+    'Fengshenbang/Ziya2-13B-Chat',
+    LoRATM.ziya,
+    TemplateType.ziya,
+    support_flash_attn=True)
+@register_model(
+    ModelType.ziya2_13b,
+    'Fengshenbang/Ziya2-13B-Base',
+    LoRATM.ziya,
+    TemplateType.default_generation,
+    support_flash_attn=True)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
     'OpenBuddy/openbuddy-mistral-7b-v13.1',
     LoRATM.mistral,
     TemplateType.openbuddy,
-    requires=['transformers>=4.34'])
-@register_model(ModelType.openbuddy_llama2_70b_chat,
-                'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16', LoRATM.llama2,
-                TemplateType.openbuddy)
-@register_model(ModelType.openbuddy_llama2_65b_chat,
-                'OpenBuddy/openbuddy-llama-65b-v8-bf16', LoRATM.llama2,
-                TemplateType.openbuddy)
-@register_model(ModelType.openbuddy_llama2_13b_chat,
-                'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16', LoRATM.llama2,
-                TemplateType.openbuddy)
+    requires=['transformers>=4.34'],
+    support_flash_attn=True)
+@register_model(
+    ModelType.openbuddy_llama2_70b_chat,
+    'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    support_flash_attn=True)
+@register_model(
+    ModelType.openbuddy_llama2_65b_chat,
+    'OpenBuddy/openbuddy-llama-65b-v8-bf16',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    support_flash_attn=True)
+@register_model(
+    ModelType.openbuddy_llama2_13b_chat,
+    'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    support_flash_attn=True)
 @register_model(
     ModelType.mistral_7b_chat,
     'AI-ModelScope/Mistral-7B-Instruct-v0.1',
     LoRATM.mistral,
     TemplateType.llama,
-    requires=['transformers>=4.34'])
+    requires=['transformers>=4.34'],
+    support_flash_attn=True)
 @register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
     LoRATM.mistral,
     TemplateType.default_generation,
-    requires=['transformers>=4.34'])
+    requires=['transformers>=4.34'],
+    support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -495,37 +521,43 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     'modelscope/Llama-2-7b-ms',
     LoRATM.llama2,
     TemplateType.default_generation,
-    ignore_file_pattern=[r'.+\.bin$'])
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True)
 @register_model(
     ModelType.llama2_13b,
     'modelscope/Llama-2-13b-ms',
     LoRATM.llama2,
     TemplateType.default_generation,
-    ignore_file_pattern=[r'.+\.bin$'])
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True)
 @register_model(
     ModelType.llama2_70b,
     'modelscope/Llama-2-70b-ms',
     LoRATM.llama2,
     TemplateType.default_generation,
-    ignore_file_pattern=[r'.+\.bin$'])
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True)
 @register_model(
     ModelType.llama2_7b_chat,
     'modelscope/Llama-2-7b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
-    ignore_file_pattern=[r'.+\.bin$'])
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True)
 @register_model(
     ModelType.llama2_13b_chat,
     'modelscope/Llama-2-13b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
-    ignore_file_pattern=[r'.+\.bin$'])
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True)
 @register_model(
     ModelType.llama2_70b_chat,
     'modelscope/Llama-2-70b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
-    ignore_file_pattern=[r'.+\.bin$'])
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True)
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
                                model_kwargs: Dict[str, Any],
@@ -564,18 +596,30 @@ dtype_mapping = {
 }
 
 
-@register_model(ModelType.qwen_14b_chat, 'qwen/Qwen-14B-Chat', LoRATM.qwen,
-                TemplateType.chatml)
-@register_model(ModelType.qwen_14b, 'qwen/Qwen-14B', LoRATM.qwen,
-                TemplateType.default_generation)
-@register_model(ModelType.qwen_7b_chat, 'qwen/Qwen-7B-Chat', LoRATM.qwen,
-                TemplateType.chatml)
+@register_model(
+    ModelType.qwen_14b_chat,
+    'qwen/Qwen-14B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_14b,
+    'qwen/Qwen-14B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b_chat,
+    'qwen/Qwen-7B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_7b,
     'qwen/Qwen-7B',
     LoRATM.qwen,
     TemplateType.default_generation,
-)
+    support_flash_attn=True)
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
@@ -608,10 +652,18 @@ def get_model_tokenizer_qwen(model_dir: str,
     return model, tokenizer
 
 
-@register_model(ModelType.qwen_vl_chat, 'qwen/Qwen-VL-Chat', LoRATM.qwen,
-                TemplateType.chatml)
-@register_model(ModelType.qwen_vl, 'qwen/Qwen-VL', LoRATM.qwen,
-                TemplateType.default_generation)
+@register_model(
+    ModelType.qwen_vl_chat,
+    'qwen/Qwen-VL-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_vl,
+    'qwen/Qwen-VL',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -645,6 +697,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
+    support_flash_attn=True,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_vl})
 @register_model(
     ModelType.qwen_14b_chat_int8,
@@ -652,28 +705,32 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     LoRATM.qwen,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
-    torch_dtype=torch.float16)
+    torch_dtype=torch.float16,
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_7b_chat_int8,
     'qwen/Qwen-7B-Chat-Int8',
     LoRATM.qwen,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
-    torch_dtype=torch.float16)
+    torch_dtype=torch.float16,
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_14b_chat_int4,
     'qwen/Qwen-14B-Chat-Int4',
     LoRATM.qwen,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
-    torch_dtype=torch.float16)
+    torch_dtype=torch.float16,
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_7b_chat_int4,
     'qwen/Qwen-7B-Chat-Int4',
     LoRATM.qwen,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
-    torch_dtype=torch.float16)
+    torch_dtype=torch.float16,
+    support_flash_attn=True)
 def get_model_tokenizer_qwen_intx(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -777,7 +834,6 @@ def get_model_tokenizer(
     else:
         model_dir = os.path.expanduser(model_dir)
         assert os.path.isdir(model_dir)
-
     kwargs['automodel_class'] = model_info['automodel_class']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
