@@ -255,14 +255,15 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-```jsonl
-{"instruction": "11111", "input": "22222", "output": "33333"}
-{"instruction": "aaaaa", "input": "bbbbb", "output": "ccccc"}
-{"instruction": "AAAAA", "input": "BBBBB", "output": "CCCCC"}
-```
-
 Format 2:
 **Pretraining**
+```csv
+response
+11111
+aaaaa
+AAAAA
+```
+
 ```jsonl
 {"response": "11111"}
 {"response": "aaaaa"}
@@ -270,6 +271,13 @@ Format 2:
 ```
 
 **Single-Round Dialogue**
+```csv
+query,response
+11111,22222
+aaaaa,bbbbb
+AAAAA,BBBBB
+```
+
 ```jsonl
 {"query": "11111", "response": "22222"}
 {"query": "aaaaa", "response": "bbbbb"}
