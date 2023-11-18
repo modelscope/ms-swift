@@ -125,16 +125,23 @@ def llm_sft(args: SftArguments) -> str:
         args.dataset_test_ratio,
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
+    val_dataset_sample = args.val_dataset_sample
     if args.train_dataset_sample >= 0:
-        args.train_dataset_sample = min(args.train_dataset_sample,
-                                        len(train_dataset))
-        train_idxs = random_state.permutation(args.train_dataset_sample)
-        train_dataset = train_dataset.select(train_idxs)
-    if val_dataset is not None and args.val_dataset_sample >= 0:
-        args.val_dataset_sample = min(args.val_dataset_sample,
-                                      len(val_dataset))
-        val_idxs = random_state.permutation(args.val_dataset_sample)
-        val_dataset = val_dataset.select(val_idxs)
+        train_dataset_sample = min(args.train_dataset_sample,
+                                   train_dataset.shape[0])
+        if train_dataset.shape[0] > train_dataset_sample:
+            logger.info(f'train_dataset_sample: {train_dataset_sample}')
+            train_idxs = random_state.permutation(train_dataset_sample)
+            train_dataset = train_dataset.select(train_idxs)
+        if val_dataset_sample is None:
+            val_dataset_sample = max(
+                int(train_dataset_sample * args.dataset_test_ratio), 1)
+    if val_dataset_sample is not None and val_dataset_sample >= 0:
+        if val_dataset.shape[0] > val_dataset_sample:
+            logger.info(f'val_dataset_sample: {val_dataset_sample}')
+            val_idxs = random_state.permutation(val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
+
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template: Template = get_template(args.template_type, tokenizer,
