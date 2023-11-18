@@ -791,6 +791,11 @@ def load_dataset_from_local(
             df = pd.read_csv(dataset_path)
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
+        else:
+            raise ValueError(
+                'The custom dataset only supports CSV format or JSONL format. You can refer to the link '
+                '`https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#custom-dataset` '
+                'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
     return concatenate_datasets(dataset_list)

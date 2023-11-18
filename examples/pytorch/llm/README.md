@@ -261,13 +261,36 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-```jsonl
-{"instruction": "11111", "input": "aaaaa", "output": "AAAAA"}
-{"instruction": "22222", "input": "bbbbb", "output": "BBBBB"}
-{"instruction": "33333", "input": "ccccc", "output": "CCCCC"}
+Format 2:
+**Pretraining**
+```csv
+response
+11111
+aaaaa
+AAAAA
 ```
 
-Format 2:
+```jsonl
+{"response": "11111"}
+{"response": "aaaaa"}
+{"response": "AAAAA"}
+```
+
+**Single-Round Dialogue**
+```csv
+query,response
+11111,22222
+aaaaa,bbbbb
+AAAAA,BBBBB
+```
+
+```jsonl
+{"query": "11111", "response": "22222"}
+{"query": "aaaaa", "response": "bbbbb"}
+{"query": "AAAAA", "response": "BBBBB"}
+```
+
+**Multi-Round Dialogue**
 ```jsonl
 {"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
 {"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
