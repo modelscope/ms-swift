@@ -148,6 +148,9 @@ class SftArguments:
     top_p: float = 0.9
     repetition_penalty: float = 1.05
 
+    # check model
+    check_model: bool = True
+
     def __post_init__(self) -> None:
         handle_compatibility(self)
         handle_path(self)

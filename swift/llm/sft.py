@@ -242,6 +242,7 @@ def llm_sft(args: SftArguments) -> str:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
+        check_model=args.check_model,
         **trainer_kwargs)
     trainer.sft_args = args
     if is_master():
