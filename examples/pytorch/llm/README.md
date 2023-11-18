@@ -293,21 +293,21 @@ AAAAA,BBBBB
 
 Multi-Round Dialogue
 ```jsonl
-{"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
-{"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
+{"query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
 **Format 3:**
 ```jsonl
-{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
 **Format 4:**
 ```jsonl
-{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
+{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```

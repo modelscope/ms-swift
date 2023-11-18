@@ -58,6 +58,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
+    val_dataset_sample: int = -1  # -1: all dataset
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(

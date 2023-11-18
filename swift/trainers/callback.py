@@ -6,7 +6,7 @@ from tqdm.auto import tqdm
 from transformers.trainer_callback import (DefaultFlowCallback,
                                            ProgressCallback, TrainerControl,
                                            TrainerState)
-from transformers.trainer_utils import has_length
+from transformers.trainer_utils import IntervalStrategy, has_length
 
 from swift.trainers import TrainingArguments
 
@@ -56,6 +56,7 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
         control = super().on_step_end(args, state, control, **kwargs)
         # save the last ckpt
         if state.global_step == state.max_steps:
-            control.should_evaluate = True
+            if args.evaluation_strategy != IntervalStrategy.NO:
+                control.should_evaluate = True
             control.should_save = True
         return control

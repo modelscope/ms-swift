@@ -7,7 +7,8 @@ import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
-from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
+                            Seq2SeqTrainingArguments)
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
@@ -127,13 +128,13 @@ def llm_sft(args: SftArguments) -> str:
     if args.train_dataset_sample >= 0:
         args.train_dataset_sample = min(args.train_dataset_sample,
                                         len(train_dataset))
-        val_dataset_sample = max(
-            int(args.train_dataset_sample * args.dataset_test_ratio), 1)
         train_idxs = random_state.permutation(args.train_dataset_sample)
         train_dataset = train_dataset.select(train_idxs)
-        if val_dataset.shape[0] > val_dataset_sample:
-            val_idxs = random_state.permutation(val_dataset_sample)
-            val_dataset = val_dataset.select(val_idxs)
+    if val_dataset is not None and args.val_dataset_sample >= 0:
+        args.val_dataset_sample = min(args.val_dataset_sample,
+                                      len(val_dataset))
+        val_idxs = random_state.permutation(args.val_dataset_sample)
+        val_dataset = val_dataset.select(val_idxs)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template: Template = get_template(args.template_type, tokenizer,
@@ -151,7 +152,8 @@ def llm_sft(args: SftArguments) -> str:
         padding_to=args.max_length if args.sft_type == 'longlora' else None)
     print_example(train_dataset[0], tokenizer)
     stat_dataset(train_dataset)
-    stat_dataset(val_dataset)
+    if val_dataset is not None:
+        stat_dataset(val_dataset)
 
     # Setting training_args
     generation_config = GenerationConfig(
@@ -165,12 +167,14 @@ def llm_sft(args: SftArguments) -> str:
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
-
+    evaluation_strategy = IntervalStrategy.STEPS
+    load_best_model_at_end = True
+    if val_dataset is None:
+        evaluation_strategy = IntervalStrategy.NO
+        load_best_model_at_end = False
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
-        do_train=True,
-        do_eval=True,
-        evaluation_strategy='steps',
+        evaluation_strategy=evaluation_strategy,
         logging_dir=args.logging_dir,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.eval_batch_size,
@@ -183,14 +187,14 @@ def llm_sft(args: SftArguments) -> str:
         lr_scheduler_type=args.lr_scheduler_type,
         warmup_ratio=args.warmup_ratio,
         logging_steps=args.logging_steps,
-        save_strategy='steps',
+        save_strategy=IntervalStrategy.STEPS,
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
         bf16=args.bf16,
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
-        load_best_model_at_end=True,
+        load_best_model_at_end=load_best_model_at_end,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
         greater_is_better=args.predict_with_generate,
