@@ -39,6 +39,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## 🎉 新闻
+- 🔥 2023.11.18: 支持**tongyi-finance-14b**系列模型: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4. 对应的sh脚本可以查看[tongyi_finance_14b_chat_int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4).
 - 🔥 2023.11.16: 支持更多模型的**flash attn**支持: qwen系列, qwen-vl系列, llama系列, openbuddy系列, mistral系列, yi系列, ziya系列. 请使用`use_flash_attn`参数.
 - 🔥 2023.11.11: 支持**NEFTune**, 使用`Swift.prepare_model(model, NEFTuneConfig())`即可开启.
 - 🔥 2023.11.11: 支持**命令行**训练推理和**Web-UI**推理, 详情可以查看下方的`使用Swift CLI运行`章节.
@@ -68,6 +69,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 ### 简单使用
 快速对LLM进行微调, 推理并搭建Web-UI.
 
+更多sh启动脚本可以查看: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
@@ -77,7 +80,7 @@ pip install .
 #### 使用python运行
 ```python
 # Experimental environment: A10, 3090, A100, ...
-# 16GB GPU memory
+# 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -93,7 +96,7 @@ sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
     train_dataset_sample=2000,
-    dataset=[DatasetName.leetcode_python_en],
+    dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
 best_ckpt_dir = sft_main(sft_args)
@@ -113,12 +116,12 @@ web_ui_main(infer_args)
 **微调**:
 ```bash
 # Experimental environment: A10, 3090, A100, ...
-# 10GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # 使用DDP
 # Experimental environment: 2 * 3090
-# 2 * 10GB GPU memory
+# 2 * 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
@@ -158,6 +161,8 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
   - ziya 系列: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork 系列: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
+  - 特定领域的
+    - 金融: [tongyi-finance-14b](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary), [tongyi-finance-14b-chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary), [tongyi-finance-14b-chat-int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)
 - 支持的数据集:
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)

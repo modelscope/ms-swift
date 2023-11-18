@@ -78,10 +78,12 @@ pip install bitsandbytes -U
 ## 🚀 Basic Usage
 Quickly fine-tune, infer with LLM, and build a Web-UI. Please make sure you have read the "Preparing the Experimental Environment" section.
 
+To see more sh startup scripts, please refer to: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+
 ### Run using Python
 ```python
 # Experimental environment: A10, 3090, A100, ...
-# 16GB GPU memory
+# 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -97,7 +99,7 @@ sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
     train_dataset_sample=2000,
-    dataset=[DatasetName.leetcode_python_en],
+    dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
 best_ckpt_dir = sft_main(sft_args)
@@ -117,12 +119,12 @@ web_ui_main(infer_args)
 **SFT**:
 ```bash
 # Experimental environment: A10, 3090, A100, ...
-# 10GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # Using DDP
 # Experimental environment: 2 * 3090
-# 2 * 10GB GPU memory
+# 2 * 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
@@ -238,6 +240,8 @@ We support two methods for **customizing datasets**.
 2. **Registering datasets**: It is more flexible and allows for **further extension and development of swift**, but it requires some programming skills. Method 1 relies on Method 2 for implementation.
 
 #### 📌 [Recommended] Command Line Arguments
+You can check the corresponding sh example script [here](./scripts/tongyi_finance_14b_chat_int4/qlora/sft.sh).
+
 Explanation of command line arguments:
 1. `--custom_train_dataset_path`: The default value is `None`, which means no custom dataset is used. You can specify it in the following format: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets like `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`. The script will automatically preprocess and concatenate them.
 

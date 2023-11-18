@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Set, Tuple, Union
 
 import json
 import torch
@@ -301,8 +301,10 @@ class InferArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
-        if self.ckpt_dir is not None and not os.path.isdir(self.ckpt_dir):
-            raise ValueError(f'Please enter a valid ckpt_dir: {self.ckpt_dir}')
+        set_model_type(self)
+        register_custom_dataset(self)
+        handle_path(self)
+        check_flash_attn(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -311,10 +313,6 @@ class InferArguments:
             )
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
-        set_model_type(self)
-        register_custom_dataset(self)
-        handle_path(self)
-        check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -474,16 +472,36 @@ def prepare_push_ms_hub(args: SftArguments) -> None:
         logger.info('hub login successful!')
 
 
+def _check_path(
+        k: str, value: Union[str, List[str]],
+        check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    if isinstance(value, str):
+        value = os.path.expanduser(value)
+        value = os.path.abspath(value)
+        if k in check_exist_path_set and not os.path.exists(value):
+            raise FileNotFoundError(f"`{k}`: '{value}'")
+    elif isinstance(value, list):
+        res = []
+        for v in value:
+            res.append(_check_path(k, v, check_exist_path_set))
+        value = res
+    return value
+
+
 def handle_path(args: Union[SftArguments, InferArguments]) -> None:
-    for k in [
-            'model_cache_dir', 'output_dir', 'ckpt_dir',
-            'resume_from_checkpoint', 'deepspeed_config_path', 'logging_dir'
-    ]:
+    check_exist_path = [
+        'model_cache_dir', 'ckpt_dir', 'resume_from_checkpoint',
+        'deepspeed_config_path', 'custom_train_dataset_path',
+        'custom_val_dataset_path'
+    ]
+    check_exist_path_set = set(check_exist_path)
+    other_path = ['output_dir', 'logging_dir']
+    for k in check_exist_path + other_path:
         value = getattr(args, k, None)
-        if isinstance(value, str):
-            value = os.path.expanduser(value)
-            value = os.path.abspath(value)
-            setattr(args, k, value)
+        if value is None:
+            continue
+        value = _check_path(k, value, check_exist_path_set)
+        setattr(args, k, value)
 
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:

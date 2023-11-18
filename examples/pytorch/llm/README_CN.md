@@ -77,10 +77,12 @@ pip install bitsandbytes -U
 ## 🚀 简单使用
 快速对LLM进行微调, 推理并搭建Web-UI. 请确保您已经阅读了`准备实验环境`部分.
 
+更多sh启动脚本可以查看: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+
 ### 使用python运行
 ```python
 # Experimental environment: A10, 3090, A100, ...
-# 16GB GPU memory
+# 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -96,7 +98,7 @@ sft_args = SftArguments(
     model_type=model_type,
     eval_steps=50,
     train_dataset_sample=2000,
-    dataset=[DatasetName.leetcode_python_en],
+    dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
 best_ckpt_dir = sft_main(sft_args)
@@ -116,12 +118,12 @@ web_ui_main(infer_args)
 **微调**:
 ```bash
 # Experimental environment: A10, 3090, A100, ...
-# 10GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 
 # 使用DDP
 # Experimental environment: 2 * 3090
-# 2 * 10GB GPU memory
+# 2 * 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
@@ -238,6 +240,8 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 2. **注册数据集**的方式: 更加灵活, 可以对swift**进一步拓展和开发**, 但需要一定的编程门槛. 方法一在实现上借助了方法二.
 
 #### 📌 【推荐】命令行参数的形式
+对应的sh案例脚本可以查看[这里](./scripts/tongyi_finance_14b_chat_int4/qlora/sft.sh).
+
 命令行参数含义介绍:
 1. `--custom_train_dataset_path`: 默认值为`None`, 表示不使用自定义数据集. 你可以像如下形式进行指定: `--custom_train_dataset_path alpaca.csv`或者指定多个训练数据集`--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`, 脚本会进行自动的预处理和拼接.
 

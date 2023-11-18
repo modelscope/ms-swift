@@ -105,6 +105,12 @@ class ModelType:
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
 
+    # domain-specific
+    # financial
+    tongyi_finance_14b = 'tongyi-finance-14b'
+    tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
+    tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
+
 
 class LoRATM(NamedTuple):
     # default lora target modules. qkv
@@ -597,6 +603,18 @@ dtype_mapping = {
 
 
 @register_model(
+    ModelType.tongyi_finance_14b_chat,
+    'TongyiFinance/Tongyi-Finance-14B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.tongyi_finance_14b,
+    'TongyiFinance/Tongyi-Finance-14B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
     ModelType.qwen_14b_chat,
     'qwen/Qwen-14B-Chat',
     LoRATM.qwen,
@@ -690,6 +708,14 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.tongyi_finance_14b_chat_int4,
+    'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16,
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_vl_chat_int4,
     'qwen/Qwen-VL-Chat-Int4',

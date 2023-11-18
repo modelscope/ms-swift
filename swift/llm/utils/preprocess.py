@@ -39,7 +39,8 @@ class AlpacaPreprocessor:
         query: List[str] = []
         response = []
         for d in tqdm(dataset):
-            inst, inp, output = d['instruction'], d['input'], d['output']
+            inst, inp, output = d['instruction'], d.get('input',
+                                                        None), d['output']
             if output is None:
                 continue
             if inp is None or len(inp) == 0:
@@ -156,7 +157,7 @@ class SmartPreprocessor:
                 'preprocessor': SwiftPreprocessor()
             },
             'alpaca': {
-                'required': ['instruction', 'input', 'output'],
+                'required': ['instruction', 'output'],
                 'preprocessor': AlpacaPreprocessor()
             },
             'conversations': {
