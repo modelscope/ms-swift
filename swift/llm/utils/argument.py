@@ -58,6 +58,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
+    val_dataset_sample: Optional[int] = None  # -1: all dataset
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
@@ -139,6 +140,7 @@ class SftArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
     report_to: Optional[List[str]] = None
+    check_model_is_latest: bool = True
 
     # generation config
     max_new_tokens: int = 2048
@@ -242,6 +244,7 @@ class InferArguments:
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
+    model_cache_dir: Optional[str] = None
 
     sft_type: str = field(
         default='lora',
@@ -534,9 +537,10 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
     with open(sft_args_path, 'r') as f:
         sft_args = json.load(f)
     imported_keys = [
-        'model_id_or_path', 'model_revision', 'sft_type', 'template_type',
-        'dtype', 'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
-        'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+        'model_id_or_path', 'model_revision', 'model_cache_dir', 'sft_type',
+        'template_type', 'dtype', 'system', 'quantization_bit',
+        'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+        'bnb_4bit_use_double_quant'
     ]
     if not args.eval_human:
         imported_keys += [
@@ -545,6 +549,8 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
             'custom_val_dataset_path'
         ]
     for key in imported_keys:
+        if key == 'model_cache_dir' and getattr(args, key) is not None:
+            continue
         setattr(args, key, sft_args.get(key))
 
 
