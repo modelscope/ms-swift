@@ -350,7 +350,8 @@ def inference_stream(
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
     stream_config = StreamGenerationConfig(
         **generation_config.to_dict(), do_stream=True)
-    stream_config.max_length = int(1e9)  # fix max_length, max_new_tokens bug
+    if stream_config.max_new_tokens is not None:
+        stream_config.max_length = 20  # fix max_length, max_new_tokens bug
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     gen = model.generate_stream(
         input_ids=input_ids,
@@ -395,6 +396,8 @@ def inference(model: PreTrainedModel,
     streamer = None
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
+    if generation_config.max_new_tokens is not None:
+        generation_config.max_length = 20  # fix max_length, max_new_tokens bug
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,

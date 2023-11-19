@@ -617,4 +617,4 @@ if __name__ == '__main__':
 - `--ignore_args_error`: 默认值为`False`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--stream`: 是否使用流式输出, 默认为`True`.
 - `--merge_lora_and_save`: 是否将lora权重merge到基模型中, 并保存完整的权重, 默认为`False`. 权重会保存在`ckpt_dir`的同级目录中,  e.g. `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`目录下.
-- `--overwrite_generation_config`: 是否将评估所使用的generation_config保存成`generation_config.json`文件, 默认为`False`. 训练时保存的generate_config文件将被覆盖.
+- `--overwrite_generation_config`: 是否将评估所使用的generation_config保存成`generation_config.json`文件, 默认为`False`. 训练时保存的generation_config文件将被覆盖.
