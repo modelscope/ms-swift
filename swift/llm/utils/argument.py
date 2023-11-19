@@ -537,8 +537,8 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
     with open(sft_args_path, 'r') as f:
         sft_args = json.load(f)
     imported_keys = [
-        'model_id_or_path', 'model_revision', 'model_cache_dir', 'sft_type',
-        'template_type', 'dtype', 'system', 'quantization_bit',
+        'model_type', 'model_id_or_path', 'model_revision', 'model_cache_dir',
+        'sft_type', 'template_type', 'dtype', 'system', 'quantization_bit',
         'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
         'bnb_4bit_use_double_quant'
     ]
