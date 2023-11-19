@@ -92,6 +92,9 @@ def prepare_model_template(
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.sft_type == 'full' and args.ckpt_dir is not None:
         kwargs['model_dir'] = args.ckpt_dir
+    elif args.model_cache_dir is not None:
+        kwargs['model_dir'] = args.model_cache_dir
+
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
 

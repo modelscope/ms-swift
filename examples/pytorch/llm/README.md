@@ -163,6 +163,7 @@ Training GPU memory: qlora(low,3090) < lora < full(high,2*A100)
 - If you are using older GPUs like **V100**, you need to set `--dtype fp16`, because they do not support bf16.
 - qwen recommends installing [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will accelerate the training and inference speed and reduce GPU memory usage (A10, 3090, V100 machines do not support flash-attn).
 - If you want to conduct **secondary pre-training** instead of SFT, you need to only set 'response' during dataset registration, without setting 'query'. You can refer to the dataset `'tigerbot-law-zh'` and its corresponding sh file: `scripts/qwen_7b/qlora_ddp`.
+- If you need to train without internet connection, please use `--model_cache_dir` and set `--check_model_is_latest false`. For specific parameter meanings, please refer to the [user documentation](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-user-guide).
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora_and_save true`. It is **not recommended to merge quantized models**, as this can result in performance degradation, specifically in the case of qlora.
 - Below is a shell script for running `qwen_7b_chat` directly (you just need to specify `ckpt_dir` during inference to execute it smoothly). For more model scripts, you can check the `scripts` folder. If you want to **customize a shell script**, it is recommended to refer to the script in `scripts/qwen_7b_chat`.
@@ -253,7 +254,7 @@ Explanation of command line arguments:
 
 The script supports `csv` and `jsonl` file formats. The files you pass in need to conform to the following dataset formats. The csv format file only supports instruction fine-tuning, which means there is no history. The jsonl format file supports system and history.
 
-Format 1:
+**Format 1:**
 ```csv
 instruction,input,output
 11111,22222,33333
@@ -261,29 +262,53 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-```jsonl
-{"instruction": "11111", "input": "aaaaa", "output": "AAAAA"}
-{"instruction": "22222", "input": "bbbbb", "output": "BBBBB"}
-{"instruction": "33333", "input": "ccccc", "output": "CCCCC"}
+**Format 2:**
+
+Pretraining
+```csv
+response
+11111
+aaaaa
+AAAAA
 ```
 
-Format 2:
 ```jsonl
-{"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
-{"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
+{"response": "11111"}
+{"response": "aaaaa"}
+{"response": "AAAAA"}
+```
+
+Single-Round Dialogue
+```csv
+query,response
+11111,22222
+aaaaa,bbbbb
+AAAAA,BBBBB
+```
+
+```jsonl
+{"query": "11111", "response": "22222"}
+{"query": "aaaaa", "response": "bbbbb"}
+{"query": "AAAAA", "response": "BBBBB"}
+```
+
+Multi-Round Dialogue
+```jsonl
+{"query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-Format 3:
+**Format 3:**
 ```jsonl
-{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
-Format 4:
+**Format 4:**
 ```jsonl
-{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
+{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```
@@ -546,6 +571,7 @@ The template initialization function retrieves the complete chat template based 
 - `--use_flash_attn`: Whether to use flash attention. The default value is `None`. For installation steps of flash attention, please refer to https://github.com/Dao-AILab/flash-attention.
 - `--ignore_args_error`: Whether to ignore errors raised by command-line argument mismatch, default is `False`. If you need to copy the code to a notebook for execution, you should set it to True.
 - `--logging_dir`: Default is `None`. If not specified, it is set to `f'{self.output_dir}/runs'`, which represents the directory where TensorBoard files are stored.
+-- `check_model_is_latest`: Check if the model is the latest, default is `True`. If you need to train without internet connection, please set this parameter to `False`.
 - `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Whether to use sampling during generation. The default value is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.

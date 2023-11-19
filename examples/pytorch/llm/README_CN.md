@@ -79,7 +79,7 @@ pip install bitsandbytes -U
 ## 🚀 简单使用
 快速对LLM进行微调, 推理并搭建Web-UI. 请确保您已经阅读了`准备实验环境`部分.
 
-更多sh启动脚本可以查看: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
+更多sh启动脚本可以查看: [微调和推理](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/README_CN.md#-%E5%BE%AE%E8%B0%83%E5%92%8C%E6%8E%A8%E7%90%86)
 
 ### 使用python运行
 ```python
@@ -162,6 +162,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练).
 - 如果你要进行**二次预训练**而不是SFT, 你需要在注册数据集时只设置'response'而不设置'query', 你可以参考`'tigerbot-law-zh'`数据集和其对于的sh文件: `scripts/qwen_7b/qlora_ddp`.
+- 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[用户文档](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/README_CN.md#-%E7%94%A8%E6%88%B7%E6%96%87%E6%A1%A3).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对量化的模型进行merge**, 这会存在精度损失, 即qlora.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看`scripts`文件夹. 如果你想要**自定义sh脚本**, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
@@ -253,7 +254,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 
 脚本支持的文件格式包含`csv`和`jsonl`格式. 你需要将传入的文件符合以下数据集格式. csv格式的文件只支持指令微调, 即没有history的情况. jsonl格式的文件支持system, history.
 
-格式1:
+**格式1:**
 ```csv
 instruction,input,output
 11111,22222,33333
@@ -261,29 +262,53 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-```jsonl
-{"instruction": "11111", "input": "aaaaa", "output": "AAAAA"}
-{"instruction": "22222", "input": "bbbbb", "output": "BBBBB"}
-{"instruction": "33333", "input": "ccccc", "output": "CCCCC"}
+**格式2:**
+
+Pretraining
+```csv
+response
+11111
+aaaaa
+AAAAA
 ```
 
-格式2:
 ```jsonl
-{"query": "55555", "response": "66666", "history": [["11111", "22222"], ["33333", "44444"]]}
-{"query": "eeeee", "response": "fffff", "history": [["aaaaa", "bbbbb"], ["ccccc", "ddddd"]]}
+{"response": "11111"}
+{"response": "aaaaa"}
+{"response": "AAAAA"}
+```
+
+Single-Round Dialogue
+```csv
+query,response
+11111,22222
+aaaaa,bbbbb
+AAAAA,BBBBB
+```
+
+```jsonl
+{"query": "11111", "response": "22222"}
+{"query": "aaaaa", "response": "bbbbb"}
+{"query": "AAAAA", "response": "BBBBB"}
+```
+
+Multi-Round Dialogue
+```jsonl
+{"query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-格式3:
+**格式3:**
 ```jsonl
-{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}, {"from": "user", "value": "33333"}, {"from": "assistant", "value": "44444"}]}
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
-格式4:
+**格式4:**
 ```jsonl
-{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}, {"role": "user", "content": "33333"}, {"role": "assistant", "content": "44444"}]}
+{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```
@@ -549,6 +574,7 @@ if __name__ == '__main__':
 - `--use_flash_attn`: 是否使用flash attn, 默认为`None`. 安装flash_attn的步骤可以查看[https://github.com/Dao-AILab/flash-attention](https://github.com/Dao-AILab/flash-attention). 支持flash_attn的模型包括: qwen系列, qwen-vl系列, llama系列, openbuddy系列, mistral系列, yi系列, ziya系列.
 - `--ignore_args_error`: 是否忽略命令行传参错误抛出的Error, 默认为`False`. 如果需要拷贝代码到notebook中运行, 需要设置成True.
 - `--logging_dir`: 默认为`None`. 即设置为`f'{self.output_dir}/runs'`, 表示tensorboard文件存储路径.
+- `--check_model_is_latest`: 检查模型是否是最新, 默认为`True`. 如果你需要断网进行训练, 请将该参数设置为`False`.
 - `--max_new_tokens`: 默认为`2048`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--do_sample`: 默认为`True`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--temperature`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
