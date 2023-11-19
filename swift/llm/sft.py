@@ -164,7 +164,6 @@ def llm_sft(args: SftArguments) -> str:
 
     # Setting training_args
     generation_config = GenerationConfig(
-        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
