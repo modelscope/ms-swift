@@ -204,11 +204,15 @@ you are a helpful assistant!<|im_end|>
             do_sample=True,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.eos_token_id)
-        query = '12345+234=？'
+        query = '三国演义的作者是谁？'
         print(f'query: {query}')
         response, _ = inference(model, template, query, verbose=False)
         print(f'swift response: {response}')
-        response = model.chat(tokenizer, query)[0]
+        inputs = tokenizer('[|Human|]:三国演义的作者是谁？[|AI|]:', return_tensors='pt')
+        inputs = inputs.to('cuda:0')
+        pred = model.generate(
+            **inputs, max_new_tokens=64, repetition_penalty=1.1)
+        print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True))
         print(f'official response: {response}')
 
     @unittest.skip(

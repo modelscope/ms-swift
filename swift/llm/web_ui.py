@@ -14,8 +14,7 @@ def gradio_generation_demo(args: InferArguments) -> None:
     model, template = prepare_model_template(args)
 
     def model_generation(query: str) -> str:
-        gen = inference_stream(
-            model, template, query, None, skip_special_tokens=True)
+        gen = inference_stream(model, template, query, None)
         for response, _ in gen:
             yield response
 
@@ -40,8 +39,7 @@ def gradio_chat_demo(args: InferArguments) -> None:
     def model_chat(query: str, history: History) -> Tuple[str, History]:
         old_history, history = limit_history_length(template, query, history,
                                                     args.max_length)
-        gen = inference_stream(
-            model, template, query, history, skip_special_tokens=True)
+        gen = inference_stream(model, template, query, history)
         for _, history in gen:
             total_history = old_history + history
             yield '', total_history
