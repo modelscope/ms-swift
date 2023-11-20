@@ -522,7 +522,11 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if args.custom_train_dataset_path is None:
-        assert args.custom_val_dataset_path is None
+        args.custom_train_dataset_path = []
+    if args.custom_val_dataset_path is None:
+        args.custom_val_dataset_path = []
+    if len(args.custom_train_dataset_path) == 0 and len(
+            args.custom_val_dataset_path) == 0:
         return
     if '_custom_dataset' in DATASET_MAPPING:
         DATASET_MAPPING.pop('_custom_dataset')

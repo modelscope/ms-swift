@@ -126,6 +126,7 @@ def llm_sft(args: SftArguments) -> str:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
+    assert train_dataset is not None
     if args.train_dataset_sample >= 0:
         train_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])

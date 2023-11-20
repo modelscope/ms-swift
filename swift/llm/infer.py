@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import os
 import shutil
 from typing import Tuple
@@ -133,7 +134,8 @@ def llm_infer(args: InferArguments) -> None:
     # Inference
     jsonl_path = None
     if args.save_result:
-        jsonl_path = os.path.join(args.ckpt_dir, 'infer_result.jsonl')
+        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+        jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
         while True:
             query = input('<<< ')
