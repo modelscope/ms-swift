@@ -110,7 +110,6 @@ def prepare_model_template(
                                       args.system, args.max_length,
                                       args.truncation_strategy)
     generation_config = GenerationConfig(
-        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,

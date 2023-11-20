@@ -59,7 +59,6 @@ def rome_infer(args: RomeArguments) -> None:
                                       args.system, args.max_length,
                                       args.truncation_strategy)
     generation_config = GenerationConfig(
-        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
