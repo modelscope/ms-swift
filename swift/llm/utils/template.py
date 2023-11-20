@@ -10,6 +10,7 @@ History = List[Union[Tuple[str, str], List[str]]]
 class TemplateType:
     # text-generation
     default_generation = 'default-generation'
+    default_generation_bos = 'default-generation-bos'
     chatglm_generation = 'chatglm-generation'
     # chat
     default = 'default'
@@ -104,6 +105,9 @@ register_template(
 register_template(TemplateType.default_generation,
                   Template([], ['{{QUERY}}'], None, [['eos_token_id']]))
 register_template(
+    TemplateType.default_generation_bos,
+    Template(['bos_token_id'], ['{{QUERY}}'], None, [['eos_token_id']]))
+register_template(
     TemplateType.chatml,
     Template(
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
@@ -136,8 +140,8 @@ register_template(
              [['eos_token_id']]))
 register_template(
     TemplateType.openbuddy,
-    Template(['{{SYSTEM}}\n\n'], ['User: {{QUERY}}\nAssistant: '], ['\n'],
-             [['eos_token_id']]))
+    Template([['bos_token_id'], '{{SYSTEM}}\n\n'],
+             ['User: {{QUERY}}\nAssistant: '], ['\n'], [['eos_token_id']]))
 
 register_template(
     TemplateType.internlm,

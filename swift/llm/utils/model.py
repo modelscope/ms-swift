@@ -101,8 +101,8 @@ class ModelType:
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
     # skywork
-    skywork_13b_chat = 'skywork-13b-chat'
     skywork_13b = 'skywork-13b'
+    skywork_13b_chat = 'skywork-13b-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
@@ -195,9 +195,9 @@ def register_model(
 @register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
                 LoRATM.bluelm, TemplateType.bluelm)
 @register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
-                LoRATM.bluelm, TemplateType.default_generation)
+                LoRATM.bluelm, TemplateType.default_generation_bos)
 @register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
-                TemplateType.default_generation)
+                TemplateType.default_generation_bos)
 @register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
@@ -282,7 +282,7 @@ def get_model_tokenizer_from_sdk(
                 'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.internlm,
                 TemplateType.internlm)
 @register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
-                LoRATM.internlm, TemplateType.default_generation)
+                LoRATM.internlm, TemplateType.default_generation_bos)
 @register_model(ModelType.internlm_7b_chat_8k,
                 'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.internlm,
                 TemplateType.internlm)
@@ -290,7 +290,7 @@ def get_model_tokenizer_from_sdk(
                 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
                 LoRATM.internlm, TemplateType.internlm)
 @register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
-                LoRATM.internlm, TemplateType.default_generation)
+                LoRATM.internlm, TemplateType.default_generation_bos)
 def get_model_tokenizer_internlm(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -494,7 +494,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.ziya2_13b,
     'Fengshenbang/Ziya2-13B-Base',
     LoRATM.ziya,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     support_flash_attn=True)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
@@ -532,7 +532,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
     LoRATM.mistral,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
@@ -554,21 +554,21 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     ModelType.llama2_7b,
     'modelscope/Llama-2-7b-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True)
 @register_model(
     ModelType.llama2_13b,
     'modelscope/Llama-2-13b-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True)
 @register_model(
     ModelType.llama2_70b,
     'modelscope/Llama-2-70b-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True)
 @register_model(
@@ -815,7 +815,7 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
 
 
 register_model(ModelType.skywork_13b, 'skywork/Skywork-13B-base',
-               LoRATM.llama2, TemplateType.default_generation,
+               LoRATM.llama2, TemplateType.default_generation_bos,
                get_model_tokenizer_from_repo)
 
 
