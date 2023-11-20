@@ -207,12 +207,12 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*75G显存.
+# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*55G显存.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
-# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*75G显存.
+# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*55G显存.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh

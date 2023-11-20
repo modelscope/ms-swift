@@ -1,4 +1,5 @@
 # Experimental environment: 2 * A100
+# 2 * 55GB GPU memory (use flash_attn)
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python llm_sft.py \
@@ -9,7 +10,7 @@ python llm_sft.py \
     --dtype AUTO \
     --output_dir output \
     --dataset damo-agent-zh \
-    --train_dataset_sample 200000 \
+    --train_dataset_sample 20000 \
     --num_train_epochs 1 \
     --max_length 8192 \
     --check_dataset_strategy warning \
@@ -30,3 +31,4 @@ python llm_sft.py \
     --hub_model_id qwen-7b-chat-full \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --test_oom_error true \

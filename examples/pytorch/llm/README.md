@@ -208,12 +208,12 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# sft(full+mp) and infer qwen-7b-chat, Requires 2*75GB GPU memory.
+# sft(full+mp) and infer qwen-7b-chat, Requires 2*55GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
-# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*75GB GPU memory.
+# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*55GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
