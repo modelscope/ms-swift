@@ -158,7 +158,8 @@ register_template(
 
 register_template(
     TemplateType.skywork,
-    Template([], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None, ['[SEP]</s>']))
+    Template(['<s>'], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None,
+             ['[SEP]</s>']))
 
 register_template(
     TemplateType.bluelm,
