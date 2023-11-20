@@ -269,7 +269,7 @@ class InferArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    val_dataset_sample: int = 10
+    val_dataset_sample: int = 10  # -1: all dataset
     save_result: bool = True
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
