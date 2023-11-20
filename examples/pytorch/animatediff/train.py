@@ -8,6 +8,7 @@ import imageio
 import random
 from omegaconf import OmegaConf
 import subprocess
+from torch import nn
 from pathlib import Path
 from typing import Dict, Tuple
 from modelscope import snapshot_download
@@ -17,7 +18,7 @@ import torch.nn.functional as F
 import torchvision
 import wandb
 from dataset import WebVid10M
-from diffusers import AutoencoderKL, DDIMScheduler, UNet3DConditionModel
+from diffusers import AutoencoderKL, DDIMScheduler, UNet3DConditionModel, UNetMotionModel, MotionAdapter
 from diffusers.models import UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines import StableDiffusionPipeline, AnimateDiffPipeline
@@ -175,10 +176,10 @@ def main(
     tokenizer    = CLIPTokenizer.from_pretrained(pretrained_model_path, subfolder="tokenizer")
     text_encoder = CLIPTextModel.from_pretrained(pretrained_model_path, subfolder="text_encoder")
     if not image_finetune:
-        unet = UNet3DConditionModel.from_pretrained(
+        unet = UNetMotionModel.from_pretrained(
             pretrained_model_path, subfolder="unet", 
             unet_additional_kwargs=OmegaConf.to_container(unet_additional_kwargs),
-            _class_name=UNet3DConditionModel.__name__,
+            _class_name=UNetMotionModel.__name__,
             down_block_types=[
                 "CrossAttnDownBlockMotion",
                 "CrossAttnDownBlockMotion",
@@ -287,18 +288,6 @@ def main(
         num_warmup_steps=lr_warmup_steps * gradient_accumulation_steps,
         num_training_steps=max_train_steps * gradient_accumulation_steps,
     )
-
-    # Validation pipeline
-    if not image_finetune:
-        validation_pipeline = AnimateDiffPipeline(
-            unet=unet, vae=vae, tokenizer=tokenizer, motion_adapter=None, text_encoder=text_encoder, scheduler=noise_scheduler,
-        ).to("cuda")
-    else:
-        validation_pipeline = StableDiffusionPipeline.from_pretrained(
-            pretrained_model_path,
-            unet=unet, vae=vae, tokenizer=tokenizer, text_encoder=text_encoder, scheduler=noise_scheduler, safety_checker=None,
-        )
-    validation_pipeline.enable_vae_slicing()
 
     # DDP warpper
     unet.to(local_rank)
@@ -455,16 +444,38 @@ def main(
 
                 prompts = validation_data.prompts[:2] if global_step < 1000 and (not image_finetune) else validation_data.prompts
 
+                # Validation pipeline
+                if not image_finetune:
+                    motion_adapter = MotionAdapter()
+                    motion_adapter.mid_block.motion_modules = unet.mid_block.motion_modules
+                    for db1, db2 in zip(motion_adapter.down_blocks, unet.down_blocks):
+                        db1.motion_modules = db2.motion_modules
+                    for db1, db2 in zip(motion_adapter.up_blocks, unet.up_blocks):
+                        db1.motion_modules = db2.motion_modules
+                    validation_pipeline = AnimateDiffPipeline(
+                        unet=unet, vae=vae, tokenizer=tokenizer, 
+                        motion_adapter=motion_adapter,
+                        text_encoder=text_encoder, scheduler=noise_scheduler,
+                    ).to("cuda")
+                else:
+                    validation_pipeline = StableDiffusionPipeline.from_pretrained(
+                        pretrained_model_path,
+                        unet=unet, vae=vae, tokenizer=tokenizer, text_encoder=text_encoder, scheduler=noise_scheduler, safety_checker=None,
+                    )
+                validation_pipeline.enable_vae_slicing()
+
                 for idx, prompt in enumerate(prompts):
                     if not image_finetune:
-                        validation_data.pop('prompts', None)
+                        # validation_data.pop('prompts', None)
+                        kwargs = {**validation_data}
+                        kwargs.pop('prompts', None)
                         sample = validation_pipeline(
                             prompt,
                             generator    = generator,
-                            # video_length = train_data.sample_n_frames,
+                            num_frames = train_data.sample_n_frames,
                             height       = height,
                             width        = width,
-                            **validation_data,
+                            **kwargs,
                         ).frames[0]
                         os.makedirs(f"{output_dir}/samples/sample-{global_step}", exist_ok=True)
                         sample[0].save(f"{output_dir}/samples/sample-{global_step}/{idx}.gif", save_all=True, append_images=sample, loop=0, duration=500)
