@@ -106,7 +106,7 @@ register_template(TemplateType.default_generation,
                   Template([], ['{{QUERY}}'], None, [['eos_token_id']]))
 register_template(
     TemplateType.default_generation_bos,
-    Template(['bos_token_id'], ['{{QUERY}}'], None, [['eos_token_id']]))
+    Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]))
 register_template(
     TemplateType.chatml,
     Template(

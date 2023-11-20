@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 30GB GPU memory
+# 2 * 28GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -25,7 +25,7 @@ torchrun \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-4 \

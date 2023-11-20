@@ -7,7 +7,7 @@ python llm_sft.py \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type default-generation \
+    --template_type default-generation-bos \
     --dtype AUTO \
     --output_dir output \
     --dataset advertise-gen-zh \

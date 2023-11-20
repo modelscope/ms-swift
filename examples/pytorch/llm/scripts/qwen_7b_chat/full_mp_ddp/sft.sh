@@ -1,7 +1,4 @@
 # Experimental environment: 4 * A100
-# 4 * 75GB GPU memory (use flash_attn)
-# You need to install flash_attn or set gradient_checkpointing to True,
-# otherwise it may result in an OOM (Out of Memory) error.
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -21,7 +18,7 @@ torchrun \
     --num_train_epochs 1 \
     --max_length 8192 \
     --check_dataset_strategy warning \
-    --gradient_checkpointing false \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 2e-5 \
