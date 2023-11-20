@@ -517,6 +517,8 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if args.custom_train_dataset_path is None:
         assert args.custom_val_dataset_path is None
         return
+    if '_custom_dataset' in DATASET_MAPPING:
+        DATASET_MAPPING.pop('_custom_dataset')
     register_dataset(
         '_custom_dataset',
         '_custom_dataset',
