@@ -11,7 +11,7 @@ torchrun \
     --model_type tigerbot-7b \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type default-generation-bos \
+    --template_type default-generation \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \

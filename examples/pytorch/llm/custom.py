@@ -107,7 +107,7 @@ if __name__ == '__main__':
     print(f'val_dataset: {val_dataset}')
     # test model base
     model, tokenizer = get_model_tokenizer(
-        CustomModelType.tigerbot_13b, use_flash_attn=False)
+        CustomModelType.tigerbot_7b, use_flash_attn=False)
     # test model chat
     model, tokenizer = get_model_tokenizer(
         CustomModelType.tigerbot_13b_chat, use_flash_attn=False)
