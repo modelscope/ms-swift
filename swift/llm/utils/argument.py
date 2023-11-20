@@ -549,7 +549,10 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
             'custom_val_dataset_path'
         ]
     for key in imported_keys:
-        if key == 'model_cache_dir' and getattr(args, key) is not None:
+        if (key in {
+                'model_cache_dir', 'dataset', 'custom_train_dataset_path',
+                'custom_val_dataset_path'
+        } and getattr(args, key) is not None):
             continue
         setattr(args, key, sft_args.get(key))
 
