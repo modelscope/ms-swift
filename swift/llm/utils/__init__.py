@@ -16,4 +16,4 @@ from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
 from .utils import (data_collate_fn, dataset_map, download_dataset,
                     find_all_linear_for_lora, get_main, inference,
                     inference_stream, limit_history_length, print_example,
-                    sort_by_max_length, stat_dataset)
+                    save_result_to_jsonl, sort_by_max_length, stat_dataset)

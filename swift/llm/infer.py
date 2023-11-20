@@ -12,7 +12,7 @@ from swift.tuners import Swift
 from swift.utils import (get_logger, print_model_info, seed_everything,
                          show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference)
+                    get_template, inference, save_result_to_jsonl)
 
 logger = get_logger()
 
@@ -131,24 +131,36 @@ def llm_infer(args: InferArguments) -> None:
         assert args.ckpt_dir is not None
         model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
+    jsonl_path = None
+    if args.save_result:
+        jsonl_path = os.path.join(args.ckpt_dir, 'infer_result.jsonl')
     if args.eval_human:
         while True:
             query = input('<<< ')
-            inference(model, template, query, stream=args.stream)
+            _, history = inference(model, template, query, stream=args.stream)
+            if jsonl_path is not None:
+                item = history[0]
+                save_result_to_jsonl(jsonl_path, item[0], item[1])
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
         mini_val_dataset = val_dataset.select(
-            range(min(args.show_dataset_sample, val_dataset.shape[0])))
+            range(min(args.val_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
-            inference(
+            _, history = inference(
                 model,
                 template,
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
                 stream=args.stream)
+            label = data.get('response')
+            if jsonl_path is not None:
+                item = history[0]
+                save_result_to_jsonl(jsonl_path, item[0], item[1], label)
             print()
-            print(f"[LABELS]{data.get('response')}")
+            print(f'[LABELS]{label}')
             print('-' * 80)
             # input('next[ENTER]')
+    if args.save_result:
+        logger.info(f'save_result_path: {jsonl_path}')

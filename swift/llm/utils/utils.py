@@ -31,9 +31,9 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
                           TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, parse_args, stat_array,
-                         upper_bound)
+from swift.utils import (append_to_jsonl, get_dist_setting, get_logger,
+                         is_ddp_plus_mp, is_dist, is_local_master, is_master,
+                         parse_args, stat_array, upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -428,6 +428,15 @@ def limit_history_length(template: Template, query: str,
     old_history = history[:len(history) - history_length]
     history = history[len(history) - history_length:]
     return old_history, history
+
+
+def save_result_to_jsonl(fpath: str,
+                         query: str,
+                         response: str,
+                         label: Optional[str] = None) -> None:
+
+    obj = {'query': query, 'response': response, 'label': label}
+    append_to_jsonl(fpath, obj)
 
 
 # monkey patching

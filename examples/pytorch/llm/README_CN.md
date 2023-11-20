@@ -110,7 +110,7 @@ infer_args = InferArguments(
     ckpt_dir=best_ckpt_dir,
     load_args_from_ckpt_dir=True,
     stream=True,
-    show_dataset_sample=5)
+    val_dataset_sample=5)
 infer_main(infer_args)
 torch.cuda.empty_cache()
 web_ui_main(infer_args)
@@ -597,7 +597,7 @@ if __name__ == '__main__':
 - `--dataset`: 默认值为`'blossom-math-zh'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_test_ratio`: 默认值为`0.01`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
-- `--show_dataset_sample`: 表示想要评估和展示的验证集的数量, 默认值为`10`. 该参数只有在`eval_human`设置为False时才生效.
+- `--val_dataset_sample`: 表示想要评估和展示的验证集的数量, 默认值为`10`. 该参数只有在`eval_human`设置为False时才生效.
 - `--system`: 默认值为`'you are a helpful assistant!'`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--max_length`: 默认值为`2048`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--check_dataset_strategy`: 默认值为`'none'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.
