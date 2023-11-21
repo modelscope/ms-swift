@@ -336,6 +336,62 @@ class InferArguments:
 
 
 @dataclass
+class AnimateDiffArguments(SftArguments):
+    text_dropout_rate: float = 0.1
+
+    unet_additional_config_path: str = field(
+        default=None,
+        metadata={
+            'help':
+                'The additional unet config path, use llm/configs/unet.json if None'
+        })
+
+    noise_scheduler_additional_config_path: str = field(
+        default=None,
+        metadata={
+            'help':
+                'The additional unet config path, use llm/configs/noise_scheduler.json if None'
+        })
+
+    validation_prompts_path: str = field(
+        default=None,
+        metadata={
+            'help':
+                'The validation prompts file path, use llm/configs/ad_validation.txt is None'
+        })
+
+    trainable_modules: Union[str, List[str]] = field(
+        default="motion_modules.",
+        metadata={
+            'help':
+                'The trainable modules, by default, the motion_modules.* will be trained'
+        })
+
+    mixed_precision: bool = True
+
+    enable_xformers_memory_efficient_attention: bool = True
+
+    num_inference_steps: int = 25
+    guidance_scale: float = 8.
+    sample_size: int = 256
+    sample_stride: int = 4
+    sample_n_frames: int = 16
+
+    csv_path: str = None
+    video_folder: str = None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        current_dir = os.path.dirname(__file__)
+        if self.unet_additional_config_path is None:
+            self.unet_additional_config_path = os.path.join(current_dir, 'configs/animatediff', 'unet.json')
+        if self.noise_scheduler_additional_config_path is None:
+            self.noise_scheduler_additional_config_path = os.path.join(current_dir, 'configs/animatediff', 'noise_scheduler.json')
+        if self.validation_prompts_path is None:
+            self.validation_prompts_path = os.path.join(current_dir, 'configs/animatediff', 'validation.txt')
+
+
+@dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(
         default=None,

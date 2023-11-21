@@ -1,0 +1,18 @@
+{
+  "unet_additional_kwargs": {
+    "use_motion_module": true,
+    "motion_module_resolutions": [1, 2, 4, 8],
+    "unet_use_cross_frame_attention": false,
+    "unet_use_temporal_attention": false
+  },
+  "motion_module_type": "Vanilla",
+  "motion_module_kwargs": {
+    "num_attention_heads": 8,
+    "num_transformer_block": 1,
+    "attention_block_types": ["Temporal_Self", "Temporal_Self"],
+    "temporal_position_encoding": true,
+    "temporal_position_encoding_max_len": 24,
+    "temporal_attention_dim_div": 1,
+    "zero_initialize": true
+  }
+}
