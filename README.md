@@ -115,7 +115,7 @@ To see more sh startup scripts, please refer to: [Run SFT and Inference](https:/
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .
+pip install -e .
 ```
 
 

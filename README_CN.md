@@ -113,7 +113,7 @@ LLM微调的详细使用文档可以查看[这里](https://github.com/modelscope
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .
+pip install -e .
 ```
 
 #### 使用python运行
