@@ -50,7 +50,7 @@
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
-  - Text Generation: default-generation, chatglm-generation
+  - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 
@@ -111,7 +111,7 @@ infer_args = InferArguments(
     ckpt_dir=best_ckpt_dir,
     load_args_from_ckpt_dir=True,
     stream=True,
-    show_dataset_sample=5)
+    val_dataset_sample=5)
 infer_main(infer_args)
 torch.cuda.empty_cache()
 web_ui_main(infer_args)
@@ -208,12 +208,12 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# sft(full+mp) and infer qwen-7b-chat, Requires 2*75GB GPU memory.
+# sft(full+mp) and infer qwen-7b-chat, Requires 2*55GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
-# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*75GB GPU memory.
+# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*55GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
@@ -594,7 +594,7 @@ The template initialization function retrieves the complete chat template based 
 - `--dataset`: Default value is `'blossom-math-zh'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
-- `--show_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `10`. This parameter only takes effect when `eval_human` is set to False.
+- `--val_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `10`. This parameter only takes effect when `eval_human` is set to False.
 - `--system`: Default value is `'you are a helpful assistant!'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--max_length`: Default value is `2048`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--check_dataset_strategy`: The default value is `'none'`, For specific parameter details, please refer to the `sft.sh Command Line Arguments`.

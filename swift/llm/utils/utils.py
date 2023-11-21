@@ -31,9 +31,9 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
                           TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, parse_args, stat_array,
-                         upper_bound)
+from swift.utils import (append_to_jsonl, get_dist_setting, get_logger,
+                         is_ddp_plus_mp, is_dist, is_local_master, is_master,
+                         parse_args, stat_array, upper_bound)
 from .template import History, Template
 
 logger = get_logger()
@@ -333,8 +333,7 @@ def inference_stream(
         template: Template,
         query: str,
         history: Optional[History] = None,
-        system: Optional[str] = None,
-        skip_special_tokens: bool = False) -> Iterator[Tuple[str, History]]:
+        system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
     if history is None:
         history = []
     example = {'query': query, 'history': history, 'system': system}
@@ -351,7 +350,7 @@ def inference_stream(
     stream_config = StreamGenerationConfig(
         **generation_config.to_dict(), do_stream=True)
     if stream_config.max_new_tokens is not None:
-        stream_config.max_length = 20  # fix max_length, max_new_tokens bug
+        stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     gen = model.generate_stream(
         input_ids=input_ids,
@@ -362,7 +361,7 @@ def inference_stream(
     history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
-        response = tokenizer.decode(generate_ids, skip_special_tokens)
+        response = tokenizer.decode(generate_ids, True)
         history[-1] = (query, response)
         yield response, history
 
@@ -374,7 +373,6 @@ def inference(model: PreTrainedModel,
               system: Optional[str] = None,
               stream: bool = True,
               verbose: bool = True,
-              skip_special_tokens: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
     if history is None:
@@ -389,7 +387,7 @@ def inference(model: PreTrainedModel,
     generation_config = getattr(model, 'generation_config', None)
     if verbose:
         print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], skip_special_tokens)}{output_prefix}',
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False)}{output_prefix}',
             end='')
     else:
         stream = False
@@ -397,16 +395,15 @@ def inference(model: PreTrainedModel,
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if generation_config.max_new_tokens is not None:
-        generation_config.max_length = 20  # fix max_length, max_new_tokens bug
+        generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config)
-    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):],
-                                skip_special_tokens)
+    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True)
     if verbose and not streamer:
-        print(response)
+        print(tokenizer.decode(generate_ids[0, len(input_ids[0]):], False))
     history.append((query, response))
     return response, history
 
@@ -428,6 +425,15 @@ def limit_history_length(template: Template, query: str,
     old_history = history[:len(history) - history_length]
     history = history[len(history) - history_length:]
     return old_history, history
+
+
+def save_result_to_jsonl(fpath: str,
+                         query: str,
+                         response: str,
+                         label: Optional[str] = None) -> None:
+
+    obj = {'query': query, 'response': response, 'label': label}
+    append_to_jsonl(fpath, obj)
 
 
 # monkey patching

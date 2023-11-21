@@ -50,7 +50,7 @@
   - 多模态: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - 自定义数据集
 - 支持的对话模板:
-  - 文本生成: default-generation, chatglm-generation
+  - 文本生成: default-generation, default-generation-bos, chatglm-generation
   - 对话: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 ## 🛠️ 准备实验环境
@@ -110,7 +110,7 @@ infer_args = InferArguments(
     ckpt_dir=best_ckpt_dir,
     load_args_from_ckpt_dir=True,
     stream=True,
-    show_dataset_sample=5)
+    val_dataset_sample=5)
 infer_main(infer_args)
 torch.cuda.empty_cache()
 web_ui_main(infer_args)
@@ -207,12 +207,12 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*75G显存.
+# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*55G显存.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
-# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*75G显存.
+# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*55G显存.
 # 推荐的实验环境: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
@@ -597,7 +597,7 @@ if __name__ == '__main__':
 - `--dataset`: 默认值为`'blossom-math-zh'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_seed`: 默认值为`42`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
 - `--dataset_test_ratio`: 默认值为`0.01`, 具体的参数介绍可以在`sft.sh命令行参数`中查看. 该参数只有在`eval_human`设置为False时才生效.
-- `--show_dataset_sample`: 表示想要评估和展示的验证集的数量, 默认值为`10`. 该参数只有在`eval_human`设置为False时才生效.
+- `--val_dataset_sample`: 表示想要评估和展示的验证集的数量, 默认值为`10`. 该参数只有在`eval_human`设置为False时才生效.
 - `--system`: 默认值为`'you are a helpful assistant!'`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--max_length`: 默认值为`2048`. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--check_dataset_strategy`: 默认值为`'none'`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.

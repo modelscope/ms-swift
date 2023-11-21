@@ -269,7 +269,8 @@ class InferArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    show_dataset_sample: int = 10
+    val_dataset_sample: int = 10  # -1: all dataset
+    save_result: bool = True
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
@@ -301,6 +302,8 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
+    # compatibility
+    show_dataset_sample: int = 10
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -428,6 +431,10 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
             and 'AUTO' in args.lora_target_modules
             and len(args.lora_target_modules) == 1):
         args.lora_target_modules = ['DEFAULT']
+    if (isinstance(args, InferArguments) and args.show_dataset_sample != 10
+            and args.val_dataset_sample == 10):
+        # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
+        args.val_dataset_sample = args.show_dataset_sample
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
@@ -515,7 +522,11 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if args.custom_train_dataset_path is None:
-        assert args.custom_val_dataset_path is None
+        args.custom_train_dataset_path = []
+    if args.custom_val_dataset_path is None:
+        args.custom_val_dataset_path = []
+    if len(args.custom_train_dataset_path) == 0 and len(
+            args.custom_val_dataset_path) == 0:
         return
     if '_custom_dataset' in DATASET_MAPPING:
         DATASET_MAPPING.pop('_custom_dataset')

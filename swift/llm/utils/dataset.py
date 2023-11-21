@@ -107,6 +107,10 @@ def register_dataset(
         raise ValueError(
             f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
         )
+    if train_subset_split_list is None:
+        train_subset_split_list = []
+    if val_subset_split_list is None:
+        val_subset_split_list = []
     if function_kwargs is None:
         function_kwargs = {}
 
@@ -198,7 +202,6 @@ def get_dataset_from_repo(
     dataset_sample: int = -1,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
-    assert train_subset_split_list is not None
     for subset_split_list in [train_subset_split_list, val_subset_split_list]:
         dataset = load_ms_dataset(dataset_id, subset_split_list)
         if dataset is not None:
@@ -754,15 +757,19 @@ def get_dataset(
             train_d, val_d = dataset
         else:
             train_d, val_d = dataset, None
+        assert train_d is not None or val_d is not None
         if val_d is None and dataset_test_ratio > 0:
             dataset_dict = train_d.train_test_split(
                 dataset_test_ratio, seed=get_seed(random_state))
             train_d, val_d = dataset_dict['train'], dataset_dict['test']
-        train_dataset_list.append(train_d)
+        if train_d is not None:
+            train_dataset_list.append(train_d)
         if val_d is not None:
             val_dataset_list.append(val_d)
 
-    train_dataset = concatenate_datasets(train_dataset_list)
+    train_dataset = None
+    if len(train_dataset_list) > 0:
+        train_dataset = concatenate_datasets(train_dataset_list)
     val_dataset = None
     if len(val_dataset_list) > 0:
         val_dataset = concatenate_datasets(val_dataset_list)
@@ -805,7 +812,6 @@ def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
                        val_subset_split_list: Optional[Union[str, List[str]]],
                        preprocess_func: PreprocessFunc,
                        **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    assert train_subset_split_list is not None
     train_dataset = load_dataset_from_local(train_subset_split_list,
                                             preprocess_func)
     val_dataset = load_dataset_from_local(val_subset_split_list,
