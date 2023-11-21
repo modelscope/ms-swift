@@ -105,11 +105,11 @@ sft_args = SftArguments(
     output_dir='output',
     gradient_checkpointing=True)
 result = sft_main(sft_args)
-print(f'result: {result}')
-best_ckpt_dir = result['best_model_checkpoint']
+best_model_checkpoint = result['best_model_checkpoint']
+print(f'best_model_checkpoint: {best_model_checkpoint}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(
-    ckpt_dir=best_ckpt_dir,
+    ckpt_dir=best_model_checkpoint,
     load_args_from_ckpt_dir=True,
     stream=True,
     show_dataset_sample=5)
