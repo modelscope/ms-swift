@@ -104,7 +104,7 @@ sft_args = SftArguments(
     dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
-best_ckpt_dir = sft_main(sft_args)
+best_ckpt_dir = sft_main(sft_args)['best_model_checkpoint']
 print(f'best_ckpt_dir: {best_ckpt_dir}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(
@@ -122,7 +122,11 @@ web_ui_main(infer_args)
 ```bash
 # Experimental environment: A10, 3090, A100, ...
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset blossom-math-zh \
+    --output_dir output \
 
 # Using DDP
 # Experimental environment: 2 * 3090
@@ -132,18 +136,31 @@ NPROC_PER_NODE=2 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset blossom-math-zh \
+    --output_dir output \
 
 # Using custom dataset
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --custom_train_dataset_path chatml.jsonl
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --custom_train_dataset_path chatml.jsonl \
+    --output_dir output \
 ```
 
 **Inference**:
 ```bash
+# Original Model
+CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+
+# Fine-tuned Model
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 **Web-UI**:
 ```bash
+# Original Model
+CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
+
+# Fine-tuned Model
 CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
@@ -574,9 +591,9 @@ The template initialization function retrieves the complete chat template based 
 -- `check_model_is_latest`: Check if the model is the latest, default is `True`. If you need to train without internet connection, please set this parameter to `False`.
 - `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Whether to use sampling during generation. The default value is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--temperature`: The temperature value for sampling during generation. The default value is `0.3`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--top_k`: The value of k for top-k sampling during generation. The default value is `20`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--top_p`: The cumulative probability threshold for top-p sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--top_p`: The cumulative probability threshold for top-p sampling during generation. The default value is `0.7`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--repetition_penalty`: The repetition penalty applied during generation. The default value is `1.05`. This parameter only takes effect when `predict_with_generate` is set to True.
 
 
@@ -606,9 +623,9 @@ The template initialization function retrieves the complete chat template based 
 - `--bnb_4bit_use_double_quant`: Default value is `True`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--max_new_tokens`: Maximum number of new tokens to generate. Default value is `2048`.
 - `--do_sample`: Whether to use greedy decoding or sampling for generation. Default value is `True`.
-- `--temperature`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
+- `--temperature`: Default value is `0.3`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_k`: Default value is `20`. This parameter only takes effect when `do_sample` is set to True.
-- `--top_p`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
+- `--top_p`: Default value is `0.7`. This parameter only takes effect when `do_sample` is set to True.
 - `--repetition_penalty`: Default value is `1.05`.
 - `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. The models that support 'flash_attn' include: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series.
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.

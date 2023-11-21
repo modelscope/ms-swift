@@ -7,9 +7,8 @@ python llm_infer.py \
     --eval_human false \
     --max_length 2048 \
     --max_new_tokens 2048 \
-    --temperature 0.9 \
-    --top_k 20 \
-    --top_p 0.9 \
+    --temperature 0.7 \
+    --top_p 0.7 \
     --repetition_penalty 1.05 \
     --do_sample true \
     --merge_lora_and_save false \

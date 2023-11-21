@@ -132,17 +132,23 @@ def llm_infer(args: InferArguments) -> None:
         assert args.ckpt_dir is not None
         model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
+    result = []
     jsonl_path = None
-    if args.save_result:
+    if args.save_result and args.ckpt_dir is not None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
         while True:
             query = input('<<< ')
             _, history = inference(model, template, query, stream=args.stream)
+            item = history[0]
             if jsonl_path is not None:
-                item = history[0]
                 save_result_to_jsonl(jsonl_path, item[0], item[1])
+            result.append({
+                'query': item[0],
+                'response': item[1],
+                'label': None
+            })
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
@@ -160,12 +166,18 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('system'),
                 stream=args.stream)
             label = data.get('response')
+            item = history[0]
             if jsonl_path is not None:
-                item = history[0]
                 save_result_to_jsonl(jsonl_path, item[0], item[1], label)
+            result.append({
+                'query': item[0],
+                'response': item[1],
+                'label': label
+            })
             print()
             print(f'[LABELS]{label}')
             print('-' * 80)
             # input('next[ENTER]')
-    if args.save_result:
+    if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
+    return {'result': result}

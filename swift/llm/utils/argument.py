@@ -98,7 +98,7 @@ class SftArguments:
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
     gradient_accumulation_steps: int = 16
-    max_grad_norm: float = 1.
+    max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
@@ -145,9 +145,9 @@ class SftArguments:
     # generation config
     max_new_tokens: int = 2048
     do_sample: bool = True
-    temperature: float = 0.9
+    temperature: float = 0.3
     top_k: int = 20
-    top_p: float = 0.9
+    top_p: float = 0.7
     repetition_penalty: float = 1.05
 
     def __post_init__(self) -> None:
@@ -291,9 +291,9 @@ class InferArguments:
 
     max_new_tokens: int = 2048
     do_sample: bool = True
-    temperature: float = 0.9
+    temperature: float = 0.3
     top_k: int = 20
-    top_p: float = 0.9
+    top_p: float = 0.7
     repetition_penalty: float = 1.05
 
     # other
