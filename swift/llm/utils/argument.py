@@ -343,28 +343,28 @@ class AnimateDiffArguments(SftArguments):
         default=None,
         metadata={
             'help':
-                'The additional unet config path, use llm/configs/unet.json if None'
+            'The additional unet config path, use llm/configs/unet.json if None'
         })
 
     noise_scheduler_additional_config_path: str = field(
         default=None,
         metadata={
             'help':
-                'The additional unet config path, use llm/configs/noise_scheduler.json if None'
+            'The additional unet config path, use llm/configs/noise_scheduler.json if None'
         })
 
     validation_prompts_path: str = field(
         default=None,
         metadata={
             'help':
-                'The validation prompts file path, use llm/configs/ad_validation.txt is None'
+            'The validation prompts file path, use llm/configs/ad_validation.txt is None'
         })
 
     trainable_modules: Union[str, List[str]] = field(
-        default="motion_modules.",
+        default='motion_modules.',
         metadata={
             'help':
-                'The trainable modules, by default, the motion_modules.* will be trained'
+            'The trainable modules, by default, the motion_modules.* will be trained'
         })
 
     mixed_precision: bool = True
@@ -384,11 +384,14 @@ class AnimateDiffArguments(SftArguments):
         super().__post_init__()
         current_dir = os.path.dirname(__file__)
         if self.unet_additional_config_path is None:
-            self.unet_additional_config_path = os.path.join(current_dir, 'configs/animatediff', 'unet.json')
+            self.unet_additional_config_path = os.path.join(
+                current_dir, 'configs/animatediff', 'unet.json')
         if self.noise_scheduler_additional_config_path is None:
-            self.noise_scheduler_additional_config_path = os.path.join(current_dir, 'configs/animatediff', 'noise_scheduler.json')
+            self.noise_scheduler_additional_config_path = os.path.join(
+                current_dir, 'configs/animatediff', 'noise_scheduler.json')
         if self.validation_prompts_path is None:
-            self.validation_prompts_path = os.path.join(current_dir, 'configs/animatediff', 'validation.txt')
+            self.validation_prompts_path = os.path.join(
+                current_dir, 'configs/animatediff', 'validation.txt')
 
 
 @dataclass

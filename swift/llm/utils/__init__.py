@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import InferArguments, RomeArguments, SftArguments, AnimateDiffArguments
+from .argument import (AnimateDiffArguments, InferArguments, RomeArguments,
+                       SftArguments)
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       get_dataset, get_dataset_from_repo, register_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
