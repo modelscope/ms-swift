@@ -9,6 +9,7 @@ python llm_infer.py \
     --use_flash_attn false \
     --max_new_tokens 2048 \
     --temperature 0.3 \
+    --top_p 0.7 \
     --repetition_penalty 1.05 \
     --do_sample true \
     --merge_lora_and_save false \

@@ -8,6 +8,7 @@ python llm_infer.py \
     --max_length 2048 \
     --max_new_tokens 2048 \
     --temperature 0.3 \
+    --top_p 0.7 \
     --repetition_penalty 1.05 \
     --do_sample true \
     --merge_lora_and_save false \
