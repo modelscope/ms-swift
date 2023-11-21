@@ -141,8 +141,8 @@ def llm_infer(args: InferArguments) -> None:
         while True:
             query = input('<<< ')
             _, history = inference(model, template, query, stream=args.stream)
+            item = history[0]
             if jsonl_path is not None:
-                item = history[0]
                 save_result_to_jsonl(jsonl_path, item[0], item[1])
             result.append({
                 'query': item[0],
