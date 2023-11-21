@@ -14,7 +14,8 @@ import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 from decord import VideoReader
-from diffusers import AutoencoderKL, DDIMScheduler, UNetMotionModel
+from diffusers import (AutoencoderKL, DDIMScheduler, MotionAdapter,
+                       UNet2DConditionModel, UNetMotionModel)
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils.import_utils import is_xformers_available
@@ -168,27 +169,26 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDIMScheduler(
-        **read_config(args.noise_scheduler_additional_config_path))
+        num_train_timesteps=args.num_train_timesteps,
+        beta_start=args.beta_start,
+        beta_end=args.beta_end,
+        beta_schedule=args.beta_schedule,
+        steps_offset=args.steps_offset,
+        clip_sample=args.clip_sample,
+    )
     pretrained_model_path = snapshot_download(args.model_id_or_path)
     vae = AutoencoderKL.from_pretrained(pretrained_model_path, subfolder='vae')
     tokenizer = CLIPTokenizer.from_pretrained(
         pretrained_model_path, subfolder='tokenizer')
     text_encoder = CLIPTextModel.from_pretrained(
         pretrained_model_path, subfolder='text_encoder')
-    unet = UNetMotionModel.from_pretrained(
-        pretrained_model_path,
-        subfolder='unet',
-        unet_additional_kwargs=read_config(args.unet_additional_config_path),
-        _class_name=UNetMotionModel.__name__,
-        down_block_types=[
-            'CrossAttnDownBlockMotion', 'CrossAttnDownBlockMotion',
-            'CrossAttnDownBlockMotion', 'DownBlockMotion'
-        ],
-        up_block_types=[
-            'UpBlockMotion', 'CrossAttnUpBlockMotion',
-            'CrossAttnUpBlockMotion', 'CrossAttnUpBlockMotion'
-        ],
-        low_cpu_mem_usage=False,
+    unet: UNetMotionModel = UNetMotionModel.from_unet2d(
+        UNet2DConditionModel.from_pretrained(
+            pretrained_model_path, subfolder='unet'),
+        motion_adapter=MotionAdapter(
+            motion_num_attention_heads=args.motion_num_attention_heads,
+            motion_max_seq_length=args.motion_max_seq_length),
+        load_weights=False,
     )
 
     # Freeze vae and text_encoder
@@ -271,15 +271,14 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
     # Get the training iteration
     max_train_steps = args.num_train_epochs * len(train_dataloader)
-    checkpointing_steps = args.save_steps
 
     # Scheduler
     lr_scheduler = get_scheduler(
         args.lr_scheduler_type,
         optimizer=optimizer,
-        num_warmup_steps=int(args.warmup_ratio * max_train_steps
-                             * args.gradient_accumulation_steps),
-        num_training_steps=max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=int(args.warmup_ratio * max_train_steps)
+        // args.gradient_accumulation_steps,
+        num_training_steps=max_train_steps // args.gradient_accumulation_steps,
     )
 
     unet.to(local_rank)
@@ -401,27 +400,27 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                 loss = F.mse_loss(
                     model_pred.float(), target.float(), reduction='mean')
 
-            optimizer.zero_grad()
-
             # Backpropagate
             if args.mixed_precision:
                 scaler.scale(loss).backward()
-                """ >>> gradient clipping >>> """
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(unet.parameters(),
-                                               args.max_grad_norm)
-                """ <<< gradient clipping <<< """
-                scaler.step(optimizer)
-                scaler.update()
             else:
                 loss.backward()
-                """ >>> gradient clipping >>> """
-                torch.nn.utils.clip_grad_norm_(unet.parameters(),
-                                               args.max_grad_norm)
-                """ <<< gradient clipping <<< """
-                optimizer.step()
 
-            lr_scheduler.step()
+            if step % args.gradient_accumulation_steps == 0:
+                # Backpropagate
+                if args.mixed_precision:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(unet.parameters(),
+                                                   args.max_grad_norm)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    torch.nn.utils.clip_grad_norm_(unet.parameters(),
+                                                   args.max_grad_norm)
+                    optimizer.step()
+                optimizer.zero_grad()
+                lr_scheduler.step()
+
             progress_bar.update(1)
             global_step += 1
 
@@ -454,14 +453,19 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
                 height = args.sample_size
                 width = args.sample_size
-                motion_adapter = MotionAdapter()
+                motion_adapter = MotionAdapter(
+                    motion_num_attention_heads=args.motion_num_attention_heads,
+                    motion_max_seq_length=args.motion_max_seq_length)
                 motion_adapter.mid_block.motion_modules = unet.mid_block.motion_modules
-                for db1, db2 in zip(motion_adapter.down_blocks, unet.down_blocks):
+                for db1, db2 in zip(motion_adapter.down_blocks,
+                                    unet.down_blocks):
                     db1.motion_modules = db2.motion_modules
                 for db1, db2 in zip(motion_adapter.up_blocks, unet.up_blocks):
                     db1.motion_modules = db2.motion_modules
+
                 validation_pipeline = AnimateDiffPipeline(
-                    unet=unet,
+                    unet=UNet2DConditionModel.from_pretrained(
+                        pretrained_model_path, subfolder='unet'),
                     vae=vae,
                     tokenizer=tokenizer,
                     motion_adapter=motion_adapter,

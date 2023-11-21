@@ -380,14 +380,17 @@ class AnimateDiffArguments(SftArguments):
     csv_path: str = None
     video_folder: str = None
 
+    motion_num_attention_heads: int = 8
+    motion_max_seq_length: int = 32
+    num_train_timesteps: int = 1000
+    beta_start: int = 0.00085
+    beta_end: int = 0.012
+    beta_schedule: str = 'linear'
+    steps_offset: int = 1
+    clip_sample: bool = False
+
     def __post_init__(self) -> None:
         current_dir = os.path.dirname(__file__)
-        if self.unet_additional_config_path is None:
-            self.unet_additional_config_path = os.path.join(
-                current_dir, 'configs/animatediff', 'unet.json')
-        if self.noise_scheduler_additional_config_path is None:
-            self.noise_scheduler_additional_config_path = os.path.join(
-                current_dir, 'configs/animatediff', 'noise_scheduler.json')
         if self.validation_prompts_path is None:
             self.validation_prompts_path = os.path.join(
                 current_dir, 'configs/animatediff', 'validation.txt')
