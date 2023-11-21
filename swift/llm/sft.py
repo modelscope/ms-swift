@@ -267,7 +267,7 @@ def llm_sft(args: SftArguments) -> str:
                     f,
                     ensure_ascii=False,
                     indent=2)
-    trainer.train(training_args.resume_from_checkpoint)
+    res = trainer.train(training_args.resume_from_checkpoint)
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
 
@@ -280,4 +280,9 @@ def llm_sft(args: SftArguments) -> str:
         if args.push_to_hub:
             trainer._add_patterns_to_gitignores(['images/'])
             trainer.push_to_hub()
-    return trainer.state.best_model_checkpoint
+    return {
+        'best_model_checkpoint': trainer.state.best_model_checkpoint,
+        'best_metric': trainer.state.best_metric,
+        'global_step': res.global_step,
+        'log_history': trainer.state.log_history,
+    }

@@ -132,6 +132,7 @@ def llm_infer(args: InferArguments) -> None:
         assert args.ckpt_dir is not None
         model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
+    result = []
     jsonl_path = None
     if args.save_result:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -143,6 +144,11 @@ def llm_infer(args: InferArguments) -> None:
             if jsonl_path is not None:
                 item = history[0]
                 save_result_to_jsonl(jsonl_path, item[0], item[1])
+            result.append({
+                'query': item[0],
+                'response': item[1],
+                'label': None
+            })
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
@@ -163,9 +169,15 @@ def llm_infer(args: InferArguments) -> None:
             if jsonl_path is not None:
                 item = history[0]
                 save_result_to_jsonl(jsonl_path, item[0], item[1], label)
+            result.append({
+                'query': item[0],
+                'response': item[1],
+                'label': label
+            })
             print()
             print(f'[LABELS]{label}')
             print('-' * 80)
             # input('next[ENTER]')
     if args.save_result:
         logger.info(f'save_result_path: {jsonl_path}')
+    return {'result': result}

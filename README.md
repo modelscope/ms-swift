@@ -141,7 +141,7 @@ sft_args = SftArguments(
     dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
-best_ckpt_dir = sft_main(sft_args)
+best_ckpt_dir = sft_main(sft_args)['best_model_checkpoint']
 print(f'best_ckpt_dir: {best_ckpt_dir}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(

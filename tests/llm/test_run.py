@@ -39,7 +39,9 @@ class TestRun(unittest.TestCase):
             dataset=[DatasetName.jd_sentiment_zh],
             output_dir=output_dir,
             gradient_checkpointing=True)
-        best_ckpt_dir = sft_main(sft_args)
+        output = sft_main(sft_args)
+        print(output)
+        best_ckpt_dir = output['best_model_checkpoint']
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
         if __name__ == '__main__':
@@ -48,7 +50,8 @@ class TestRun(unittest.TestCase):
                 stream=False,
                 show_dataset_sample=5,
                 merge_lora_and_save=True)
-            infer_main(infer_args)
+            result = infer_main(infer_args)
+            print(result)
             torch.cuda.empty_cache()
         # if __name__ == '__main__':
         #     web_ui_main(infer_args)
@@ -80,7 +83,7 @@ class TestRun(unittest.TestCase):
             'true',
             '--max_new_tokens',
             '100',
-        ])
+        ])['best_model_checkpoint']
         print(f'best_ckpt_dir: {best_ckpt_dir}')
         torch.cuda.empty_cache()
         infer_main([
