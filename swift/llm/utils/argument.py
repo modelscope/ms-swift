@@ -87,7 +87,7 @@ class SftArguments:
 
     neftune_alpha: float = 0.0
 
-    gradient_checkpointing: bool = True
+    gradient_checkpointing: bool = False
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -381,7 +381,6 @@ class AnimateDiffArguments(SftArguments):
     video_folder: str = None
 
     def __post_init__(self) -> None:
-        super().__post_init__()
         current_dir = os.path.dirname(__file__)
         if self.unet_additional_config_path is None:
             self.unet_additional_config_path = os.path.join(
@@ -392,6 +391,12 @@ class AnimateDiffArguments(SftArguments):
         if self.validation_prompts_path is None:
             self.validation_prompts_path = os.path.join(
                 current_dir, 'configs/animatediff', 'validation.txt')
+        if isinstance(self.trainable_modules, str):
+            self.trainable_modules = [self.trainable_modules]
+        if self.learning_rate is None:
+            self.learning_rate = 1e-4
+        if self.save_steps is None:
+            self.save_steps = self.eval_steps
 
 
 @dataclass

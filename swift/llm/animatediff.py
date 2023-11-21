@@ -26,7 +26,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger
-from swift.llm import AnimateDiffArguments
+from .utils import AnimateDiffArguments
 
 logger = get_logger()
 
@@ -133,7 +133,7 @@ def save_videos_grid(videos: torch.Tensor,
     imageio.mimsave(path, outputs, fps=fps)
 
 
-def animatediff_sft(args: AnimateDiffArguments, ) -> None:
+def animatediff_sft(args: AnimateDiffArguments) -> None:
     # Initialize distributed training
     local_rank = 0  # init_dist(launcher=launcher)
     global_rank = 0  # dist.get_rank()
@@ -188,6 +188,7 @@ def animatediff_sft(args: AnimateDiffArguments, ) -> None:
             'UpBlockMotion', 'CrossAttnUpBlockMotion',
             'CrossAttnUpBlockMotion', 'CrossAttnUpBlockMotion'
         ],
+        low_cpu_mem_usage=False,
     )
 
     # Freeze vae and text_encoder
@@ -255,7 +256,7 @@ def animatediff_sft(args: AnimateDiffArguments, ) -> None:
         sample_stride=args.sample_stride,
         sample_n_frames=args.sample_n_frames,
     )
-    sampler = RandomSampler(train_dataset, )
+    sampler = RandomSampler(train_dataset)
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -425,7 +426,7 @@ def animatediff_sft(args: AnimateDiffArguments, ) -> None:
             global_step += 1
 
             # Save checkpoint
-            if is_main_process and (global_step % checkpointing_steps == 0
+            if is_main_process and (global_step % args.save_steps == 0
                                     or step == len(train_dataloader) - 1):
                 save_path = os.path.join(output_dir, 'checkpoints')
                 state_dict = {
@@ -453,12 +454,17 @@ def animatediff_sft(args: AnimateDiffArguments, ) -> None:
 
                 height = args.sample_size
                 width = args.sample_size
-
+                motion_adapter = MotionAdapter()
+                motion_adapter.mid_block.motion_modules = unet.mid_block.motion_modules
+                for db1, db2 in zip(motion_adapter.down_blocks, unet.down_blocks):
+                    db1.motion_modules = db2.motion_modules
+                for db1, db2 in zip(motion_adapter.up_blocks, unet.up_blocks):
+                    db1.motion_modules = db2.motion_modules
                 validation_pipeline = AnimateDiffPipeline(
                     unet=unet,
                     vae=vae,
                     tokenizer=tokenizer,
-                    motion_adapter=None,
+                    motion_adapter=motion_adapter,
                     text_encoder=text_encoder,
                     scheduler=noise_scheduler,
                 ).to('cuda')
