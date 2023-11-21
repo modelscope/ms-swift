@@ -154,7 +154,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --datase
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
-**Web-UI**
+**Web-UI**:
 ```bash
 # 原始模型
 CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
@@ -594,9 +594,9 @@ if __name__ == '__main__':
 - `--check_model_is_latest`: 检查模型是否是最新, 默认为`True`. 如果你需要断网进行训练, 请将该参数设置为`False`.
 - `--max_new_tokens`: 默认为`2048`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--do_sample`: 默认为`True`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
-- `--temperature`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
+- `--temperature`: 默认为`0.3`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--top_k`: 默认为`20`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
-- `--top_p`: 默认为`0.9`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
+- `--top_p`: 默认为`0.7`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 - `--repetition_penalty`: 默认为`1.05`. 该参数只有在`predict_with_generate`设置为True的时候才生效.
 
 
@@ -626,9 +626,9 @@ if __name__ == '__main__':
 - `--bnb_4bit_use_double_quant`: 默认值为`True`.  具体的参数介绍可以在`sft.sh命令行参数`中查看. 若`quantization_bit`设置为0, 则该参数失效.
 - `--max_new_tokens`: 生成新token的最大数量, 默认值为`2048`.
 - `--do_sample`: 是使用贪婪生成的方式还是采样生成的方式, 默认值为`True`.
-- `--temperature`: 默认值为`0.9`. 该参数只有在`do_sample`设置为True时才生效.
+- `--temperature`: 默认值为`0.3`. 该参数只有在`do_sample`设置为True时才生效.
 - `--top_k`: 默认值为`20`. 该参数只有在`do_sample`设置为True时才生效.
-- `--top_p`: 默认值为`0.9`. 该参数只有在`do_sample`设置为True时才生效.
+- `--top_p`: 默认值为`0.7`. 该参数只有在`do_sample`设置为True时才生效.
 - `--repetition_penalty`: 默认值为`1.05`.
 - `--use_flash_attn`: 默认值为`None`, 即为'auto'. 具体的参数介绍可以在`sft.sh命令行参数`中查看.
 - `--ignore_args_error`: 默认值为`False`, 具体的参数介绍可以在`sft.sh命令行参数`中查看.

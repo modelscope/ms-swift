@@ -189,7 +189,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --datase
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
-**Web-UI**
+**Web-UI**:
 ```bash
 # 原始模型
 CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
