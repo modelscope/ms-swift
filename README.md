@@ -103,7 +103,7 @@ The detailed usage documentation for fine-tuning LLM can be found [here](https:/
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
-  - Text Generation: default-generation, chatglm-generation
+  - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 

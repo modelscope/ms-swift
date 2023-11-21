@@ -50,7 +50,7 @@
   - 多模态: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - 自定义数据集
 - 支持的对话模板:
-  - 文本生成: default-generation, chatglm-generation
+  - 文本生成: default-generation, default-generation-bos, chatglm-generation
   - 对话: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 ## 🛠️ 准备实验环境
