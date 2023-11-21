@@ -134,7 +134,7 @@ def llm_infer(args: InferArguments) -> None:
     # Inference
     result = []
     jsonl_path = None
-    if args.save_result:
+    if args.save_result and args.ckpt_dir is not None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
@@ -166,8 +166,8 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('system'),
                 stream=args.stream)
             label = data.get('response')
+            item = history[0]
             if jsonl_path is not None:
-                item = history[0]
                 save_result_to_jsonl(jsonl_path, item[0], item[1], label)
             result.append({
                 'query': item[0],
@@ -178,6 +178,6 @@ def llm_infer(args: InferArguments) -> None:
             print(f'[LABELS]{label}')
             print('-' * 80)
             # input('next[ENTER]')
-    if args.save_result:
+    if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}
