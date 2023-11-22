@@ -18,7 +18,7 @@ from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
 logger = get_logger()
 
 
-def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
+def merge_lora(args: InferArguments, replace_if_exists=False) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
@@ -80,7 +80,9 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
     else:
         logger.info(
             f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
-            'skipping the saving process.')
+            'skipping the saving process. '
+            'you can pass `replace_if_exists=True` to overwrite it.')
+    return merged_lora_path
 
 
 def prepare_model_template(

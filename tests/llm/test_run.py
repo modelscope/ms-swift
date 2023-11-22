@@ -10,7 +10,7 @@ import unittest
 import torch
 
 from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
-from swift.llm.run import infer_main, sft_main
+from swift.llm.run import infer_main, merge_lora_main, sft_main
 
 
 class TestRun(unittest.TestCase):
@@ -48,8 +48,8 @@ class TestRun(unittest.TestCase):
             infer_args = InferArguments(
                 ckpt_dir=best_model_checkpoint,
                 stream=False,
-                show_dataset_sample=5,
-                merge_lora_and_save=True)
+                show_dataset_sample=5)
+            merge_lora_main(infer_args)
             result = infer_main(infer_args)
             print(result)
             torch.cuda.empty_cache()
