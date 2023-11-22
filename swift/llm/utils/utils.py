@@ -316,6 +316,7 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
 
 
 def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+    logger.info('sort by max length...')
     input_ids = dataset['input_ids']
     dataset_len = [len(input_ids[i]) for i in range(len(dataset))]
     idx = heapq.nlargest(

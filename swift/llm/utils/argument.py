@@ -538,7 +538,7 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
         get_function=get_custom_dataset)
     if args.dataset is None:
         args.dataset = ['_custom_dataset']
-    else:
+    elif '_custom_dataset' not in args.dataset:
         args.dataset.append('_custom_dataset')
 
 
