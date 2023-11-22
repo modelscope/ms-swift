@@ -339,20 +339,6 @@ class InferArguments:
 class AnimateDiffArguments(SftArguments):
     text_dropout_rate: float = 0.1
 
-    unet_additional_config_path: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The additional unet config path, use llm/configs/unet.json if None'
-        })
-
-    noise_scheduler_additional_config_path: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The additional unet config path, use llm/configs/noise_scheduler.json if None'
-        })
-
     validation_prompts_path: str = field(
         default=None,
         metadata={
@@ -400,6 +386,37 @@ class AnimateDiffArguments(SftArguments):
             self.learning_rate = 1e-4
         if self.save_steps is None:
             self.save_steps = self.eval_steps
+
+
+@dataclass
+class AnimateDiffInferArguments(InferArguments):
+
+    validation_prompts_path: str = field(
+        default=None,
+        metadata={
+            'help':
+            'The validation prompts file path, use llm/configs/ad_validation.txt is None'
+        })
+
+    enable_xformers_memory_efficient_attention: bool = True
+
+    num_inference_steps: int = 25
+    guidance_scale: float = 8.
+    sample_size: int = 256
+    sample_stride: int = 4
+    sample_n_frames: int = 16
+
+    motion_num_attention_heads: int = 8
+    motion_max_seq_length: int = 32
+    num_train_timesteps: int = 1000
+    beta_start: int = 0.00085
+    beta_end: int = 0.012
+    beta_schedule: str = 'linear'
+    steps_offset: int = 1
+    clip_sample: bool = False
+
+    def __post_init__(self) -> None:
+        pass
 
 
 @dataclass

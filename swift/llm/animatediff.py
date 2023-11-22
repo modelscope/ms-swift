@@ -6,7 +6,6 @@ import math
 import os
 import random
 from typing import Dict
-
 import imageio
 import numpy as np
 import torch
@@ -25,7 +24,7 @@ from torch.utils.data import RandomSampler
 from torch.utils.data.dataset import Dataset
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-
+import requests
 from swift import LoRAConfig, Swift, get_logger
 from .utils import AnimateDiffArguments
 
@@ -45,15 +44,20 @@ class AnimateDiffDataset(Dataset):
         sample_size=256,
         sample_stride=4,
         sample_n_frames=16,
+        dataset_sample_size=10000,
     ):
         print(f'loading annotations from {csv_path} ...')
         with open(csv_path, 'r') as csvfile:
             self.dataset = list(csv.DictReader(csvfile))
         dataset = []
-        for d in self.dataset:
-            file_name = d[self.CONTENT_URL]
+        for d in tqdm(self.dataset):
+            content_url = d[self.CONTENT_URL]
+            file_name = content_url.split('/')[-1]
             if os.path.isfile(os.path.join(video_folder, file_name)):
                 dataset.append(d)
+            if len(dataset) > dataset_sample_size:
+                break
+
         self.dataset = dataset
         self.length = len(self.dataset)
         print(f'data scale: {self.length}')
@@ -76,7 +80,8 @@ class AnimateDiffDataset(Dataset):
         video_dict: Dict[str, str] = self.dataset[idx]
         name = video_dict[self.NAME]
 
-        file_name = video_dict[self.CONTENT_URL]
+        content_url = video_dict[self.CONTENT_URL]
+        file_name = content_url.split('/')[-1]
         video_dir = os.path.join(self.video_folder, file_name)
         video_reader = VideoReader(video_dir)
         video_length = len(video_reader)
