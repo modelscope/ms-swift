@@ -391,6 +391,8 @@ class AnimateDiffArguments(SftArguments):
 @dataclass
 class AnimateDiffInferArguments(InferArguments):
 
+    base_model_id_or_path: str = None
+
     validation_prompts_path: str = field(
         default=None,
         metadata={

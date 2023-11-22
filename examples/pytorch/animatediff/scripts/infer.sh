@@ -2,6 +2,7 @@
 # 10GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python animatediff_sft.py \
+python animatediff_infer.py \
     --model_id_or_path output/-2023-11-22T19-59-20/checkpoints \
-    --validation_file scripts/validation.txt \
+    --validation_prompts_path scripts/validation.txt \
+    --base_model_id_or_path AI-ModelScope/stable-diffusion-v1-5 \

@@ -27,13 +27,28 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
         steps_offset=args.steps_offset,
         clip_sample=args.clip_sample,
     )
-    unet = UNetMotionModel.from_pretrained(args.model_id_or_path, )
-    pretrained_model_path = snapshot_download(args.model_id_or_path)
+
+    pretrained_model_path = snapshot_download(args.base_model_id_or_path)
+    unet = UNetMotionModel.from_pretrained(
+        pretrained_model_path,
+        subfolder='unet',
+        _class_name=UNetMotionModel.__name__,
+        down_block_types=[
+            'CrossAttnDownBlockMotion', 'CrossAttnDownBlockMotion',
+            'CrossAttnDownBlockMotion', 'DownBlockMotion'
+        ],
+        up_block_types=[
+            'UpBlockMotion', 'CrossAttnUpBlockMotion',
+            'CrossAttnUpBlockMotion', 'CrossAttnUpBlockMotion'
+        ],
+        low_cpu_mem_usage=False,
+    )
     vae = AutoencoderKL.from_pretrained(pretrained_model_path, subfolder='vae')
     tokenizer = CLIPTokenizer.from_pretrained(
         pretrained_model_path, subfolder='tokenizer')
     text_encoder = CLIPTextModel.from_pretrained(
         pretrained_model_path, subfolder='text_encoder')
+    unet.load_state_dict(torch.load(os.path.join(args.model_id_or_path, 'checkpoint.ckpt'))['state_dict'])
 
     height = args.sample_size
     width = args.sample_size
