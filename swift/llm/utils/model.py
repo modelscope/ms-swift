@@ -835,6 +835,25 @@ def get_skywork_model_tokenizer(model_dir: str,
     return model, tokenizer
 
 
+@register_model('codefuse-codellama-34b-chat',
+                'codefuse-ai/CodeFuse-CodeLlama-34B', LoRATM.llama2,
+                'codefuse-codellama')
+def get_model_tokenizer_codellama(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True, use_fast=False, legacy=False)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        tokenizer=tokenizer,
+        **kwargs)
+
+
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
     if version.parse(transformers.__version__) >= version.parse('4.35'):

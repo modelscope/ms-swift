@@ -165,6 +165,13 @@ register_template(
     TemplateType.bluelm,
     Template([['bos_token_id']], ['[|Human|]:{{QUERY}}[|AI|]:'], [],
              [['eos_token_id']]))
+
+register_template(
+    'codefuse-codellama',
+    Template([], [
+        '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
+    ], [], ['eos_token_id']))
+
 Context = Union[str, List[int]]
 
 
