@@ -75,7 +75,7 @@ def rome_infer(args: RomeArguments) -> None:
     if args.eval_human:
         while True:
             query = input('<<< ')
-            inference(model, template, query, stream=args.stream)
+            inference(model, template, query, stream=args.stream, verbose=True)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
@@ -88,7 +88,8 @@ def rome_infer(args: RomeArguments) -> None:
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream)
+                stream=args.stream,
+                verbose=True)
             print()
             print(f"[LABELS]{data.get('response')}")
             print('-' * 80)

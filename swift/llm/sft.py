@@ -267,7 +267,7 @@ def llm_sft(args: SftArguments) -> str:
                     f,
                     ensure_ascii=False,
                     indent=2)
-    res = trainer.train(training_args.resume_from_checkpoint)
+    trainer.train(training_args.resume_from_checkpoint)
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
 
@@ -283,6 +283,6 @@ def llm_sft(args: SftArguments) -> str:
     return {
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
-        'global_step': res.global_step,
+        'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
     }

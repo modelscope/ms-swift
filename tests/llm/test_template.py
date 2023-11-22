@@ -65,7 +65,7 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query, max_length=None)[0]
         print(f'official response: {response}')
@@ -80,7 +80,7 @@ you are a helpful assistant!<|im_end|>
         template = get_template(template_type, tokenizer)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         model.generation_config.chat_format = 'chatml'
         model.generation_config.max_window_size = 1024
@@ -112,7 +112,7 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat({'text': query}, tokenizer)['response']
         print(f'official response: {response}')
@@ -127,7 +127,7 @@ you are a helpful assistant!<|im_end|>
         template = get_template(template_type, tokenizer)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer,
                               [{
@@ -158,7 +158,7 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
@@ -182,7 +182,7 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
@@ -206,7 +206,7 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '三国演义的作者是谁？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         inputs = tokenizer('[|Human|]:三国演义的作者是谁？[|AI|]:', return_tensors='pt')
         inputs = inputs.to('cuda:0')
@@ -225,7 +225,7 @@ you are a helpful assistant!<|im_end|>
         template = get_template(template_type, tokenizer)
         query = '蒙古国的首都是乌兰巴托（Ulaanbaatar）\n冰岛的首都是雷克雅未克（Reykjavik）\n埃塞俄比亚的首都是'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         model.generation_config.chat_format = 'raw'
         model.generation_config.max_window_size = 1024

@@ -152,7 +152,8 @@ def llm_infer(args: InferArguments) -> None:
     if args.eval_human:
         while True:
             query = input('<<< ')
-            _, history = inference(model, template, query, stream=args.stream)
+            _, history = inference(
+                model, template, query, stream=args.stream, verbose=True)
             item = history[0]
             if jsonl_path is not None:
                 save_result_to_jsonl(jsonl_path, item[0], item[1])
@@ -175,7 +176,8 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream)
+                stream=args.stream,
+                verbose=True)
             label = data.get('response')
             item = history[0]
             if jsonl_path is not None:

@@ -176,7 +176,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map'
 model = Swift.from_pretrained(model, model_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
-response, history = inference(model, template, query, verbose=False)
+response, history = inference(model, template, query)
 print(f'response: {response}')
 print(f'history: {history}')
 ```
@@ -200,7 +200,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map'
 
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
-response, history = inference(model, template, query, verbose=False)
+response, history = inference(model, template, query)
 print(f'response: {response}')
 print(f'history: {history}')
 ```
