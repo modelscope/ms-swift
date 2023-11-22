@@ -455,7 +455,8 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
-        args.model_type = ModelType.qwen_7b_chat
+        raise ValueError(f'args.model_type: {args.model_type}, '
+                         f'args.model_id_or_path: {args.model_id_or_path}')
     if args.model_type not in MODEL_MAPPING:
         raise ValueError(f'model_type: {args.model_type} is not registered.')
     model_info = MODEL_MAPPING[args.model_type]
