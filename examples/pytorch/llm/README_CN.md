@@ -107,6 +107,7 @@ result = sft_main(sft_args)
 best_model_checkpoint = result['best_model_checkpoint']
 print(f'best_model_checkpoint: {best_model_checkpoint}')
 torch.cuda.empty_cache()
+
 infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_args_from_ckpt_dir=True,
@@ -115,6 +116,7 @@ infer_args = InferArguments(
 result = infer_main(infer_args)
 print(f'result: {result}')
 torch.cuda.empty_cache()
+
 web_ui_main(infer_args)
 ```
 
