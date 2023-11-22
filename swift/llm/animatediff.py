@@ -182,14 +182,31 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         pretrained_model_path, subfolder='tokenizer')
     text_encoder = CLIPTextModel.from_pretrained(
         pretrained_model_path, subfolder='text_encoder')
-    unet: UNetMotionModel = UNetMotionModel.from_unet2d(
-        UNet2DConditionModel.from_pretrained(
-            pretrained_model_path, subfolder='unet'),
-        motion_adapter=MotionAdapter(
-            motion_num_attention_heads=args.motion_num_attention_heads,
-            motion_max_seq_length=args.motion_max_seq_length),
-        load_weights=False,
-    )
+    # unet: UNetMotionModel = UNetMotionModel.from_unet2d(
+    #     UNet2DConditionModel.from_pretrained(
+    #         pretrained_model_path, subfolder='unet'),
+    #     motion_adapter=MotionAdapter(
+    #         motion_num_attention_heads=args.motion_num_attention_heads,
+    #         motion_max_seq_length=args.motion_max_seq_length),
+    #     load_weights=False,
+    # )
+    unet = UNetMotionModel.from_pretrained(
+            pretrained_model_path, subfolder="unet", 
+            _class_name=UNetMotionModel.__name__,
+            down_block_types=[
+                "CrossAttnDownBlockMotion",
+                "CrossAttnDownBlockMotion",
+                "CrossAttnDownBlockMotion",
+                "DownBlockMotion"
+            ],
+            up_block_types=[
+                "UpBlockMotion",
+                "CrossAttnUpBlockMotion",
+                "CrossAttnUpBlockMotion",
+                "CrossAttnUpBlockMotion"
+            ],
+            low_cpu_mem_usage=False,
+        )
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -464,8 +481,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     db1.motion_modules = db2.motion_modules
 
                 validation_pipeline = AnimateDiffPipeline(
-                    unet=UNet2DConditionModel.from_pretrained(
-                        pretrained_model_path, subfolder='unet'),
+                    unet=unet,
                     vae=vae,
                     tokenizer=tokenizer,
                     motion_adapter=motion_adapter,
