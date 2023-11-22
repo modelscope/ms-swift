@@ -398,6 +398,8 @@ class AnimateDiffInferArguments(InferArguments):
             'The validation prompts file path, use llm/configs/ad_validation.txt is None'
         })
 
+    output_path: str = './generated'
+
     enable_xformers_memory_efficient_attention: bool = True
 
     num_inference_steps: int = 25

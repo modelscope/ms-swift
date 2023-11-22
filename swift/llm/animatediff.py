@@ -6,8 +6,10 @@ import math
 import os
 import random
 from typing import Dict
+
 import imageio
 import numpy as np
+import requests
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -24,7 +26,7 @@ from torch.utils.data import RandomSampler
 from torch.utils.data.dataset import Dataset
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-import requests
+
 from swift import LoRAConfig, Swift, get_logger
 from .utils import AnimateDiffArguments
 
@@ -196,22 +198,19 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     #     load_weights=False,
     # )
     unet = UNetMotionModel.from_pretrained(
-            pretrained_model_path, subfolder="unet", 
-            _class_name=UNetMotionModel.__name__,
-            down_block_types=[
-                "CrossAttnDownBlockMotion",
-                "CrossAttnDownBlockMotion",
-                "CrossAttnDownBlockMotion",
-                "DownBlockMotion"
-            ],
-            up_block_types=[
-                "UpBlockMotion",
-                "CrossAttnUpBlockMotion",
-                "CrossAttnUpBlockMotion",
-                "CrossAttnUpBlockMotion"
-            ],
-            low_cpu_mem_usage=False,
-        )
+        pretrained_model_path,
+        subfolder='unet',
+        _class_name=UNetMotionModel.__name__,
+        down_block_types=[
+            'CrossAttnDownBlockMotion', 'CrossAttnDownBlockMotion',
+            'CrossAttnDownBlockMotion', 'DownBlockMotion'
+        ],
+        up_block_types=[
+            'UpBlockMotion', 'CrossAttnUpBlockMotion',
+            'CrossAttnUpBlockMotion', 'CrossAttnUpBlockMotion'
+        ],
+        low_cpu_mem_usage=False,
+    )
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)

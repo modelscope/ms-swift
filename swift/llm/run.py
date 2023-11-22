@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import (AnimateDiffArguments, InferArguments, RomeArguments, AnimateDiffInferArguments,
-                       SftArguments, animatediff_sft, get_main, llm_infer, animatediff_infer,
+from swift.llm import (AnimateDiffArguments, AnimateDiffInferArguments,
+                       InferArguments, RomeArguments, SftArguments,
+                       animatediff_infer, animatediff_sft, get_main, llm_infer,
                        llm_sft, llm_web_ui, rome_infer)
 
 sft_main = get_main(SftArguments, llm_sft)
