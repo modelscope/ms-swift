@@ -66,7 +66,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM SFT Example
-The detailed usage documentation for fine-tuning LLM can be found [here](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm).
+Users can refer to the [LLM fine-tuning documentation](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) for more detailed information.
 
 ### Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)

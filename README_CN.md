@@ -64,7 +64,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型微调的例子
-LLM微调的详细使用文档可以查看[这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm).
+用户可以查看[LLM微调文档](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)来获得更详细的介绍.
 
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
