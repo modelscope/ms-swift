@@ -907,5 +907,5 @@ def get_model_tokenizer(
     return model, tokenizer
 
 
-def get_default_template_type(model_type: str) -> str:
+def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')

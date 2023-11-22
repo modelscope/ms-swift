@@ -121,6 +121,7 @@ web_ui_main(infer_args)
 ```
 
 **单样本推理**:
+
 使用LoRA**增量**权重进行推理:
 ```python
 import os
