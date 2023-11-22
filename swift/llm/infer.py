@@ -19,6 +19,7 @@ logger = get_logger()
 
 
 def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
+    logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
     assert 'int4' not in args.model_type, 'int4 model is not supported'
@@ -65,10 +66,21 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
             res.pop('adapter_cfg', None)
             with open(new_configuration_path, 'w') as f:
                 json.dump(res, f, ensure_ascii=False, indent=4)
-        logger.info('Successfully merged LoRA.')
+        # sft_args
+        sft_args_fname = 'sft_args.json'
+        old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
+        new_sft_args_path = os.path.join(args.ckpt_dir, sft_args_fname)
+        if os.path.exists(old_sft_args_path):
+            with open(old_sft_args_path, 'r') as f:
+                res = json.load(f)
+            res['sft_type'] = 'full'
+            with open(new_sft_args_path, 'w') as f:
+                json.dump(res, f, ensure_ascii=False, indent=2)
+        logger.info(f'Successfully merged LoRA and saved in {args.ckpt_dir}.')
     else:
-        logger.info('The weight directory for the merged LoRA already exists, '
-                    'skipping the saving process.')
+        logger.info(
+            f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
+            'skipping the saving process.')
 
 
 def prepare_model_template(
