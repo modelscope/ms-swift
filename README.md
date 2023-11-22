@@ -245,6 +245,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --datase
 
 # Fine-tuned Model
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# Merge LoRA incremental weights and perform inference
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 **Web-UI**:
@@ -254,6 +258,10 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
 
 # Fine-tuned Model
 CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# Merge LoRA incremental weights and use web UI
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 
