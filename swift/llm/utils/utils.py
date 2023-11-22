@@ -372,8 +372,9 @@ def inference(model: PreTrainedModel,
               query: Optional[str] = None,
               history: Optional[History] = None,
               system: Optional[str] = None,
-              stream: bool = True,
-              verbose: bool = True,
+              *,
+              stream: bool = False,
+              verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
     if history is None:
@@ -386,15 +387,18 @@ def inference(model: PreTrainedModel,
     attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
     generation_config = getattr(model, 'generation_config', None)
-    if verbose:
-        print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False)}{output_prefix}',
-            end='')
-    else:
+    if stream is True and verbose is False:
+        logger.warning(
+            'Please set verbose to True to support TextStreamer, or use `inference_stream.`'
+        )
         stream = False
     streamer = None
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
+    if verbose:
+        print(
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False)}{output_prefix}',
+            end='')
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     generate_ids = model.generate(
@@ -403,7 +407,7 @@ def inference(model: PreTrainedModel,
         streamer=streamer,
         generation_config=generation_config)
     response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True)
-    if verbose and not streamer:
+    if verbose and stream is False:
         print(tokenizer.decode(generate_ids[0, len(input_ids[0]):], False))
     history.append((query, response))
     return response, history

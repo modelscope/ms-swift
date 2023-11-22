@@ -64,7 +64,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型微调的例子
-LLM微调的详细使用文档可以查看[这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm).
+用户可以查看[LLM微调文档](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)来获得更详细的介绍.
 
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
@@ -177,7 +177,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map'
 model = Swift.from_pretrained(model, model_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
-response, history = inference(model, template, query, verbose=False)
+response, history = inference(model, template, query)
 print(f'response: {response}')
 print(f'history: {history}')
 ```
@@ -201,7 +201,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map'
 
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
-response, history = inference(model, template, query, verbose=False)
+response, history = inference(model, template, query)
 print(f'response: {response}')
 print(f'history: {history}')
 ```

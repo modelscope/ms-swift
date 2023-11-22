@@ -6,8 +6,10 @@ import unittest
 
 from modelscope import GenerationConfig
 
-from swift.llm import (MODEL_MAPPING, ModelType, TemplateType,
+from swift.llm import (ModelType, get_default_template_type,
                        get_model_tokenizer, get_template, inference)
+
+SKPT_TEST = True
 
 
 class TestTemplate(unittest.TestCase):
@@ -16,8 +18,7 @@ class TestTemplate(unittest.TestCase):
         model_types = [ModelType.qwen_7b_chat_int4]
         for model_type in model_types:
             _, tokenizer = get_model_tokenizer(model_type, load_model=False)
-            model_info = MODEL_MAPPING[model_type]
-            template_type = model_info['template']
+            template_type = get_default_template_type(model_type)
             template = get_template(template_type, tokenizer)
             history = [
                 ('你好，你是谁？', '我是来自达摩院的大规模语言模型，我叫通义千问。'),
@@ -46,12 +47,13 @@ you are a helpful assistant!<|im_end|>
 <|endoftext|>"""
             self.assertTrue(result == text)
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_chatglm3_template(self):
         model_type = ModelType.chatglm3_6b
-        template_type = TemplateType.chatglm3
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         model.generation_config = GenerationConfig(
@@ -65,34 +67,36 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query, max_length=None)[0]
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_qwen_template(self):
         model_type = ModelType.qwen_7b_chat
-        template_type = TemplateType.chatml
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         model.generation_config.chat_format = 'chatml'
         model.generation_config.max_window_size = 1024
         response = model.chat(tokenizer, query, None, max_length=None)[0]
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_llama_template(self):
         model_type = ModelType.llama2_7b_chat
-        template_type = TemplateType.llama
+        template_type = get_default_template_type(model_type)
         _, tokenizer = get_model_tokenizer(model_type, load_model=False)
         from modelscope import Model, snapshot_download
         model_dir = snapshot_download(
@@ -112,22 +116,23 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat({'text': query}, tokenizer)['response']
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_baichuan_template(self):
         model_type = ModelType.baichuan2_7b_chat
-        template_type = TemplateType.baichuan
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer,
                               [{
@@ -139,12 +144,13 @@ you are a helpful assistant!<|im_end|>
                               }])
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_chatglm2_template(self):
         model_type = ModelType.chatglm2_6b
-        template_type = TemplateType.chatglm2
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         model.generation_config = GenerationConfig(
@@ -158,17 +164,18 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_internlm_template(self):
         model_type = ModelType.internlm_20b_chat
-        template_type = TemplateType.internlm
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         model.generation_config = GenerationConfig(
@@ -182,17 +189,18 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_bluelm_template(self):
         model_type = ModelType.bluelm_7b_chat
-        template_type = TemplateType.bluelm
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         model.generation_config = GenerationConfig(
@@ -206,7 +214,7 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '三国演义的作者是谁？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         inputs = tokenizer('[|Human|]:三国演义的作者是谁？[|AI|]:', return_tensors='pt')
         inputs = inputs.to('cuda:0')
@@ -215,17 +223,18 @@ you are a helpful assistant!<|im_end|>
         print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True))
         print(f'official response: {response}')
 
-    @unittest.skip(
+    @unittest.skipIf(
+        SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_qwen_generation_template(self):
         model_type = ModelType.qwen_7b
-        template_type = TemplateType.default_generation
+        template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
         query = '蒙古国的首都是乌兰巴托（Ulaanbaatar）\n冰岛的首都是雷克雅未克（Reykjavik）\n埃塞俄比亚的首都是'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, verbose=False)
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         model.generation_config.chat_format = 'raw'
         model.generation_config.max_window_size = 1024
