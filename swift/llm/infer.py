@@ -153,11 +153,10 @@ def llm_infer(args: InferArguments) -> None:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
         if args.val_dataset_sample >= 0:
-            mini_val_dataset = val_dataset.select(
+            val_dataset = val_dataset.select(
                 range(min(args.val_dataset_sample, val_dataset.shape[0])))
-        else:
-            mini_val_dataset = val_dataset
-        for data in mini_val_dataset:
+        logger.info(f'val_dataset: {val_dataset}')
+        for data in val_dataset:
             _, history = inference(
                 model,
                 template,

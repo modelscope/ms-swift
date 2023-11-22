@@ -41,12 +41,12 @@ class TestRun(unittest.TestCase):
             gradient_checkpointing=True)
         output = sft_main(sft_args)
         print(output)
-        best_ckpt_dir = output['best_model_checkpoint']
-        print(f'best_ckpt_dir: {best_ckpt_dir}')
+        best_model_checkpoint = output['best_model_checkpoint']
+        print(f'best_model_checkpoint: {best_model_checkpoint}')
         torch.cuda.empty_cache()
         if __name__ == '__main__':
             infer_args = InferArguments(
-                ckpt_dir=best_ckpt_dir,
+                ckpt_dir=best_model_checkpoint,
                 stream=False,
                 show_dataset_sample=5,
                 merge_lora_and_save=True)
@@ -62,7 +62,7 @@ class TestRun(unittest.TestCase):
             # ignore citest error in github
             output_dir = self.tmp_dir
             return
-        best_ckpt_dir = sft_main([
+        best_model_checkpoint = sft_main([
             '--model_type',
             ModelType.qwen_7b_chat_int4,
             '--eval_steps',
@@ -84,11 +84,11 @@ class TestRun(unittest.TestCase):
             '--max_new_tokens',
             '100',
         ])['best_model_checkpoint']
-        print(f'best_ckpt_dir: {best_ckpt_dir}')
+        print(f'best_model_checkpoint: {best_model_checkpoint}')
         torch.cuda.empty_cache()
         infer_main([
             '--ckpt_dir',
-            best_ckpt_dir,
+            best_model_checkpoint,
             '--show_dataset_sample',
             '5',
             '--max_new_tokens',

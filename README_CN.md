@@ -113,7 +113,7 @@ LLM微调的详细使用文档可以查看[这里](https://github.com/modelscope
 ```bash
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .
+pip install -e .
 ```
 
 #### 使用python运行
@@ -138,17 +138,69 @@ sft_args = SftArguments(
     dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
-best_ckpt_dir = sft_main(sft_args)['best_model_checkpoint']
-print(f'best_ckpt_dir: {best_ckpt_dir}')
+result = sft_main(sft_args)
+best_model_checkpoint = result['best_model_checkpoint']
+print(f'best_model_checkpoint: {best_model_checkpoint}')
 torch.cuda.empty_cache()
 infer_args = InferArguments(
-    ckpt_dir=best_ckpt_dir,
+    ckpt_dir=best_model_checkpoint,
     load_args_from_ckpt_dir=True,
     stream=True,
     show_dataset_sample=5)
-infer_main(infer_args)
+result = infer_main(infer_args)
+print(f'result: {result}')
 torch.cuda.empty_cache()
 web_ui_main(infer_args)
+```
+
+**单样本推理**:
+使用LoRA**增量**权重进行推理:
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
+)
+from swift.tuners import Swift
+import torch
+
+model_dir = 'vx_xxx/checkpoint-100'
+model_type = ModelType.qwen_7b_chat
+template_type = get_default_template_type(model_type)
+
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
+
+model = Swift.from_pretrained(model, model_dir, inference_mode=True)
+template = get_template(template_type, tokenizer)
+query = 'xxxxxx'
+response, history = inference(model, template, query, verbose=False)
+print(f'response: {response}')
+print(f'history: {history}')
+```
+
+使用LoRA **merge**后完整的权重进行推理:
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
+)
+import torch
+
+model_dir = 'vx_xxx/checkpoint-100-merged'
+model_type = ModelType.qwen_7b_chat
+template_type = get_default_template_type(model_type)
+
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'},
+                                       model_dir=model_dir)
+
+template = get_template(template_type, tokenizer)
+query = 'xxxxxx'
+response, history = inference(model, template, query, verbose=False)
+print(f'response: {response}')
+print(f'history: {history}')
 ```
 
 #### 使用Swift CLI运行
