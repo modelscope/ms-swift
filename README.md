@@ -159,6 +159,7 @@ web_ui_main(infer_args)
 ```
 
 **Single-Sample Inference**:
+
 Inference using LoRA **incremental** weights:
 ```python
 import os
