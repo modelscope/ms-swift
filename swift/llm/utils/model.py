@@ -905,3 +905,7 @@ def get_model_tokenizer(
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
     return model, tokenizer
+
+
+def get_default_template_type(model_type: str) -> str:
+    return MODEL_MAPPING[model_type].get('template')
