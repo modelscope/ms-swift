@@ -112,6 +112,9 @@ class ModelType:
     tongyi_finance_14b = 'tongyi-finance-14b'
     tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
     tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
+    # codefuse
+    codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
+    codefuse_codellama_34b_chat_int4 = 'codefuse-codellama-34b-chat-int4'
 
 
 class LoRATM(NamedTuple):
@@ -835,7 +838,7 @@ def get_skywork_model_tokenizer(model_dir: str,
     return model, tokenizer
 
 
-@register_model('codefuse-codellama-34b-chat',
+@register_model(ModelType.codefuse_codellama_34b_chat,
                 'codefuse-ai/CodeFuse-CodeLlama-34B', LoRATM.llama2,
                 'codefuse-codellama')
 def get_model_tokenizer_codellama(model_dir: str,
@@ -852,6 +855,35 @@ def get_model_tokenizer_codellama(model_dir: str,
         load_model,
         tokenizer=tokenizer,
         **kwargs)
+
+
+@register_model(
+    ModelType.codefuse_codellama_34b_chat_int4,
+    'codefuse-ai/CodeFuse-CodeLlama-34B-4bits',
+    LoRATM.llama2,
+    'codefuse-codellama',
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16)
+def get_model_tokenizer_codellama_int4(model_dir: str,
+                                       torch_dtype: Dtype,
+                                       model_kwargs: Dict[str, Any],
+                                       load_model: bool = True,
+                                       **kwargs):
+    from auto_gptq import AutoGPTQForCausalLM
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.torch_dtype = torch_dtype
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True, use_fast=False, legacy=False)
+    model = AutoGPTQForCausalLM.from_quantized(
+        model_dir,
+        inject_fused_attention=False,
+        inject_fused_mlp=False,
+        use_cuda_fp16=True,
+        disable_exllama=True,
+        use_safetensors=False,
+        **model_kwargs)
+    return model, tokenizer
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
