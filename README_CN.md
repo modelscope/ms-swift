@@ -142,6 +142,7 @@ result = sft_main(sft_args)
 best_model_checkpoint = result['best_model_checkpoint']
 print(f'best_model_checkpoint: {best_model_checkpoint}')
 torch.cuda.empty_cache()
+
 infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_args_from_ckpt_dir=True,
@@ -150,6 +151,7 @@ infer_args = InferArguments(
 result = infer_main(infer_args)
 print(f'result: {result}')
 torch.cuda.empty_cache()
+
 web_ui_main(infer_args)
 ```
 
@@ -239,6 +241,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --datase
 
 # 微调后的模型
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# merge LoRA增量权重并推理
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 **Web-UI**:
@@ -248,6 +254,10 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
 
 # 微调后的模型
 CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# merge LoRA增量权重并使用web-ui
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 
