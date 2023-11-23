@@ -18,7 +18,7 @@ from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
 logger = get_logger()
 
 
-def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
+def merge_lora(args: InferArguments, replace_if_exists=False) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
@@ -66,7 +66,7 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
             res.pop('adapter_cfg', None)
             with open(new_configuration_path, 'w') as f:
                 json.dump(res, f, ensure_ascii=False, indent=4)
-        # sft_args
+        # sft_args.json
         sft_args_fname = 'sft_args.json'
         old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
         new_sft_args_path = os.path.join(args.ckpt_dir, sft_args_fname)
@@ -80,7 +80,9 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
     else:
         logger.info(
             f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
-            'skipping the saving process.')
+            'skipping the saving process. '
+            'you can pass `replace_if_exists=True` to overwrite it.')
+    return merged_lora_path
 
 
 def prepare_model_template(
@@ -152,7 +154,8 @@ def llm_infer(args: InferArguments) -> None:
     if args.eval_human:
         while True:
             query = input('<<< ')
-            _, history = inference(model, template, query, stream=args.stream)
+            _, history = inference(
+                model, template, query, stream=args.stream, verbose=True)
             item = history[0]
             if jsonl_path is not None:
                 save_result_to_jsonl(jsonl_path, item[0], item[1])
@@ -175,7 +178,8 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream)
+                stream=args.stream,
+                verbose=True)
             label = data.get('response')
             item = history[0]
             if jsonl_path is not None:

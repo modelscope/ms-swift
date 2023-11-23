@@ -15,7 +15,8 @@ from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
 from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
                       register_dataset)
-from .model import MODEL_MAPPING, ModelType, dtype_mapping
+from .model import (MODEL_MAPPING, ModelType, dtype_mapping,
+                    get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
@@ -195,7 +196,7 @@ class SftArguments:
             raise ValueError(f'sft_type: {self.sft_type}')
 
         if self.template_type == 'AUTO':
-            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
@@ -322,7 +323,7 @@ class InferArguments:
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
-            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
@@ -356,7 +357,7 @@ class RomeArguments(InferArguments):
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
-            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
 
         if self.max_length == -1:
@@ -454,7 +455,8 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
-        args.model_type = ModelType.qwen_7b_chat
+        raise ValueError(f'args.model_type: {args.model_type}, '
+                         f'args.model_id_or_path: {args.model_id_or_path}')
     if args.model_type not in MODEL_MAPPING:
         raise ValueError(f'model_type: {args.model_type} is not registered.')
     model_info = MODEL_MAPPING[args.model_type]

@@ -66,7 +66,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM SFT Example
-The detailed usage documentation for fine-tuning LLM can be found [here](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm).
+Users can refer to the [LLM fine-tuning documentation](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) for more detailed information.
 
 ### Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
@@ -180,7 +180,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map'
 model = Swift.from_pretrained(model, model_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
-response, history = inference(model, template, query, verbose=False)
+response, history = inference(model, template, query)
 print(f'response: {response}')
 print(f'history: {history}')
 ```
@@ -204,7 +204,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map'
 
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
-response, history = inference(model, template, query, verbose=False)
+response, history = inference(model, template, query)
 print(f'response: {response}')
 print(f'history: {history}')
 ```
