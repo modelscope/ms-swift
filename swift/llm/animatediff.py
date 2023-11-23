@@ -7,21 +7,19 @@ import os
 import random
 from typing import Dict
 
-import imageio
 import numpy as np
-import requests
 import torch
 import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 from decord import VideoReader
 from diffusers import (AutoencoderKL, DDIMScheduler, MotionAdapter,
-                       UNet2DConditionModel, UNetMotionModel)
+                       UNetMotionModel)
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils.import_utils import is_xformers_available
 from einops import rearrange
-from modelscope import read_config, snapshot_download
+from modelscope import snapshot_download
 from torch.utils.data import RandomSampler
 from torch.utils.data.dataset import Dataset
 from tqdm.auto import tqdm
@@ -127,6 +125,7 @@ def save_videos_grid(videos: torch.Tensor,
                      rescale=False,
                      n_rows=6,
                      fps=8):
+    import imageio
     videos = rearrange(videos, 'b c t h w -> t b c h w')
     outputs = []
     for x in videos:
