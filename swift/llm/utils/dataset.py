@@ -798,6 +798,10 @@ def load_dataset_from_local(
             df = pd.read_csv(dataset_path)
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
+        elif dataset_path.endswith('.json'):
+            with open(dataset_path, 'r') as f:
+                obj_list = json.load(f)
+            df = transform_jsonl_to_df(obj_list)
         else:
             raise ValueError(
                 'The custom dataset only supports CSV format or JSONL format. You can refer to the link '

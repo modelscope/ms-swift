@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 70GB GPU memory
+# 2 * 72GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -8,14 +8,13 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_id_or_path 01ai/Yi-34B \
-    --model_revision master \
+    --model_type yi-34b-chat \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type default-generation \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
-    --dataset dureader-robust-zh \
+    --dataset blossom-math-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
@@ -37,6 +36,6 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn true \
     --push_to_hub false \
-    --hub_model_id yi-34b-lora \
+    --hub_model_id yi-34b-chat-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

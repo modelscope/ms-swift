@@ -3,8 +3,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_id_or_path TongyiFinance/Tongyi-Finance-14B-Chat-Int4 \
-    --model_revision master \
+    --model_type tongyi-finance-14b-chat-int4 \
     --sft_type lora \
     --tuner_backend swift \
     --template_type chatml \

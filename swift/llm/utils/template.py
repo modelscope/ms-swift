@@ -22,6 +22,7 @@ class TemplateType:
     llama = 'llama'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
+    yi = chatml
     xverse = 'xverse'
     ziya = 'ziya'
     skywork = 'skywork'
@@ -112,7 +113,7 @@ register_template(
     Template(
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
         ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|>\n<|endoftext|>']))
+        ['<|im_end|>\n'], ['<|im_end|>']))
 register_template(
     TemplateType.baichuan,
     Template(['{{SYSTEM}}'], [[195], '{{QUERY}}', [196]], [],
@@ -146,7 +147,7 @@ register_template(
 register_template(
     TemplateType.internlm,
     Template(['<s>'], ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'], ['<eoa>\n'],
-             ['<eoa>\n</s>']))
+             ['<eoa>']))
 register_template(
     TemplateType.xverse,
     Template([], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']],
@@ -165,6 +166,13 @@ register_template(
     TemplateType.bluelm,
     Template([['bos_token_id']], ['[|Human|]:{{QUERY}}[|AI|]:'], [],
              [['eos_token_id']]))
+
+register_template(
+    'codefuse-codellama',
+    Template([], [
+        '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
+    ], [], [['eos_token_id']]))
+
 Context = Union[str, List[int]]
 
 

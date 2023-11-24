@@ -97,6 +97,7 @@ class ModelType:
     # yi
     yi_6b = 'yi-6b'
     yi_34b = 'yi-34b'
+    yi_34b_chat = 'yi-34b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
@@ -112,6 +113,8 @@ class ModelType:
     tongyi_finance_14b = 'tongyi-finance-14b'
     tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
     tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
+    # codefuse
+    codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
 
 
 class LoRATM(NamedTuple):
@@ -299,7 +302,8 @@ def get_model_tokenizer_internlm(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<eoa>']})
+    del tokenizer.__class__.eos_token_id
+    tokenizer.eos_token = '<eoa>'
     return model, tokenizer
 
 
@@ -551,6 +555,23 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
+    ModelType.yi_34b_chat,
+    '01ai/Yi-34B-Chat',
+    LoRATM.yi,
+    TemplateType.chatml,
+    support_flash_attn=True)
+def get_model_tokenizer_yi(model_dir: str,
+                           torch_dtype: Dtype,
+                           model_kwargs: Dict[str, Any],
+                           load_model: bool = True,
+                           **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.eos_token = '<|im_end|>'
+    return model, tokenizer
+
+
+@register_model(
     ModelType.llama2_7b,
     'modelscope/Llama-2-7b-ms',
     LoRATM.llama2,
@@ -694,7 +715,7 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
-    tokenizer.eos_token_id = tokenizer.eod_id
+    tokenizer.eos_token_id = tokenizer.im_end_id
     return model, tokenizer
 
 
@@ -810,7 +831,6 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                    get_model_tokenizer_qwen)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
-    tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
 
@@ -833,6 +853,28 @@ def get_skywork_model_tokenizer(model_dir: str,
     tokenizer.add_tokens('[BOT]')
     tokenizer.add_tokens('[SEP]')
     return model, tokenizer
+
+
+@register_model(
+    ModelType.codefuse_codellama_34b_chat,
+    'codefuse-ai/CodeFuse-CodeLlama-34B',
+    LoRATM.llama2,
+    'codefuse-codellama',
+    support_flash_attn=True)
+def get_model_tokenizer_codellama(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True, use_fast=False, legacy=False)
+    return get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        tokenizer=tokenizer,
+        **kwargs)
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:

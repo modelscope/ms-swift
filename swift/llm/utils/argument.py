@@ -309,7 +309,6 @@ class InferArguments:
     def __post_init__(self) -> None:
         handle_compatibility(self)
         handle_path(self)
-        set_model_type(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -318,6 +317,8 @@ class InferArguments:
             )
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
+        else:
+            set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
 
@@ -455,9 +456,9 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
-        raise ValueError(f'args.model_type: {args.model_type}, '
-                         f'args.model_id_or_path: {args.model_id_or_path}')
-    if args.model_type not in MODEL_MAPPING:
+        raise ValueError(
+            'please setting `--model_type xxx` or `--model_id_or_path xxx`')
+    elif args.model_type not in MODEL_MAPPING:
         raise ValueError(f'model_type: {args.model_type} is not registered.')
     model_info = MODEL_MAPPING[args.model_type]
     if args.model_revision is None:

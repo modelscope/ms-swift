@@ -197,6 +197,7 @@ def llm_sft(args: SftArguments) -> str:
         save_strategy=IntervalStrategy.STEPS,
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
+        remove_unused_columns=False,
         bf16=args.bf16,
         fp16=args.fp16,
         eval_steps=args.eval_steps,
