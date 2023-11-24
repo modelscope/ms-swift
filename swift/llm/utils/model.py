@@ -477,12 +477,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
-    ModelType.yi_34b_chat,
-    '01ai/Yi-34B-Chat',
-    LoRATM.yi,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
     LoRATM.yi,
@@ -558,6 +552,23 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     model_config._flash_attn_2_enabled = _flash_attn_2_enabled
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
+
+
+@register_model(
+    ModelType.yi_34b_chat,
+    '01ai/Yi-34B-Chat',
+    LoRATM.yi,
+    TemplateType.chatml,
+    support_flash_attn=True)
+def get_model_tokenizer_yi(model_dir: str,
+                           torch_dtype: Dtype,
+                           model_kwargs: Dict[str, Any],
+                           load_model: bool = True,
+                           **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.eos_token_id = 7  # '<|im_end|>'
+    return model, tokenizer
 
 
 @register_model(
