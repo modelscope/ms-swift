@@ -113,7 +113,7 @@ register_template(
     Template(
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
         ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|>\n', ['eos_token_id']]))
+        ['<|im_end|>\n'], ['<|im_end|>']))
 register_template(
     TemplateType.baichuan,
     Template(['{{SYSTEM}}'], [[195], '{{QUERY}}', [196]], [],
@@ -147,7 +147,7 @@ register_template(
 register_template(
     TemplateType.internlm,
     Template(['<s>'], ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'], ['<eoa>\n'],
-             ['<eoa>\n', ['eos_token_id']]))
+             ['<eoa>']))
 register_template(
     TemplateType.xverse,
     Template([], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']],

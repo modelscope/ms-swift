@@ -295,5 +295,4 @@ you are a helpful assistant!<|im_end|>
 
 
 if __name__ == '__main__':
-    TestTemplate().test_yi_template()
     unittest.main()

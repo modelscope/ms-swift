@@ -302,7 +302,8 @@ def get_model_tokenizer_internlm(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<eoa>']})
+    del tokenizer.__class__.eos_token_id
+    tokenizer.eos_token_id = 103028
     return model, tokenizer
 
 
@@ -703,7 +704,7 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
-    tokenizer.eos_token_id = tokenizer.eod_id
+    tokenizer.eos_token_id = tokenizer.im_end_id
     return model, tokenizer
 
 
