@@ -67,7 +67,8 @@ class AnimateDiffDataset(Dataset):
             file_name = content_url.split('/')[-1]
             if os.path.isfile(os.path.join(video_folder, file_name)):
                 dataset.append(d)
-            if len(dataset) > dataset_sample_size:
+            if dataset_sample_size is not None and len(
+                    dataset) > dataset_sample_size:
                 break
 
         self.dataset = dataset
@@ -287,6 +288,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         sample_size=args.sample_size,
         sample_stride=args.sample_stride,
         sample_n_frames=args.sample_n_frames,
+        dataset_sample_size=args.dataset_sample_size,
     )
 
     if not is_dist():

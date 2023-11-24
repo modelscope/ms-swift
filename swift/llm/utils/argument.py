@@ -343,6 +343,8 @@ class AnimateDiffArguments:
     model_id_or_path: str = None
     model_revision: str = None
 
+    dataset_sample_size: int = None
+
     sft_type: str = field(
         default='lora', metadata={'choices': ['lora', 'full']})
 
