@@ -268,6 +268,32 @@ you are a helpful assistant!<|im_end|>
             model.generate(**inputs)[0, len(inputs['input_ids'][0]):])
         print(f'official response: {response}')
 
+    @unittest.skipIf(
+        SKPT_TEST,
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_yi_template(self):
+        model_type = ModelType.yi_34b_chat
+        model, tokenizer = get_model_tokenizer(model_type)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        model.generation_config.max_length = 128
+        query = 'hi.'
+        print(f'query: {query}')
+        response, _ = inference(model, template, query)
+        print(f'swift response: {response}')
+        messages = [{'role': 'user', 'content': 'hi'}]
+        input_ids = tokenizer.apply_chat_template(
+            conversation=messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors='pt')
+        output_ids = model.generate(input_ids.to('cuda'))
+        response = tokenizer.decode(
+            output_ids[0][input_ids.shape[1]:], skip_special_tokens=True)
+        print(f'official response: {response}')
+
 
 if __name__ == '__main__':
+    TestTemplate().test_yi_template()
     unittest.main()
