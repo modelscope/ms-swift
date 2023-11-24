@@ -22,6 +22,7 @@ class TemplateType:
     llama = 'llama'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
+    yi = chatml
     xverse = 'xverse'
     ziya = 'ziya'
     skywork = 'skywork'
@@ -170,7 +171,7 @@ register_template(
     'codefuse-codellama',
     Template([], [
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
-    ], [], ['eos_token_id']))
+    ], [], [['eos_token_id']]))
 
 Context = Union[str, List[int]]
 
