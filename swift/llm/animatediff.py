@@ -5,14 +5,19 @@ import logging
 import math
 import os
 import random
+import re
+from diffusers.utils import export_to_gif
 from typing import Dict
-
 import imageio
+from types import MethodType
 import numpy as np
+import torch.distributed as dist
 import requests
+from copy import deepcopy
 import torch
 import torch.nn.functional as F
 import torchvision
+from diffusers.utils.constants import WEIGHTS_NAME
 import torchvision.transforms as transforms
 from decord import VideoReader
 from diffusers import (AutoencoderKL, DDIMScheduler, MotionAdapter,
@@ -21,14 +26,22 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils.import_utils import is_xformers_available
 from einops import rearrange
+from torch.nn.parallel import DistributedDataParallel as DDP
 from modelscope import read_config, snapshot_download
 from torch.utils.data import RandomSampler
+from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.dataset import Dataset
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger
+from swift.utils import is_dist, get_dist_setting
 from .utils import AnimateDiffArguments
+from swift import push_to_hub
+from modelscope.hub.api import HubApi
+
+api = HubApi()
+api.login('eba0f6cc-8dbc-45fd-955f-2adb2c84ae2e')
 
 logger = get_logger()
 
@@ -143,19 +156,27 @@ def save_videos_grid(videos: torch.Tensor,
 
 def animatediff_sft(args: AnimateDiffArguments) -> None:
     # Initialize distributed training
-    local_rank = 0  # init_dist(launcher=launcher)
-    global_rank = 0  # dist.get_rank()
-    num_processes = 1  # dist.get_world_size()
+    if is_dist():
+        _, local_rank, num_processes, _ = get_dist_setting()
+        global_rank = dist.get_rank()
+    else:
+        local_rank = 0
+        global_rank = 0
+        num_processes = 1
     is_main_process = global_rank == 0
 
-    seed = args.seed + global_rank
-    torch.manual_seed(seed)
+    global_seed = args.seed + global_rank
+    torch.manual_seed(global_seed)
 
     # Logging folder
-    folder_name = datetime.datetime.now().strftime('-%Y-%m-%dT%H-%M-%S')
+    folder_name = datetime.datetime.now().strftime('ad-%Y-%m-%dT%H-%M-%S')
     output_dir = os.path.join(args.output_dir, folder_name)
 
     *_, config = inspect.getargvalues(inspect.currentframe())
+
+    if is_main_process and args.use_wandb:
+        import wandb
+        run = wandb.init(project="animatediff", name=folder_name, config=config)
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -183,33 +204,24 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         steps_offset=args.steps_offset,
         clip_sample=args.clip_sample,
     )
-    pretrained_model_path = snapshot_download(args.model_id_or_path)
+    if not os.path.exists(args.model_id_or_path):
+        pretrained_model_path = snapshot_download(args.model_id_or_path, revision=args.model_revision)
     vae = AutoencoderKL.from_pretrained(pretrained_model_path, subfolder='vae')
     tokenizer = CLIPTokenizer.from_pretrained(
         pretrained_model_path, subfolder='tokenizer')
     text_encoder = CLIPTextModel.from_pretrained(
         pretrained_model_path, subfolder='text_encoder')
-    # unet: UNetMotionModel = UNetMotionModel.from_unet2d(
-    #     UNet2DConditionModel.from_pretrained(
-    #         pretrained_model_path, subfolder='unet'),
-    #     motion_adapter=MotionAdapter(
-    #         motion_num_attention_heads=args.motion_num_attention_heads,
-    #         motion_max_seq_length=args.motion_max_seq_length),
-    #     load_weights=False,
-    # )
-    unet = UNetMotionModel.from_pretrained(
-        pretrained_model_path,
-        subfolder='unet',
-        _class_name=UNetMotionModel.__name__,
-        down_block_types=[
-            'CrossAttnDownBlockMotion', 'CrossAttnDownBlockMotion',
-            'CrossAttnDownBlockMotion', 'DownBlockMotion'
-        ],
-        up_block_types=[
-            'UpBlockMotion', 'CrossAttnUpBlockMotion',
-            'CrossAttnUpBlockMotion', 'CrossAttnUpBlockMotion'
-        ],
-        low_cpu_mem_usage=False,
+
+    motion_adapter = None
+    if args.motion_adapter_id_or_path is not None:
+        if not os.path.exists(args.motion_adapter_id_or_path):
+            args.motion_adapter_id_or_path = snapshot_download(args.motion_adapter_id_or_path, revision=args.motion_adapter_revision)
+        motion_adapter = MotionAdapter.from_pretrained(args.motion_adapter_id_or_path)
+    unet: UNetMotionModel = UNetMotionModel.from_unet2d(
+        UNet2DConditionModel.from_pretrained(
+            pretrained_model_path, subfolder='unet'),
+        motion_adapter=motion_adapter,
+        load_weights=True,
     )
 
     # Freeze vae and text_encoder
@@ -219,31 +231,27 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     # Set unet trainable parameters
     unet.requires_grad_(False)
     for name, param in unet.named_parameters():
-        for trainable_module_name in args.trainable_modules:
-            if trainable_module_name in name:
-                param.requires_grad = True
-                break
+        if re.fullmatch(args.trainable_modules, name):
+            param.requires_grad = True
 
     # Preparing LoRA
     if args.sft_type == 'lora':
-        if args.resume_from_checkpoint is None:
-            if args.sft_type == 'lora':
-                lora_config = LoRAConfig(
-                    r=args.lora_rank,
-                    target_modules=args.lora_target_modules,
-                    lora_alpha=args.lora_alpha,
-                    lora_dropout=args.lora_dropout_p)
-                unet = Swift.prepare_model(unet, lora_config)
-                logger.info(f'lora_config: {lora_config}')
-        else:
-            unet = Swift.from_pretrained(
-                unet, args.resume_from_checkpoint, is_trainable=True)
+        if args.motion_adapter_id_or_path is None:
+            raise ValueError(f'No AnimateDiff weight found, Please do not use LoRA.')
+        lora_config = LoRAConfig(
+            r=args.lora_rank,
+            target_modules=args.trainable_modules,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout_p)
+        unet = Swift.prepare_model(unet, lora_config)
+        logger.info(f'lora_config: {lora_config}')
 
     trainable_params = list(
         filter(lambda p: p.requires_grad, unet.parameters()))
     optimizer = torch.optim.AdamW(
         trainable_params,
         lr=args.learning_rate,
+        weight_decay=args.weight_decay,
     )
 
     if is_main_process:
@@ -277,7 +285,15 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         sample_stride=args.sample_stride,
         sample_n_frames=args.sample_n_frames,
     )
-    sampler = RandomSampler(train_dataset)
+
+    if not is_dist():
+        sampler = RandomSampler(train_dataset)
+    else:
+        sampler = DistributedSampler(train_dataset,
+            num_replicas=num_processes,
+            rank=global_rank,
+            shuffle=True,
+            seed=global_seed)
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -292,6 +308,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
     # Get the training iteration
     max_train_steps = args.num_train_epochs * len(train_dataloader)
+    print(f'max_train_steps: {max_train_steps}')
 
     # Scheduler
     lr_scheduler = get_scheduler(
@@ -303,7 +320,8 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     )
 
     unet.to(local_rank)
-    # unet = DDP(unet, device_ids=[local_rank], output_device=local_rank)
+    if is_dist():
+        unet = DDP(unet, device_ids=[local_rank], output_device=local_rank)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(
@@ -339,7 +357,9 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     scaler = torch.cuda.amp.GradScaler() if args.mixed_precision else None
 
     for epoch in range(first_epoch, num_train_epochs):
-        # train_dataloader.sampler.set_epoch(epoch)
+        if is_dist():
+            train_dataloader.sampler.set_epoch(epoch)
+
         unet.train()
 
         for step, batch in enumerate(train_dataloader):
@@ -445,47 +465,81 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
             progress_bar.update(1)
             global_step += 1
 
+            # Wandb logging
+            if is_main_process and args.use_wandb:
+                wandb.log({"train_loss": loss.item()}, step=global_step)
+
             # Save checkpoint
             if is_main_process and (global_step % args.save_steps == 0
                                     or step == len(train_dataloader) - 1):
                 save_path = os.path.join(output_dir, 'checkpoints')
-                state_dict = {
-                    'epoch': epoch,
-                    'global_step': global_step,
-                    'state_dict': unet.state_dict(),
-                }
                 if step == len(train_dataloader) - 1:
-                    torch.save(
-                        state_dict,
-                        os.path.join(save_path,
-                                     f'checkpoint-epoch-{epoch + 1}.ckpt'))
+                    unet.save_pretrained(os.path.join(save_path, 'iter-last'))
+                    os.makedirs(last_iter_save_path)
+                    if args.push_to_hub:
+                        push_to_hub(
+                            repo_name=args.hub_model_id,
+                            output_dir=os.path.join(save_path, 'iter-last'),
+                            token=args.hub_token,
+                            private=True,
+                        )
+                    logging.info(
+                        f'Saved state to {os.path.join(save_path, "iter-last")} on the last step')
                 else:
-                    torch.save(state_dict,
-                               os.path.join(save_path, 'checkpoint.ckpt'))
-                logging.info(
-                    f'Saved state to {save_path} (global_step: {global_step})')
+                    iter_save_path = os.path.join(save_path, f'iter-{global_step}')
+                    unet.save_pretrained(iter_save_path)
+                    if args.push_to_hub and args.push_hub_strategy == 'all_checkpoints':
+                        push_to_hub(
+                            repo_name=args.hub_model_id,
+                            output_dir=os.path.join(save_path, f'iter-{global_step}'),
+                            token=args.hub_token,
+                            private=True,
+                        )
+                    logging.info(
+                        f'Saved state to {os.path.join(save_path, f"iter-{global_step}")} (global_step: {global_step})')
 
             # Periodically validation
             if is_main_process and global_step % args.eval_steps == 0:
                 samples = []
 
                 generator = torch.Generator(device=latents.device)
-                generator.manual_seed(seed)
-
+                generator.manual_seed(global_seed)
+                unet.eval()
                 height = args.sample_size
                 width = args.sample_size
+
+                def state_dict(
+                    self,
+                    *args,
+                    destination=None,
+                    prefix='',
+                    keep_vars=False,
+                    adapter_name: str = None,
+                    **kwargs
+                ):  
+                    state_dict = self.state_dict_origin()
+                    return {key: value for key, value in state_dict.items() if 'loramodule' not in key}
+                    
                 motion_adapter = MotionAdapter(
                     motion_num_attention_heads=args.motion_num_attention_heads,
                     motion_max_seq_length=args.motion_max_seq_length)
-                motion_adapter.mid_block.motion_modules = unet.mid_block.motion_modules
+
+                motion_adapter.mid_block.motion_modules = deepcopy(unet.mid_block.motion_modules)
+                motion_adapter.mid_block.motion_modules.state_dict_origin = motion_adapter.mid_block.motion_modules.state_dict
+                motion_adapter.mid_block.motion_modules.state_dict = MethodType(state_dict, motion_adapter.mid_block.motion_modules)
                 for db1, db2 in zip(motion_adapter.down_blocks,
                                     unet.down_blocks):
-                    db1.motion_modules = db2.motion_modules
+                    db1.motion_modules = deepcopy(db2.motion_modules)
+                    db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
+                    db1.motion_modules.state_dict = MethodType(state_dict, db1.motion_modules)
                 for db1, db2 in zip(motion_adapter.up_blocks, unet.up_blocks):
-                    db1.motion_modules = db2.motion_modules
+                    db1.motion_modules = deepcopy(db2.motion_modules)
+                    db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
+                    db1.motion_modules.state_dict = MethodType(state_dict, db1.motion_modules)
 
                 validation_pipeline = AnimateDiffPipeline(
-                    unet=unet,
+                    unet=UNet2DConditionModel.from_pretrained(
+                        pretrained_model_path, subfolder='unet'),
                     vae=vae,
                     tokenizer=tokenizer,
                     motion_adapter=motion_adapter,
@@ -495,25 +549,19 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                 validation_pipeline.enable_vae_slicing()
 
                 for idx, prompt in enumerate(validation_data):
-                    sample = validation_pipeline(
-                        prompt,
-                        generator=generator,
+                    output = validation_pipeline(
+                        prompt = (f"masterpiece, bestquality, highlydetailed, ultradetailed, {prompt}"),
+                        negative_prompt="bad quality, worse quality",
                         num_frames=args.sample_n_frames,
                         height=height,
                         width=width,
-                        num_inference_steps=args.num_inference_steps,
                         guidance_scale=args.guidance_scale,
-                    ).frames[0]
-                    os.makedirs(
-                        f'{output_dir}/samples/sample-{global_step}',
-                        exist_ok=True)
-                    sample[0].save(
-                        f'{output_dir}/samples/sample-{global_step}/{idx}.gif',
-                        save_all=True,
-                        append_images=sample[1:],
-                        loop=0,
-                        duration=500)
-                    samples.append(sample)
+                        num_inference_steps=args.num_inference_steps,
+                        generator=torch.Generator("cpu").manual_seed(global_seed),
+                    )
+                    frames = output.frames[0]
+                    export_to_gif(frames, f'{output_dir}/samples/sample-{global_step}-{idx}.gif')
+                unet.train()
 
             logs = {
                 'step_loss': loss.detach().item(),
@@ -524,4 +572,5 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
             if global_step >= max_train_steps:
                 break
 
-    # dist.destroy_process_group()
+    if is_dist():
+        dist.destroy_process_group()
