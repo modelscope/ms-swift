@@ -3,6 +3,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python animatediff_infer.py \
-    --model_id_or_path output/-2023-11-22T19-59-20/checkpoints \
-    --validation_prompts_path scripts/validation.txt \
-    --base_model_id_or_path AI-ModelScope/stable-diffusion-v1-5 \
+  --model_id_or_path wyj123456/Realistic_Vision_V5.1_noVAE \
+  --sft_type lora \
+  --motion_adapter_id_or_path Shanghai_AI_Laboratory/animatediff-motion-adapter-v1-5-2 \
+  --ckpt_dir /some/checkpoint/path/like/output/iter-xxx \
+  --eval_human true  \
