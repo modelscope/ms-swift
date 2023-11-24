@@ -43,8 +43,7 @@ you are a helpful assistant!<|im_end|>
 <|im_start|>user
 浙江的省会在哪？<|im_end|>
 <|im_start|>assistant
-浙江的省会是杭州。<|im_end|>
-<|endoftext|>"""
+浙江的省会是杭州。<|im_end|>"""
             self.assertTrue(result == text)
 
     @unittest.skipIf(

@@ -303,7 +303,7 @@ def get_model_tokenizer_internlm(model_dir: str,
                                                      model_kwargs, load_model,
                                                      **kwargs)
     del tokenizer.__class__.eos_token_id
-    tokenizer.eos_token_id = 103028
+    tokenizer.eos_token = '<eoa>'
     return model, tokenizer
 
 
@@ -567,7 +567,7 @@ def get_model_tokenizer_yi(model_dir: str,
                            **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-    tokenizer.eos_token_id = 7  # '<|im_end|>'
+    tokenizer.eos_token = '<|im_end|>'
     return model, tokenizer
 
 
@@ -831,7 +831,6 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                    get_model_tokenizer_qwen)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
-    tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
 
