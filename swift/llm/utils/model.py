@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
@@ -44,6 +45,7 @@ class ModelType:
     qwen_14b_chat_int4 = 'qwen-14b-chat-int4'
     qwen_7b_chat_int8 = 'qwen-7b-chat-int8'
     qwen_14b_chat_int8 = 'qwen-14b-chat-int8'
+    qwen_72b = 'qwen-72b'
     qwen_72b_chat = 'qwen-72b-chat'
     # qwen-vl
     qwen_vl = 'qwen-vl'
@@ -673,6 +675,12 @@ dtype_mapping = {
     TemplateType.chatml,
     support_flash_attn=True)
 @register_model(
+    ModelType.qwen_72b,
+    'qwen/Qwen-72B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
     ModelType.tongyi_finance_14b_chat,
     'TongyiFinance/Tongyi-Finance-14B-Chat',
     LoRATM.qwen,
@@ -910,7 +918,6 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
 def fix_gradient_checkpointing_warning() -> None:
     if version.parse(torch.__version__) < version.parse('2'):
         return
-    import torch.utils.checkpoint
     _old_forward = torch.utils.checkpoint.checkpoint
     if getattr(_old_forward, '_patching', False) is False:
         _old_forward._patching = True
