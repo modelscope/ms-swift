@@ -42,6 +42,7 @@ class ModelType:
     qwen_14b_chat_int4 = 'qwen-14b-chat-int4'
     qwen_7b_chat_int8 = 'qwen-7b-chat-int8'
     qwen_14b_chat_int8 = 'qwen-14b-chat-int8'
+    qwen_72b_chat = 'qwen-72b-chat'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -651,6 +652,12 @@ dtype_mapping = {
 }
 
 
+@register_model(
+    ModelType.qwen_72b_chat,
+    'qwen/Qwen-72B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
 @register_model(
     ModelType.tongyi_finance_14b_chat,
     'TongyiFinance/Tongyi-Finance-14B-Chat',
