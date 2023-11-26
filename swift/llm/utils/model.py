@@ -34,6 +34,8 @@ MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 class ModelType:
     # qwen
+    qwen_1_8b = 'qwen-1_8b'
+    qwen_1_8b_chat = 'qwen-1_8b-chat'
     qwen_7b = 'qwen-7b'
     qwen_7b_chat = 'qwen-7b-chat'
     qwen_14b = 'qwen-14b'
@@ -653,6 +655,18 @@ dtype_mapping = {
 
 
 @register_model(
+    ModelType.qwen_1_8b_chat,
+    'qwen/Qwen-1_8B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_1_8b,
+    'qwen/Qwen-1_8B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
     ModelType.qwen_72b_chat,
     'qwen/Qwen-72B-Chat',
     LoRATM.qwen,
@@ -894,6 +908,8 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
 
 
 def fix_gradient_checkpointing_warning() -> None:
+    if version.parse(torch.__version__) < version.parse('2'):
+        return
     import torch.utils.checkpoint
     _old_forward = torch.utils.checkpoint.checkpoint
     if getattr(_old_forward, '_patching', False) is False:
