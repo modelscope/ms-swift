@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import os
-from functools import partial
+from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 
@@ -893,6 +893,17 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
                 PreTrainedModel._set_gradient_checkpointing, module)
 
 
+def fix_gradient_checkpointing_warning() -> None:
+    import torch.utils.checkpoint
+    _old_forward = torch.utils.checkpoint.checkpoint
+    if getattr(_old_forward, '_patching', False) is False:
+        _old_forward._patching = True
+        torch.utils.checkpoint.checkpoint = update_wrapper(
+            lambda *args, use_reentrant=False, **kwargs: _old_forward(
+                *args, use_reentrant=use_reentrant, **kwargs),
+            _old_forward)
+
+
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
@@ -942,6 +953,7 @@ def get_model_tokenizer(
                                     load_model, **kwargs)
     if model is not None:
         fix_transformers_upgrade(model)
+        fix_gradient_checkpointing_warning()
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
