@@ -1,4 +1,4 @@
-<h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
+# SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning)
 
 <p align="center">
     <br>
@@ -12,7 +12,24 @@
         中文&nbsp ｜ &nbsp<a href="README.md">English</a>
 </p>
 
-# 📖 简介
+<p align="center">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
+<img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.3-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-Build from source-6FEBB9.svg"></a>
+</p>
+
+##  📖 目录
+- [简介](#-简介)
+- [新闻](#-新闻)
+- [大模型训练推理的例子](#-大模型训练推理的例子)
+- [安装](#-安装)
+- [快速开始](#-快速开始)
+- [了解更多](#-了解更多)
+- [License](#-License)
+- [联系我们](#-联系我们)
+
+## 📝 简介
 SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的轻量级一站式训练、推理深度学习框架。它集成了各种高效的微调方法，如LoRA、QLoRA、阿里云自研的ResTuning-Bypass等，以及开箱即用的训练推理脚本，使开发者可以在单张商业级显卡上微调推理LLM&AIGC模型。此外，SWIFT与[PEFT](https://github.com/huggingface/peft)完全兼容，使开发者可以在ModelScope模型体系中使用PEFT的能力。
 
 目前支持的方法：
@@ -64,9 +81,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.9.3: 支持**baichuan2**系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 
 
-## ✨ 大模型微调的例子
-用户可以查看[LLM微调文档](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm)来获得更详细的介绍.
-
+## ✨ 大模型训练推理的例子
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
@@ -91,7 +106,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
     - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
-    - 代码: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
+    - 代码: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [codefuse-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - 医疗: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
     - 法律: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
     - 数学: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
@@ -107,163 +122,13 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ### 简单使用
-快速对LLM进行微调, 推理并搭建Web-UI.
-
-更多sh启动脚本可以查看: [微调和推理](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/README_CN.md#-%E5%BE%AE%E8%B0%83%E5%92%8C%E6%8E%A8%E7%90%86)
-
-```bash
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .
-```
-
-#### 使用python运行
-```python
-# Experimental environment: A10, 3090, A100, ...
-# 20GB GPU memory
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-import torch
-
-from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments
-)
-from swift.llm.run import infer_main, sft_main, web_ui_main
-
-model_type = ModelType.qwen_7b_chat
-sft_args = SftArguments(
-    model_type=model_type,
-    eval_steps=50,
-    train_dataset_sample=2000,
-    dataset=[DatasetName.blossom_math_zh],
-    output_dir='output',
-    gradient_checkpointing=True)
-result = sft_main(sft_args)
-best_model_checkpoint = result['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
-torch.cuda.empty_cache()
-
-infer_args = InferArguments(
-    ckpt_dir=best_model_checkpoint,
-    load_args_from_ckpt_dir=True,
-    stream=True,
-    show_dataset_sample=5)
-result = infer_main(infer_args)
-print(f'result: {result}')
-torch.cuda.empty_cache()
-
-web_ui_main(infer_args)
-```
-
-**单样本推理**:
-
-使用LoRA**增量**权重进行推理:
-```python
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
-)
-from swift.tuners import Swift
-import torch
-
-model_dir = 'vx_xxx/checkpoint-100'
-model_type = ModelType.qwen_7b_chat
-template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
-
-model = Swift.from_pretrained(model, model_dir, inference_mode=True)
-template = get_template(template_type, tokenizer)
-query = 'xxxxxx'
-response, history = inference(model, template, query)
-print(f'response: {response}')
-print(f'history: {history}')
-```
-
-使用LoRA **merge**后完整的权重进行推理:
-```python
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
-)
-import torch
-
-model_dir = 'vx_xxx/checkpoint-100-merged'
-model_type = ModelType.qwen_7b_chat
-template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'},
-                                       model_dir=model_dir)
-
-template = get_template(template_type, tokenizer)
-query = 'xxxxxx'
-response, history = inference(model, template, query)
-print(f'response: {response}')
-print(f'history: {history}')
-```
-
-#### 使用Swift CLI运行
-**微调**:
-```bash
-# Experimental environment: A10, 3090, A100, ...
-# 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-
-# 使用DDP
-# Experimental environment: 2 * 3090
-# 2 * 23GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=2 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-
-# 使用自己的数据集
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --custom_train_dataset_path chatml.jsonl \
-    --output_dir output \
-```
-
-**推理**:
-```bash
-# 原始模型
-CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
-
-# 微调后的模型
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-
-# merge LoRA增量权重并推理
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
-```
-
-**Web-UI**:
-```bash
-# 原始模型
-CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
-
-# 微调后的模型
-CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-
-# merge LoRA增量权重并使用web-ui
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
-```
+- 快速对LLM进行推理, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
+- 快速对LLM进行微调, 推理并搭建Web-UI. 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
+- 对swift中的模型, 数据集, 对话模板进行拓展, 可以查看[自定义和拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
+- 查询微调和推理的命令行超参数, 可以[命令行超参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
 
 
-# 🛠️ 安装
+## 🛠️ 安装
 
 SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 
@@ -289,7 +154,8 @@ SWIFT依赖torch>=1.13。
 docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
 ```
 
-# 🚀 快速开始
+## 🚀 快速开始
+
 SWIFT支持多个tuners，包括由[PEFT](https://github.com/huggingface/peft)提供的tuners。要使用这些tuners，只需调用:
 ```python
 from swift import Swift, LoRAConfig
@@ -420,8 +286,7 @@ output
 
 存储在output目录中的config/weights是extra_state_keys的配置和权重。这与Peft不同，Peft存储了`default` tuner的config/weights。
 
-
-# 🔍 Learn More
+## 🔍 了解更多
 
 - [ModelScope库](https://github.com/modelscope/modelscope/)
 
@@ -429,11 +294,11 @@ output
 
 - [将自己的模型贡献给ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
 
-# License
+## License
 
 本项目使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。
 
-# Contact Us
+## ☎️ 联系我们
 
 您可以通过加我们的微信群, 来和我们联系和交流:
 
