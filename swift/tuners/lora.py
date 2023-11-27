@@ -7,6 +7,7 @@ from types import MethodType
 from typing import List, Union
 
 import torch
+from peft import LoraModel
 from peft.tuners.lora import LoraLayer
 from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
 
@@ -152,8 +153,35 @@ class LoRA(SwiftAdapter):
                     for target_key in target_modules)
             if target_module_found:  # noqa
                 sub_module = model.get_submodule(module_key)
+                parent = model.get_submodule(".".join(module_key.split(".")[:-1]))
+                sub_module_name = module_key.split(".")[-1]
 
                 lora_module = None
+                if isinstance(sub_module, LoraLayer) and isinstance(sub_module, torch.nn.Conv2d):
+                    sub_module.update_layer_conv2d(
+                        adapter_name,
+                        kwargs['r'],
+                        kwargs['lora_alpha'],
+                        kwargs['lora_dropout'],
+                        True,
+                    )
+                elif isinstance(sub_module, LoraLayer) and isinstance(sub_module, torch.nn.Embedding):
+                    sub_module.update_layer_embedding(
+                        adapter_name,
+                        kwargs['r'],
+                        kwargs['lora_alpha'],
+                        kwargs['lora_dropout'],
+                        True,
+                    )
+
+                elif isinstance(sub_module, LoraLayer):
+                    sub_module.update_layer(
+                        adapter_name,
+                        kwargs['r'],
+                        kwargs['lora_alpha'],
+                        kwargs['lora_dropout'],
+                        True,
+                    )
                 if getattr(model, 'is_loaded_in_8bit', False) and isinstance(
                         sub_module, bnb.nn.Linear8bitLt):
                     eight_bit_kwargs = kwargs.copy()
@@ -263,6 +291,32 @@ class LoRA(SwiftAdapter):
                     setattr(sub_module, f'loramodule_{adapter_name}',
                             lora_module)
                     modules[module_key] = adapter_name
+
+                    setattr(parent, child_name, new_module)
+                    # It's not necessary to set requires_grad here, as that is handled by
+                    # _mark_only_adapters_as_trainable
+
+                    # child layer wraps the original module, unpack it
+                    if hasattr(child, "base_layer"):
+                        child = child.base_layer
+
+                    if not hasattr(new_module, "base_layer"):
+                        new_module.weight = child.weight
+                        if hasattr(child, "bias"):
+                            new_module.bias = child.bias
+
+                    if getattr(child, "state", None) is not None:
+                        if hasattr(new_module, "base_layer"):
+                            new_module.base_layer.state = child.state
+                        else:
+                            new_module.state = child.state
+                        new_module.to(child.weight.device)
+
+                    # dispatch to correct device
+                    for name, module in new_module.named_modules():
+                        if (self.prefix in name) or ("ranknum" in name):
+                            weight = child.qweight if hasattr(child, "qweight") else child.weight
+                            module.to(weight.device)
 
         logger.debug(f'Lora modules(module_key -> adapter_name): {modules}')
 
