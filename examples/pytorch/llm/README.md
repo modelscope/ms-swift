@@ -29,7 +29,7 @@
   - xverse series: [xverse-7b](https://modelscope.cn/models/xverse/XVERSE-7B/summary), [xverse-7b-chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary), [xverse-13b](https://modelscope.cn/models/xverse/XVERSE-13B/summary), [xverse-13b-chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary), [xverse-65b](https://modelscope.cn/models/xverse/XVERSE-65B/summary)
   - bluelm series: [bluelm-7b](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base/summary), [bluelm-7b-chat](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat/summary), [bluelm-7b-32k](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base-32K/summary), [bluelm-7b-chat-32k](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat-32K/summary)
   - mistral series: [mistral-7b](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary), [mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)
-  - yi series: [yi-6b](https://modelscope.cn/models/01ai/Yi-6B/summary), [yi-34b](https://modelscope.cn/models/01ai/Yi-34B/summary)
+  - yi series: [yi-6b](https://modelscope.cn/models/01ai/Yi-6B/summary), [yi-34b](https://modelscope.cn/models/01ai/Yi-34B/summary), [yi-34b-chat](https://modelscope.cn/models/01ai/Yi-34B-Chat/summary)
   - ziya series: [ziya2-13b](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary), [ziya2-13b-chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)
   - skywork series: [skywork-13b](https://modelscope.cn/models/skywork/Skywork-13B-base/summary), [skywork-13b-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)
   - other: [polylm-13b](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary), [seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)
@@ -50,7 +50,7 @@
   - Multi-Modal: 🔥[coco-en](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)
   - Custom Dataset
 - Supported Templates:
-  - Text Generation: default-generation, chatglm-generation
+  - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 
@@ -61,7 +61,7 @@ Experimental environment: A10, 3090, V100, A100, ...
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install .
+pip install -e .
 # The following script needs to be executed in this directory.
 cd examples/pytorch/llm
 
@@ -104,17 +104,72 @@ sft_args = SftArguments(
     dataset=[DatasetName.blossom_math_zh],
     output_dir='output',
     gradient_checkpointing=True)
-best_ckpt_dir = sft_main(sft_args)
-print(f'best_ckpt_dir: {best_ckpt_dir}')
+result = sft_main(sft_args)
+best_model_checkpoint = result['best_model_checkpoint']
+print(f'best_model_checkpoint: {best_model_checkpoint}')
 torch.cuda.empty_cache()
+
 infer_args = InferArguments(
-    ckpt_dir=best_ckpt_dir,
+    ckpt_dir=best_model_checkpoint,
     load_args_from_ckpt_dir=True,
     stream=True,
     show_dataset_sample=5)
-infer_main(infer_args)
+result = infer_main(infer_args)
+print(f'result: {result}')
 torch.cuda.empty_cache()
+
 web_ui_main(infer_args)
+```
+
+**Single-Sample Inference**:
+
+Inference using LoRA **incremental** weights:
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
+)
+from swift.tuners import Swift
+import torch
+
+model_dir = 'vx_xxx/checkpoint-100'
+model_type = ModelType.qwen_7b_chat
+template_type = get_default_template_type(model_type)
+
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
+
+model = Swift.from_pretrained(model, model_dir, inference_mode=True)
+template = get_template(template_type, tokenizer)
+query = 'xxxxxx'
+response, history = inference(model, template, query)
+print(f'response: {response}')
+print(f'history: {history}')
+```
+
+Inference using LoRA **merged** complete weights:
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
+)
+import torch
+
+model_dir = 'vx_xxx/checkpoint-100-merged'
+model_type = ModelType.qwen_7b_chat
+template_type = get_default_template_type(model_type)
+
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'},
+                                       model_dir=model_dir)
+
+template = get_template(template_type, tokenizer)
+query = 'xxxxxx'
+response, history = inference(model, template, query)
+print(f'response: {response}')
+print(f'history: {history}')
 ```
 
 ### Run using Swift CLI
@@ -122,7 +177,11 @@ web_ui_main(infer_args)
 ```bash
 # Experimental environment: A10, 3090, A100, ...
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset blossom-math-zh \
+    --output_dir output \
 
 # Using DDP
 # Experimental environment: 2 * 3090
@@ -132,19 +191,40 @@ NPROC_PER_NODE=2 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset blossom-math-zh \
+    --output_dir output \
 
 # Using custom dataset
-CUDA_VISIBLE_DEVICES=0 swift sft --model_id_or_path qwen/Qwen-7B-Chat --custom_train_dataset_path chatml.jsonl
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --custom_train_dataset_path chatml.jsonl \
+    --output_dir output \
 ```
 
 **Inference**:
 ```bash
+# Original Model
+CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+
+# Fine-tuned Model
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# Merge LoRA incremental weights and perform inference
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 **Web-UI**:
 ```bash
+# Original Model
+CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
+
+# Fine-tuned Model
 CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# Merge LoRA incremental weights and use web UI
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 
@@ -208,12 +288,12 @@ bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
 
-# sft(full+mp) and infer qwen-7b-chat, Requires 2*75GB GPU memory.
+# sft(full+mp) and infer qwen-7b-chat, Requires 2*55GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp/sft.sh
 bash scripts/qwen_7b_chat/full_mp/infer.sh
 
-# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*75GB GPU memory.
+# sft(full+mp+ddp) and infer qwen-7b-chat, Requires 4*55GB GPU memory.
 # Recommended experimental environment: A100
 bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
 bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
@@ -574,9 +654,9 @@ The template initialization function retrieves the complete chat template based 
 -- `check_model_is_latest`: Check if the model is the latest, default is `True`. If you need to train without internet connection, please set this parameter to `False`.
 - `--max_new_tokens`: The maximum number of new tokens to generate. The default value is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Whether to use sampling during generation. The default value is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--temperature`: The temperature value for sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--temperature`: The temperature value for sampling during generation. The default value is `0.3`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--top_k`: The value of k for top-k sampling during generation. The default value is `20`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--top_p`: The cumulative probability threshold for top-p sampling during generation. The default value is `0.9`. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--top_p`: The cumulative probability threshold for top-p sampling during generation. The default value is `0.7`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--repetition_penalty`: The repetition penalty applied during generation. The default value is `1.05`. This parameter only takes effect when `predict_with_generate` is set to True.
 
 
@@ -594,7 +674,7 @@ The template initialization function retrieves the complete chat template based 
 - `--dataset`: Default value is `'blossom-math-zh'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_seed`: Default value is `42`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
 - `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter only takes effect when `eval_human` is set to False.
-- `--show_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `10`. This parameter only takes effect when `eval_human` is set to False.
+- `--val_dataset_sample`: Indicates the number of samples from the validation set to evaluate and display. Default value is `10`. This parameter only takes effect when `eval_human` is set to False.
 - `--system`: Default value is `'you are a helpful assistant!'`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--max_length`: Default value is `2048`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--check_dataset_strategy`: The default value is `'none'`, For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
@@ -606,12 +686,12 @@ The template initialization function retrieves the complete chat template based 
 - `--bnb_4bit_use_double_quant`: Default value is `True`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. This parameter is not effective if `quantization_bit` is set to 0.
 - `--max_new_tokens`: Maximum number of new tokens to generate. Default value is `2048`.
 - `--do_sample`: Whether to use greedy decoding or sampling for generation. Default value is `True`.
-- `--temperature`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
+- `--temperature`: Default value is `0.3`. This parameter only takes effect when `do_sample` is set to True.
 - `--top_k`: Default value is `20`. This parameter only takes effect when `do_sample` is set to True.
-- `--top_p`: Default value is `0.9`. This parameter only takes effect when `do_sample` is set to True.
+- `--top_p`: Default value is `0.7`. This parameter only takes effect when `do_sample` is set to True.
 - `--repetition_penalty`: Default value is `1.05`.
 - `--use_flash_attn`: Default value is `None`, which means 'auto'. For specific parameter details, please refer to the `sft.sh Command Line Arguments`. The models that support 'flash_attn' include: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series.
 - `--ignore_args_error`: Default value is `False`. For specific parameter details, please refer to the `sft.sh Command Line Arguments`.
 - `--stream`: Whether to use streaming output. Default value is `True`.
 - `--merge_lora_and_save`: Whether to merge the lora weights into the base model and save the complete weights. Default value is `False`. The weights will be saved in a directory named `checkpoint-xxx-merged` at the same level as `ckpt_dir`, e.g., `'/path/to/your/vx_xxx/checkpoint-xxx-merged'`.
-- `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file. Default value is `False`. The generate_config file saved during training will be overwritten.
+- `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file. Default value is `False`. The generation_config file saved during training will be overwritten.

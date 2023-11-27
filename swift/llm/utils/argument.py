@@ -15,7 +15,8 @@ from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
 from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
                       register_dataset)
-from .model import MODEL_MAPPING, ModelType, dtype_mapping
+from .model import (MODEL_MAPPING, ModelType, dtype_mapping,
+                    get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
@@ -98,7 +99,7 @@ class SftArguments:
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
     gradient_accumulation_steps: int = 16
-    max_grad_norm: float = 1.
+    max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
@@ -145,9 +146,9 @@ class SftArguments:
     # generation config
     max_new_tokens: int = 2048
     do_sample: bool = True
-    temperature: float = 0.9
+    temperature: float = 0.3
     top_k: int = 20
-    top_p: float = 0.9
+    top_p: float = 0.7
     repetition_penalty: float = 1.05
 
     def __post_init__(self) -> None:
@@ -195,7 +196,7 @@ class SftArguments:
             raise ValueError(f'sft_type: {self.sft_type}')
 
         if self.template_type == 'AUTO':
-            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
@@ -269,7 +270,8 @@ class InferArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    show_dataset_sample: int = 10
+    val_dataset_sample: int = 10  # -1: all dataset
+    save_result: bool = True
     system: str = 'you are a helpful assistant!'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
@@ -290,9 +292,9 @@ class InferArguments:
 
     max_new_tokens: int = 2048
     do_sample: bool = True
-    temperature: float = 0.9
+    temperature: float = 0.3
     top_k: int = 20
-    top_p: float = 0.9
+    top_p: float = 0.7
     repetition_penalty: float = 1.05
 
     # other
@@ -301,11 +303,12 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
+    # compatibility
+    show_dataset_sample: int = 10
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
         handle_path(self)
-        set_model_type(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -314,12 +317,14 @@ class InferArguments:
             )
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
+        else:
+            set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
-            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
             self.dataset = [DatasetName.blossom_math_zh]
@@ -525,7 +530,7 @@ class RomeArguments(InferArguments):
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
-            self.template_type = MODEL_MAPPING[self.model_type]['template']
+            self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
 
         if self.max_length == -1:
@@ -600,6 +605,10 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
             and 'AUTO' in args.lora_target_modules
             and len(args.lora_target_modules) == 1):
         args.lora_target_modules = ['DEFAULT']
+    if (isinstance(args, InferArguments) and args.show_dataset_sample != 10
+            and args.val_dataset_sample == 10):
+        # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
+        args.val_dataset_sample = args.show_dataset_sample
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
@@ -619,8 +628,9 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
-        args.model_type = ModelType.qwen_7b_chat
-    if args.model_type not in MODEL_MAPPING:
+        raise ValueError(
+            'please setting `--model_type xxx` or `--model_id_or_path xxx`')
+    elif args.model_type not in MODEL_MAPPING:
         raise ValueError(f'model_type: {args.model_type} is not registered.')
     model_info = MODEL_MAPPING[args.model_type]
     if args.model_revision is None:
@@ -687,8 +697,14 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if args.custom_train_dataset_path is None:
-        assert args.custom_val_dataset_path is None
+        args.custom_train_dataset_path = []
+    if args.custom_val_dataset_path is None:
+        args.custom_val_dataset_path = []
+    if len(args.custom_train_dataset_path) == 0 and len(
+            args.custom_val_dataset_path) == 0:
         return
+    if '_custom_dataset' in DATASET_MAPPING:
+        DATASET_MAPPING.pop('_custom_dataset')
     register_dataset(
         '_custom_dataset',
         '_custom_dataset',
@@ -697,7 +713,7 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
         get_function=get_custom_dataset)
     if args.dataset is None:
         args.dataset = ['_custom_dataset']
-    else:
+    elif '_custom_dataset' not in args.dataset:
         args.dataset.append('_custom_dataset')
 
 
@@ -709,8 +725,8 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
     with open(sft_args_path, 'r') as f:
         sft_args = json.load(f)
     imported_keys = [
-        'model_id_or_path', 'model_revision', 'model_cache_dir', 'sft_type',
-        'template_type', 'dtype', 'system', 'quantization_bit',
+        'model_type', 'model_id_or_path', 'model_revision', 'model_cache_dir',
+        'sft_type', 'template_type', 'dtype', 'system', 'quantization_bit',
         'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
         'bnb_4bit_use_double_quant'
     ]
@@ -721,7 +737,10 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
             'custom_val_dataset_path'
         ]
     for key in imported_keys:
-        if key == 'model_cache_dir' and getattr(args, key) is not None:
+        if (key in {
+                'model_cache_dir', 'dataset', 'custom_train_dataset_path',
+                'custom_val_dataset_path'
+        } and getattr(args, key) is not None):
             continue
         setattr(args, key, sft_args.get(key))
 

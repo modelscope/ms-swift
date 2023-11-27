@@ -9,9 +9,8 @@ python llm_infer.py \
     --max_length 2048 \
     --use_flash_attn false \
     --max_new_tokens 2048 \
-    --temperature 0.9 \
-    --top_k 20 \
-    --top_p 0.9 \
+    --temperature 0.1 \
+    --top_p 0.7 \
     --repetition_penalty 1.05 \
     --do_sample true \
     --merge_lora_and_save false \

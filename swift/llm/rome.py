@@ -59,7 +59,6 @@ def rome_infer(args: RomeArguments) -> None:
                                       args.system, args.max_length,
                                       args.truncation_strategy)
     generation_config = GenerationConfig(
-        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
@@ -76,12 +75,12 @@ def rome_infer(args: RomeArguments) -> None:
     if args.eval_human:
         while True:
             query = input('<<< ')
-            inference(model, template, query, stream=args.stream)
+            inference(model, template, query, stream=args.stream, verbose=True)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
         mini_val_dataset = val_dataset.select(
-            range(min(args.show_dataset_sample, val_dataset.shape[0])))
+            range(min(args.val_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
             inference(
                 model,
@@ -89,7 +88,8 @@ def rome_infer(args: RomeArguments) -> None:
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream)
+                stream=args.stream,
+                verbose=True)
             print()
             print(f"[LABELS]{data.get('response')}")
             print('-' * 80)

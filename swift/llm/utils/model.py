@@ -17,7 +17,9 @@ from torch import Tensor
 from torch import dtype as Dtype
 from transformers import (PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.auto_factory import _BaseAutoModelClass
+from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
 from swift import get_logger
@@ -95,12 +97,13 @@ class ModelType:
     # yi
     yi_6b = 'yi-6b'
     yi_34b = 'yi-34b'
+    yi_34b_chat = 'yi-34b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
     # skywork
-    skywork_13b_chat = 'skywork-13b-chat'
     skywork_13b = 'skywork-13b'
+    skywork_13b_chat = 'skywork-13b-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
@@ -110,6 +113,8 @@ class ModelType:
     tongyi_finance_14b = 'tongyi-finance-14b'
     tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
     tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
+    # codefuse
+    codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
 
 
 class LoRATM(NamedTuple):
@@ -193,9 +198,9 @@ def register_model(
 @register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
                 LoRATM.bluelm, TemplateType.bluelm)
 @register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
-                LoRATM.bluelm, TemplateType.default_generation)
+                LoRATM.bluelm, TemplateType.default_generation_bos)
 @register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
-                TemplateType.default_generation)
+                TemplateType.default_generation_bos)
 @register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
@@ -208,19 +213,6 @@ def register_model(
                 LoRATM.xverse, TemplateType.xverse)
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.xverse,
                 TemplateType.default_generation)
-@register_model(ModelType.internlm_20b_chat,
-                'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.internlm,
-                TemplateType.internlm)
-@register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
-                LoRATM.internlm, TemplateType.default_generation)
-@register_model(ModelType.internlm_7b_chat_8k,
-                'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.internlm,
-                TemplateType.internlm)
-@register_model(ModelType.internlm_7b_chat,
-                'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
-                LoRATM.internlm, TemplateType.internlm)
-@register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
-                LoRATM.internlm, TemplateType.default_generation)
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
@@ -286,6 +278,32 @@ def get_model_tokenizer_from_sdk(
             config=model_config,
             torch_dtype=torch_dtype,
             **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(ModelType.internlm_20b_chat,
+                'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.internlm,
+                TemplateType.internlm)
+@register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
+                LoRATM.internlm, TemplateType.default_generation_bos)
+@register_model(ModelType.internlm_7b_chat_8k,
+                'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.internlm,
+                TemplateType.internlm)
+@register_model(ModelType.internlm_7b_chat,
+                'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
+                LoRATM.internlm, TemplateType.internlm)
+@register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
+                LoRATM.internlm, TemplateType.default_generation_bos)
+def get_model_tokenizer_internlm(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
+                                                     model_kwargs, load_model,
+                                                     **kwargs)
+    del tokenizer.__class__.eos_token_id
+    tokenizer.eos_token = '<eoa>'
     return model, tokenizer
 
 
@@ -406,6 +424,14 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
     return model, tokenizer
 
 
+def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
+                    tokenizer_config: Dict[str, Any]) -> None:
+    for k, v in tokenizer_cls.__dict__.items():
+        if k.endswith('_token') and isinstance(
+                v, property) and k in tokenizer_config:
+            setattr(tokenizer_cls, k, tokenizer_config[k])
+
+
 @register_model(ModelType.chatglm3_6b_32k, 'ZhipuAI/chatglm3-6b-32k',
                 LoRATM.chatglm, TemplateType.chatglm3)
 @register_model(ModelType.chatglm3_6b, 'ZhipuAI/chatglm3-6b', LoRATM.chatglm,
@@ -425,12 +451,18 @@ def get_model_tokenizer_chatglm(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'output_layer'
         ]
+    # fix transformers>=4.34 bug
+    if version.parse(transformers.__version__) >= version.parse('4.34'):
+        tokenizer_config = get_tokenizer_config(model_dir)
+        class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+        tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+        tokenizer_cls._auto_class = 'AutoTokenizer'
+        remove_property(tokenizer_cls, tokenizer_config)
+        kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+            model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
-    # fix transformers>=4.34 bug
-    if version.parse(transformers.__version__) >= version.parse('4.34'):
-        tokenizer.__class__.special_tokens_map = {}
     if model is not None:
         from torch.nn import CrossEntropyLoss
         _old_forward = CrossEntropyLoss.forward
@@ -466,7 +498,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.ziya2_13b,
     'Fengshenbang/Ziya2-13B-Base',
     LoRATM.ziya,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     support_flash_attn=True)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
@@ -504,7 +536,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
     LoRATM.mistral,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
@@ -523,24 +555,41 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
+    ModelType.yi_34b_chat,
+    '01ai/Yi-34B-Chat',
+    LoRATM.yi,
+    TemplateType.chatml,
+    support_flash_attn=True)
+def get_model_tokenizer_yi(model_dir: str,
+                           torch_dtype: Dtype,
+                           model_kwargs: Dict[str, Any],
+                           load_model: bool = True,
+                           **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.eos_token = '<|im_end|>'
+    return model, tokenizer
+
+
+@register_model(
     ModelType.llama2_7b,
     'modelscope/Llama-2-7b-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True)
 @register_model(
     ModelType.llama2_13b,
     'modelscope/Llama-2-13b-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True)
 @register_model(
     ModelType.llama2_70b,
     'modelscope/Llama-2-70b-ms',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True)
 @register_model(
@@ -666,7 +715,7 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
-    tokenizer.eos_token_id = tokenizer.eod_id
+    tokenizer.eos_token_id = tokenizer.im_end_id
     return model, tokenizer
 
 
@@ -782,12 +831,11 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                    get_model_tokenizer_qwen)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
-    tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
 
 register_model(ModelType.skywork_13b, 'skywork/Skywork-13B-base',
-               LoRATM.llama2, TemplateType.default_generation,
+               LoRATM.llama2, TemplateType.default_generation_bos,
                get_model_tokenizer_from_repo)
 
 
@@ -805,6 +853,28 @@ def get_skywork_model_tokenizer(model_dir: str,
     tokenizer.add_tokens('[BOT]')
     tokenizer.add_tokens('[SEP]')
     return model, tokenizer
+
+
+@register_model(
+    ModelType.codefuse_codellama_34b_chat,
+    'codefuse-ai/CodeFuse-CodeLlama-34B',
+    LoRATM.llama2,
+    'codefuse-codellama',
+    support_flash_attn=True)
+def get_model_tokenizer_codellama(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir, trust_remote_code=True, use_fast=False, legacy=False)
+    return get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        tokenizer=tokenizer,
+        **kwargs)
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
@@ -877,3 +947,7 @@ def get_model_tokenizer(
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
     return model, tokenizer
+
+
+def get_default_template_type(model_type: str) -> Optional[str]:
+    return MODEL_MAPPING[model_type].get('template')

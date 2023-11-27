@@ -1,9 +1,9 @@
 import os
 import unittest
 
-from swift.llm import (MODEL_MAPPING, ModelType, get_model_tokenizer,
-                       get_template, inference, inference_stream,
-                       print_example)
+from swift.llm import (ModelType, get_default_template_type,
+                       get_model_tokenizer, get_template, inference,
+                       inference_stream, print_example)
 from swift.utils import lower_bound, seed_everything
 
 
@@ -22,15 +22,15 @@ class TestLlmUtils(unittest.TestCase):
     def test_inference(self):
         model_type = ModelType.chatglm2_6b
         model, tokenizer = get_model_tokenizer(model_type)
-        template = get_template(MODEL_MAPPING[model_type]['template'],
-                                tokenizer)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
         model.generation_config.max_length = 128
         model.generation_config.do_sample = True
         for query in ['你好', 'hello']:
             seed_everything(42, True)
             print('stream=True')
             gen_text_stream, history = inference(
-                model, template, query, stream=True)
+                model, template, query, stream=True, verbose=True)
             print(f'[GEN]: {gen_text_stream}')
             print(f'[HISTORY]: {history}')
             #
@@ -44,7 +44,7 @@ class TestLlmUtils(unittest.TestCase):
             seed_everything(42, True)
             print('stream=False')
             gen_text, history3 = inference(
-                model, template, query, stream=False)
+                model, template, query, stream=False, verbose=True)
             print(f'[GEN]: {gen_text}')
             print(f'[HISTORY]: {history3}')
             self.assertTrue(gen_text_stream == gen_text_stream2 == gen_text)

@@ -3,14 +3,14 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_id_or_path TongyiFinance/Tongyi-Finance-14B-Chat-Int4 \
-    --model_revision master \
+    --model_type tongyi-finance-14b-chat-int4 \
     --sft_type lora \
     --tuner_backend swift \
     --template_type chatml \
     --dtype fp16 \
     --output_dir output \
     --custom_train_dataset_path xxx.jsonl \
+    --custom_val_dataset_path yyy.jsonl \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \

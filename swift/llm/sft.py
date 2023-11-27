@@ -126,6 +126,7 @@ def llm_sft(args: SftArguments) -> str:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
+    assert train_dataset is not None
     if args.train_dataset_sample >= 0:
         train_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])
@@ -164,7 +165,6 @@ def llm_sft(args: SftArguments) -> str:
 
     # Setting training_args
     generation_config = GenerationConfig(
-        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
@@ -197,6 +197,7 @@ def llm_sft(args: SftArguments) -> str:
         save_strategy=IntervalStrategy.STEPS,
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
+        remove_unused_columns=False,
         bf16=args.bf16,
         fp16=args.fp16,
         eval_steps=args.eval_steps,
@@ -280,4 +281,9 @@ def llm_sft(args: SftArguments) -> str:
         if args.push_to_hub:
             trainer._add_patterns_to_gitignores(['images/'])
             trainer.push_to_hub()
-    return trainer.state.best_model_checkpoint
+    return {
+        'best_model_checkpoint': trainer.state.best_model_checkpoint,
+        'best_metric': trainer.state.best_metric,
+        'global_step': trainer.state.global_step,
+        'log_history': trainer.state.log_history,
+    }

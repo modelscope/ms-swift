@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import os
 import shutil
 from typing import Tuple
@@ -12,12 +13,13 @@ from swift.tuners import Swift
 from swift.utils import (get_logger, print_model_info, seed_everything,
                          show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference)
+                    get_template, inference, save_result_to_jsonl)
 
 logger = get_logger()
 
 
-def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
+def merge_lora(args: InferArguments, replace_if_exists=False) -> str:
+    logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
     assert 'int4' not in args.model_type, 'int4 model is not supported'
@@ -64,10 +66,23 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> None:
             res.pop('adapter_cfg', None)
             with open(new_configuration_path, 'w') as f:
                 json.dump(res, f, ensure_ascii=False, indent=4)
-        logger.info('Successfully merged LoRA.')
+        # sft_args.json
+        sft_args_fname = 'sft_args.json'
+        old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
+        new_sft_args_path = os.path.join(args.ckpt_dir, sft_args_fname)
+        if os.path.exists(old_sft_args_path):
+            with open(old_sft_args_path, 'r') as f:
+                res = json.load(f)
+            res['sft_type'] = 'full'
+            with open(new_sft_args_path, 'w') as f:
+                json.dump(res, f, ensure_ascii=False, indent=2)
+        logger.info(f'Successfully merged LoRA and saved in {args.ckpt_dir}.')
     else:
-        logger.info('The weight directory for the merged LoRA already exists, '
-                    'skipping the saving process.')
+        logger.info(
+            f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
+            'skipping the saving process. '
+            'you can pass `replace_if_exists=True` to overwrite it.')
+    return merged_lora_path
 
 
 def prepare_model_template(
@@ -110,7 +125,6 @@ def prepare_model_template(
                                       args.system, args.max_length,
                                       args.truncation_strategy)
     generation_config = GenerationConfig(
-        max_length=None,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
@@ -132,24 +146,53 @@ def llm_infer(args: InferArguments) -> None:
         assert args.ckpt_dir is not None
         model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
+    result = []
+    jsonl_path = None
+    if args.save_result and args.ckpt_dir is not None:
+        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+        jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
         while True:
             query = input('<<< ')
-            inference(model, template, query, stream=args.stream)
+            _, history = inference(
+                model, template, query, stream=args.stream, verbose=True)
+            item = history[0]
+            if jsonl_path is not None:
+                save_result_to_jsonl(jsonl_path, item[0], item[1])
+            result.append({
+                'query': item[0],
+                'response': item[1],
+                'label': None
+            })
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
-        mini_val_dataset = val_dataset.select(
-            range(min(args.show_dataset_sample, val_dataset.shape[0])))
-        for data in mini_val_dataset:
-            inference(
+        if args.val_dataset_sample >= 0:
+            val_dataset = val_dataset.select(
+                range(min(args.val_dataset_sample, val_dataset.shape[0])))
+        logger.info(f'val_dataset: {val_dataset}')
+        for data in val_dataset:
+            _, history = inference(
                 model,
                 template,
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream)
+                stream=args.stream,
+                verbose=True)
+            label = data.get('response')
+            item = history[0]
+            if jsonl_path is not None:
+                save_result_to_jsonl(jsonl_path, item[0], item[1], label)
+            result.append({
+                'query': item[0],
+                'response': item[1],
+                'label': label
+            })
             print()
-            print(f"[LABELS]{data.get('response')}")
+            print(f'[LABELS]{label}')
             print('-' * 80)
             # input('next[ENTER]')
+    if args.save_result and args.ckpt_dir is not None:
+        logger.info(f'save_result_path: {jsonl_path}')
+    return {'result': result}

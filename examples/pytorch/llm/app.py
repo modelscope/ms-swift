@@ -12,5 +12,5 @@ if __name__ == '__main__':
     # or chat
     args = InferArguments(model_type=ModelType.qwen_7b_chat_int4)
     # or load from ckpt dir
-    # args = InferArguments(ckpt_dir='xxx/vx_xxx/checkpoint-xxx', load_args_from_ckpt_dir=True)
+    # args = InferArguments(ckpt_dir='xxx/vx_xxx/checkpoint-xxx')
     web_ui_main(args)
