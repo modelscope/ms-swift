@@ -69,6 +69,8 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
                 guidance_scale=args.guidance_scale,
             ).frames[0]
             os.makedirs(args.output_path, exist_ok=True)
+            logger.info(
+                f'Output saved to: {f"{args.output_path}/output-{idx}.gif"}')
             export_to_gif(sample, f'{args.output_path}/output-{idx}.gif')
             idx += 1
     else:
@@ -85,4 +87,6 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
                 guidance_scale=args.guidance_scale,
             ).frames[0]
             os.makedirs(args.output_path, exist_ok=True)
+            logger.info(
+                f'Output saved to: {f"{args.output_path}/output-{idx}.gif"}')
             export_to_gif(sample, f'{args.output_path}/output-{idx}.gif')
