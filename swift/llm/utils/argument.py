@@ -87,7 +87,7 @@ class SftArguments:
 
     neftune_alpha: float = 0.0
 
-    gradient_checkpointing: bool = False
+    gradient_checkpointing: bool = True
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
