@@ -325,11 +325,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     if is_dist():
         unet = DDP(unet, device_ids=[local_rank], output_device=local_rank)
 
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps)
-    # Afterwards we recalculate our number of training epochs
-    num_train_epochs = math.ceil(max_train_steps / num_update_steps_per_epoch)
+    num_train_epochs = args.num_train_epochs
 
     # Train!
     total_batch_size = args.batch_size * num_processes * args.gradient_accumulation_steps
