@@ -489,7 +489,7 @@ class AnimateDiffInferArguments:
     enable_xformers_memory_efficient_attention: bool = True
 
     num_inference_steps: int = 25
-    guidance_scale: float = 8.
+    guidance_scale: float = 7.5
     sample_size: int = 256
     sample_stride: int = 4
     sample_n_frames: int = 16

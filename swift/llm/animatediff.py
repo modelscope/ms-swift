@@ -18,7 +18,7 @@ import torchvision
 import torchvision.transforms as transforms
 from decord import VideoReader
 from diffusers import (AutoencoderKL, DDIMScheduler, MotionAdapter,
-                       UNetMotionModel)
+                       UNetMotionModel, UNet2DConditionModel)
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils import export_to_gif
@@ -36,9 +36,6 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from swift import LoRAConfig, Swift, get_logger, push_to_hub
 from swift.utils import get_dist_setting, is_dist
 from .utils import AnimateDiffArguments
-
-api = HubApi()
-api.login('eba0f6cc-8dbc-45fd-955f-2adb2c84ae2e')
 
 logger = get_logger()
 
@@ -137,7 +134,7 @@ def save_videos_grid(videos: torch.Tensor,
                      path: str,
                      rescale=False,
                      n_rows=6,
-                     fps=8):
+                     duration=4):
     import imageio
     videos = rearrange(videos, 'b c t h w -> t b c h w')
     outputs = []
@@ -150,7 +147,7 @@ def save_videos_grid(videos: torch.Tensor,
         outputs.append(x)
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    imageio.mimsave(path, outputs, fps=fps)
+    imageio.mimsave(path, outputs, duration=duration)
 
 
 def animatediff_sft(args: AnimateDiffArguments) -> None:
@@ -480,8 +477,10 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                                     or step == len(train_dataloader) - 1):
                 save_path = os.path.join(output_dir, 'checkpoints')
                 if step == len(train_dataloader) - 1:
-                    unet.save_pretrained(os.path.join(save_path, 'iter-last'))
-                    os.makedirs(last_iter_save_path)
+                    if isinstance(unet, DDP):
+                        unet.module.save_pretrained(os.path.join(save_path, 'iter-last'))
+                    else:
+                        unet.save_pretrained(os.path.join(save_path, 'iter-last'))
                     if args.push_to_hub:
                         push_to_hub(
                             repo_name=args.hub_model_id,
@@ -495,7 +494,10 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                 else:
                     iter_save_path = os.path.join(save_path,
                                                   f'iter-{global_step}')
-                    unet.save_pretrained(iter_save_path)
+                    if isinstance(unet, DDP):
+                        unet.module.save_pretrained(iter_save_path)
+                    else:
+                        unet.save_pretrained(iter_save_path)
                     if args.push_to_hub and args.push_hub_strategy == 'all_checkpoints':
                         push_to_hub(
                             repo_name=args.hub_model_id,
@@ -535,19 +537,20 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     motion_num_attention_heads=args.motion_num_attention_heads,
                     motion_max_seq_length=args.motion_max_seq_length)
 
+                module = unet if not isinstance(unet, DDP) else unet.module
                 motion_adapter.mid_block.motion_modules = deepcopy(
-                    unet.mid_block.motion_modules)
+                    module.mid_block.motion_modules)
                 motion_adapter.mid_block.motion_modules.state_dict_origin = \
                     motion_adapter.mid_block.motion_modules.state_dict
                 motion_adapter.mid_block.motion_modules.state_dict = MethodType(
                     state_dict, motion_adapter.mid_block.motion_modules)
                 for db1, db2 in zip(motion_adapter.down_blocks,
-                                    unet.down_blocks):
+                                    module.down_blocks):
                     db1.motion_modules = deepcopy(db2.motion_modules)
                     db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
                     db1.motion_modules.state_dict = MethodType(
                         state_dict, db1.motion_modules)
-                for db1, db2 in zip(motion_adapter.up_blocks, unet.up_blocks):
+                for db1, db2 in zip(motion_adapter.up_blocks, module.up_blocks):
                     db1.motion_modules = deepcopy(db2.motion_modules)
                     db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
                     db1.motion_modules.state_dict = MethodType(
