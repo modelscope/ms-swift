@@ -18,14 +18,13 @@ import torchvision
 import torchvision.transforms as transforms
 from decord import VideoReader
 from diffusers import (AutoencoderKL, DDIMScheduler, MotionAdapter,
-                       UNetMotionModel, UNet2DConditionModel)
+                       UNet2DConditionModel, UNetMotionModel)
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils import export_to_gif
 from diffusers.utils.import_utils import is_xformers_available
 from einops import rearrange
 from modelscope import snapshot_download
-from modelscope.hub.api import HubApi
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import RandomSampler
 from torch.utils.data.dataset import Dataset
@@ -478,9 +477,11 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                 save_path = os.path.join(output_dir, 'checkpoints')
                 if step == len(train_dataloader) - 1:
                     if isinstance(unet, DDP):
-                        unet.module.save_pretrained(os.path.join(save_path, 'iter-last'))
+                        unet.module.save_pretrained(
+                            os.path.join(save_path, 'iter-last'))
                     else:
-                        unet.save_pretrained(os.path.join(save_path, 'iter-last'))
+                        unet.save_pretrained(
+                            os.path.join(save_path, 'iter-last'))
                     if args.push_to_hub:
                         push_to_hub(
                             repo_name=args.hub_model_id,
@@ -530,7 +531,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     return {
                         key: value
                         for key, value in state_dict.items()
-                        if 'loramodule' not in key
+                        if 'lora' not in key
                     }
 
                 motion_adapter = MotionAdapter(
@@ -550,7 +551,8 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
                     db1.motion_modules.state_dict = MethodType(
                         state_dict, db1.motion_modules)
-                for db1, db2 in zip(motion_adapter.up_blocks, module.up_blocks):
+                for db1, db2 in zip(motion_adapter.up_blocks,
+                                    module.up_blocks):
                     db1.motion_modules = deepcopy(db2.motion_modules)
                     db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
                     db1.motion_modules.state_dict = MethodType(
@@ -566,12 +568,11 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     scheduler=noise_scheduler,
                 ).to('cuda')
                 validation_pipeline.enable_vae_slicing()
+                validation_pipeline.enable_model_cpu_offload()
 
                 for idx, prompt in enumerate(validation_data):
                     output = validation_pipeline(
-                        prompt=
-                        (f'masterpiece, bestquality, highlydetailed, ultradetailed, {prompt}'
-                         ),
+                        prompt=prompt,
                         negative_prompt='bad quality, worse quality',
                         num_frames=args.sample_n_frames,
                         height=height,
