@@ -243,7 +243,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
     model_config.torch_dtype = torch_dtype
-    logger.info(f'model_config: {model_config}')
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
             model_dir, trust_remote_code=True)
@@ -269,11 +268,9 @@ def get_model_tokenizer_from_sdk(
         **kwargs):
     """load from ms library"""
     config = read_config(model_dir)
-    logger.info(config)
     if model_config is None:
         model_config = config_class.from_pretrained(model_dir)
     model_config.torch_dtype = torch_dtype
-    logger.info(model_config)
     tokenizer = tokenizer_class.from_pretrained(model_dir)
     model = None
     if load_model:

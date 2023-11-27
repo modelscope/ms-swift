@@ -337,6 +337,8 @@ def inference_stream(
         system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
     if history is None:
         history = []
+    else:
+        history = history.copy()
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
@@ -383,6 +385,8 @@ def inference(model: PreTrainedModel,
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
     if history is None:
         history = []
+    else:
+        history = history.copy()
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
