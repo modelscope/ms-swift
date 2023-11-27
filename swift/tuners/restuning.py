@@ -250,7 +250,7 @@ class ResTuning(SwiftAdapter):
         if len(stem_module_ins_list) != 0:
             top_module = model.get_submodule('')
             restuning_module = ResTuningBypassModule(
-                config.dims, depth, config.use_upsample,
+                config.dims, depth, adapter_name, config.use_upsample,
                 config.upsample_out_channels, config.zero_init_last,
                 config.tuner_cfg)
             setattr(top_module, f'restuning_{adapter_name}', restuning_module)
@@ -309,7 +309,7 @@ class ResTuning(SwiftAdapter):
             module, f'restuning_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
-            _module.set_activation(activate)
+            _module.set_activation(adapter_name, activate)
 
 
 class ResTuningBypassModule(nn.Module, ActivationMixin):
@@ -320,6 +320,7 @@ class ResTuningBypassModule(nn.Module, ActivationMixin):
         self,
         dims,
         depth,
+        adapter_name,
         use_upsample=False,
         upsample_out_channels=None,
         zero_init_last=False,
@@ -327,6 +328,7 @@ class ResTuningBypassModule(nn.Module, ActivationMixin):
     ):
         super(ResTuningBypassModule, self).__init__()
         super(nn.Module, self).__init__()
+        self.adapter_name = adapter_name
 
         self.bypass_blocks = nn.Sequential(*[
             ResTunerBypassBlock(
@@ -343,7 +345,7 @@ class ResTuningBypassModule(nn.Module, ActivationMixin):
         ])
 
     def forward(self, x_list, origin_arg, **kwargs):
-        if not self.is_activated():
+        if not self.is_activated(self.adapter_name):
             return origin_arg
         x_bypass = detach_tensors(x_list.pop(0))
         x_bypass = x_bypass[0] if isinstance(x_bypass,

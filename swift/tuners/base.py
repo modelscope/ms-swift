@@ -252,7 +252,7 @@ class SwiftModel(nn.Module):
             with open(config_file, 'r') as file:
                 json_object = json.load(file)
 
-            if PEFT_TYPE_KEY in json_object:
+            if SWIFT_TYPE_KEY not in json_object:
                 raise ValueError('Mixed using with peft is not allowed now.')
             else:
                 adapters[_name] = SwiftConfig.from_pretrained(sub_folder)
@@ -551,7 +551,7 @@ class Swift:
         if os.path.exists(os.path.join(model_id, CONFIG_NAME)):
             with open(os.path.join(model_id, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
-            is_peft_model = PEFT_TYPE_KEY in _json
+            is_peft_model = SWIFT_TYPE_KEY not in _json
 
         _name = adapter_name if isinstance(
             adapter_name, str) or adapter_name is None else adapter_name[0]
@@ -559,7 +559,7 @@ class Swift:
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
             with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
-            is_peft_model = PEFT_TYPE_KEY in _json
+            is_peft_model = SWIFT_TYPE_KEY not in _json
         if is_peft_model:
             return PeftModel.from_pretrained(
                 model,

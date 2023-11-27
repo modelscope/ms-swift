@@ -3,76 +3,30 @@
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 import re
 from dataclasses import dataclass, field
-from types import MethodType
 from typing import List, Union
 
 import torch
-from peft import LoraModel
 from peft.tuners.lora import LoraLayer
-from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
+from peft.utils import get_quantization_config
 
 from swift.utils.torch_utils import find_sub_module
-from .lora_layers import * # noqa
-from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
+from .lora_layers import *  # noqa
+from .utils import SwiftAdapter, SwiftOutput, SwiftConfig
+from swift import LoraConfig
 
 logger = get_logger()
 
 
 @dataclass
-class LoRAConfig(SwiftConfig):
+class LoRAConfig(LoraConfig, SwiftConfig):
     """
     The configuration class for the loRA module.
 
     Args:
-        r(int): The rank of the LoRA module
-        target_modules(List[str]): The modules to be replaced by LoRA,
-            can be the end of the module name or a regex string
-        lora_alpha(float): The factor to add the lora weights
-        lora_dropout(float): The dropout rate of the lora module
-        merge_weights(bool): Whether to merge weights when validating
-        use_merged_linear(bool): Whether to replace with merged linear layer
-        enable_lora(List[bool]): The modules need to be turned on when using the merged linear layer
-        fan_in_fan_out(bool): Set this to True if the layer to replace stores weight like (fan_in, fan_out)
-        bias(str): Bias type. Values ca be "none", "all" or "lora_only"
         use_qa_lora(bool): Use
             QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717)
             instead of LoRA. QA-LoRA only supports AutoGPTQ quantized models.
     """
-
-    r: int = field(default=6, metadata={'help': 'The rank of the LoRA module'})
-    target_modules: Union[str, List[str]] = field(
-        default=None,
-        metadata={
-            'help':
-            'The modules to be replaced by LoRA, can be the end of the module name or a regex string'
-        })
-    lora_alpha: float = field(
-        default=1., metadata={'help': 'The factor to add the lora weights'})
-    lora_dropout: float = field(
-        default=0., metadata={'help': 'The dropout rate of the lora module'})
-    merge_weights: bool = field(
-        default=True,
-        metadata={'help': 'Whether to merge weights when validating'})
-    use_merged_linear: bool = field(
-        default=False,
-        metadata={'help': 'Whether to replace with merged linear layer'})
-    enable_lora: List[bool] = field(
-        default=None,
-        metadata={
-            'help':
-            'The modules need to be turned on when using the merged linear layer'
-        })
-    fan_in_fan_out: bool = field(
-        default=False,
-        metadata={
-            'help':
-            'Set this to True if the layer to replace stores weight like (fan_in, fan_out)'
-        })
-    bias: str = field(
-        default='none',
-        metadata={
-            'help': 'Bias type. Values ca be "none", "all" or "lora_only"'
-        })
 
     use_qa_lora: bool = field(
         default=False,
@@ -90,19 +44,7 @@ class LoRA(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
-        """Prepare a model with `LoRAConfig`"""
-        LoRA._dynamic_patch_lora(
-            model,
-            target_modules=config.target_modules,
-            r=config.r,
-            adapter_name=adapter_name,
-            lora_alpha=config.lora_alpha,
-            lora_dropout=config.lora_dropout,
-            merge_weights=config.merge_weights,
-            use_merged_linear=config.use_merged_linear,
-            enable_lora=config.enable_lora,
-            fan_in_fan_out=config.fan_in_fan_out,
-            use_qa_lora=config.use_qa_lora)
+        LoraModel(model, config, adapter_name)
 
         def state_dict_callback(state_dict, adapter_name):
             return lora_state_dict(state_dict, adapter_name, config.bias)
@@ -116,11 +58,9 @@ class LoRA(SwiftAdapter):
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str,
                          activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'loramodule_{adapter_name}')
-        for _module in modules:
-            _module: ActivationMixin
-            _module.set_activation(activate)
+        for sub_module in module.modules():
+            if isinstance(sub_module, LoraLayer):
+                sub_module.set_activation(adapter_name, activate)
 
     @staticmethod
     def _dynamic_patch_lora(model: torch.nn.Module,
@@ -333,23 +273,4 @@ class LoRA(SwiftAdapter):
             config(`LoRAConfig`): The `LoRAConfig` to use.
             adapter_name(`str`): The adapter name
         """
-        module_keys = [key for key, _ in model.named_modules()]
-        assert isinstance(config.target_modules, (str, list))
-        target_modules = config.target_modules
-
-        for module_key in module_keys:
-            if isinstance(target_modules, str):
-                target_module_found = re.fullmatch(target_modules, module_key)
-            else:
-                target_module_found = any(
-                    module_key.endswith(target_key)
-                    for target_key in target_modules)
-            if target_module_found:  # noqa
-                sub_module = model.get_submodule(module_key)
-                lora_module = getattr(sub_module, f'loramodule_{adapter_name}')
-
-                if lora_module is not None:
-                    if hasattr(lora_module, 'merge_weights'):
-                        lora_module.merge_weights = True
-                        lora_module.eval()
-                        delattr(sub_module, f'loramodule_{adapter_name}')
+        LoraModel(model, None, None).merge_and_unload(adapter_name)

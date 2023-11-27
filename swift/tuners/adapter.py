@@ -131,6 +131,7 @@ class Adapter(SwiftAdapter):
                     setattr(module, config.method_name,
                             types.MethodType(_forward, module))
                 adapter_module = AdapterModule(config.dim,
+                                               adapter_name,
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
@@ -158,7 +159,7 @@ class Adapter(SwiftAdapter):
             module, f'adapter_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
-            _module.set_activation(activate)
+            _module.set_activation(adapter_name, activate)
 
 
 class AdapterModule(nn.Module, ActivationMixin):
@@ -176,12 +177,14 @@ class AdapterModule(nn.Module, ActivationMixin):
     def __init__(
         self,
         dim,
+        adapter_name,
         adapter_length=None,
         act_layer=nn.GELU,
     ):
         super(AdapterModule, self).__init__()
         super(nn.Module, self).__init__()
         self.dim = dim
+        self.adapter_name = adapter_name
         self.adapter_length = adapter_length
         self.linear1 = nn.Linear(dim, adapter_length)
         self.act = act_layer()
@@ -199,7 +202,7 @@ class AdapterModule(nn.Module, ActivationMixin):
         self.apply(_init_weights)
 
     def forward(self, x, identity=None):
-        if not self.is_activated():
+        if not self.is_activated(self.adapter_name):
             return x
         if not self._prepared:
             self.linear1.to(x.device)

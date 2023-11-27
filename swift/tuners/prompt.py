@@ -152,6 +152,7 @@ class Prompt(SwiftAdapter):
                     input_dim = config.dim
                 prompt_module = PromptModule(input_dim,
                                              int(module_key.rsplit('.')[-1]),
+                                             adapter_name,
                                              config.prompt_length,
                                              config.attention_mask_value,
                                              config.attach_front)
@@ -181,7 +182,7 @@ class Prompt(SwiftAdapter):
             module, f'prompt_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
-            _module.set_activation(activate)
+            _module.set_activation(adapter_name, activate)
 
 
 class PromptModule(nn.Module, ActivationMixin):
@@ -201,6 +202,7 @@ class PromptModule(nn.Module, ActivationMixin):
     def __init__(self,
                  dim,
                  layer_num,
+                 adapter_name,
                  prompt_length=None,
                  mask_values=0.,
                  attach_front=True):
@@ -208,6 +210,7 @@ class PromptModule(nn.Module, ActivationMixin):
         super(nn.Module, self).__init__()
         self.dim = dim
         self.layer_num = layer_num
+        self.adapter_name = adapter_name
         self.prompt_length = prompt_length
         self.mask_values = mask_values
         self.attach_front = attach_front
@@ -215,7 +218,7 @@ class PromptModule(nn.Module, ActivationMixin):
         nn.init.xavier_uniform_(self.prompt_token)
 
     def forward(self, x):
-        if not self.is_activated():
+        if not self.is_activated(self.adapter_name):
             return x
         prompt_token = self.prompt_token.expand(x.shape[0], -1,
                                                 -1).to(x.device, x.dtype)
@@ -235,7 +238,7 @@ class PromptModule(nn.Module, ActivationMixin):
         return x
 
     def patch_attention_mask(self, m):
-        if not self.is_activated():
+        if not self.is_activated(self.adapter_name):
             return m
         prefix_attention_mask = torch.full((*m.shape[:-1], self.prompt_length),
                                            self.mask_values).to(m.device)

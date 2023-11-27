@@ -34,14 +34,17 @@ class TestSwift(unittest.TestCase):
 
         from swift.tuners.lora import Linear
 
-        def reset_parameters(self):
-            nn.Linear.reset_parameters(self)
-            if hasattr(self, 'lora_A'):
+        def reset_lora_parameters(self, adapter_name):
+            if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-                nn.init.ones_(self.lora_B)
+                nn.init.kaiming_uniform_(self.lora_A[adapter_name].weight, a=math.sqrt(5))
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+            if adapter_name in self.lora_embedding_A.keys():
+                # initialize a the same way as the default for nn.linear and b to zero
+                nn.init.ones_(self.lora_embedding_A[adapter_name])
+                nn.init.normal_(self.lora_embedding_B[adapter_name])
 
-        Linear.reset_parameters = reset_parameters
+        Linear.reset_lora_parameters = reset_lora_parameters
 
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
@@ -144,14 +147,17 @@ class TestSwift(unittest.TestCase):
     def lora_injection_with_dtype(self, dtype=torch.float32):
         from swift.tuners.lora import Linear
 
-        def reset_parameters(self):
-            nn.Linear.reset_parameters(self)
-            if hasattr(self, 'lora_A'):
+        def reset_lora_parameters(self, adapter_name):
+            if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.ones_(self.lora_A)
-                nn.init.ones_(self.lora_B)
+                nn.init.ones_(self.lora_A[adapter_name].weight)
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+            if adapter_name in self.lora_embedding_A.keys():
+                # initialize a the same way as the default for nn.linear and b to zero
+                nn.init.ones_(self.lora_embedding_A[adapter_name])
+                nn.init.ones_(self.lora_embedding_B[adapter_name])
 
-        Linear.reset_parameters = reset_parameters
+        Linear.reset_lora_parameters = reset_lora_parameters
 
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
@@ -233,14 +239,17 @@ class TestSwift(unittest.TestCase):
         from swift.tuners.lora import Linear
         from swift.tuners.adapter import AdapterModule
 
-        def reset_parameters(self):
-            nn.Linear.reset_parameters(self)
-            if hasattr(self, 'lora_A'):
+        def reset_lora_parameters(self, adapter_name):
+            if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.ones_(self.lora_A)
-                nn.init.ones_(self.lora_B)
+                nn.init.ones_(self.lora_A[adapter_name].weight)
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+            if adapter_name in self.lora_embedding_A.keys():
+                # initialize a the same way as the default for nn.linear and b to zero
+                nn.init.ones_(self.lora_embedding_A[adapter_name])
+                nn.init.ones_(self.lora_embedding_B[adapter_name])
 
-        Linear.reset_parameters = reset_parameters
+        Linear.reset_lora_parameters = reset_lora_parameters
 
         def init_weights(self):
 
