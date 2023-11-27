@@ -1,7 +1,7 @@
 # Experimental environment: A100
 # 20GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 USE_PEFT_BACKEND=1 \
+CUDA_VISIBLE_DEVICES=0 \
 python animatediff_sft.py \
   --model_id_or_path wyj123456/Realistic_Vision_V5.1_noVAE \
   --csv_path /mnt/workspace/yzhao/tastelikefeet/webvid/results_2M_train.csv \
