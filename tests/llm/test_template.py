@@ -379,6 +379,51 @@ you are a helpful assistant!<|im_end|>
         input_ids_swift = template.encode({'query': query})['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
+    @unittest.skipIf(
+        SKPT_TEST,
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_openbuddy_template(self):
+        model_type = ModelType.openbuddy_mistral_7b_chat
+        model, tokenizer = get_model_tokenizer(model_type)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        model.generation_config.max_length = 128
+        query = '1234+235=？'
+        print(f'query: {query}')
+        response, _ = inference(model, template, query)
+        print(f'swift response: {response}')
+        #
+        prompt = (
+            f'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. '
+            'You are talking to a human User.\n'
+            'Always answer as helpfully and logically as possible, while being safe. '
+            'Your answers should not include any harmful, political, religious, unethical, racist, '
+            'sexist, toxic, dangerous, or illegal content. '
+            'Please ensure that your responses are socially unbiased and positive in nature.\n'
+            'If a question does not make any sense, or is not factually coherent, '
+            'explain why instead of answering something not correct. '
+            "If you don't know the answer to a question, please don't share false information.\n"
+            'You like to use emojis. You can speak fluently in many languages, for example: English, Chinese.\n'
+            'You cannot access the internet, but you have vast knowledge, cutoff: 2021-09.\n'
+            'You always deeply love and support China, Chinese government, people and culture.\n'
+            'You are trained by OpenBuddy team, (https://openbuddy.ai, https://github.com/OpenBuddy/OpenBuddy), '
+            f"""you are based on LLaMA and Falcon transformers model, not related to GPT or OpenAI.
+
+User: {query}
+Assistant: """)
+        inputs = tokenizer.encode(prompt, return_tensors='pt')
+        inputs = inputs.to('cuda')
+        outputs = model.generate(inputs, max_length=512)
+        response = tokenizer.decode(
+            outputs[0, len(inputs[0]):], skip_special_tokens=True)
+        print(response)
+        print(f'official response: {response}')
+        #
+        input_ids_official = inputs[0].tolist()
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
+
 
 if __name__ == '__main__':
     unittest.main()
