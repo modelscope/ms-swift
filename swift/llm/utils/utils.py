@@ -28,13 +28,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils.rnn import pad_sequence
 from tqdm.auto import tqdm
 from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
-                          TextStreamer, trainer)
+                          StoppingCriteriaList, TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (append_to_jsonl, get_dist_setting, get_logger,
                          is_ddp_plus_mp, is_dist, is_local_master, is_master,
                          parse_args, stat_array, upper_bound)
-from .template import History, Template
+from .template import History, StopWordsCriteria, Template
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -359,10 +359,14 @@ def inference_stream(
     if stream_config.max_new_tokens is not None:
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
+    stop_words = [template.suffix[-1]]
+    stopping_criteria = StoppingCriteriaList(
+        [StopWordsCriteria(tokenizer, stop_words)])
     gen = model.generate_stream(
         input_ids=input_ids,
         attention_mask=attention_mask,
         generation_config=stream_config,
+        stopping_criteria=stopping_criteria,
         seed=-1)
     generate_ids = []
     history.append(None)  # dummy
@@ -413,11 +417,15 @@ def inference(model: PreTrainedModel,
         generation_config.pad_token_id = tokenizer.pad_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
+    stop_words = [template.suffix[-1]]
+    stopping_criteria = StoppingCriteriaList(
+        [StopWordsCriteria(tokenizer, stop_words)])
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
         streamer=streamer,
-        generation_config=generation_config)
+        generation_config=generation_config,
+        stopping_criteria=stopping_criteria)
     response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True)
     if verbose and stream is False:
         print(tokenizer.decode(generate_ids[0, len(input_ids[0]):], False))

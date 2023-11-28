@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-from transformers import PreTrainedTokenizerBase
+from torch import Tensor
+from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 DEFAULT_SYSTEM = 'you are a helpful assistant!'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -30,6 +31,7 @@ class TemplateType:
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
+StopWords = Prompt
 
 Context = Union[str, List[int]]
 
@@ -167,6 +169,35 @@ def _encode(template: 'Template', query: str, response: Optional[str],
             labels = labels[-template.max_length:]
 
     return {'input_ids': input_ids, 'labels': labels}
+
+
+class StopWordsCriteria(StoppingCriteria):
+
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
+                 stop_words: StopWords) -> None:
+        self.tokenizer = tokenizer
+        self.stop_words = stop_words
+
+    def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
+        tokenizer = self.tokenizer
+        stop_words = self.stop_words
+        text = tokenizer.decode(input_ids[0])
+        for stop_word in stop_words:
+            if isinstance(stop_word, str):
+                if text.endswith(stop_word):
+                    return True
+            elif isinstance(stop_word, list) and len(stop_word) > 0:
+                res = []
+                for sw in stop_word:
+                    if isinstance(sw, str):
+                        token = getattr(tokenizer, sw)
+                        assert token is not None
+                    else:
+                        token = sw
+                    res.append(token)
+                if input_ids[0].tolist()[-len(res):] == res:
+                    return True
+        return False
 
 
 BeforeEncodeHook = Callable[['Template', str, Optional[str], History, str],
