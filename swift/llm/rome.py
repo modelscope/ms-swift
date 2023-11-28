@@ -26,6 +26,7 @@ def rome_infer(args: RomeArguments) -> None:
     kwargs = {'use_flash_attn': args.use_flash_attn}
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
+    logger.info(f'model_config: {model.config}')
 
     with open(args.rome_request_file, 'r') as f:
         request = json.load(f)

@@ -1,13 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import os
-from functools import partial
+from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
@@ -238,7 +239,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
     model_config.torch_dtype = torch_dtype
-    logger.info(f'model_config: {model_config}')
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
             model_dir, trust_remote_code=True)
@@ -264,11 +264,9 @@ def get_model_tokenizer_from_sdk(
         **kwargs):
     """load from ms library"""
     config = read_config(model_dir)
-    logger.info(config)
     if model_config is None:
         model_config = config_class.from_pretrained(model_dir)
     model_config.torch_dtype = torch_dtype
-    logger.info(model_config)
     tokenizer = tokenizer_class.from_pretrained(model_dir)
     model = None
     if load_model:
@@ -886,6 +884,18 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
                 PreTrainedModel._set_gradient_checkpointing, module)
 
 
+def fix_gradient_checkpointing_warning() -> None:
+    if version.parse(torch.__version__) < version.parse('2'):
+        return
+    _old_forward = torch.utils.checkpoint.checkpoint
+    if getattr(_old_forward, '_patching', False) is False:
+        _old_forward._patching = True
+        torch.utils.checkpoint.checkpoint = update_wrapper(
+            lambda *args, use_reentrant=False, **kwargs: _old_forward(
+                *args, use_reentrant=use_reentrant, **kwargs),
+            _old_forward)
+
+
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
@@ -935,6 +945,7 @@ def get_model_tokenizer(
                                     load_model, **kwargs)
     if model is not None:
         fix_transformers_upgrade(model)
+        fix_gradient_checkpointing_warning()
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
