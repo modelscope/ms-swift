@@ -8,7 +8,8 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
+import peft
+from peft.import_utils import (is_bnb_4bit_available,
                                is_bnb_available)
 from peft.tuners.lora import Conv2d as _Conv2d
 from peft.tuners.lora import Embedding as _Embedding
@@ -23,6 +24,18 @@ from swift import get_logger
 from .utils import ActivationMixin
 
 logger = get_logger()
+
+
+def is_auto_gptq_available():
+    try:
+        return peft.import_utils._is_auto_gptq_available()
+    except ImportError as e:
+        logger.warn(e)
+        return False
+
+
+peft.import_utils._is_auto_gptq_available = peft.import_utils.is_auto_gptq_available
+peft.import_utils.is_auto_gptq_available = is_auto_gptq_available
 
 
 class LoRAActivationMixin(ActivationMixin):
@@ -58,6 +71,7 @@ class LoRAActivationMixin(ActivationMixin):
 
 
 if is_bnb_available():
+    import bitsandbytes as bnb
     from peft.tuners.lora import Linear8bitLt as _Linear8bitLt
 
     class Linear8bitLt(LoRAActivationMixin, _Linear8bitLt):
@@ -91,10 +105,10 @@ if is_bnb_4bit_available():
             lora_dropout: float = 0.0,
             **kwargs,
         ):
+            super(Linear4bit, self).__init__()
             super(ActivationMixin,
                   self).__init__(adapter_name, base_layer, r, lora_alpha,
                                  lora_dropout, **kwargs)
-            super(Linear4bit, self).__init__()
 
 
 if is_auto_gptq_available():
