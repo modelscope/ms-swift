@@ -1,4 +1,4 @@
-<h1>SWIFT(Scalable lightWeight Infrastructure for Fine-Tuning)</h1>
+# SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning)
 
 <p align="center">
     <br>
@@ -12,8 +12,24 @@
         <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
 </p>
 
-# 📖 Introduction
+<p align="center">
+<img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
+<img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.3-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/swift/"><img src="https://img.shields.io/badge/ms--swift-Build from source-6FEBB9.svg"></a>
+</p>
 
+## 📖 Table of Contents
+- [Introduction](#-introduction)
+- [News](#-news)
+- [LLM Training and Inference Example](#-llm-training-and-inference-example)
+- [Installation](#-installation)
+- [Getting Started](#-getting-started)
+- [Learn More](#-learn-more)
+- [License](#-License)
+- [Contact Us](#-contact-us)
+
+## 📝 Introduction
 SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
 
 Currently supported approches (and counting):
@@ -40,7 +56,7 @@ Key features:
 Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用.md) to get detail tutorials.
 
 
-### 🎉 News
+## 🎉 News
 - 🔥 2023.11.24: Support for **yi-34b-chat**, **codefuse-codellama-34b-chat**: The corresponding shell script can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
 - 🔥 2023.11.18: Support for **tongyi-finance-14b** series models: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4. The corresponding shell script can be found in [tongyi_finance_14b_chat_int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4).
 - 🔥 2023.11.16: Added support for more models in **flash attn**: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series. Please use the `use_flash_attn` parameter.
@@ -66,9 +82,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 
 
-## ✨ LLM SFT Example
-Users can refer to the [LLM fine-tuning documentation](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm) for more detailed information.
-
+## ✨ LLM Training and Inference Example
 ### Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
@@ -93,7 +107,7 @@ Users can refer to the [LLM fine-tuning documentation](https://github.com/models
   - NLP:
     - General: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary)
     - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
-    - Coding: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [code-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
+    - Coding: [code-alpaca-en](https://www.modelscope.cn/datasets/wyj123456/code_alpaca_en/summary), [codefuse-python-zh](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary), 🔥[leetcode-python-en](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)
     - Medical: [medical-en](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary), [medical-mini-zh](https://www.modelscope.cn/datasets/huangjintao/medical_zh/summary)
     - Law: 🔥[lawyer-llama-zh](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary), [tigerbot-law-zh](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)
     - Math: 🔥[blossom-math-zh](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary), [school-math-zh](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)
@@ -108,165 +122,14 @@ Users can refer to the [LLM fine-tuning documentation](https://github.com/models
   - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
 
 
-### Basic Usage
-Quickly fine-tune, infer with LLM, and build a Web-UI.
-
-To see more sh startup scripts, please refer to: [Run SFT and Inference](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#-run-sft-and-inference)
-
-```bash
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .
-```
+### Simple Usage
+- Quickly perform inference on LLM, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
+- Rapidly fine-tune and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
+- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
+- Check command-line hyperparameters for fine-tuning and inference, see [Command-Line Hyperparameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
 
 
-#### Run using Python
-```python
-# Experimental environment: A10, 3090, A100, ...
-# 20GB GPU memory
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-import torch
-
-from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments
-)
-from swift.llm.run import infer_main, sft_main, web_ui_main
-
-model_type = ModelType.qwen_7b_chat
-sft_args = SftArguments(
-    model_type=model_type,
-    eval_steps=50,
-    train_dataset_sample=2000,
-    dataset=[DatasetName.blossom_math_zh],
-    output_dir='output',
-    gradient_checkpointing=True)
-result = sft_main(sft_args)
-best_model_checkpoint = result['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
-torch.cuda.empty_cache()
-
-infer_args = InferArguments(
-    ckpt_dir=best_model_checkpoint,
-    load_args_from_ckpt_dir=True,
-    stream=True,
-    show_dataset_sample=5)
-result = infer_main(infer_args)
-print(f'result: {result}')
-torch.cuda.empty_cache()
-
-web_ui_main(infer_args)
-```
-
-**Single-Sample Inference**:
-
-Inference using LoRA **incremental** weights:
-```python
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
-)
-from swift.tuners import Swift
-import torch
-
-model_dir = 'vx_xxx/checkpoint-100'
-model_type = ModelType.qwen_7b_chat
-template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
-
-model = Swift.from_pretrained(model, model_dir, inference_mode=True)
-template = get_template(template_type, tokenizer)
-query = 'xxxxxx'
-response, history = inference(model, template, query)
-print(f'response: {response}')
-print(f'history: {history}')
-```
-
-Inference using LoRA **merged** complete weights:
-```python
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
-)
-import torch
-
-model_dir = 'vx_xxx/checkpoint-100-merged'
-model_type = ModelType.qwen_7b_chat
-template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'},
-                                       model_dir=model_dir)
-
-template = get_template(template_type, tokenizer)
-query = 'xxxxxx'
-response, history = inference(model, template, query)
-print(f'response: {response}')
-print(f'history: {history}')
-```
-
-#### Run using Swift CLI
-**SFT**:
-```bash
-# Experimental environment: A10, 3090, A100, ...
-# 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-
-# Using DDP
-# Experimental environment: 2 * 3090
-# 2 * 23GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=2 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-
-# Using custom dataset
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --custom_train_dataset_path chatml.jsonl \
-    --output_dir output \
-```
-
-**Inference**:
-```bash
-# Original Model
-CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
-
-# Fine-tuned Model
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-
-# Merge LoRA incremental weights and perform inference
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
-```
-
-**Web-UI**:
-```bash
-# Original Model
-CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
-
-# Fine-tuned Model
-CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-
-# Merge LoRA incremental weights and use web UI
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
-```
-
-
-# 🛠️ Installation
+## 🛠️ Installation
 
 SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
 
@@ -292,7 +155,7 @@ SWIFT requires torch>=1.13.
 docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
 ```
 
-# 🚀 Getting Started
+## 🚀 Getting Started
 
 SWIFT supports multiple tuners, as well as tuners provided by [PEFT](https://github.com/huggingface/peft). To use these tuners, simply call:
 
@@ -430,7 +293,7 @@ output
 The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from PEFT, which stores the weights and config of the `default` tuner.
 
 
-# 🔍 Learn More
+## 🔍 Learn More
 
 - [ModelScope library](https://github.com/modelscope/modelscope/)
 
@@ -438,12 +301,12 @@ The config/weights stored in the output dir is the config of `extra_state_keys` 
 
 - [Contribute your own model to ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
 
-# License
+## License
 
 This project is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE).
 
 
-# Contact Us
+## Contact Us
 You can contact and communicate with us by joining our WeChat Group:
 
 <p align="left">

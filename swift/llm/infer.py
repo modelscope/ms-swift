@@ -30,6 +30,7 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> str:
     # Loading Model and Tokenizer
     model, tokenizer = get_model_tokenizer(
         args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')
+    logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
     model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
@@ -112,6 +113,7 @@ def prepare_model_template(
 
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
+    logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
     if args.sft_type == 'lora' and args.ckpt_dir is not None:
