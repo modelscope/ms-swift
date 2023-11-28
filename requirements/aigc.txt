@@ -1,4 +1,4 @@
 decord
-torchvision
-einops
 diffusers>=0.18.0
+einops
+torchvision

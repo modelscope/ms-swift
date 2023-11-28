@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import (InferArguments, RomeArguments, SftArguments,
-                       llm_infer,
+from swift.llm import (InferArguments, RomeArguments, SftArguments, llm_infer,
                        llm_sft, llm_web_ui, merge_lora, rome_infer)
 from swift.utils.run_utils import get_main
 

@@ -1,6 +1,7 @@
-from typing import (Callable, List, Union, Type, TypeVar)
-from .logger import get_logger
+from typing import Callable, List, Type, TypeVar, Union
+
 from swift.utils import parse_args
+from .logger import get_logger
 
 logger = get_logger()
 _TArgsClass = TypeVar('_TArgsClass')

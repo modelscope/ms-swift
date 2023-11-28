@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Union
 
 import torch
+from packaging import version
 from peft.tuners.lora import LoraLayer
 
 from swift import LoraConfig
@@ -33,10 +34,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         })
 
     use_merged_linear: bool = field(
-        default=False,
-        metadata={
-            'help': 'Use merged Linear'
-        })
+        default=False, metadata={'help': 'Use merged Linear'})
 
     enable_lora: List[bool] = field(
         default=None,
@@ -73,7 +71,7 @@ class LoRA(SwiftAdapter):
                 sub_module.set_activation(adapter_name, activate)
 
     @staticmethod
-    def unpatch_lora(model, config: LoRAConfig, adapter_name: Optional[Union[List[str], str]]):
+    def unpatch_lora(model, config: LoRAConfig, adapter_name: str):
         """Unpatch lora modules and merge the weights to original modules.
 
         LoRA constructs an additional layer with low-rank decomposition matrices of the weights in the network.
@@ -85,6 +83,18 @@ class LoRA(SwiftAdapter):
             config(`LoRAConfig`): The `LoRAConfig` to use. Deprecated
             adapter_name(`str`): The adapter name
         """
-        if isinstance(adapter_name, str):
-            adapter_name = [adapter_name]
-        LoraModel(model, None, '').merge_and_unload(adapter_name)
+        if not config.use_merged_linear:
+            if version.parse(peft.__version__) < version.parse('0.6.3'):
+                logger.info('All adapters will be merged.')
+                LoraModel(model, None, '').merge_and_unload()
+            else:
+                LoraModel(model, None,
+                          '').merge_and_unload(adapter_names=[adapter_name])
+        else:
+            for name, sub_module in model.named_modules():
+                if isinstance(sub_module, MergedLinear):
+                    sub_module.merge()
+                    parent = model.get_submodule('.'.join(
+                        name.split('.')[:-1]))
+                    target_name = name.split('.')[-1]
+                    setattr(parent, target_name, sub_module.base_layer)

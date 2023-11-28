@@ -6,7 +6,8 @@ import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple, TypeVar, Union)
+from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
+                    TypeVar, Union)
 
 import accelerate
 import requests

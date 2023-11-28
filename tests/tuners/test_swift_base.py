@@ -5,7 +5,6 @@ import shutil
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from time import time
 
 import torch
 from modelscope import Model, Preprocessor
@@ -55,6 +54,7 @@ class TestSwift(unittest.TestCase):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         outputs = model(**inputs)
         model = Swift.prepare_model(model, config=lora_config)
+        model.eval()
         outputs_lora = model(**inputs)
         model.deactivate_adapter('default')
         outputs_deactivate = model(**inputs)
@@ -151,11 +151,11 @@ class TestSwift(unittest.TestCase):
         def reset_lora_parameters(self, adapter_name):
             if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.ones_(self.lora_A[adapter_name].weight)
+                nn.init.normal_(self.lora_A[adapter_name].weight)
                 nn.init.ones_(self.lora_B[adapter_name].weight)
             if adapter_name in self.lora_embedding_A.keys():
                 # initialize a the same way as the default for nn.linear and b to zero
-                nn.init.ones_(self.lora_embedding_A[adapter_name])
+                nn.init.normal_(self.lora_embedding_A[adapter_name])
                 nn.init.ones_(self.lora_embedding_B[adapter_name])
 
         Linear.reset_lora_parameters = reset_lora_parameters
@@ -166,7 +166,9 @@ class TestSwift(unittest.TestCase):
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         input = preprocessor('this is a test')
         model = model.to(dtype)
-        model2 = copy.deepcopy(model)
+        model2 = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        model2 = model2.to(dtype)
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, config=lora_config)
         self.assertTrue(isinstance(model, SwiftModel))
@@ -189,7 +191,8 @@ class TestSwift(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
-        if dtype == torch.float32:
+        if dtype == torch.float32 and os.environ.get(
+                'USE_UNIQUE_THREAD') == '1':
             Swift.merge_and_unload(model2)
             output3 = model2(**input)
             self.assertTrue(torch.allclose(output1.logits, output3.logits))

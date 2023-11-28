@@ -7,8 +7,7 @@ import torch
 import torch.distributed as dist
 
 from swift import get_logger
-from swift.utils import (broadcast_string,
-                         get_dist_setting, is_dist)
+from swift.utils import broadcast_string, get_dist_setting, is_dist
 
 logger = get_logger()
 
