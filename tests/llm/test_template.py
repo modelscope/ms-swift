@@ -4,6 +4,7 @@ if __name__ == '__main__':
 import os
 import unittest
 
+import torch
 from modelscope import GenerationConfig
 
 from swift.llm import (ModelType, get_default_template_type,
@@ -68,8 +69,27 @@ you are a helpful assistant!<|im_end|>
         print(f'query: {query}')
         response, _ = inference(model, template, query)
         print(f'swift response: {response}')
-        response = model.chat(tokenizer, query, max_length=None)[0]
+        system = 'you are a helpful assistant!'
+        response = model.chat(
+            tokenizer,
+            query,
+            history=[{
+                'role': 'system',
+                'content': system
+            }],
+            max_length=None)[0]
         print(f'official response: {response}')
+        #
+        input_ids_official = [
+            64790, 64792, 64794, 30910, 13, 344, 383, 260, 6483, 9319, 30992,
+            64795, 30910, 13, 30910, 30939, 30943, 30966, 30972, 30970, 31011,
+            30943, 30966, 30972, 30980, 31514, 64796
+        ] + [30910, 13, 30910]
+        input_ids_swift = template.encode({
+            'query': query,
+            'system': system
+        })['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -88,6 +108,14 @@ you are a helpful assistant!<|im_end|>
         model.generation_config.max_window_size = 1024
         response = model.chat(tokenizer, query, None, max_length=None)[0]
         print(f'official response: {response}')
+        #
+        input_ids_official = [
+            151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198,
+            151644, 872, 198, 16, 17, 18, 19, 20, 10, 17, 18, 19, 28, 11319,
+            151645, 198, 151644, 77091, 198
+        ]
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -115,10 +143,25 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query)
+        response, _ = inference(model, template, query, system='')
         print(f'swift response: {response}')
         response = model.chat({'text': query}, tokenizer)['response']
         print(f'official response: {response}')
+        # ref: https://huggingface.co/blog/zh/llama2#%E5%A6%82%E4%BD%95%E6%8F%90%E7%A4%BA-llama-2
+        text_official = (
+            '<s>[INST] <<SYS>>\n'
+            'You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, '
+            'while being safe. Your answers should not include any '
+            'harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. '
+            'Please ensure that your responses are socially unbiased and positive in nature.\n\n'
+            'If a question does not make any sense, or is not factually coherent, '
+            'explain why instead of answering something not correct. '
+            "If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n\n"
+            "There's a llama in my garden 😱 What should I do? [/INST] ")
+        query = "There's a llama in my garden 😱 What should I do?"
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        text_swift = template.tokenizer.decode(input_ids_swift)
+        self.assertTrue(text_swift == text_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -133,15 +176,25 @@ you are a helpful assistant!<|im_end|>
         print(f'query: {query}')
         response, _ = inference(model, template, query)
         print(f'swift response: {response}')
-        response = model.chat(tokenizer,
-                              [{
-                                  'role': 'system',
-                                  'content': 'you are a helpful assistant!'
-                              }, {
-                                  'role': 'user',
-                                  'content': query
-                              }])
+        system = 'you are a helpful assistant!'
+        response = model.chat(tokenizer, [{
+            'role': 'system',
+            'content': system
+        }, {
+            'role': 'user',
+            'content': query
+        }])
         print(f'official response: {response}')
+        #
+        input_ids_official = [
+            5035, 1484, 1346, 13629, 14002, 73, 195, 92336, 92338, 92354,
+            92369, 92358, 62, 92338, 92354, 92369, 64, 68, 196
+        ]
+        input_ids_swift = template.encode({
+            'query': query,
+            'system': system
+        })['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -167,12 +220,21 @@ you are a helpful assistant!<|im_end|>
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
+        #
+        input_ids_official = [
+            64790, 64792, 790, 30951, 517, 30910, 30939, 30996, 13, 13, 54761,
+            31211, 30939, 30943, 30966, 30972, 30970, 31011, 30943, 30966,
+            30972, 30980, 31514, 13, 13, 55437, 31211
+        ]
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_internlm_template(self):
+        torch.cuda.empty_cache()
         model_type = ModelType.internlm_20b_chat
         template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
@@ -192,6 +254,13 @@ you are a helpful assistant!<|im_end|>
         print(f'swift response: {response}')
         response = model.chat(tokenizer, query)[0]
         print(f'official response: {response}')
+        #
+        input_ids_official = [
+            1, 333, 352, 1621, 352, 27232, 4575, 1889, 342, 11622, 310, 99050,
+            103027, 364, 333, 352, 23845, 352, 27232
+        ]
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -221,6 +290,10 @@ you are a helpful assistant!<|im_end|>
             **inputs, max_new_tokens=64, repetition_penalty=1.1)
         print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True))
         print(f'official response: {response}')
+        #
+        input_ids_official = inputs['input_ids'][0].tolist()
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -241,12 +314,17 @@ you are a helpful assistant!<|im_end|>
         response = tokenizer.decode(
             model.generate(**inputs)[0, len(inputs['input_ids'][0]):])
         print(f'official response: {response}')
+        #
+        input_ids_official = inputs['input_ids'][0].tolist()
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_codefuse_codellama_34b_template(self):
+        torch.cuda.empty_cache()
         model_type = ModelType.codefuse_codellama_34b_chat
         model, tokenizer = get_model_tokenizer(model_type)
         template_type = get_default_template_type(model_type)
@@ -266,12 +344,17 @@ you are a helpful assistant!<|im_end|>
         response = tokenizer.decode(
             model.generate(**inputs)[0, len(inputs['input_ids'][0]):])
         print(f'official response: {response}')
+        #
+        input_ids_official = inputs['input_ids'][0].tolist()
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_yi_template(self):
+        torch.cuda.empty_cache()
         model_type = ModelType.yi_34b_chat
         model, tokenizer = get_model_tokenizer(model_type)
         template_type = get_default_template_type(model_type)
@@ -281,7 +364,7 @@ you are a helpful assistant!<|im_end|>
         print(f'query: {query}')
         response, _ = inference(model, template, query)
         print(f'swift response: {response}')
-        messages = [{'role': 'user', 'content': 'hi'}]
+        messages = [{'role': 'user', 'content': query}]
         input_ids = tokenizer.apply_chat_template(
             conversation=messages,
             tokenize=True,
@@ -291,6 +374,10 @@ you are a helpful assistant!<|im_end|>
         response = tokenizer.decode(
             output_ids[0][input_ids.shape[1]:], skip_special_tokens=True)
         print(f'official response: {response}')
+        #
+        input_ids_official = input_ids[0].tolist()
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
 
 
 if __name__ == '__main__':

@@ -60,7 +60,7 @@ class SftArguments:
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
     val_dataset_sample: Optional[int] = None  # -1: all dataset
-    system: str = 'you are a helpful assistant!'
+    system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
         default='truncation_left',
@@ -272,7 +272,7 @@ class InferArguments:
     dataset_test_ratio: float = 0.01
     val_dataset_sample: int = 10  # -1: all dataset
     save_result: bool = True
-    system: str = 'you are a helpful assistant!'
+    system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
         default='truncation_left',
