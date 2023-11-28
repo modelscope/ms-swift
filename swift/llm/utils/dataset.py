@@ -817,7 +817,7 @@ def load_dataset_from_local(
         else:
             raise ValueError(
                 'The custom dataset only supports CSV format or JSONL format. You can refer to the link '
-                '`[自定义与拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#-注册数据集的方式)` '
+                '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#-注册数据集的方式` '
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
