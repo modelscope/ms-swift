@@ -37,7 +37,8 @@ class TestSwift(unittest.TestCase):
         def reset_lora_parameters(self, adapter_name):
             if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.kaiming_uniform_(self.lora_A[adapter_name].weight, a=math.sqrt(5))
+                nn.init.kaiming_uniform_(
+                    self.lora_A[adapter_name].weight, a=math.sqrt(5))
                 nn.init.ones_(self.lora_B[adapter_name].weight)
             if adapter_name in self.lora_embedding_A.keys():
                 # initialize a the same way as the default for nn.linear and b to zero
@@ -331,6 +332,7 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
 
         def thread_func1():
+            model1.set_active_adapters(['lora1', 'adapter1'])
             model.set_active_adapters(['lora1', 'adapter1'])
             outputs_single = model1(**inputs)
             outputs_t1 = model(**inputs)
@@ -338,6 +340,7 @@ class TestSwift(unittest.TestCase):
                 torch.allclose(outputs_single.logits, outputs_t1.logits))
 
         def thread_func2():
+            model2.set_active_adapters(['lora2', 'adapter2'])
             model.set_active_adapters(['lora2', 'adapter2'])
             outputs_single = model2(**inputs)
             outputs_t2 = model(**inputs)

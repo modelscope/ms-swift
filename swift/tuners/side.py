@@ -121,7 +121,8 @@ class Side(SwiftAdapter):
                     setattr(tgt_module, f'forward_origin_{adapter_name}',
                             tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
-                side_module = SideModule(config.dim, adapter_name, config.side_module_name)
+                side_module = SideModule(config.dim, adapter_name,
+                                         config.side_module_name)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(
                     f'Side modules(module_key): {module_key}.side_{adapter_name}'

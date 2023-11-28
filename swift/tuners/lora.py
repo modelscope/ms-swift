@@ -9,10 +9,10 @@ import torch
 from peft.tuners.lora import LoraLayer
 from peft.utils import get_quantization_config
 
+from swift import LoraConfig
 from swift.utils.torch_utils import find_sub_module
 from .lora_layers import *  # noqa
-from .utils import SwiftAdapter, SwiftOutput, SwiftConfig
-from swift import LoraConfig
+from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -93,11 +93,13 @@ class LoRA(SwiftAdapter):
                     for target_key in target_modules)
             if target_module_found:  # noqa
                 sub_module = model.get_submodule(module_key)
-                parent = model.get_submodule(".".join(module_key.split(".")[:-1]))
-                sub_module_name = module_key.split(".")[-1]
+                parent = model.get_submodule('.'.join(
+                    module_key.split('.')[:-1]))
+                sub_module_name = module_key.split('.')[-1]
 
                 lora_module = None
-                if isinstance(sub_module, LoraLayer) and isinstance(sub_module, torch.nn.Conv2d):
+                if isinstance(sub_module, LoraLayer) and isinstance(
+                        sub_module, torch.nn.Conv2d):
                     sub_module.update_layer_conv2d(
                         adapter_name,
                         kwargs['r'],
@@ -105,7 +107,8 @@ class LoRA(SwiftAdapter):
                         kwargs['lora_dropout'],
                         True,
                     )
-                elif isinstance(sub_module, LoraLayer) and isinstance(sub_module, torch.nn.Embedding):
+                elif isinstance(sub_module, LoraLayer) and isinstance(
+                        sub_module, torch.nn.Embedding):
                     sub_module.update_layer_embedding(
                         adapter_name,
                         kwargs['r'],
@@ -237,16 +240,16 @@ class LoRA(SwiftAdapter):
                     # _mark_only_adapters_as_trainable
 
                     # child layer wraps the original module, unpack it
-                    if hasattr(child, "base_layer"):
+                    if hasattr(child, 'base_layer'):
                         child = child.base_layer
 
-                    if not hasattr(new_module, "base_layer"):
+                    if not hasattr(new_module, 'base_layer'):
                         new_module.weight = child.weight
-                        if hasattr(child, "bias"):
+                        if hasattr(child, 'bias'):
                             new_module.bias = child.bias
 
-                    if getattr(child, "state", None) is not None:
-                        if hasattr(new_module, "base_layer"):
+                    if getattr(child, 'state', None) is not None:
+                        if hasattr(new_module, 'base_layer'):
                             new_module.base_layer.state = child.state
                         else:
                             new_module.state = child.state
@@ -254,8 +257,9 @@ class LoRA(SwiftAdapter):
 
                     # dispatch to correct device
                     for name, module in new_module.named_modules():
-                        if (self.prefix in name) or ("ranknum" in name):
-                            weight = child.qweight if hasattr(child, "qweight") else child.weight
+                        if (self.prefix in name) or ('ranknum' in name):
+                            weight = child.qweight if hasattr(
+                                child, 'qweight') else child.weight
                             module.to(weight.device)
 
         logger.debug(f'Lora modules(module_key -> adapter_name): {modules}')

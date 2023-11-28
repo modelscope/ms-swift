@@ -10,8 +10,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from peft.import_utils import (is_auto_gptq_available, is_bnb_4bit_available,
                                is_bnb_available)
-from peft.tuners.lora import Embedding as _Embedding, Linear as _Linear, Conv2d as _Conv2d, LoraModel as _LoraModel
-from peft.utils import get_auto_gptq_quant_linear, ModulesToSaveWrapper, _get_submodules
+from peft.tuners.lora import Conv2d as _Conv2d
+from peft.tuners.lora import Embedding as _Embedding
+from peft.tuners.lora import Linear as _Linear
+from peft.tuners.lora import LoraModel as _LoraModel
+from peft.utils import (ModulesToSaveWrapper, _get_submodules,
+                        get_auto_gptq_quant_linear)
 from tqdm import tqdm
 from transformers import Conv1D
 
@@ -48,9 +52,9 @@ class LoRAActivationMixin(ActivationMixin):
 
     def merge(self, *args, **kwargs):
         if not self.unique_thread:
-            raise AssertionError('Merge is unsupported in multi thread scenario!')
+            raise AssertionError(
+                'Merge is unsupported in multi thread scenario!')
         return super().merge(*args, **kwargs)
-
 
 
 if is_bnb_available():
@@ -68,8 +72,8 @@ if is_bnb_available():
             **kwargs,
         ):
             super(ActivationMixin,
-                  self).__init__(adapter_name, base_layer,
-                                 r, lora_alpha, lora_dropout, **kwargs)
+                  self).__init__(adapter_name, base_layer, r, lora_alpha,
+                                 lora_dropout, **kwargs)
             super(Linear8bitLt, self).__init__()
 
 
@@ -88,8 +92,8 @@ if is_bnb_4bit_available():
             **kwargs,
         ):
             super(ActivationMixin,
-                  self).__init__(adapter_name, base_layer,
-                                 r, lora_alpha, lora_dropout, **kwargs)
+                  self).__init__(adapter_name, base_layer, r, lora_alpha,
+                                 lora_dropout, **kwargs)
             super(Linear4bit, self).__init__()
 
 
@@ -105,8 +109,7 @@ if is_auto_gptq_available():
             group_size=None,
             **kwargs,
         ):
-            super(ActivationMixin,
-                  self).__init__(*args, **kwargs)
+            super(ActivationMixin, self).__init__(*args, **kwargs)
             super(QuantLinear, self).__init__()
             self.group_size = group_size
             self.use_qa_lora = use_qa_lora
@@ -160,27 +163,21 @@ class Embedding(LoRAActivationMixin, _Embedding):
 
 class Linear(LoRAActivationMixin, _Linear):
 
-    def __init__(
-            self,
-            *args,
-            **kwargs):
+    def __init__(self, *args, **kwargs):
         super(Linear, self).__init__()
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
 
-    def __init__(
-            self,
-            *args,
-            **kwargs):
+    def __init__(self, *args, **kwargs):
         super(Conv2d, self).__init__()
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
 class LoraModel(_LoraModel):
 
-    prefix: str = "lora_"
+    prefix: str = 'lora_'
 
     def __init__(self, model, config, adapter_name):
         if config is not None:
@@ -191,74 +188,77 @@ class LoraModel(_LoraModel):
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
-        gptq_quantization_config = kwargs.get("gptq_quantization_config", None)
-        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(gptq_quantization_config)
+        gptq_quantization_config = kwargs.get('gptq_quantization_config', None)
+        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
+            gptq_quantization_config)
 
-        loaded_in_8bit = kwargs.pop("loaded_in_8bit", False)
-        loaded_in_4bit = kwargs.pop("loaded_in_4bit", False)
-        bias = kwargs.pop("bias", False)
+        loaded_in_8bit = kwargs.pop('loaded_in_8bit', False)
+        loaded_in_4bit = kwargs.pop('loaded_in_4bit', False)
+        bias = kwargs.pop('bias', False)
 
         if loaded_in_8bit and isinstance(target, bnb.nn.Linear8bitLt):
             eightbit_kwargs = kwargs.copy()
-            eightbit_kwargs.update(
-                {
-                    "has_fp16_weights": target.state.has_fp16_weights,
-                    "memory_efficient_backward": target.state.memory_efficient_backward,
-                    "threshold": target.state.threshold,
-                    "index": target.index,
-                }
-            )
+            eightbit_kwargs.update({
+                'has_fp16_weights': target.state.has_fp16_weights,
+                'memory_efficient_backward':
+                target.state.memory_efficient_backward,
+                'threshold': target.state.threshold,
+                'index': target.index,
+            })
             new_module = Linear8bitLt(adapter_name, target, **eightbit_kwargs)
-        elif loaded_in_4bit and is_bnb_4bit_available() and isinstance(target, bnb.nn.Linear4bit):
+        elif loaded_in_4bit and is_bnb_4bit_available() and isinstance(
+                target, bnb.nn.Linear4bit):
             fourbit_kwargs = kwargs.copy()
-            fourbit_kwargs.update(
-                {
-                    "compute_dtype": target.compute_dtype,
-                    "compress_statistics": target.weight.compress_statistics,
-                    "quant_type": target.weight.quant_type,
-                }
-            )
+            fourbit_kwargs.update({
+                'compute_dtype': target.compute_dtype,
+                'compress_statistics': target.weight.compress_statistics,
+                'quant_type': target.weight.quant_type,
+            })
             new_module = Linear4bit(adapter_name, target, **fourbit_kwargs)
-        elif AutoGPTQQuantLinear is not None and isinstance(target, AutoGPTQQuantLinear):
+        elif AutoGPTQQuantLinear is not None and isinstance(
+                target, AutoGPTQQuantLinear):
             new_module = QuantLinear(adapter_name, target, **kwargs)
             target.weight = target.qweight
         elif isinstance(target, torch.nn.Embedding):
             embedding_kwargs = kwargs.copy()
-            embedding_kwargs.pop("fan_in_fan_out", None)
+            embedding_kwargs.pop('fan_in_fan_out', None)
             in_features, out_features = target.num_embeddings, target.embedding_dim
-            new_module = Embedding(adapter_name, in_features, out_features, **embedding_kwargs)
+            new_module = Embedding(adapter_name, in_features, out_features,
+                                   **embedding_kwargs)
         elif isinstance(target, torch.nn.Conv2d):
             out_channels, in_channels = target.weight.size()[:2]
             kernel_size = target.weight.size()[2:]
             stride = target.stride
             padding = target.padding
-            new_module = Conv2d(adapter_name, in_channels, out_channels, kernel_size, stride, padding, **kwargs)
+            new_module = Conv2d(adapter_name, in_channels, out_channels,
+                                kernel_size, stride, padding, **kwargs)
         else:
             if isinstance(target, torch.nn.Linear):
                 in_features, out_features = target.in_features, target.out_features
-                if kwargs["fan_in_fan_out"]:
+                if kwargs['fan_in_fan_out']:
                     warnings.warn(
-                        "fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. "
-                        "Setting fan_in_fan_out to False."
-                    )
-                    kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
+                        'fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. '
+                        'Setting fan_in_fan_out to False.')
+                    kwargs[
+                        'fan_in_fan_out'] = lora_config.fan_in_fan_out = False
             elif isinstance(target, Conv1D):
                 in_features, out_features = (
-                    target.weight.ds_shape if hasattr(target.weight, "ds_shape") else target.weight.shape
-                )
-                kwargs["is_target_conv_1d_layer"] = True
-                if not kwargs["fan_in_fan_out"]:
+                    target.weight.ds_shape if hasattr(
+                        target.weight, 'ds_shape') else target.weight.shape)
+                kwargs['is_target_conv_1d_layer'] = True
+                if not kwargs['fan_in_fan_out']:
                     warnings.warn(
-                        "fan_in_fan_out is set to False but the target module is `Conv1D`. "
-                        "Setting fan_in_fan_out to True."
-                    )
-                    kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = True
+                        'fan_in_fan_out is set to False but the target module is `Conv1D`. '
+                        'Setting fan_in_fan_out to True.')
+                    kwargs[
+                        'fan_in_fan_out'] = lora_config.fan_in_fan_out = True
             else:
                 raise ValueError(
-                    f"Target module {target} is not supported. Currently, only the following modules are supported: "
-                    "`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv2d`, `transformers.pytorch_utils.Conv1D`."
+                    f'Target module {target} is not supported. Currently, only the following modules are supported: '
+                    '`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv2d`, `transformers.pytorch_utils.Conv1D`.'
                 )
-            new_module = Linear(adapter_name, in_features, out_features, bias=bias, **kwargs)
+            new_module = Linear(
+                adapter_name, in_features, out_features, bias=bias, **kwargs)
 
         return new_module
 
@@ -270,33 +270,43 @@ class LoraModel(_LoraModel):
         adapter_names: Optional[List[str]] = None,
     ):
         if merge:
-            if getattr(self.model, "quantization_method", None) == "gptq":
-                raise ValueError("Cannot merge LORA layers when the model is gptq quantized")
+            if getattr(self.model, 'quantization_method', None) == 'gptq':
+                raise ValueError(
+                    'Cannot merge LORA layers when the model is gptq quantized'
+                )
 
-        key_list = [key for key, _ in self.model.named_modules() if self.prefix not in key]
-        desc = "Unloading " + ("and merging " if merge else "") + "model"
+        key_list = [
+            key for key, _ in self.model.named_modules()
+            if self.prefix not in key
+        ]
+        desc = 'Unloading ' + ('and merging ' if merge else '') + 'model'
         for key in tqdm(key_list, disable=not progressbar, desc=desc):
             try:
                 parent, target, target_name = _get_submodules(self.model, key)
             except AttributeError:
                 continue
 
-            if hasattr(target, "base_layer"):
+            if hasattr(target, 'base_layer'):
                 if merge:
-                    target.merge(safe_merge=safe_merge, adapter_names=adapter_names)
-                self._replace_module(parent, target_name, target.get_base_layer(), target)
+                    target.merge(
+                        safe_merge=safe_merge, adapter_names=adapter_names)
+                self._replace_module(parent, target_name,
+                                     target.get_base_layer(), target)
             elif isinstance(target, ModulesToSaveWrapper):
                 # save any additional trainable modules part of `modules_to_save`
-                setattr(parent, target_name, target.modules_to_save[target.active_adapter])
+                setattr(parent, target_name,
+                        target.modules_to_save[target.active_adapter])
 
         return self.model
 
-    def merge_and_unload(
-        self, progressbar: bool = False, safe_merge: bool = False, adapter_names: Optional[List[str]] = None
-    ):
+    def merge_and_unload(self,
+                         progressbar: bool = False,
+                         safe_merge: bool = False,
+                         adapter_names: Optional[List[str]] = None):
         return self._unload_and_optionally_merge(
-            progressbar=progressbar, safe_merge=safe_merge, adapter_names=adapter_names
-        )
+            progressbar=progressbar,
+            safe_merge=safe_merge,
+            adapter_names=adapter_names)
 
 
 class LoRALayer(ActivationMixin):

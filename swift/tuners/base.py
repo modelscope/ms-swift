@@ -111,6 +111,8 @@ class SwiftModel(nn.Module):
             signature(self.base_model.forward).parameters.values())
         forward.__signature__ = Signature(_parameters)
         self.forward = MethodType(forward, self)
+        for adapter_name in self.adapters:
+            self.activate_adapter(adapter_name)
 
         if inference_mode:
             self.eval()
@@ -281,7 +283,6 @@ class SwiftModel(nn.Module):
         state_dict = cls.load_state_file(model_dir)
         if state_dict is not None:
             self.model.load_state_dict(state_dict, strict=False)
-
         return self
 
     @classmethod
@@ -422,9 +423,12 @@ class SwiftModel(nn.Module):
     def base_model(self):
         return self.model
 
-    def set_active_adapters(self, adapter_names: List[str]):
+    def set_active_adapters(self, adapter_names: Union[List[str], str]):
         if not adapter_names:
             return
+
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
 
         adapter_names = set(adapter_names)
         for adapter_name in (adapter_names & set(self.adapters.keys())):

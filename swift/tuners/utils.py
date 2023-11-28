@@ -158,7 +158,11 @@ class ActivationMixin:
         return self._thread_inf.get(tid, {}).get(adapter_name, False)
 
     def get_activated_adapters(self):
-        return [key for key, value in self._thread_inf.get(self.indent, {}).items() if value]
+        return [
+            key
+            for key, value in self._thread_inf.get(self.indent, {}).items()
+            if value
+        ]
 
 
 class SwiftAdapter:

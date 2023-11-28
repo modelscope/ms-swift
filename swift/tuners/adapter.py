@@ -130,8 +130,7 @@ class Adapter(SwiftAdapter):
                 else:
                     setattr(module, config.method_name,
                             types.MethodType(_forward, module))
-                adapter_module = AdapterModule(config.dim,
-                                               adapter_name,
+                adapter_module = AdapterModule(config.dim, adapter_name,
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
