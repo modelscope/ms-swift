@@ -14,7 +14,7 @@ class TestMergedLinear(unittest.TestCase):
         preprocessor = Preprocessor.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         inputs = preprocessor('how are you')
-        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'], use_merged_linear=True)
+        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'], use_merged_linear=True, enable_lora=[True, True, True])
         outputs = model(**inputs)
         model = Swift.prepare_model(model, config=lora_config)
         outputs_lora = model(**inputs)

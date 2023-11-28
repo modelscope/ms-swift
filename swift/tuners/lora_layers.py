@@ -253,6 +253,7 @@ class LoraModel(_LoraModel):
                 in_features,
                 out_features,
                 bias=bias,
+                enable_lora=lora_config.enable_lora,
                 **kwargs)
         else:
             if isinstance(target, torch.nn.Linear):

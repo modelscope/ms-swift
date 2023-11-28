@@ -38,6 +38,13 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'help': 'Use merged Linear'
         })
 
+    enable_lora: List[bool] = field(
+        default=None,
+        metadata={
+            'help':
+            'The modules need to be turned on when using the merged linear layer'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
