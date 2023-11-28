@@ -62,7 +62,8 @@ class DatasetName:
     agent_instruct_all_en = 'agent-instruct-all-en'
     # coding
     code_alpaca_en = 'code-alpaca-en'
-    code_python_zh = 'code-python-zh'
+    codefuse_python_zh = 'codefuse-python-zh'
+    codefuse_evol_instruction = 'codefuse-evol-instruction'
     leetcode_python_en = 'leetcode-python-en'
     # medical
     medical_en = 'medical-en'
@@ -535,7 +536,7 @@ register_dataset(
     tags=['chat', 'ner'])
 
 register_dataset(
-    DatasetName.code_python_zh,
+    DatasetName.codefuse_python_zh,
     'codefuse-ai/CodeExercise-Python-27k', ['train'],
     None,
     ConversationsPreprocessor(
@@ -545,7 +546,7 @@ register_dataset(
         from_key='role',
         value_key='content'),
     get_dataset_from_repo,
-    tags=['chat', 'coding'])
+    tags=['chat', 'coding', '🔥'])
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
@@ -669,6 +670,17 @@ register_dataset(
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', '🔥'])
+
+register_dataset(
+    DatasetName.codefuse_evol_instruction,
+    'codefuse-ai/Evol-instruction-66k', ['train'],
+    None,
+    RenameColumnsPreprocessor({
+        'instruction': 'query',
+        'output': 'response'
+    }),
+    get_dataset_from_repo,
+    tags=['chat', 'coding', '🔥'])
 
 
 def _check_dataset(
@@ -805,7 +817,7 @@ def load_dataset_from_local(
         else:
             raise ValueError(
                 'The custom dataset only supports CSV format or JSONL format. You can refer to the link '
-                '`https://github.com/modelscope/swift/tree/main/examples/pytorch/llm#custom-dataset` '
+                '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))

@@ -12,10 +12,19 @@ Swift DOCUMENTATION
    GetStarted/快速使用.md
    GetStarted/SWIFT安装.md
    GetStarted/使用tuners.md
-   GetStarted/训练推理脚手架.md
    GetStarted/ResTuning.md
    GetStarted/在SWIFT内使用PEFT.md
    GetStarted/部署指南.md
+
+.. toctree::
+   :maxdepth: 2
+   :caption: LLM Training and Inference Example
+
+   LLM/LLM推理文档.md
+   LLM/LLM微调文档.md
+   LLM/支持的模型和数据集.md
+   LLM/自定义与拓展.md
+   LLM/命令行超参数.md
 
 .. toctree::
    :maxdepth: 2
