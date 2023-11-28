@@ -83,6 +83,13 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM Training and Inference Example
+### Simple Usage
+- Quickly perform inference on LLM, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
+- Rapidly fine-tune and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
+- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
+- Check command-line hyperparameters for fine-tuning and inference, see [Command-Line Hyperparameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
+
+
 ### Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), full(full parameter fine-tuning)
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, ...
@@ -120,13 +127,6 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - Supported Templates:
   - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
-
-
-### Simple Usage
-- Quickly perform inference on LLM, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
-- Rapidly fine-tune and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
-- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
-- Check command-line hyperparameters for fine-tuning and inference, see [Command-Line Hyperparameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
 
 
 ## 🛠️ Installation

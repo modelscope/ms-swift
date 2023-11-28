@@ -82,6 +82,13 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型训练推理的例子
+### 简单使用
+- 快速对LLM进行推理, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
+- 快速对LLM进行微调, 推理并搭建Web-UI. 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
+- 对swift中的模型, 数据集, 对话模板进行拓展, 可以查看[自定义和拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
+- 查询微调和推理的命令行超参数, 可以[命令行超参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
+
+
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
@@ -119,13 +126,6 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation
   - 对话: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm
-
-
-### 简单使用
-- 快速对LLM进行推理, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
-- 快速对LLM进行微调, 推理并搭建Web-UI. 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
-- 对swift中的模型, 数据集, 对话模板进行拓展, 可以查看[自定义和拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
-- 查询微调和推理的命令行超参数, 可以[命令行超参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
 
 
 ## 🛠️ 安装
