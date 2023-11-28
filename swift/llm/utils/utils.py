@@ -337,6 +337,8 @@ def inference_stream(
         system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
     if history is None:
         history = []
+    else:
+        history = history.copy()
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
@@ -350,6 +352,10 @@ def inference_stream(
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
     stream_config = StreamGenerationConfig(
         **generation_config.to_dict(), do_stream=True)
+    if tokenizer.eos_token_id is not None:
+        stream_config.eos_token_id = tokenizer.eos_token_id
+    if tokenizer.pad_token_id is not None:
+        stream_config.pad_token_id = tokenizer.pad_token_id
     if stream_config.max_new_tokens is not None:
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
@@ -379,6 +385,8 @@ def inference(model: PreTrainedModel,
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
     if history is None:
         history = []
+    else:
+        history = history.copy()
     example = {'query': query, 'history': history, 'system': system}
     input_ids = template.encode(example)['input_ids']
     tokenizer = template.tokenizer
@@ -399,6 +407,10 @@ def inference(model: PreTrainedModel,
         print(
             f'{prompt_prefix}{tokenizer.decode(input_ids[0], False)}{output_prefix}',
             end='')
+    if tokenizer.eos_token_id is not None:
+        generation_config.eos_token_id = tokenizer.eos_token_id
+    if tokenizer.pad_token_id is not None:
+        generation_config.pad_token_id = tokenizer.pad_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     generate_ids = model.generate(
