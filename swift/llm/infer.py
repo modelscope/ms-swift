@@ -18,7 +18,9 @@ from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
 logger = get_logger()
 
 
-def merge_lora(args: InferArguments, replace_if_exists=False) -> str:
+def merge_lora(args: InferArguments,
+               replace_if_exists=False,
+               device_map: str = 'cpu') -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
@@ -29,7 +31,7 @@ def merge_lora(args: InferArguments, replace_if_exists=False) -> str:
                        'as this can result in performance degradation')
     # Loading Model and Tokenizer
     model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, device_map='cpu')
+        args.model_type, torch_dtype=args.torch_dtype, device_map=device_map)
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA

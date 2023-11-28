@@ -51,6 +51,8 @@ class ModelType:
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
     qwen_vl_chat_int4 = 'qwen-vl-chat-int4'
+    # qwen-audio
+    qwen_audio = 'qwen-audio'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -198,6 +200,10 @@ def register_model(
     return _register_model
 
 
+@register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
+                LoRATM.internlm, TemplateType.default_generation_bos)
+@register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
+                LoRATM.internlm, TemplateType.default_generation_bos)
 @register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
                 LoRATM.bluelm, TemplateType.bluelm)
 @register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
@@ -286,21 +292,17 @@ def get_model_tokenizer_from_sdk(
 @register_model(ModelType.internlm_20b_chat,
                 'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.internlm,
                 TemplateType.internlm)
-@register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
-                LoRATM.internlm, TemplateType.default_generation_bos)
 @register_model(ModelType.internlm_7b_chat_8k,
                 'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.internlm,
                 TemplateType.internlm)
 @register_model(ModelType.internlm_7b_chat,
                 'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
                 LoRATM.internlm, TemplateType.internlm)
-@register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
-                LoRATM.internlm, TemplateType.default_generation_bos)
-def get_model_tokenizer_internlm(model_dir: str,
-                                 torch_dtype: Dtype,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
+def get_model_tokenizer_internlm_chat(model_dir: str,
+                                      torch_dtype: Dtype,
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      **kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
                                                      model_kwargs, load_model,
                                                      **kwargs)
@@ -560,13 +562,13 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     ModelType.yi_34b_chat,
     '01ai/Yi-34B-Chat',
     LoRATM.yi,
-    TemplateType.chatml,
+    TemplateType.yi,
     support_flash_attn=True)
-def get_model_tokenizer_yi(model_dir: str,
-                           torch_dtype: Dtype,
-                           model_kwargs: Dict[str, Any],
-                           load_model: bool = True,
-                           **kwargs):
+def get_model_tokenizer_yi_chat(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.eos_token = '<|im_end|>'
@@ -653,66 +655,6 @@ dtype_mapping = {
 }
 
 
-@register_model(
-    ModelType.qwen_1_8b_chat,
-    'qwen/Qwen-1_8B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_1_8b,
-    'qwen/Qwen-1_8B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_72b_chat,
-    'qwen/Qwen-72B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_72b,
-    'qwen/Qwen-72B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.tongyi_finance_14b_chat,
-    'TongyiFinance/Tongyi-Finance-14B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.tongyi_finance_14b,
-    'TongyiFinance/Tongyi-Finance-14B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_14b_chat,
-    'qwen/Qwen-14B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_14b,
-    'qwen/Qwen-14B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_7b_chat,
-    'qwen/Qwen-7B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_7b,
-    'qwen/Qwen-7B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
@@ -741,6 +683,77 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_1_8b,
+    'qwen/Qwen-1_8B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b,
+    'qwen/Qwen-72B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.tongyi_finance_14b,
+    'TongyiFinance/Tongyi-Finance-14B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_14b,
+    'qwen/Qwen-14B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b,
+    'qwen/Qwen-7B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+def get_model_tokenizer_qwen_base(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
+    tokenizer.eos_token_id = tokenizer.eod_id
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_1_8b_chat,
+    'qwen/Qwen-1_8B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b_chat,
+    'qwen/Qwen-72B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.tongyi_finance_14b_chat,
+    'TongyiFinance/Tongyi-Finance-14B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_14b_chat,
+    'qwen/Qwen-14B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b_chat,
+    'qwen/Qwen-7B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+def get_model_tokenizer_qwen_chat(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
     tokenizer.eos_token_id = tokenizer.im_end_id
     return model, tokenizer
 
@@ -750,13 +763,15 @@ def get_model_tokenizer_qwen(model_dir: str,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
 @register_model(
     ModelType.qwen_vl,
     'qwen/Qwen-VL',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -768,9 +783,9 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype,
-                                                model_kwargs, load_model,
-                                                **kwargs)
+    get_qwen_function = kwargs['get_qwen_function']
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
     if model is not None:
         first_drop = model.transformer.drop
         if first_drop.p == 0.:
@@ -854,7 +869,7 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
             *args, kernel_switch_threshold=1, **kwargs))
         QuantLinear.__init__._patching = True
     get_qwen_function = kwargs.pop('get_qwen_function',
-                                   get_model_tokenizer_qwen)
+                                   get_model_tokenizer_qwen_chat)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     return model, tokenizer

@@ -70,8 +70,9 @@ def get_tigerbot_model_tokenizer(model_dir: str,
 # Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
 register_template(
     CustomTemplateType.tigerbot,
-    Template([], ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
-             [['eos_token_id']]))
+    Template(['{{SYSTEM}}'],
+             ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
+             [['eos_token_id']], ''))
 
 
 def _preprocess_stsb(dataset: HfDataset) -> HfDataset:

@@ -15,7 +15,7 @@ class TemplateType:
     # chat
     default = 'default'
     chatml = 'chatml'
-    qwen = 'chatml'
+    qwen = chatml
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'

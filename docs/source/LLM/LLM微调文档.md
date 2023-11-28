@@ -97,9 +97,9 @@ swift sft \
 **提示**:
 
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
-- 如果你想要使用量化参数`--quantization_bit 4`, 你需要先安装[bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`.
+- 如果你想要使用量化参数`--quantization_bit 4`, 你需要先安装[bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`. 这会减少显存消耗, 但通常会降低训练速度.
 - 如果你想要使用基于**auto_gptq**的量化, 你需要先安装对应cuda版本的[auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
-  使用auto_gptq的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
+  > 使用auto_gptq的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型)
