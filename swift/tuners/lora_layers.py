@@ -246,6 +246,14 @@ class LoraModel(_LoraModel):
             padding = target.padding
             new_module = Conv2d(adapter_name, in_channels, out_channels,
                                 kernel_size, stride, padding, **kwargs)
+        elif lora_config.use_merged_linear:
+            in_features, out_features = target.in_features, target.out_features
+            new_module = MergedLinear(
+                adapter_name,
+                in_features,
+                out_features,
+                bias=bias,
+                **kwargs)
         else:
             if isinstance(target, torch.nn.Linear):
                 in_features, out_features = target.in_features, target.out_features
@@ -327,12 +335,14 @@ class LoRALayer(ActivationMixin):
 
     def __init__(
         self,
+        adapter_name: str,
         r: int,
         lora_alpha: int,
         lora_dropout: float,
         merge_weights: bool,
     ):
         super().__init__()
+        self.adapter_name = adapter_name
         self.r = r
         self.lora_alpha = lora_alpha
         # Optional dropout
@@ -350,6 +360,7 @@ class LoRALayer(ActivationMixin):
 class MergedLinear(nn.Linear, LoRALayer):
     # LoRA implemented in a dense layer
     def __init__(self,
+                 adapter_name: str,
                  in_features: int,
                  out_features: int,
                  r: int = 0,
@@ -358,10 +369,14 @@ class MergedLinear(nn.Linear, LoRALayer):
                  enable_lora: List[bool] = [False],
                  fan_in_fan_out: bool = False,
                  merge_weights: bool = True,
+                 bias: bool = True,
+                 device=None,
+                 dtype=None,
                  **kwargs):
-        nn.Linear.__init__(self, in_features, out_features, **kwargs)
+        nn.Linear.__init__(self, in_features, out_features, bias=bias, device=device, dtype=dtype)
         LoRALayer.__init__(
             self,
+            adapter_name,
             r=r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
@@ -437,7 +452,7 @@ class MergedLinear(nn.Linear, LoRALayer):
         def T(w):
             return w.transpose(0, 1) if self.fan_in_fan_out else w
 
-        if self.merged:
+        if self.merged or not self.is_activated(self.adapter_name):
             return F.linear(x, T(self.weight), bias=self.bias)
         else:
             result = F.linear(x, T(self.weight), bias=self.bias)

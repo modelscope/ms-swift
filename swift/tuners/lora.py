@@ -32,6 +32,12 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'Use [qa-lora](https://github.com/yuhuixu1993/qa-lora) or not'
         })
 
+    use_merged_linear: bool = field(
+        default=False,
+        metadata={
+            'help': 'Use merged Linear'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
@@ -56,7 +62,7 @@ class LoRA(SwiftAdapter):
     def activate_adapter(module: torch.nn.Module, adapter_name: str,
                          activate: bool):
         for sub_module in module.modules():
-            if isinstance(sub_module, LoraLayer):
+            if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.set_activation(adapter_name, activate)
 
     @staticmethod
