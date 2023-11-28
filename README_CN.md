@@ -85,6 +85,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 ### 简单使用
 - 快速对LLM进行推理, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - 快速对LLM进行微调, 推理并搭建Web-UI. 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
+- 查看swift支持的模型和数据集. 可以查看[支持的模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
 - 对swift中的模型, 数据集, 对话模板进行拓展, 可以查看[自定义和拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
 - 查询微调和推理的命令行超参数, 可以[命令行超参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
 
