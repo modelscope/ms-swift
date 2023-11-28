@@ -615,7 +615,7 @@ class Linear(nn.Linear, LoRALayer):
                         self.lora_B @ self.lora_A) * self.scaling
                 self.merged = True
 
-    def forward(self, x: torch.Tensor, **kwargs):
+    def forward(self, x: torch.Tensor, *args, **kwargs):
 
         def T(w):
             return w.transpose(0, 1) if self.fan_in_fan_out else w
