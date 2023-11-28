@@ -2,7 +2,6 @@ import csv
 import datetime
 import inspect
 import logging
-import math
 import os
 import random
 import re
@@ -33,8 +32,8 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger, push_to_hub
+from swift.llm.utils import AnimateDiffArguments
 from swift.utils import get_dist_setting, is_dist
-from .utils import AnimateDiffArguments
 
 logger = get_logger()
 

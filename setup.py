@@ -119,8 +119,17 @@ def parse_requirements(fname='requirements.txt', with_version=True):
 
 if __name__ == '__main__':
     install_requires, deps_link = parse_requirements('requirements.txt')
-    extra_requires = {}
+    extra_requires = {
+    }
     all_requires = []
+    extra_requires['llm'], _ = parse_requirements(
+        f'requirements/llm.txt')
+    extra_requires['aigc'], _ = parse_requirements(
+        f'requirements/aigc.txt')
+    all_requires.extend(install_requires)
+    all_requires.extend(extra_requires['llm'])
+    all_requires.extend(extra_requires['aigc'])
+    extra_requires['all'] = all_requires
 
     setup(
         name='ms-swift',

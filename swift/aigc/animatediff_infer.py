@@ -8,7 +8,7 @@ from diffusers.utils import export_to_gif
 
 from swift import Swift, snapshot_download
 from swift.utils import get_logger
-from .utils import AnimateDiffInferArguments
+from swift.llm.utils import AnimateDiffInferArguments
 
 logger = get_logger()
 

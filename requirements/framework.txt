@@ -1,9 +1,5 @@
 accelerate
-charset_normalizer
-cpm_kernels
 datasets
-diffusers>=0.18.0
-gradio
 jieba
 matplotlib
 modelscope>=1.9.3
@@ -15,9 +11,8 @@ peft>=0.6.0
 requests
 rouge
 safetensors
-sentencepiece
 tensorboard
-tiktoken
 tqdm
 transformers>=4.33
-transformers_stream_generator
+
+

@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 from dataclasses import dataclass, field
+from typing import Union
 
 import torch
 from peft.tuners.lora import LoraLayer
@@ -59,7 +60,7 @@ class LoRA(SwiftAdapter):
                 sub_module.set_activation(adapter_name, activate)
 
     @staticmethod
-    def unpatch_lora(model, config: LoRAConfig, adapter_name: str):
+    def unpatch_lora(model, config: LoRAConfig, adapter_name: Optional[Union[List[str], str]]):
         """Unpatch lora modules and merge the weights to original modules.
 
         LoRA constructs an additional layer with low-rank decomposition matrices of the weights in the network.
@@ -68,7 +69,9 @@ class LoRA(SwiftAdapter):
 
         Args:
             model(`torch.nn.Module`): The model called with `tune` function.
-            config(`LoRAConfig`): The `LoRAConfig` to use.
+            config(`LoRAConfig`): The `LoRAConfig` to use. Deprecated
             adapter_name(`str`): The adapter name
         """
-        LoraModel(model, None, None).merge_and_unload(adapter_name)
+        if isinstance(adapter_name, str):
+            adapter_name = [adapter_name]
+        LoraModel(model, None, '').merge_and_unload(adapter_name)
