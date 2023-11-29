@@ -334,31 +334,33 @@ class TestSwift(unittest.TestCase):
         outputs2 = model2(**inputs)
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
 
-        def thread_func1():
-            model1.set_active_adapters(['lora1', 'adapter1'])
-            model.set_active_adapters(['lora1', 'adapter1'])
-            outputs_single = model1(**inputs)
-            outputs_t1 = model(**inputs)
-            self.assertTrue(
-                torch.allclose(outputs_single.logits, outputs_t1.logits))
+        if os.environ.get('USE_UNIQUE_THREAD') == '0':
 
-        def thread_func2():
-            model2.set_active_adapters(['lora2', 'adapter2'])
-            model.set_active_adapters(['lora2', 'adapter2'])
-            outputs_single = model2(**inputs)
-            outputs_t2 = model(**inputs)
-            self.assertTrue(
-                torch.allclose(outputs_single.logits, outputs_t2.logits))
+            def thread_func1():
+                model1.set_active_adapters(['lora1', 'adapter1'])
+                model.set_active_adapters(['lora1', 'adapter1'])
+                outputs_single = model1(**inputs)
+                outputs_t1 = model(**inputs)
+                self.assertTrue(
+                    torch.allclose(outputs_single.logits, outputs_t1.logits))
 
-        with ThreadPoolExecutor(2) as executor:
-            f1 = executor.submit(thread_func1)
-            f2 = executor.submit(thread_func2)
-            e1 = f1.exception()
-            e2 = f2.exception()
-            if e1 is not None:
-                raise e1
-            if e2 is not None:
-                raise e2
+            def thread_func2():
+                model2.set_active_adapters(['lora2', 'adapter2'])
+                model.set_active_adapters(['lora2', 'adapter2'])
+                outputs_single = model2(**inputs)
+                outputs_t2 = model(**inputs)
+                self.assertTrue(
+                    torch.allclose(outputs_single.logits, outputs_t2.logits))
+
+            with ThreadPoolExecutor(2) as executor:
+                f1 = executor.submit(thread_func1)
+                f2 = executor.submit(thread_func2)
+                e1 = f1.exception()
+                e2 = f2.exception()
+                if e1 is not None:
+                    raise e1
+                if e2 is not None:
+                    raise e2
 
     def test_swift_side_bert(self):
         model = Model.from_pretrained(
