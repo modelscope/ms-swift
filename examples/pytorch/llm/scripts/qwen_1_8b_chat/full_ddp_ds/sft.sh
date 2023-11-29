@@ -1,5 +1,5 @@
-# Experimental environment: 2 * A100
-# 2 * 56GB GPU memory
+# Experimental environment: 2 * A10
+# 2 * 13GB GPU memory
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -8,11 +8,10 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_id_or_path Shanghai_AI_Laboratory/internlm-20b \
+    --model_id_or_path qwen/Qwen-1_8B-Chat \
     --model_revision master \
-    --sft_type lora \
-    --tuner_backend swift \
-    --template_type default-generation-bos \
+    --sft_type full \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
@@ -22,22 +21,20 @@ torchrun \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
-    --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
-    --learning_rate 1e-4 \
+    --learning_rate 2e-5 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
     --save_steps 100 \
+    --only_save_model true \
     --save_total_limit 2 \
     --logging_steps 10 \
+    --use_flash_attn false \
     --push_to_hub false \
-    --hub_model_id internlm-20b-lora \
+    --hub_model_id qwen-1_8b-chat-full \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \

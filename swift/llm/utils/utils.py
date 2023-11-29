@@ -188,7 +188,7 @@ _T = TypeVar('_T')
 NoneType = type(None)
 
 
-def stat_dataset(dataset: HfDataset) -> None:
+def stat_dataset(llm_dataset: HfDataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
     for d in llm_dataset:

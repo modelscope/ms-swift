@@ -83,6 +83,7 @@ class DatasetName:
     dureader_robust_zh = 'dureader-robust-zh'
     # classification
     cmnli_zh = 'cmnli-zh'
+    cmnli_mini_zh = 'cmnli-mini-zh'
     jd_sentiment_zh = 'jd-sentiment-zh'
     # other (e.g. example dataset for specific model)
     finance_en = 'finance-en'
@@ -457,6 +458,15 @@ register_dataset(
     tags=['text-generation', 'classification'])
 
 register_dataset(
+    DatasetName.cmnli_mini_zh,
+    'clue', [('cmnli', 'validation')], [('cmnli', 'test')],
+    ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
+                    'Natural Language Inference', True),
+    get_dataset_from_repo,
+    function_kwargs={'val_dataset_sample': 200},
+    tags=['text-generation', 'classification'])
+
+register_dataset(
     DatasetName.jd_sentiment_zh,
     'DAMO_NLP/jd', ['train'], ['validation'],
     ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification',
@@ -517,7 +527,8 @@ register_dataset(
         'instruction': 'query',
         'output': 'response'
     }),
-    partial(get_dataset_from_repo, train_dataset_sample=100000),
+    get_dataset_from_repo,
+    function_kwargs={'train_dataset_sample': 50000},
     tags=['chat', 'medical'])
 
 
