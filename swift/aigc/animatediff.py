@@ -32,7 +32,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger, push_to_hub
-from swift.llm.utils import AnimateDiffArguments
+from swift.aigc.utils import AnimateDiffArguments
 from swift.utils import get_dist_setting, is_dist
 
 logger = get_logger()
