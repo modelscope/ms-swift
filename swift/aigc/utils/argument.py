@@ -148,18 +148,9 @@ class AnimateDiffInferArguments:
     seed: int = 42
 
     # other
-    use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
-    stream: bool = True
-    merge_lora_and_save: bool = False
-    overwrite_generation_config: bool = False
 
-    validation_prompts_path: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The validation prompts file path, use llm/configs/ad_validation.txt is None'
-        })
+    validation_prompts_path: str = None
 
     output_path: str = './generated'
 
