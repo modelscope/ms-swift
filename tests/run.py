@@ -616,7 +616,6 @@ if __name__ == '__main__':
         help='Run specified test suites(test suite files list split by space)')
     args = parser.parse_args()
     print(args)
-    os.environ['USE_UNIQUE_THREAD'] = '0'
     if args.run_config is not None or args.subprocess:
         run_in_subprocess(args)
     else:
