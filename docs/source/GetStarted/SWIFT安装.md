@@ -13,7 +13,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .
+pip install -e .[llm]
 ```
 
 ## Notebook环境
