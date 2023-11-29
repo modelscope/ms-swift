@@ -53,6 +53,7 @@ class ModelType:
     qwen_vl_chat_int4 = 'qwen-vl-chat-int4'
     # qwen-audio
     qwen_audio = 'qwen-audio'
+    qwen_audio_chat = 'qwen-audio-chat'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -783,13 +784,47 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
-    get_qwen_function = kwargs['get_qwen_function']
+    get_qwen_function = kwargs.pop('get_qwen_function')
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
         first_drop = model.transformer.drop
         if first_drop.p == 0.:
-            # fix gradient_checkpointing bug
+            # fix in-place operation bug
+            _old_forward = first_drop.forward
+            if not hasattr(_old_forward, '_patching'):
+                first_drop.forward = lambda *args, **kwargs: _old_forward(
+                    *args, **kwargs).clone()
+                first_drop.forward._patching = True
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_audio_chat,
+    'qwen/Qwen-Audio-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
+@register_model(
+    ModelType.qwen_audio,
+    'qwen/Qwen-Audio',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
+def get_model_tokenizer_qwen_audio(model_dir: str,
+                                   torch_dtype: Dtype,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
+    get_qwen_function = kwargs.pop('get_qwen_function')
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+    if model is not None:
+        first_drop = model.transformer.drop
+        if first_drop.p == 0.:
+            # fix in-place operation bug
             _old_forward = first_drop.forward
             if not hasattr(_old_forward, '_patching'):
                 first_drop.forward = lambda *args, **kwargs: _old_forward(

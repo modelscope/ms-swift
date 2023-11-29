@@ -87,7 +87,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - Quickly perform inference on LLM, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - Rapidly fine-tune and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
 - View the models and datasets supported by Swift. You can check [supported models and datasets](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
-- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义和拓展.md).
+- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md).
 - Check command-line hyperparameters for fine-tuning and inference, see [Command-Line Hyperparameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)
 
 

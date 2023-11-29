@@ -90,11 +90,13 @@ def _concat_context_list(
 
 
 def _encode_context_list(
-        tokenizer: PreTrainedTokenizerBase,
-        context_list: List[Context],
-        compute_loss_idx: Optional[List[int]] = None) -> List[int]:
+    tokenizer: PreTrainedTokenizerBase,
+    context_list: List[Context],
+    compute_loss_idx: Optional[List[int]] = None
+) -> Tuple[List[int], Optional[List[int]], Dict[str, Any]]:
     input_ids: List[int] = []
     labels: List[int] = []
+    kwargs = {}
     if compute_loss_idx is not None:
         compute_loss_idx = set(compute_loss_idx)
     for i, context in enumerate(context_list):
@@ -108,9 +110,17 @@ def _encode_context_list(
                 input_ids.append(token)
                 labels.append(-100)
         elif isinstance(context, str):
+            # Compatible with qwen-audio
+            if (tokenizer.__class__.__name__ == 'QWenTokenizer'
+                    and '<audio>' in context and '</audio>' in context):
+                audio_info = tokenizer.process_audio(context)
+                assert 'audio_info' not in kwargs
+                kwargs['audio_info'] = audio_info
             token_list = tokenizer(
-                context, return_attention_mask=False,
-                add_special_tokens=False)['input_ids']
+                context,
+                return_attention_mask=False,
+                add_special_tokens=False,
+                **kwargs)['input_ids']
             input_ids += token_list
             if compute_loss_idx is None:
                 continue
@@ -119,9 +129,9 @@ def _encode_context_list(
             else:
                 labels += [-100] * len(token_list)
     if compute_loss_idx is None:
-        return input_ids
+        return input_ids, None, kwargs
     else:
-        return input_ids, labels
+        return input_ids, labels, kwargs
 
 
 def _encode(template: 'Template', query: str, response: Optional[str],
@@ -147,14 +157,14 @@ def _encode(template: 'Template', query: str, response: Optional[str],
         round0=len(history))
     res_context_list, compute_loss_idx = _simplify_context_list(
         res_context_list, compute_loss_idx)
-    input_ids, labels = _encode_context_list(template.tokenizer,
-                                             res_context_list,
-                                             compute_loss_idx)
+    input_ids, labels, kwargs = _encode_context_list(template.tokenizer,
+                                                     res_context_list,
+                                                     compute_loss_idx)
 
     if response is not None:
-        tgt_input_ids = _encode_context_list(template.tokenizer, [response])
+        tgt_input_ids = _encode_context_list(template.tokenizer, [response])[0]
         tgt_input_ids += _encode_context_list(template.tokenizer,
-                                              template.suffix)
+                                              template.suffix)[0]
         labels = labels + tgt_input_ids
         input_ids += tgt_input_ids
     else:
@@ -167,21 +177,25 @@ def _encode(template: 'Template', query: str, response: Optional[str],
         input_ids = input_ids[-template.max_length:]
         if labels is not None:
             labels = labels[-template.max_length:]
-
-    return {'input_ids': input_ids, 'labels': labels}
+    res = {'input_ids': input_ids, 'labels': labels}
+    # Compatible with qwen-audio
+    if 'audio_info' in kwargs:
+        res['audio_info'] = kwargs['audio_info']
+    return res
 
 
 class StopWordsCriteria(StoppingCriteria):
 
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
-                 stop_words: StopWords) -> None:
+                 stop_words: StopWords, **decode_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
+        self.decode_kwargs = decode_kwargs
 
     def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
         tokenizer = self.tokenizer
         stop_words = self.stop_words
-        text = tokenizer.decode(input_ids[0])
+        text = tokenizer.decode(input_ids[0], **self.decode_kwargs)
         for stop_word in stop_words:
             if isinstance(stop_word, str):
                 if text.endswith(stop_word):

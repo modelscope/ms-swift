@@ -158,9 +158,17 @@ def llm_infer(args: InferArguments) -> None:
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
         while True:
+            kwargs = {}
             query = input('<<< ')
+            if args.model_type.startswith('qwen-audio'):
+                kwargs['audio_info'] = template.tokenizer.process_audio(query)
             _, history = inference(
-                model, template, query, stream=args.stream, verbose=True)
+                model,
+                template,
+                query,
+                stream=args.stream,
+                verbose=True,
+                **kwargs)
             item = history[0]
             if jsonl_path is not None:
                 save_result_to_jsonl(jsonl_path, item[0], item[1])
@@ -177,14 +185,19 @@ def llm_infer(args: InferArguments) -> None:
                 range(min(args.val_dataset_sample, val_dataset.shape[0])))
         logger.info(f'val_dataset: {val_dataset}')
         for data in val_dataset:
+            kwargs = {}
+            query = data.get('query')
+            if args.model_type.startswith('qwen-audio'):
+                kwargs['audio_info'] = template.tokenizer.process_audio(query)
             _, history = inference(
                 model,
                 template,
-                data.get('query'),
+                query,
                 data.get('history'),
                 data.get('system'),
                 stream=args.stream,
-                verbose=True)
+                verbose=True,
+                **kwargs)
             label = data.get('response')
             item = history[0]
             if jsonl_path is not None:

@@ -26,6 +26,7 @@ from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
@@ -144,20 +145,32 @@ def _infer_auto_device_map_patch(
     return infer_auto_device_map(model, max_memory, verbose=verbose, **kwargs)
 
 
+class LLMDataset(Dataset):
+
+    def __init__(self, data: List[Dict[str, Any]]) -> None:
+        self.data = data
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        return self.data[idx]
+
+    def select(self, idx_list: List[int]) -> 'LLMDataset':
+        new_data = np.array(self.data)
+        new_data = new_data[idx_list].tolist()
+        return self.__class__(new_data)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+
 def dataset_map(
     dataset: HfDataset, map_func: Callable[[Dict[str, Any]],
                                            Dict[str, Optional[List[int]]]]
-) -> HfDataset:
+) -> LLMDataset:
     # faster than dataset.map
-    input_ids = []
-    labels = []
+    data = []
     for d in tqdm(dataset):
-        d = map_func(d)
-        if d is None or d['input_ids'] is None:
-            continue
-        input_ids.append(d['input_ids'])
-        labels.append(d['labels'])
-    return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
+        data.append(map_func(d))
+    return LLMDataset(data)
 
 
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
@@ -196,12 +209,11 @@ def get_main(
     return x_main
 
 
-def stat_dataset(dataset: HfDataset) -> None:
+def stat_dataset(llm_dataset: List[Dict[str, Any]]) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
-    input_ids = dataset['input_ids']
-    for i in range(len(dataset)):
-        _token_len.append(len(input_ids[i]))
+    for d in llm_dataset:
+        _token_len.append(len(d['input_ids']))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
 
@@ -240,15 +252,23 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         attention_mask, batch_first=True, padding_value=0)
     labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
-    return {
+    res = {
         'input_ids': input_ids,
         'attention_mask': attention_mask,
-        'labels': labels
+        'labels': labels,
     }
+    # Compatible with qwen-audio
+    if tokenizer.__class__.__name__ == 'QWenTokenizer':
+        if 'audio_info' in batch[0]:
+            audio_info = []
+            for b in batch:
+                audio_info.append(b['audio_info'])
+            res['audio_info'] = audio_info
+    return res
 
 
-def _get_labels_str(labels: List[int],
-                    tokenizer: PreTrainedTokenizerBase) -> str:
+def _get_labels_str(labels: List[int], tokenizer: PreTrainedTokenizerBase,
+                    **decode_kwargs) -> str:
     if len(labels) == 0:
         return ''
     labels_str = ''
@@ -261,14 +281,14 @@ def _get_labels_str(labels: List[int],
             continue
         if labels[i] == -100 and labels[i - 1] != -100:
             s = i
-            labels_str += tokenizer.decode(labels[e:s])
+            labels_str += tokenizer.decode(labels[e:s], **decode_kwargs)
         if labels[i] != -100 and labels[i - 1] == -100:
             e = i
             labels_str += f'[-100 * {e - s}]'
     if labels[-1] == -100:
         labels_str += f'[-100 * {len(labels) - s}]'
     else:
-        labels_str += tokenizer.decode(labels[e:])
+        labels_str += tokenizer.decode(labels[e:], **decode_kwargs)
     return labels_str
 
 
@@ -276,10 +296,14 @@ def print_example(example: Dict[str, Any],
                   tokenizer: PreTrainedTokenizerBase) -> None:
     input_ids, labels = example['input_ids'], example.get('labels')
     logger.info(f'[INPUT_IDS] {input_ids}')
-    logger.info(f'[INPUT] {tokenizer.decode(input_ids)}')
+    decode_kwargs = {}
+    # Compatible with qwen-audio
+    if 'audio_info' in example:
+        decode_kwargs['audio_info'] = example['audio_info']
+    logger.info(f'[INPUT] {tokenizer.decode(input_ids, **decode_kwargs)}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = _get_labels_str(labels, tokenizer)
+        labels_str = _get_labels_str(labels, tokenizer, **decode_kwargs)
         logger.info(f'[LABLES] {labels_str}')
 
 
@@ -315,26 +339,22 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
     return list(lora_module_names)
 
 
-def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
     logger.info('sort by max length...')
-    input_ids = dataset['input_ids']
-    dataset_len = [len(input_ids[i]) for i in range(len(dataset))]
+    dataset_len = [len(d['input_ids']) for d in llm_dataset]
     idx = heapq.nlargest(
         num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
-    input_ids = []
-    labels = []
-    for i in idx:
-        input_ids.append(dataset[i]['input_ids'])
-        labels.append(dataset[i]['labels'])
-    return HfDataset.from_dict({'input_ids': input_ids, 'labels': labels})
+    return llm_dataset.select(idx)
 
 
 def inference_stream(
-        model: PreTrainedModel,
-        template: Template,
-        query: str,
-        history: Optional[History] = None,
-        system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
+    model: PreTrainedModel,
+    template: Template,
+    query: str,
+    history: Optional[History] = None,
+    system: Optional[str] = None,
+    audio_info: Optional[Dict[str,
+                              Any]] = None) -> Iterator[Tuple[str, History]]:
     if history is None:
         history = []
     else:
@@ -360,33 +380,41 @@ def inference_stream(
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     stop_words = [template.suffix[-1]]
+    decode_kwargs = {}
+    model_kwargs = {}
+    if audio_info is not None:
+        decode_kwargs['audio_info'] = audio_info
+        model_kwargs['audio_info'] = audio_info
     stopping_criteria = StoppingCriteriaList(
-        [StopWordsCriteria(tokenizer, stop_words)])
+        [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
     gen = model.generate_stream(
         input_ids=input_ids,
         attention_mask=attention_mask,
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
+        **model_kwargs,
         seed=-1)
     generate_ids = []
     history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
-        response = tokenizer.decode(generate_ids, True)
+        response = tokenizer.decode(generate_ids, True, **decode_kwargs)
         history[-1] = (query, response)
         yield response, history
 
 
-def inference(model: PreTrainedModel,
-              template: Template,
-              query: Optional[str] = None,
-              history: Optional[History] = None,
-              system: Optional[str] = None,
-              *,
-              stream: bool = False,
-              verbose: bool = False,
-              prompt_prefix: str = '[PROMPT]',
-              output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+def inference(
+        model: PreTrainedModel,
+        template: Template,
+        query: Optional[str] = None,
+        history: Optional[History] = None,
+        system: Optional[str] = None,
+        *,
+        stream: bool = False,
+        verbose: bool = False,
+        prompt_prefix: str = '[PROMPT]',
+        output_prefix: str = '[OUTPUT]',
+        audio_info: Optional[Dict[str, Any]] = None) -> Tuple[str, History]:
     if history is None:
         history = []
     else:
@@ -405,11 +433,16 @@ def inference(model: PreTrainedModel,
         )
         stream = False
     streamer = None
+    decode_kwargs = {}
+    model_kwargs = {}
+    if audio_info is not None:
+        decode_kwargs['audio_info'] = audio_info
+        model_kwargs['audio_info'] = audio_info
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if verbose:
         print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False)}{output_prefix}',
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False, **decode_kwargs)}{output_prefix}',
             end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
@@ -419,16 +452,20 @@ def inference(model: PreTrainedModel,
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     stop_words = [template.suffix[-1]]
     stopping_criteria = StoppingCriteriaList(
-        [StopWordsCriteria(tokenizer, stop_words)])
+        [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config,
-        stopping_criteria=stopping_criteria)
-    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True)
+        stopping_criteria=stopping_criteria,
+        **model_kwargs)
+    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True,
+                                **decode_kwargs)
     if verbose and stream is False:
-        print(tokenizer.decode(generate_ids[0, len(input_ids[0]):], False))
+        print(
+            tokenizer.decode(generate_ids[0, len(input_ids[0]):], False,
+                             **decode_kwargs))
     history.append((query, response))
     return response, history
 
