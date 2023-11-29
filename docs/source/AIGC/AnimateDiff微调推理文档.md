@@ -25,7 +25,7 @@ Prompt:masterpiece, bestquality, highlydetailed, ultradetailed, girl, walking, o
 ![image.png](./resources/1.gif)
 
 ```text
-Prompt4: masterpiece, bestquality, highlydetailed, ultradetailed, beautiful house, mountain, snow top
+Prompt: masterpiece, bestquality, highlydetailed, ultradetailed, beautiful house, mountain, snow top
 ```
 
 ![image.png](./resources/2.gif)

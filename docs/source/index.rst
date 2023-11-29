@@ -28,6 +28,12 @@ Swift DOCUMENTATION
 
 .. toctree::
    :maxdepth: 2
+   :caption: AIGC Training and Inference Example
+
+   AIGC/AnimateDiff微调推理文档.md
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Doc
 
    Hub <api/swift.hub>
