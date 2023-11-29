@@ -209,7 +209,7 @@ mixed_precision: bool = True # 混合精度训练
 
 enable_xformers_memory_efficient_attention: bool = True # 使用xformers
 
-num_inference_steps: int = 25 # 
+num_inference_steps: int = 25 #
 guidance_scale: float = 8.
 sample_size: int = 256
 sample_stride: int = 4 # 训练视频最大长度秒数
@@ -257,7 +257,7 @@ output_path: str = './generated' # 输出gif的目录
 
 enable_xformers_memory_efficient_attention: bool = True # 使用xformers
 
-num_inference_steps: int = 25 # 
+num_inference_steps: int = 25 #
 guidance_scale: float = 8.
 sample_size: int = 256
 sample_stride: int = 4 # 训练视频最大长度秒数
@@ -272,6 +272,3 @@ beta_schedule: str = 'linear' # 推理pipeline参数
 steps_offset: int = 1 # 推理pipeline参数
 clip_sample: bool = False # 推理pipeline参数
 ```
-
-
-
