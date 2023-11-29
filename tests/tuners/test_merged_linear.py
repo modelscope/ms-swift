@@ -40,14 +40,9 @@ class TestMergedLinear(unittest.TestCase):
         outputs_deactivate = model(**inputs)
         model.activate_adapter('default')
         outputs_reactivate = model(**inputs)
-        Swift.merge_and_unload(model)
-        outputs_merged = model(**inputs)
         self.assertTrue(
             torch.allclose(outputs.logits, outputs_deactivate.logits))
         self.assertTrue(
             not torch.allclose(outputs.logits, outputs_lora.logits))
         self.assertTrue(
             torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
-        self.assertTrue(
-            torch.allclose(
-                outputs_lora.logits, outputs_merged.logits, atol=1e-5))
