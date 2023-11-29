@@ -59,7 +59,8 @@ def rome_infer(args: RomeArguments) -> None:
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length,
                                       args.truncation_strategy)
-    logger.info(f'system: {template.system}')
+    args.system = template.system
+    logger.info(f'system: {args.system}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,

@@ -62,9 +62,9 @@ class DatasetName:
     agent_instruct_all_en = 'agent-instruct-all-en'
     # coding
     code_alpaca_en = 'code-alpaca-en'
+    leetcode_python_en = 'leetcode-python-en'
     codefuse_python_zh = 'codefuse-python-zh'
     codefuse_evol_instruction = 'codefuse-evol-instruction'
-    leetcode_python_en = 'leetcode-python-en'
     # medical
     medical_en = 'medical-en'
     medical_zh = 'medical-zh'
