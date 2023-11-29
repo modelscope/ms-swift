@@ -2,11 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 from dataclasses import dataclass, field
-from typing import Union
 
 import torch
 from packaging import version
-from peft.tuners.lora import LoraLayer
 
 from swift import LoraConfig
 from .lora_layers import *  # noqa

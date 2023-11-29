@@ -14,8 +14,7 @@ from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 
 from swift.hub.snapshot_download import snapshot_download
-from swift.utils.constants import (DEFAULT_ADAPTER, PEFT_TYPE_KEY,
-                                   SWIFT_TYPE_KEY)
+from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
 from .. import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig
