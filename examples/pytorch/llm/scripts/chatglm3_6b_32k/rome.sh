@@ -9,7 +9,6 @@ python rome_infer.py \
     --eval_human true \
     --max_new_tokens 128 \
     --temperature 0.1 \
-    --top_k 50 \
-    --top_p 0.9 \
+    --top_p 0.7 \
     --do_sample true \
     --rome_request_file rome_example/request.json

@@ -1,5 +1,6 @@
 # Experimental environment: A100
 # 45GB GPU memory
+# Recommended to use `qwen_72b_chat_int4`
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
