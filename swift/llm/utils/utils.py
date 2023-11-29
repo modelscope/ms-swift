@@ -150,8 +150,13 @@ class LLMDataset(Dataset):
     def __init__(self, data: List[Dict[str, Any]]) -> None:
         self.data = data
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        return self.data[idx]
+    def __getitem__(self, idx: Union[int, str]) -> Dict[str, Any]:
+        if isinstance(idx, int):
+            return self.data[idx]
+        elif isinstance(idx, str):
+            return [d[idx] for d in self.data]
+        else:
+            raise ValueError(f'idx: {idx}')
 
     def select(self, idx_list: List[int]) -> 'LLMDataset':
         new_data = np.array(self.data)
