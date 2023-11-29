@@ -37,6 +37,8 @@ class ModelType:
     # qwen
     qwen_1_8b = 'qwen-1_8b'
     qwen_1_8b_chat = 'qwen-1_8b-chat'
+    qwen_1_8b_chat_int4 = 'qwen-1_8b-chat-int4'
+    qwen_1_8b_chat_int8 = 'qwen-1_8b-chat-int8'
     qwen_7b = 'qwen-7b'
     qwen_7b_chat = 'qwen-7b-chat'
     qwen_14b = 'qwen-14b'
@@ -47,6 +49,8 @@ class ModelType:
     qwen_14b_chat_int8 = 'qwen-14b-chat-int8'
     qwen_72b = 'qwen-72b'
     qwen_72b_chat = 'qwen-72b-chat'
+    qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
+    qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -796,6 +800,22 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
                 first_drop.forward = lambda *args, **kwargs: _old_forward(
                     *args, **kwargs).clone()
                 first_drop.forward._patching = True
+
+    _old_decode = tokenizer._decode
+
+    def _new_decode(*args, skip_special_tokens=False, **kwargs) -> str:
+        if skip_special_tokens:
+            token_ids = kwargs['token_ids']
+            while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
+                token_ids.pop()
+            return _old_decode(*args, skip_special_tokens=False, **kwargs)
+        else:
+            return _old_decode(*args, skip_special_tokens=False, **kwargs)
+
+    if not hasattr(_old_decode, '_patching'):
+        tokenizer._decode = _new_decode
+        tokenizer._decode._patching = True
+
     return model, tokenizer
 
 
@@ -834,12 +854,58 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
 
 
 @register_model(
+    ModelType.qwen_1_8b_chat_int8,
+    'qwen/Qwen-1_8B-Chat-Int8',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_1_8b_chat_int4,
+    'qwen/Qwen-1_8B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b_chat_int8,
+    'qwen/Qwen-72B-Chat-Int8',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b_chat_int4,
+    'qwen/Qwen-72B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b_chat_int4,
+    'qwen/Qwen-7B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.4.2'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
     ModelType.tongyi_finance_14b_chat_int4,
     'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
     LoRATM.qwen,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
     support_flash_attn=True)
 @register_model(
     ModelType.qwen_vl_chat_int4,
@@ -849,7 +915,10 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
     support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_vl})
+    function_kwargs={
+        'get_qwen_function': get_model_tokenizer_qwen_vl,
+        'bits': 4
+    })
 @register_model(
     ModelType.qwen_14b_chat_int8,
     'qwen/Qwen-14B-Chat-Int8',
@@ -857,6 +926,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
     support_flash_attn=True)
 @register_model(
     ModelType.qwen_7b_chat_int8,
@@ -865,6 +935,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
     support_flash_attn=True)
 @register_model(
     ModelType.qwen_14b_chat_int4,
@@ -873,6 +944,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
     support_flash_attn=True)
 @register_model(
     ModelType.qwen_7b_chat_int4,
@@ -881,6 +953,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.4.2'],
     torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
     support_flash_attn=True)
 def get_model_tokenizer_qwen_intx(model_dir: str,
                                   torch_dtype: Dtype,
@@ -889,12 +962,13 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                   **kwargs):
 
     logger.info('use gptq, ignore bnb arguments')
+    bits = kwargs.pop('bits')
     if version.parse(transformers.__version__) >= version.parse('4.35'):
         model_kwargs['quantization_config'] = GPTQConfig(
-            bits=4, use_exllama=False)
+            bits=bits, use_exllama=False)
     else:
         model_kwargs['quantization_config'] = GPTQConfig(
-            bits=4, disable_exllama=True)
+            bits=bits, disable_exllama=True)
 
     # fix quantlinear bug
     from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear

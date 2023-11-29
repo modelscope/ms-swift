@@ -328,19 +328,19 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
 
 
 def inference_stream(
-    model: PreTrainedModel,
-    template: Template,
-    query: str,
-    history: Optional[History] = None,
-    system: Optional[str] = None,
-    audio_info: Optional[Dict[str,
-                              Any]] = None) -> Iterator[Tuple[str, History]]:
+        model: PreTrainedModel,
+        template: Template,
+        query: str,
+        history: Optional[History] = None,
+        system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
     if history is None:
         history = []
     else:
         history = history.copy()
     example = {'query': query, 'history': history, 'system': system}
-    input_ids = template.encode(example)['input_ids']
+    inputs = template.encode(example)
+    audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
+    input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
     input_ids = torch.tensor(input_ids)[None].to(device)
@@ -383,24 +383,24 @@ def inference_stream(
         yield response, history
 
 
-def inference(
-        model: PreTrainedModel,
-        template: Template,
-        query: Optional[str] = None,
-        history: Optional[History] = None,
-        system: Optional[str] = None,
-        *,
-        stream: bool = False,
-        verbose: bool = False,
-        prompt_prefix: str = '[PROMPT]',
-        output_prefix: str = '[OUTPUT]',
-        audio_info: Optional[Dict[str, Any]] = None) -> Tuple[str, History]:
+def inference(model: PreTrainedModel,
+              template: Template,
+              query: str,
+              history: Optional[History] = None,
+              system: Optional[str] = None,
+              *,
+              stream: bool = False,
+              verbose: bool = False,
+              prompt_prefix: str = '[PROMPT]',
+              output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
     if history is None:
         history = []
     else:
         history = history.copy()
     example = {'query': query, 'history': history, 'system': system}
-    input_ids = template.encode(example)['input_ids']
+    inputs = template.encode(example)
+    audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
+    input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
     input_ids = torch.tensor(input_ids)[None].to(device)

@@ -74,6 +74,44 @@ you are a helpful assistant!<|im_end|>
 """
 ```
 
+### qwen-7b-chat-int4
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.qwen_7b_chat_int4
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')  # template_type: chatml
+
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
+
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+query = '浙江的省会在哪里？'
+response, history = inference(model, template, query)
+print(f'query: {query}')
+print(f'response: {response}')
+query = '这有什么好吃的？'
+response, history = inference(model, template, query, history)
+print(f'query: {query}')
+print(f'response: {response}')
+print(f'history: {history}')
+
+"""Out[0]
+query: 浙江的省会在哪里？
+response: 浙江省的省会是杭州。
+query: 这有什么好吃的？
+response: 杭州有很多著名的美食，例如西湖醋鱼、东坡肉、宋嫂鱼羹、叫化鸡等。此外，还有杭州特色的点心，如桂花糖藕、酒酿圆子、麻婆豆腐等等。
+history: [('浙江的省会在哪里？', '浙江省的省会是杭州。'), ('这有什么好吃的？', '杭州有很多著名的美食，例如西湖醋鱼、东坡肉、宋嫂鱼羹、叫化鸡等。此外，还有杭州特色的点心，如桂花糖藕、酒酿圆子、麻婆豆腐等等。')]
+"""
+```
+
 ### qwen-7b
 ```python
 import os
@@ -131,8 +169,7 @@ model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: chatml
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
-model.generation_config.max_new_tokens = 128
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
 template = get_template(template_type, tokenizer)
 seed_everything(42)
@@ -159,7 +196,7 @@ history: [('浙江的省会在哪里？', '浙江省的省会是杭州。'), ('�
 """
 ```
 
-### 量化
+### qwen-vl-chat
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -168,40 +205,79 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-from modelscope import BitsAndBytesConfig
 import torch
 
-model_type = ModelType.qwen_7b_chat
+model_type = ModelType.qwen_vl_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: chatml
 
-torch_dtype = torch.bfloat16
-quantization_config = BitsAndBytesConfig(load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch_dtype,
-            bnb_4bit_quant_type='nf4',
-            bnb_4bit_use_double_quant=True)
-model, tokenizer = get_model_tokenizer(model_type, torch_dtype, {'device_map': 'auto',
-                                      'quantization_config': quantization_config})
-model.generation_config.max_new_tokens = 128
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
 template = get_template(template_type, tokenizer)
 seed_everything(42)
-query = '浙江的省会在哪里？'
+query = tokenizer.from_list_format([
+    {'image': 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg'},
+    {'text': '这是什么'},
+])
 response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
-query = '这有什么好吃的？'
+query = '输出击掌的检测框'
 response, history = inference(model, template, query, history)
 print(f'query: {query}')
 print(f'response: {response}')
 print(f'history: {history}')
+image = tokenizer.draw_bbox_on_latest_picture(response, history)
+image.save('output_chat.jpg')
+"""
+query: Picture 1:<img>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg</img>
+这是什么
+response: 图中是一名女子在沙滩上和狗玩耍，旁边的狗是一只拉布拉多犬，它们处于沙滩上。
+query: 输出击掌的检测框
+response: <ref>击掌</ref><box>(523,513),(584,605)</box>
+history: [('Picture 1:<img>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg</img>\n这是什么', '图中是一名女子在沙滩上和狗玩耍，旁边的狗是一只拉布拉多犬，它们处于沙滩上。'), ('输出击掌的检测框', '<ref>击掌</ref><box>(523,513),(584,605)</box>')]
+"""
+```
 
-"""Out[0]
-query: 浙江的省会在哪里？
-response: 浙江省会是杭州。
-query: 这有什么好吃的？
-response: 浙江有许多美食，比如西湖醋鱼、龙井虾仁、东坡肉、梅干菜烧肉等，这些都是浙江地区非常有名的食物。此外，浙江还盛产海鲜，如螃蟹、海螺、贝壳类和各种鱼类。
-history: [('浙江的省会在哪里？', '浙江省会是杭州。'), ('这有什么好吃的？', '浙江有许多美食，比如西湖醋鱼、龙井虾仁、东坡肉、梅干菜烧肉等，这些都是浙江地区非常有名的食物。此外，浙江还盛产海鲜，如螃蟹、海螺、贝壳类和各种鱼类。')]
+### qwen-audio-chat
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.qwen_audio_chat
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')  # template_type: chatml
+
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
+
+template = get_template(template_type, tokenizer)
+
+seed_everything(42)
+query = tokenizer.from_list_format([
+    {'audio': 'demo.wav'},
+    {'text': '请将语音转成文本'},
+])
+response, history = inference(model, template, query)
+print(f'query: {query}')
+print(f'response: {response}')
+query = '这句话一般在什么语境下使用'
+response, history = inference(model, template, query, history)
+print(f'query: {query}')
+print(f'response: {response}')
+print(f'history: {history}')
+"""
+query: Audio 1:<audio>demo.wav</audio>
+请将语音转成文本
+response: 好的，这是转成的文本："每一天都要快乐哦"。
+query: 这句话一般在什么语境下使用
+response: 这句话一般在表达祝福或者鼓励的时候使用，比如在朋友或者亲人过生日的时候说"每一天都要快乐哦"，表达祝福的意思。
+history: [('Audio 1:<audio>demo.wav</audio>\n请将语音转成文本', '好的，这是转成的文本："每一天都要快乐哦"。'), ('这句话一般在什么语境下使用', '这句话一般在表达祝福或者鼓励的时候使用，比如在朋友或者亲人过生日的时候说"每一天都要快乐哦"，表达祝福的意思。')]
 """
 ```
 
@@ -220,8 +296,7 @@ model_type = ModelType.chatglm3_6b
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: chatglm3
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
-# 修改max_new_tokens
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 128
 
 template = get_template(template_type, tokenizer)
@@ -250,6 +325,60 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 """
 ```
 
+
+### 量化
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
+)
+from swift.utils import seed_everything
+from modelscope import BitsAndBytesConfig
+import torch
+
+model_type = ModelType.chatglm3_6b
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')  # template_type: chatglm3
+
+torch_dtype = torch.bfloat16
+quantization_config = BitsAndBytesConfig(load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch_dtype,
+            bnb_4bit_quant_type='nf4',
+            bnb_4bit_use_double_quant=True)
+model, tokenizer = get_model_tokenizer(model_type, torch_dtype, {'device_map': 'auto',
+                                      'quantization_config': quantization_config})
+model.generation_config.max_new_tokens = 128
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+query = '浙江的省会在哪里？'
+response, history = inference(model, template, query)
+print(f'query: {query}')
+print(f'response: {response}')
+query = '这有什么好吃的？'
+response, history = inference(model, template, query, history)
+print(f'query: {query}')
+print(f'response: {response}')
+print(f'history: {history}')
+
+"""Out[0]
+query: 浙江的省会在哪里？
+response: 浙江的省会是杭州。
+query: 这有什么好吃的？
+response: 浙江有很多美食,以下是一些著名的:
+
+1. 杭州小笼包:这是杭州著名的传统小吃,外皮薄而有韧性,内馅鲜美多汁。
+
+2. 浙江粽子:浙江粽子有多种口味,如咸蛋黄肉粽、豆沙粽等,其中以杭州粽子最为著名。
+
+3. 油爆虾:这是浙江海鲜中的代表之一,用热油爆炒虾仁,口感鲜嫩。
+
+4. 椒盐土豆丝:这是浙江传统的素菜之一,用土豆丝和椒盐一起炒制,口感清爽。
+
+history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这有什么好吃的？', '浙江有很多美食,以下是一些著名的:\n\n1. 杭州小笼包:这是杭州著名的传统小吃,外皮薄而有韧性,内馅鲜美多汁。\n\n2. 浙江粽子:浙江粽子有多种口味,如咸蛋黄肉粽、豆沙粽等,其中以杭州粽子最为著名。\n\n3. 油爆虾:这是浙江海鲜中的代表之一,用热油爆炒虾仁,口感鲜嫩。\n\n4. 椒盐土豆丝:这是浙江传统的素菜之一,用土豆丝和椒盐一起炒制,口感清爽。\n')]
+"""
+```
 ## Web-UI
 ### qwen-7b-chat
 使用CLI

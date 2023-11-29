@@ -275,7 +275,7 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
     response_key = 'caption'
 
     dataset._info.features._column_requires_decoding['image'] = False
-    query_format = f'<img>{{image_path}}</img>{prompt}'
+    query_format = f'Picture 1:<img>{{image_path}}</img>\n{prompt}'
     query = []
     response = []
     for d in tqdm(dataset):
@@ -293,7 +293,7 @@ register_dataset(
     [('coco_2014_caption', 'validation')],
     _preprocess_vision_dataset,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', 'vision', '🔥'])
+    tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
     DatasetName.coco_mini_en,
@@ -328,7 +328,7 @@ register_dataset(
     ['test'],
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', 'audio', '🔥'])
+    tags=['chat', 'multi-modal', 'audio'])
 
 register_dataset(
     DatasetName.aishell1_mini_zh,
@@ -467,7 +467,7 @@ register_dataset(
         'train_dataset_sample': 20000,
         'val_dataset_sample': 200
     },
-    tags=['text-generation', 'classification'])
+    tags=['text-generation', 'classification', '🔥'])
 
 register_dataset(
     DatasetName.jd_sentiment_zh,
