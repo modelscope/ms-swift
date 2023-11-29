@@ -5,6 +5,13 @@
 可以使用pip进行安装：
 
 ```shell
+# 全量能力
+pip install ms-swift[all] -U
+# 仅使用LLM
+pip install ms-swift[llm] -U
+# 仅使用AIGC
+pip install ms-swift[aigc] -U
+# 仅使用adapters
 pip install ms-swift -U
 ```
 
@@ -13,7 +20,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .
+pip install -e .[llm]
 ```
 
 ## Notebook环境

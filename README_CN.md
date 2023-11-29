@@ -56,6 +56,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## 🎉 新闻
+- 🔥 2023.11.29: 支持AnimateDiff的训练和推理
 - 🔥 2023.11.24: 支持**yi-34b-chat**, **codefuse-codellama-34b-chat**模型. 对应的sh脚本可以查看[yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
 - 🔥 2023.11.18: 支持**tongyi-finance-14b**系列模型: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4. 对应的sh脚本可以查看[tongyi_finance_14b_chat_int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4).
 - 🔥 2023.11.16: 支持更多模型的**flash attn**支持: qwen系列, qwen-vl系列, llama系列, openbuddy系列, mistral系列, yi系列, ziya系列. 请使用`use_flash_attn`参数.
@@ -136,6 +137,13 @@ SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 - 方法1：使用pip命令安装SWIFT：
 
 ```shell
+# 全量能力
+pip install ms-swift[all] -U
+# 仅使用LLM
+pip install ms-swift[llm] -U
+# 仅使用AIGC
+pip install ms-swift[aigc] -U
+# 仅使用adapters
 pip install ms-swift -U
 ```
 
@@ -144,7 +152,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .
+pip install -e .[llm]
 ```
 
 SWIFT依赖torch>=1.13。

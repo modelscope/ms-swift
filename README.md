@@ -57,6 +57,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
+- 🔥 2023.11.29: Support the training and inference for AnimateDiff
 - 🔥 2023.11.24: Support for **yi-34b-chat**, **codefuse-codellama-34b-chat**: The corresponding shell script can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
 - 🔥 2023.11.18: Support for **tongyi-finance-14b** series models: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4. The corresponding shell script can be found in [tongyi_finance_14b_chat_int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4).
 - 🔥 2023.11.16: Added support for more models in **flash attn**: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series. Please use the `use_flash_attn` parameter.
@@ -137,6 +138,13 @@ SWIFT is running in Python environment. Please make sure your python version is 
 - Install SWIFT by the `pip` command:
 
 ```shell
+# full ability
+pip install ms-swift[all] -U
+# only use llm
+pip install ms-swift[llm] -U
+# only use aigc
+pip install ms-swift[aigc] -U
+# only use adapters
 pip install ms-swift -U
 ```
 
@@ -145,7 +153,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .
+pip install -e .[llm]
 ```
 
 SWIFT requires torch>=1.13.

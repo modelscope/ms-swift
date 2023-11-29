@@ -1,0 +1,4 @@
+decord
+diffusers>=0.18.0
+einops
+torchvision

@@ -2,7 +2,6 @@ import csv
 import datetime
 import inspect
 import logging
-import math
 import os
 import random
 import re
@@ -33,8 +32,8 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger, push_to_hub
+from swift.aigc.utils import AnimateDiffArguments
 from swift.utils import get_dist_setting, is_dist
-from .utils import AnimateDiffArguments
 
 logger = get_logger()
 
@@ -512,7 +511,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
                 generator = torch.Generator(device=latents.device)
                 generator.manual_seed(global_seed)
-                unet.eval()
+                Swift.merge(unet)
                 height = args.sample_size
                 width = args.sample_size
 
@@ -554,6 +553,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     db1.motion_modules.state_dict = MethodType(
                         state_dict, db1.motion_modules)
 
+                Swift.unmerge(unet)
                 validation_pipeline = AnimateDiffPipeline(
                     unet=UNet2DConditionModel.from_pretrained(
                         pretrained_model_path, subfolder='unet'),

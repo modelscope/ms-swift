@@ -14,8 +14,7 @@ from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 
 from swift.hub.snapshot_download import snapshot_download
-from swift.utils.constants import (DEFAULT_ADAPTER, PEFT_TYPE_KEY,
-                                   SWIFT_TYPE_KEY)
+from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
 from .. import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig
@@ -111,6 +110,8 @@ class SwiftModel(nn.Module):
             signature(self.base_model.forward).parameters.values())
         forward.__signature__ = Signature(_parameters)
         self.forward = MethodType(forward, self)
+        for adapter_name in self.adapters:
+            self.activate_adapter(adapter_name)
 
         if inference_mode:
             self.eval()
@@ -252,7 +253,7 @@ class SwiftModel(nn.Module):
             with open(config_file, 'r') as file:
                 json_object = json.load(file)
 
-            if PEFT_TYPE_KEY in json_object:
+            if SWIFT_TYPE_KEY not in json_object:
                 raise ValueError('Mixed using with peft is not allowed now.')
             else:
                 adapters[_name] = SwiftConfig.from_pretrained(sub_folder)
@@ -277,11 +278,21 @@ class SwiftModel(nn.Module):
                           endswith('.lora_B.default.weight') else None]: v
                         for k, v in state_dict.items()
                     }
+                if any(['loramodule' in key for key in state_dict]):
+                    state_dict = {
+                        key.replace(f'loramodule_{_name}.lora_A',
+                                    f'lora_A.{_name}.weight'): value
+                        for key, value in state_dict.items()
+                    }
+                    state_dict = {
+                        key.replace(f'loramodule_{_name}.lora_B',
+                                    f'lora_B.{_name}.weight'): value
+                        for key, value in state_dict.items()
+                    }
                 self.model.load_state_dict(state_dict, strict=False)
         state_dict = cls.load_state_file(model_dir)
         if state_dict is not None:
             self.model.load_state_dict(state_dict, strict=False)
-
         return self
 
     @classmethod
@@ -422,9 +433,12 @@ class SwiftModel(nn.Module):
     def base_model(self):
         return self.model
 
-    def set_active_adapters(self, adapter_names: List[str]):
+    def set_active_adapters(self, adapter_names: Union[List[str], str]):
         if not adapter_names:
             return
+
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
 
         adapter_names = set(adapter_names)
         for adapter_name in (adapter_names & set(self.adapters.keys())):
@@ -528,6 +542,30 @@ class Swift:
                     LoRA.unpatch_lora(model, output.config, adapter)
 
     @staticmethod
+    def merge(model: Union[PeftModel, SwiftModel], **kwargs):
+        """Merge tuners into the base model, will not unload them.
+
+        Args:
+            model(`Union[PeftModel, SwiftModel]`): The model instance with tuners
+        """
+        from .lora_layers import LoraLayer, LoRALayer
+        for sub_module in model.modules():
+            if isinstance(sub_module, (LoraLayer, LoRALayer)):
+                sub_module.merge(**kwargs)
+
+    @staticmethod
+    def unmerge(model: Union[PeftModel, SwiftModel], **kwargs):
+        """Unmerge tuners from the base model
+
+        Args:
+            model(`Union[PeftModel, SwiftModel]`): The model instance with tuners
+        """
+        from .lora_layers import LoraLayer, LoRALayer
+        for sub_module in model.modules():
+            if isinstance(sub_module, (LoraLayer, LoRALayer)):
+                sub_module.unmerge(**kwargs)
+
+    @staticmethod
     def from_pretrained(model: Union[nn.Module, SwiftModel],
                         model_id: str = None,
                         adapter_name: Union[str, List[str]] = None,
@@ -551,7 +589,7 @@ class Swift:
         if os.path.exists(os.path.join(model_id, CONFIG_NAME)):
             with open(os.path.join(model_id, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
-            is_peft_model = PEFT_TYPE_KEY in _json
+            is_peft_model = SWIFT_TYPE_KEY not in _json
 
         _name = adapter_name if isinstance(
             adapter_name, str) or adapter_name is None else adapter_name[0]
@@ -559,7 +597,7 @@ class Swift:
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
             with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
-            is_peft_model = PEFT_TYPE_KEY in _json
+            is_peft_model = SWIFT_TYPE_KEY not in _json
         if is_peft_model:
             return PeftModel.from_pretrained(
                 model,
