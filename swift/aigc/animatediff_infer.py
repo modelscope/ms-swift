@@ -7,7 +7,7 @@ from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils import export_to_gif
 
 from swift import Swift, snapshot_download
-from swift.llm.utils import AnimateDiffInferArguments
+from swift.aigc.utils import AnimateDiffInferArguments
 from swift.utils import get_logger
 
 logger = get_logger()
