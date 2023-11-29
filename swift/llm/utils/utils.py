@@ -10,6 +10,7 @@ from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
                     TypeVar, Union)
 
 import accelerate
+import numpy as np
 import requests
 import torch
 import torch.distributed as dist

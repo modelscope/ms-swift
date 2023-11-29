@@ -451,7 +451,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.cmnli_zh,
-    'clue', [('cmnli', 'train'), ('cmnli', 'validation')], [('cmnli', 'test')],
+    'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
@@ -459,11 +459,14 @@ register_dataset(
 
 register_dataset(
     DatasetName.cmnli_mini_zh,
-    'clue', [('cmnli', 'validation')], [('cmnli', 'test')],
+    'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
-    function_kwargs={'val_dataset_sample': 200},
+    function_kwargs={
+        'train_dataset_sample': 20000,
+        'val_dataset_sample': 200
+    },
     tags=['text-generation', 'classification'])
 
 register_dataset(
