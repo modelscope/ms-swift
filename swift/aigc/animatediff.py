@@ -511,7 +511,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
                 generator = torch.Generator(device=latents.device)
                 generator.manual_seed(global_seed)
-                unet.eval()
+                Swift.merge(unet)
                 height = args.sample_size
                 width = args.sample_size
 
@@ -553,6 +553,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     db1.motion_modules.state_dict = MethodType(
                         state_dict, db1.motion_modules)
 
+                Swift.unmerge(unet)
                 validation_pipeline = AnimateDiffPipeline(
                     unet=UNet2DConditionModel.from_pretrained(
                         pretrained_model_path, subfolder='unet'),

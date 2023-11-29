@@ -2,21 +2,21 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 import math
+import re
 import warnings
-from typing import Dict, List, Optional
+from itertools import chain
+from typing import Dict, List
 
 import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from peft.import_utils import is_bnb_4bit_available, is_bnb_available
-from peft.tuners.lora import Conv2d as _Conv2d
+from peft.tuners.lora import Conv2d as _Conv2d, LoraLayer
 from peft.tuners.lora import Embedding as _Embedding
 from peft.tuners.lora import Linear as _Linear
 from peft.tuners.lora import LoraModel as _LoraModel
-from peft.utils import (ModulesToSaveWrapper, _get_submodules,
-                        get_auto_gptq_quant_linear)
-from tqdm import tqdm
+from peft.utils import (get_auto_gptq_quant_linear, get_quantization_config)
 from transformers import Conv1D
 
 from swift import get_logger
@@ -201,6 +201,74 @@ class LoraModel(_LoraModel):
             nn.Module.__init__(self)
             self.model = model
 
+    def _create_and_replace(
+            self,
+            lora_config,
+            adapter_name,
+            target,
+            target_name,
+            parent,
+            current_key,
+            **optional_kwargs,
+    ):
+        if current_key is None:
+            raise ValueError("Current Key shouldn't be `None`")
+        # Regexp matching - Find key which matches current target_name in patterns provided
+        pattern_keys = list(chain(lora_config.rank_pattern.keys(), lora_config.alpha_pattern.keys()))
+        target_name_key = next(filter(lambda key: re.match(f".*\.{key}$", current_key), pattern_keys), current_key)
+
+        r = lora_config.rank_pattern.get(target_name_key, lora_config.r)
+        alpha = lora_config.alpha_pattern.get(target_name_key, lora_config.lora_alpha)
+        bias = hasattr(target, "bias") and target.bias is not None
+        kwargs = {
+            "r": r,
+            "lora_alpha": alpha,
+            "lora_dropout": lora_config.lora_dropout,
+            "fan_in_fan_out": lora_config.fan_in_fan_out,
+            "init_lora_weights": lora_config.init_lora_weights,
+        }
+        kwargs["loaded_in_8bit"] = optional_kwargs.pop("loaded_in_8bit", False)
+        kwargs["loaded_in_4bit"] = optional_kwargs.pop("loaded_in_4bit", False)
+        kwargs["bias"] = bias
+
+        quantization_config = get_quantization_config(self.model, method="gptq")
+        if quantization_config is not None:
+            kwargs["gptq_quantization_config"] = quantization_config
+
+        # TODO: better deal with that
+        if isinstance(target, LoraLayer) and isinstance(target, torch.nn.Conv2d):
+            target.update_layer_conv2d(
+                adapter_name,
+                r,
+                alpha,
+                lora_config.lora_dropout,
+                lora_config.init_lora_weights,
+            )
+        elif isinstance(target, LoraLayer) and isinstance(target, torch.nn.Embedding):
+            target.update_layer_embedding(
+                adapter_name,
+                r,
+                alpha,
+                lora_config.lora_dropout,
+                lora_config.init_lora_weights,
+            )
+
+        elif isinstance(target, LoraLayer):
+            target.update_layer(
+                adapter_name,
+                r,
+                alpha,
+                lora_config.lora_dropout,
+                lora_config.init_lora_weights,
+            )
+        else:
+            new_module = self._create_new_module(lora_config, adapter_name, target, **kwargs)
+            if new_module is not None:
+                if adapter_name != self.active_adapter:
+                    # adding an additional adapter: it is not automatically trainable
+                    new_module.requires_grad_(False)
+                self._replace_module(parent, target_name, new_module, target)
+
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
         gptq_quantization_config = kwargs.get('gptq_quantization_config', None)
@@ -263,6 +331,8 @@ class LoraModel(_LoraModel):
                         'Setting fan_in_fan_out to False.')
                     kwargs[
                         'fan_in_fan_out'] = lora_config.fan_in_fan_out = False
+                new_module = Linear(
+                    adapter_name, in_features, out_features, bias=bias, **kwargs)
             elif isinstance(target, Conv1D):
                 in_features, out_features = (
                     target.weight.ds_shape if hasattr(
@@ -274,13 +344,14 @@ class LoraModel(_LoraModel):
                         'Setting fan_in_fan_out to True.')
                     kwargs[
                         'fan_in_fan_out'] = lora_config.fan_in_fan_out = True
+                new_module = Linear(
+                    adapter_name, in_features, out_features, bias=bias, **kwargs)
             else:
-                raise ValueError(
+                logger.debug(
                     f'Target module {target} is not supported. Currently, only the following modules are supported: '
                     '`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv2d`, `transformers.pytorch_utils.Conv1D`.'
                 )
-            new_module = Linear(
-                adapter_name, in_features, out_features, bias=bias, **kwargs)
+                new_module = None
 
         return new_module
 

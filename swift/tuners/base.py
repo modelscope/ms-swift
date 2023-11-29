@@ -530,6 +530,30 @@ class Swift:
                               LoRAConfig) and (adapter_name is None
                                                or adapter in adapter_name):
                     LoRA.unpatch_lora(model, output.config, adapter)
+    
+    @staticmethod
+    def merge(model: Union[PeftModel, SwiftModel], **kwargs):
+        """Merge tuners into the base model, will not unload them.
+
+        Args:
+            model(`Union[PeftModel, SwiftModel]`): The model instance with tuners
+        """
+        from .lora_layers import LoraLayer, LoRALayer
+        for sub_module in model.modules():
+            if isinstance(sub_module, (LoraLayer, LoRALayer)):
+                sub_module.merge(**kwargs)
+
+    @staticmethod
+    def unmerge(model: Union[PeftModel, SwiftModel], **kwargs):
+        """Unmerge tuners from the base model
+
+        Args:
+            model(`Union[PeftModel, SwiftModel]`): The model instance with tuners
+        """
+        from .lora_layers import LoraLayer, LoRALayer
+        for sub_module in model.modules():
+            if isinstance(sub_module, (LoraLayer, LoRALayer)):
+                sub_module.unmerge(**kwargs)
 
     @staticmethod
     def from_pretrained(model: Union[nn.Module, SwiftModel],
