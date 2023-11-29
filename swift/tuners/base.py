@@ -279,6 +279,17 @@ class SwiftModel(nn.Module):
                           endswith('.lora_B.default.weight') else None]: v
                         for k, v in state_dict.items()
                     }
+                if any(['loramodule' in key for key in state_dict]):
+                    state_dict = {
+                        key.replace(f'loramodule_{_name}.lora_A',
+                                    f'lora_A.{_name}.weight'): value
+                        for key, value in state_dict.items()
+                    }
+                    state_dict = {
+                        key.replace(f'loramodule_{_name}.lora_B',
+                                    f'lora_B.{_name}.weight'): value
+                        for key, value in state_dict.items()
+                    }
                 self.model.load_state_dict(state_dict, strict=False)
         state_dict = cls.load_state_file(model_dir)
         if state_dict is not None:
@@ -530,7 +541,7 @@ class Swift:
                               LoRAConfig) and (adapter_name is None
                                                or adapter in adapter_name):
                     LoRA.unpatch_lora(model, output.config, adapter)
-    
+
     @staticmethod
     def merge(model: Union[PeftModel, SwiftModel], **kwargs):
         """Merge tuners into the base model, will not unload them.
