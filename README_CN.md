@@ -136,6 +136,13 @@ SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 - 方法1：使用pip命令安装SWIFT：
 
 ```shell
+# 全量能力
+pip install ms-swift[all] -U
+# 仅使用LLM
+pip install ms-swift[llm] -U
+# 仅使用AIGC
+pip install ms-swift[aigc] -U
+# 仅使用adapters
 pip install ms-swift -U
 ```
 
