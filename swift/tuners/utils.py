@@ -135,17 +135,34 @@ class ActivationMixin:
     USE_UNIQUE_THREAD = 'USE_UNIQUE_THREAD'
 
     def __init__(self):
-        self._thread_inf: Dict[int, bool] = {}
+        self._thread_inf: Dict[int, Dict[str, bool]] = {}
         self._unique_thread = bool(
-            int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '0')))
+            int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '1')))
 
-    def set_activation(self, activate=True):
-        tid = 0 if self._unique_thread else threading.get_ident()
-        self._thread_inf[tid] = activate
+    @property
+    def indent(self):
+        return 0 if self.unique_thread else threading.get_ident()
 
-    def is_activated(self):
-        tid = 0 if self._unique_thread else threading.get_ident()
-        return self._thread_inf.get(tid, True)
+    @property
+    def unique_thread(self):
+        return self._unique_thread
+
+    def set_activation(self, adapter_name, activate=True):
+        tid = self.indent
+        if tid not in self._thread_inf:
+            self._thread_inf[tid] = {}
+        self._thread_inf[tid][adapter_name] = activate
+
+    def is_activated(self, adapter_name):
+        tid = self.indent
+        return self._thread_inf.get(tid, {}).get(adapter_name, False)
+
+    def get_activated_adapters(self):
+        return [
+            key
+            for key, value in self._thread_inf.get(self.indent, {}).items()
+            if value
+        ]
 
 
 class SwiftAdapter:

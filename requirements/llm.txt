@@ -1,0 +1,6 @@
+charset_normalizer
+cpm_kernels
+gradio
+sentencepiece
+tiktoken
+transformers_stream_generator

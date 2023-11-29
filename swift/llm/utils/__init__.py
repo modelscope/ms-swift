@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import (AnimateDiffArguments, AnimateDiffInferArguments,
-                       InferArguments, RomeArguments, SftArguments)
+from .argument import InferArguments, RomeArguments, SftArguments
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       get_dataset, get_dataset_from_repo, register_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
@@ -15,6 +14,6 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        Template, TemplateType, get_template, register_template)
 from .utils import (data_collate_fn, dataset_map, download_dataset,
-                    find_all_linear_for_lora, get_main, inference,
-                    inference_stream, limit_history_length, print_example,
-                    save_result_to_jsonl, sort_by_max_length, stat_dataset)
+                    find_all_linear_for_lora, inference, inference_stream,
+                    limit_history_length, print_example, save_result_to_jsonl,
+                    sort_by_max_length, stat_dataset)

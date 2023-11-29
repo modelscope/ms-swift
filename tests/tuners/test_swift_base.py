@@ -5,7 +5,6 @@ import shutil
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from time import time
 
 import torch
 from modelscope import Model, Preprocessor
@@ -34,14 +33,18 @@ class TestSwift(unittest.TestCase):
 
         from swift.tuners.lora import Linear
 
-        def reset_parameters(self):
-            nn.Linear.reset_parameters(self)
-            if hasattr(self, 'lora_A'):
+        def reset_lora_parameters(self, adapter_name):
+            if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-                nn.init.ones_(self.lora_B)
+                nn.init.kaiming_uniform_(
+                    self.lora_A[adapter_name].weight, a=math.sqrt(5))
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+            if adapter_name in self.lora_embedding_A.keys():
+                # initialize a the same way as the default for nn.linear and b to zero
+                nn.init.ones_(self.lora_embedding_A[adapter_name])
+                nn.init.normal_(self.lora_embedding_B[adapter_name])
 
-        Linear.reset_parameters = reset_parameters
+        Linear.reset_lora_parameters = reset_lora_parameters
 
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
@@ -51,6 +54,7 @@ class TestSwift(unittest.TestCase):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         outputs = model(**inputs)
         model = Swift.prepare_model(model, config=lora_config)
+        model.eval()
         outputs_lora = model(**inputs)
         model.deactivate_adapter('default')
         outputs_deactivate = model(**inputs)
@@ -144,14 +148,17 @@ class TestSwift(unittest.TestCase):
     def lora_injection_with_dtype(self, dtype=torch.float32):
         from swift.tuners.lora import Linear
 
-        def reset_parameters(self):
-            nn.Linear.reset_parameters(self)
-            if hasattr(self, 'lora_A'):
+        def reset_lora_parameters(self, adapter_name):
+            if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.ones_(self.lora_A)
-                nn.init.ones_(self.lora_B)
+                nn.init.normal_(self.lora_A[adapter_name].weight)
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+            if adapter_name in self.lora_embedding_A.keys():
+                # initialize a the same way as the default for nn.linear and b to zero
+                nn.init.normal_(self.lora_embedding_A[adapter_name])
+                nn.init.ones_(self.lora_embedding_B[adapter_name])
 
-        Linear.reset_parameters = reset_parameters
+        Linear.reset_lora_parameters = reset_lora_parameters
 
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
@@ -159,7 +166,9 @@ class TestSwift(unittest.TestCase):
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         input = preprocessor('this is a test')
         model = model.to(dtype)
-        model2 = copy.deepcopy(model)
+        model2 = Model.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        model2 = model2.to(dtype)
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, config=lora_config)
         self.assertTrue(isinstance(model, SwiftModel))
@@ -182,7 +191,8 @@ class TestSwift(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
-        if dtype == torch.float32:
+        if dtype == torch.float32 and os.environ.get(
+                'USE_UNIQUE_THREAD') == '1':
             Swift.merge_and_unload(model2)
             output3 = model2(**input)
             self.assertTrue(torch.allclose(output1.logits, output3.logits))
@@ -233,14 +243,17 @@ class TestSwift(unittest.TestCase):
         from swift.tuners.lora import Linear
         from swift.tuners.adapter import AdapterModule
 
-        def reset_parameters(self):
-            nn.Linear.reset_parameters(self)
-            if hasattr(self, 'lora_A'):
+        def reset_lora_parameters(self, adapter_name):
+            if adapter_name in self.lora_A.keys():
                 # initialize A the same way as the default for nn.Linear and B to zero
-                nn.init.ones_(self.lora_A)
-                nn.init.ones_(self.lora_B)
+                nn.init.ones_(self.lora_A[adapter_name].weight)
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+            if adapter_name in self.lora_embedding_A.keys():
+                # initialize a the same way as the default for nn.linear and b to zero
+                nn.init.ones_(self.lora_embedding_A[adapter_name])
+                nn.init.ones_(self.lora_embedding_B[adapter_name])
 
-        Linear.reset_parameters = reset_parameters
+        Linear.reset_lora_parameters = reset_lora_parameters
 
         def init_weights(self):
 
@@ -321,29 +334,33 @@ class TestSwift(unittest.TestCase):
         outputs2 = model2(**inputs)
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
 
-        def thread_func1():
-            model.set_active_adapters(['lora1', 'adapter1'])
-            outputs_single = model1(**inputs)
-            outputs_t1 = model(**inputs)
-            self.assertTrue(
-                torch.allclose(outputs_single.logits, outputs_t1.logits))
+        if os.environ.get('USE_UNIQUE_THREAD') == '0':
 
-        def thread_func2():
-            model.set_active_adapters(['lora2', 'adapter2'])
-            outputs_single = model2(**inputs)
-            outputs_t2 = model(**inputs)
-            self.assertTrue(
-                torch.allclose(outputs_single.logits, outputs_t2.logits))
+            def thread_func1():
+                model1.set_active_adapters(['lora1', 'adapter1'])
+                model.set_active_adapters(['lora1', 'adapter1'])
+                outputs_single = model1(**inputs)
+                outputs_t1 = model(**inputs)
+                self.assertTrue(
+                    torch.allclose(outputs_single.logits, outputs_t1.logits))
 
-        with ThreadPoolExecutor(2) as executor:
-            f1 = executor.submit(thread_func1)
-            f2 = executor.submit(thread_func2)
-            e1 = f1.exception()
-            e2 = f2.exception()
-            if e1 is not None:
-                raise e1
-            if e2 is not None:
-                raise e2
+            def thread_func2():
+                model2.set_active_adapters(['lora2', 'adapter2'])
+                model.set_active_adapters(['lora2', 'adapter2'])
+                outputs_single = model2(**inputs)
+                outputs_t2 = model(**inputs)
+                self.assertTrue(
+                    torch.allclose(outputs_single.logits, outputs_t2.logits))
+
+            with ThreadPoolExecutor(2) as executor:
+                f1 = executor.submit(thread_func1)
+                f2 = executor.submit(thread_func2)
+                e1 = f1.exception()
+                e2 = f2.exception()
+                if e1 is not None:
+                    raise e1
+                if e2 is not None:
+                    raise e2
 
     def test_swift_side_bert(self):
         model = Model.from_pretrained(

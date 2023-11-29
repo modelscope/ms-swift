@@ -6,11 +6,10 @@ import os
 import shutil
 from functools import wraps
 from tempfile import TemporaryDirectory
-from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple, Type,
+from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
                     TypeVar, Union)
 
 import accelerate
-import numpy as np
 import requests
 import torch
 import torch.distributed as dist
@@ -34,7 +33,7 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
 from swift.hub import ModelScopeConfig
 from swift.utils import (append_to_jsonl, get_dist_setting, get_logger,
                          is_ddp_plus_mp, is_dist, is_local_master, is_master,
-                         parse_args, stat_array, upper_bound)
+                         stat_array, upper_bound)
 from .template import History, StopWordsCriteria, Template
 
 logger = get_logger()
@@ -189,27 +188,7 @@ _T = TypeVar('_T')
 NoneType = type(None)
 
 
-def get_main(
-    args_class: Type[_TArgsClass], llm_x: Callable[[_TArgsClass], _T]
-) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
-
-    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
-               **kwargs) -> _T:
-        if isinstance(argv, args_class):
-            args, remaining_argv = argv, []
-        else:
-            args, remaining_argv = parse_args(args_class, argv)
-        if len(remaining_argv) > 0:
-            if args.ignore_args_error:
-                logger.warning(f'remaining_argv: {remaining_argv}')
-            else:
-                raise ValueError(f'remaining_argv: {remaining_argv}')
-        return llm_x(args, **kwargs)
-
-    return x_main
-
-
-def stat_dataset(llm_dataset: List[Dict[str, Any]]) -> None:
+def stat_dataset(dataset: HfDataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
     for d in llm_dataset:

@@ -12,7 +12,7 @@ import torch
 from torch import nn
 
 from swift.utils.logger import get_logger
-from ..utils.torch_utils import find_sub_module
+from swift.utils.torch_utils import find_sub_module
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
@@ -121,7 +121,8 @@ class Side(SwiftAdapter):
                     setattr(tgt_module, f'forward_origin_{adapter_name}',
                             tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
-                side_module = SideModule(config.dim, config.side_module_name)
+                side_module = SideModule(config.dim, adapter_name,
+                                         config.side_module_name)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(
                     f'Side modules(module_key): {module_key}.side_{adapter_name}'
@@ -147,7 +148,7 @@ class Side(SwiftAdapter):
             module, f'side_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
-            _module.set_activation(activate)
+            _module.set_activation(adapter_name, activate)
 
 
 class SideModule(nn.Module, ActivationMixin):
@@ -163,9 +164,10 @@ class SideModule(nn.Module, ActivationMixin):
         side_module_name: The name of the additive side networks.
     """
 
-    def __init__(self, dim, side_module_name='fcn4'):
+    def __init__(self, dim, adapter_name, side_module_name='fcn4'):
         super(SideModule, self).__init__()
         super(nn.Module, self).__init__()
+        self.adapter_name = adapter_name
 
         side_module_name = side_module_name.lower()
         if side_module_name == 'fcn4':
@@ -186,7 +188,7 @@ class SideModule(nn.Module, ActivationMixin):
         self.alpha = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, x, x_main):
-        if not self.is_activated():
+        if not self.is_activated(self.adapter_name):
             return x_main
         alpha_squashed = torch.sigmoid(self.alpha)
         x_side = self.side_net(x)

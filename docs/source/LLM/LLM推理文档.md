@@ -7,7 +7,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .
+pip install -e .[llm]
 ```
 
 ## 推理
