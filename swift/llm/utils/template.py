@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from torch import Tensor
@@ -434,4 +435,4 @@ def get_template(
 ) -> Template:
     template = TEMPLATE_MAPPING[template_type]
     template.init_template(tokenizer, system, max_length, truncation_strategy)
-    return template
+    return deepcopy(template)
