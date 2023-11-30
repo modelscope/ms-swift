@@ -60,7 +60,7 @@ class SftArguments:
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
     val_dataset_sample: Optional[int] = None  # -1: all dataset
-    system: str = 'you are a helpful assistant!'
+    system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
         default='truncation_left',
@@ -272,7 +272,7 @@ class InferArguments:
     dataset_test_ratio: float = 0.01
     val_dataset_sample: int = 10  # -1: all dataset
     save_result: bool = True
-    system: str = 'you are a helpful assistant!'
+    system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
         default='truncation_left',
@@ -451,13 +451,16 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         if model_id_or_path_lower not in model_mapping_reversed:
             error_msg = f"`model_id_or_path`: '{model_id_or_path}' is not registered."
             if os.path.exists(model_id_or_path):
-                error_msg += ' Please use `model_cache_dir` to specify the local cache path for the model.'
+                error_msg += (
+                    ' Please use `--model_id_or_path <model_id> --model_cache_dir <local_path>` '
+                    'to specify the local cache path for the model.')
             raise ValueError(error_msg)
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
     if args.model_type is None:
         raise ValueError(
-            'please setting `--model_type xxx` or `--model_id_or_path xxx`')
+            'please setting `--model_type <model_type>` or `--model_id_or_path <model_id>`'
+        )
     elif args.model_type not in MODEL_MAPPING:
         raise ValueError(f'model_type: {args.model_type} is not registered.')
     model_info = MODEL_MAPPING[args.model_type]

@@ -1,5 +1,6 @@
 # Experimental environment: 2 * A10
 # 2 * 20GB GPU memory
+# Recommended to use `qwen_7b_chat_int4`
 nproc_per_node=2
 
 PYTHONPATH=../../.. \

@@ -87,10 +87,10 @@ if is_bnb_available():
             lora_dropout: float = 0.0,
             **kwargs,
         ):
+            super(Linear8bitLt, self).__init__()
             super(ActivationMixin,
                   self).__init__(adapter_name, base_layer, r, lora_alpha,
                                  lora_dropout, **kwargs)
-            super(Linear8bitLt, self).__init__()
 
 
 if is_bnb_4bit_available():
@@ -125,8 +125,8 @@ if is_auto_gptq_available():
             group_size=None,
             **kwargs,
         ):
-            super(ActivationMixin, self).__init__(*args, **kwargs)
             super(QuantLinear, self).__init__()
+            super(ActivationMixin, self).__init__(*args, **kwargs)
             self.group_size = group_size
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:

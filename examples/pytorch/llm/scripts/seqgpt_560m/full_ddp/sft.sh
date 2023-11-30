@@ -25,7 +25,7 @@ torchrun \
     --weight_decay 0.01 \
     --learning_rate 2e-5 \
     --gradient_accumulation_steps $(expr 32 / $nproc_per_node / 4) \
-    --max_grad_norm 1 \
+    --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
     --save_steps 100 \

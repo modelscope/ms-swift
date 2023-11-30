@@ -144,3 +144,8 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     first_zero = (tensor == 0).nonzero()[0].item()
     res = tensor.tolist()[:first_zero]
     return ''.join([chr(x) for x in res])
+
+
+def time_synchronize() -> float:
+    torch.cuda.synchronize()
+    return time.perf_counter()  # second

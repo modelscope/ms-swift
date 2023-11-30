@@ -10,8 +10,8 @@ python llm_sft.py \
     --template_type chatml \
     --dtype fp16 \
     --output_dir output \
-    --dataset coco-en \
-    --train_dataset_sample 20000 \
+    --dataset coco-mini-en \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \

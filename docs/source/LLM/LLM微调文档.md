@@ -8,19 +8,21 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
-# 下面的脚本需要在此目录下执行
-cd examples/pytorch/llm
 
 # 如果你想要使用deepspeed.
 pip install deepspeed -U
 
 # 如果你想要使用基于auto_gptq的qlora训练. (推荐, 效果优于bnb)
-# 支持auto_gptq的模型: https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#-模型
-# auto_gptq和cuda版本有对应关系，请按照https://github.com/PanQiWei/AutoGPTQ#quick-installation选择版本
+# 支持auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
+# auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq
 
 # 如果你想要使用基于bnb的qlora训练.
 pip install bitsandbytes -U
+
+# 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+pip install -r requirements/framework.txt  -U
+pip install -r requirements/llm.txt  -U
 ```
 
 ## 微调
@@ -94,16 +96,21 @@ swift sft \
 
 训练显存: qlora(低,3090) < lora < full(高,2*A100)
 
+```bash
+# 下面的脚本需要在此目录下执行
+cd examples/pytorch/llm
+```
+
 **提示**:
 
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
-- 如果你想要使用量化参数`--quantization_bit 4`, 你需要先安装[bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`.
+- 如果你想要使用量化参数`--quantization_bit 4`, 你需要先安装[bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`. 这会减少显存消耗, 但通常会降低训练速度.
 - 如果你想要使用基于**auto_gptq**的量化, 你需要先安装对应cuda版本的[auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
-  使用auto_gptq的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#-模型). 建议使用auto_gptq, 而不是bnb.
+  > 使用auto_gptq的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
-- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#-模型)
-- 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#-注册数据集的方式)
+- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型)
+- 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式)
 - 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行超参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.

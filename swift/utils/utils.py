@@ -2,12 +2,15 @@
 import datetime as dt
 import os
 import re
+import time
 from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Type, TypeVar)
 
+import numpy as np
 from transformers import HfArgumentParser
 
 from .logger import get_logger
+from .np_utils import stat_array
 
 logger = get_logger()
 
@@ -85,3 +88,29 @@ def upper_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
         else:
             hi = mid - 1
     return lo
+
+
+def test_time(func: Callable[[], _T],
+              number: int = 1,
+              warmup: int = 0,
+              timer: Optional[Callable[[], float]] = None) -> _T:
+    # timer: e.g. time_synchronize
+    timer = timer if timer is not None else time.perf_counter
+    #
+    ts = []
+    res = None
+    # warmup
+    for _ in range(warmup):
+        res = func()
+    #
+    for _ in range(number):
+        t1 = timer()
+        res = func()
+        t2 = timer()
+        ts.append(t2 - t1)
+    #
+    ts = np.array(ts)
+    _, stat_str = stat_array(ts)
+    # print
+    logger.info(f'time[number={number}]: {stat_str}')
+    return res

@@ -18,6 +18,7 @@ torchrun \
     --ddp_backend nccl \
     --dataset jd-sentiment-zh \
     --train_dataset_sample -1 \
+    --val_dataset_sample 1000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \

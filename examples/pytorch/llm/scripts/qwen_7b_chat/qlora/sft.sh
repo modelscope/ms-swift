@@ -1,5 +1,6 @@
 # Experimental environment: A10, 3090
 # 18GB GPU memory
+# Recommended to use `qwen_7b_chat_int4`
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \

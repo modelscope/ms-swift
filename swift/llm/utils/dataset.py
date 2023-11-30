@@ -62,9 +62,9 @@ class DatasetName:
     agent_instruct_all_en = 'agent-instruct-all-en'
     # coding
     code_alpaca_en = 'code-alpaca-en'
+    leetcode_python_en = 'leetcode-python-en'
     codefuse_python_zh = 'codefuse-python-zh'
     codefuse_evol_instruction = 'codefuse-evol-instruction'
-    leetcode_python_en = 'leetcode-python-en'
     # medical
     medical_en = 'medical-en'
     medical_zh = 'medical-zh'
@@ -83,14 +83,21 @@ class DatasetName:
     dureader_robust_zh = 'dureader-robust-zh'
     # classification
     cmnli_zh = 'cmnli-zh'
+    cmnli_mini_zh = 'cmnli-mini-zh'
     jd_sentiment_zh = 'jd-sentiment-zh'
     # other (e.g. example dataset for specific model)
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
+
     # multi-modal
+    # vision
     coco_en = 'coco-en'
+    coco_mini_en = 'coco-mini-en'
+    # audio
+    aishell1_zh = 'aishell1-zh'
+    aishell1_mini_zh = 'aishell1-mini-zh'
 
 
 def register_dataset(
@@ -195,15 +202,17 @@ def load_ms_dataset(
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
     tags=['chat', 'general', '🔥'])
 def get_dataset_from_repo(
-    dataset_id: str,
-    train_subset_split_list: List[SubsetSplit],
-    val_subset_split_list: Optional[List[SubsetSplit]],
-    preprocess_func: PreprocessFunc,
-    remove_useless_columns: bool = True,
-    dataset_sample: int = -1,
-) -> Tuple[HfDataset, Optional[HfDataset]]:
+        dataset_id: str,
+        train_subset_split_list: List[SubsetSplit],
+        val_subset_split_list: Optional[List[SubsetSplit]],
+        preprocess_func: PreprocessFunc,
+        remove_useless_columns: bool = True,
+        train_dataset_sample: int = -1,
+        val_dataset_sample: int = -1) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
-    for subset_split_list in [train_subset_split_list, val_subset_split_list]:
+    _iter = zip([train_subset_split_list, val_subset_split_list],
+                [train_dataset_sample, val_dataset_sample])
+    for subset_split_list, dataset_sample in _iter:
         dataset = load_ms_dataset(dataset_id, subset_split_list)
         if dataset is not None:
             if dataset_sample > 0 and len(dataset) > dataset_sample:
@@ -260,11 +269,13 @@ register_dataset(
     tags=['chat', 'general', '🔥'])
 
 
-def _preprocess_mutimodal_dataset(dataset: HfDataset, prompt: str,
-                                  image_key: str,
-                                  response_key: str) -> HfDataset:
+def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
+    prompt = 'please describe the image'
+    image_key = 'image'
+    response_key = 'caption'
+
     dataset._info.features._column_requires_decoding['image'] = False
-    query_format = f'<img>{{image_path}}</img>{prompt}'
+    query_format = f'Picture 1:<img>{{image_path}}</img>\n{prompt}'
     query = []
     response = []
     for d in tqdm(dataset):
@@ -280,13 +291,52 @@ register_dataset(
     DatasetName.coco_en,
     'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
     [('coco_2014_caption', 'validation')],
-    partial(
-        _preprocess_mutimodal_dataset,
-        prompt='please describe the image',
-        image_key='image',
-        response_key='caption'),
+    _preprocess_vision_dataset,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', '🔥'])
+    tags=['chat', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.coco_mini_en,
+    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
+    [('coco_2014_caption', 'validation')],
+    _preprocess_vision_dataset,
+    get_dataset_from_repo,
+    function_kwargs={
+        'train_dataset_sample': 20000,
+        'val_dataset_sample': 200
+    },
+    tags=['chat', 'multi-modal', 'vision', '🔥'])
+
+
+def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
+    prompt = '语音转文本'
+    audio_key = 'Audio:FILE'
+    response_key = 'Text:LABEL'
+    query_format = f'Audio 1:<audio>{{audio_path}}</audio>\n{prompt}'
+    query = []
+    response = []
+    for d in tqdm(dataset):
+        query.append(query_format.format(audio_path=d[audio_key]))
+        response.append(d[response_key].replace(' ', ''))
+    dataset = HfDataset.from_dict({'query': query, 'response': response})
+    return dataset
+
+
+register_dataset(
+    DatasetName.aishell1_zh,
+    'speech_asr/speech_asr_aishell1_trainsets', ['train', 'validation'],
+    ['test'],
+    _preprocess_aishell1_dataset,
+    get_dataset_from_repo,
+    tags=['chat', 'multi-modal', 'audio'])
+
+register_dataset(
+    DatasetName.aishell1_mini_zh,
+    'speech_asr/speech_asr_aishell1_trainsets', ['validation'], ['test'],
+    _preprocess_aishell1_dataset,
+    get_dataset_from_repo,
+    function_kwargs={'val_dataset_sample': 200},
+    tags=['chat', 'multi-modal', 'audio', '🔥'])
 
 
 def _repair_agent_conversations(conversations: str,
@@ -401,11 +451,23 @@ register_dataset(
 
 register_dataset(
     DatasetName.cmnli_zh,
-    'clue', [('cmnli', 'train'), ('cmnli', 'validation')], [('cmnli', 'test')],
+    'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
     tags=['text-generation', 'classification'])
+
+register_dataset(
+    DatasetName.cmnli_mini_zh,
+    'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
+    ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
+                    'Natural Language Inference', True),
+    get_dataset_from_repo,
+    function_kwargs={
+        'train_dataset_sample': 20000,
+        'val_dataset_sample': 200
+    },
+    tags=['text-generation', 'classification', '🔥'])
 
 register_dataset(
     DatasetName.jd_sentiment_zh,
@@ -468,7 +530,8 @@ register_dataset(
         'instruction': 'query',
         'output': 'response'
     }),
-    partial(get_dataset_from_repo, dataset_sample=100000),
+    get_dataset_from_repo,
+    function_kwargs={'train_dataset_sample': 50000},
     tags=['chat', 'medical'])
 
 
@@ -817,7 +880,7 @@ def load_dataset_from_local(
         else:
             raise ValueError(
                 'The custom dataset only supports CSV format or JSONL format. You can refer to the link '
-                '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#-注册数据集的方式` '
+                '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))

@@ -1,5 +1,6 @@
 # Experimental environment: A10
 # 10GB GPU memory
+# Recommended to use `qwen_vl_chat_int4`
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
@@ -10,8 +11,8 @@ python llm_sft.py \
     --template_type chatml \
     --dtype AUTO \
     --output_dir output \
-    --dataset coco-en \
-    --train_dataset_sample 20000 \
+    --dataset coco-mini-en \
+    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \
