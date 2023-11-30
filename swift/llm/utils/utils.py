@@ -174,7 +174,10 @@ def dataset_map(
     # faster than dataset.map
     data = []
     for d in tqdm(dataset):
-        data.append(map_func(d))
+        d = map_func(d)
+        if d is None or d['input_ids'] is None:
+            continue
+        data.append(d)
     return LLMDataset(data)
 
 

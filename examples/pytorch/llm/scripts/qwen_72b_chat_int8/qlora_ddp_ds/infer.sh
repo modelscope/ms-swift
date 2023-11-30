@@ -1,6 +1,6 @@
-# Experimental environment: A100
+# Experimental environment: 2 * A100
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 python llm_infer.py \
     --ckpt_dir "output/qwen-72b-chat-int8/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \

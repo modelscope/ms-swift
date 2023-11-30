@@ -19,7 +19,8 @@ torchrun \
     --dataset codefuse-python-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 1024 \
+    --truncation_strategy ignore \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -44,3 +45,4 @@ torchrun \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
     --only_save_model true \
+    --test_oom_error true \

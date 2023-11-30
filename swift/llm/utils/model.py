@@ -400,6 +400,9 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     'baichuan-inc/Baichuan2-13B-Chat-4bits',
     LoRATM.baichuan,
     TemplateType.baichuan,
+    function_kwargs={
+        'get_baichuan2_function': get_model_tokenizer_baichuan2_13b
+    },
     torch_dtype=torch.bfloat16)
 @register_model(
     ModelType.baichuan2_7b_chat_int4,
@@ -421,9 +424,11 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
     device_map = model_kwargs.get('device_map', None)
     if device_map != 'auto':
         accelerate.infer_auto_device_map = lambda *args, **kwargs: device_map
-    model, tokenizer = get_model_tokenizer_baichuan2(model_dir, torch_dtype,
-                                                     model_kwargs, load_model,
-                                                     **kwargs)
+    get_baichuan2_function = kwargs.pop('get_baichuan2_function',
+                                        get_model_tokenizer_baichuan2)
+    model, tokenizer = get_baichuan2_function(model_dir, torch_dtype,
+                                              model_kwargs, load_model,
+                                              **kwargs)
     if device_map != 'auto':
         accelerate.infer_auto_device_map = _old_infer_auto_device_map
     if model is not None:
@@ -1096,8 +1101,10 @@ def get_model_tokenizer(
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
+        model.model_type = model_type
         fix_transformers_upgrade(model)
         fix_gradient_checkpointing_warning()
+    tokenizer.model_type = model_type
     assert tokenizer.eos_token is not None
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -1109,8 +1116,6 @@ def get_model_tokenizer(
                 generation_config_path) and generation_config is None:
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
-    model.model_type = model_type
-    tokenizer.model_type = model_type
     return model, tokenizer
 
 
