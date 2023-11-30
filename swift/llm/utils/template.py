@@ -251,6 +251,7 @@ class Template:
         truncation_strategy: Literal['ignore',
                                      'truncation_left'] = 'truncation_left'
     ) -> None:
+        assert self._is_init is False
         self._is_init = True
         self.tokenizer = tokenizer
         if system is None:
@@ -433,6 +434,6 @@ def get_template(
     truncation_strategy: Literal['ignore',
                                  'truncation_left'] = 'truncation_left'
 ) -> Template:
-    template = TEMPLATE_MAPPING[template_type]
+    template = deepcopy(TEMPLATE_MAPPING[template_type])
     template.init_template(tokenizer, system, max_length, truncation_strategy)
-    return deepcopy(template)
+    return template

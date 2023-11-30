@@ -13,8 +13,8 @@ pip install -e .[llm]
 pip install deepspeed -U
 
 # 如果你想要使用基于auto_gptq的qlora训练. (推荐, 效果优于bnb)
-# 支持auto_gptq的模型: https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型
-# auto_gptq和cuda版本有对应关系，请按照https://github.com/PanQiWei/AutoGPTQ#quick-installation选择版本
+# 支持auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
+# auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq
 
 # 如果你想要使用基于bnb的qlora训练.
