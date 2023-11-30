@@ -3,7 +3,8 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-    --model_type qwen-audio-chat \
+    --model_id_or_path qwen/Qwen-Audio-Chat \
+    --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
     --template_type AUTO \

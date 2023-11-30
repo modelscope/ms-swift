@@ -8,7 +8,7 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_sft.py \
-    --model_type qwen-72b-chat-int4 \
+    --model_id_or_path qwen/Qwen-72B-Chat-Int4 \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
@@ -44,3 +44,4 @@ torchrun \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
     --only_save_model true \
+    --tuner_backend peft \
