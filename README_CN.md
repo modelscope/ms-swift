@@ -27,7 +27,7 @@
 - [快速开始](#-快速开始)
 - [了解更多](#-了解更多)
 - [License](#license)
-- [联系我们](#☎️-联系我们)
+- [联系我们](#-联系我们)
 
 ## 📝 简介
 SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的轻量级一站式训练、推理深度学习框架。它集成了各种高效的微调方法，如LoRA、QLoRA、阿里云自研的ResTuning-Bypass等，以及开箱即用的训练推理脚本，使开发者可以在单张商业级显卡上微调推理LLM&AIGC模型。此外，SWIFT与[PEFT](https://github.com/huggingface/peft)完全兼容，使开发者可以在ModelScope模型体系中使用PEFT的能力。
@@ -314,7 +314,7 @@ output
 
 本项目使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。
 
-## ☎️ 联系我们
+## ☎ 联系我们
 
 您可以通过加我们的微信群, 来和我们联系和交流:
 

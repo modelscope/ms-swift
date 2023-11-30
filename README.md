@@ -27,7 +27,7 @@
 - [Getting Started](#-getting-started)
 - [Learn More](#-learn-more)
 - [License](#license)
-- [Contact Us](#☎-contact-us)
+- [Contact Us](#-contact-us)
 
 ## 📝 Introduction
 SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
