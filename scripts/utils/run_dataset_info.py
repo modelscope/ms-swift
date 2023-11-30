@@ -23,6 +23,8 @@ def write_dataset_info(fpath: str) -> None:
     if os.path.exists(fpath):
         with open(fpath, 'r') as f:
             text_list = f.readlines()
+    else:
+        text_list = []
     res_text_list.append(
         '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags |'
     )
