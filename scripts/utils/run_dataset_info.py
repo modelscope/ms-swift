@@ -62,12 +62,8 @@ def write_dataset_info(fpath: str) -> None:
         else:
             template = mapping['llm']
         if dataset_name in ignore_dataset:
-            stat_str = ignore_dataset[dataset_name].split('|')[-3]
-            train_dataset, val_dataset = get_dataset([dataset_name])
-            train_size = len(train_dataset)
-            val_size = 0
-            if val_dataset is not None:
-                val_size = len(val_dataset)
+            train_size, val_size, stat_str = ignore_dataset[
+                dataset_name].split('|')[3:6]
         else:
             train_dataset, val_dataset = get_dataset([dataset_name])
             train_size = len(train_dataset)

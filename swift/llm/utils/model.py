@@ -1109,6 +1109,8 @@ def get_model_tokenizer(
                 generation_config_path) and generation_config is None:
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
+    model.model_type = model_type
+    tokenizer.model_type = model_type
     return model, tokenizer
 
 

@@ -242,8 +242,7 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         'attention_mask': attention_mask,
         'labels': labels,
     }
-    # Compatible with qwen-audio
-    if tokenizer.__class__.__name__ == 'QWenTokenizer':
+    if getattr(tokenizer, 'model_type', '').startswith('qwen-audio'):
         if 'audio_info' in batch[0]:
             audio_info = []
             for b in batch:

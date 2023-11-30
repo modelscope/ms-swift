@@ -111,8 +111,7 @@ def _encode_context_list(
                 input_ids.append(token)
                 labels.append(-100)
         elif isinstance(context, str):
-            # Compatible with qwen-audio
-            if (tokenizer.__class__.__name__ == 'QWenTokenizer'
+            if (getattr(tokenizer, 'model_type', '').startswith('qwen-audio')
                     and '<audio>' in context and '</audio>' in context):
                 audio_info = tokenizer.process_audio(context)
                 assert 'audio_info' not in kwargs
@@ -436,4 +435,5 @@ def get_template(
 ) -> Template:
     template = deepcopy(TEMPLATE_MAPPING[template_type])
     template.init_template(tokenizer, system, max_length, truncation_strategy)
+    template.template_type = template_type
     return template
