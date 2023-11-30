@@ -8,8 +8,6 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
-# 下面的脚本需要在此目录下执行
-cd examples/pytorch/llm
 
 # 如果你想要使用deepspeed.
 pip install deepspeed -U
@@ -93,6 +91,11 @@ swift sft \
 性能: full(优) > lora > qlora(auto_gptq) > qlora(bnb)
 
 训练显存: qlora(低,3090) < lora < full(高,2*A100)
+
+```bash
+# 下面的脚本需要在此目录下执行
+cd examples/pytorch/llm
+```
 
 **提示**:
 
