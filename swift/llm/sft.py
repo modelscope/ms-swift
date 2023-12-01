@@ -68,11 +68,12 @@ def llm_sft(args: SftArguments) -> str:
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             if args.sft_type == 'lora':
                 lora_kwargs = {}
-                if args.tuner_backend == 'peft':
-                    global LoRAConfig
-                    LoRAConfig = LoraConfig
+                if args.tuner_backend == 'swift':
+                    lora_config_cls = LoRAConfig
+                elif args.tuner_backend == 'peft':
+                    lora_config_cls = LoraConfig
                     lora_kwargs['task_type'] = 'CAUSAL_LM'
-                lora_config = LoRAConfig(
+                lora_config = lora_config_cls(
                     r=args.lora_rank,
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
