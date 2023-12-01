@@ -1,4 +1,16 @@
 # LLM微调文档
+## 目录
+- [环境准备](#环境准备)
+- [微调](#微调)
+  - [使用python](#使用python)
+  - [使用CLI](#使用cli)
+  - [更多sh脚本](#更多sh脚本)
+- [Merge LoRA](#merge-lora)
+- [推理](#推理)
+  - [原始模型](#原始模型)
+  - [微调后模型](#微调后模型)
+- [Web-UI](#web-ui)
+
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
@@ -15,7 +27,7 @@ pip install deepspeed -U
 # 如果你想要使用基于auto_gptq的qlora训练. (推荐, 效果优于bnb)
 # 支持auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
-pip install auto_gptq
+pip install auto_gptq -U
 
 # 如果你想要使用基于bnb的qlora训练.
 pip install bitsandbytes -U
@@ -182,6 +194,12 @@ bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 # 推荐的实验环境: A10, 3090
 bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
+```
+
+## Merge LoRA
+提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora.
+```bash
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 ## 推理

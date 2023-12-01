@@ -1,4 +1,19 @@
 # LLM推理文档
+## 目录
+- [环境准备](#环境准备)
+- [推理](#推理)
+  - [qwen-7b-chat](#qwen-7b-chat)
+  - [qwen-7b-chat-int4](#qwen-7b-chat-int4)
+  - [qwen-7b](#qwen-7b)
+  - [流式输出](#流式输出)
+  - [qwen-vl-chat](#qwen-vl-chat)
+  - [qwen-audio-chat](#qwen-audio-chat)
+  - [chatglm3](#chatglm3)
+  - [bnb量化](#bnb量化)
+- [Web-UI](#web-ui)
+  - [qwen-7b-chat](#qwen-7b-chat)
+  - [qwen-7b](#qwen-7b)
+
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
@@ -12,7 +27,7 @@ pip install -e .[llm]
 # 如果你想要使用基于auto_gptq的模型进行推理.
 # 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
-pip install auto_gptq
+pip install auto_gptq -U
 
 # 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -335,7 +350,7 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 ```
 
 
-### 量化
+### bnb量化
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
