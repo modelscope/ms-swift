@@ -63,8 +63,8 @@ class DatasetName:
     # coding
     code_alpaca_en = 'code-alpaca-en'
     leetcode_python_en = 'leetcode-python-en'
-    codefuse_python_zh = 'codefuse-python-zh'
-    codefuse_evol_instruction = 'codefuse-evol-instruction'
+    codefuse_python_en = 'codefuse-python-en'
+    codefuse_evol_instruction_zh = 'codefuse-evol-instruction-zh'
     # medical
     medical_en = 'medical-en'
     medical_zh = 'medical-zh'
@@ -599,7 +599,7 @@ register_dataset(
     tags=['chat', 'ner'])
 
 register_dataset(
-    DatasetName.codefuse_python_zh,
+    DatasetName.codefuse_python_en,
     'codefuse-ai/CodeExercise-Python-27k', ['train'],
     None,
     ConversationsPreprocessor(
@@ -735,7 +735,7 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
-    DatasetName.codefuse_evol_instruction,
+    DatasetName.codefuse_evol_instruction_zh,
     'codefuse-ai/Evol-instruction-66k', ['train'],
     None,
     RenameColumnsPreprocessor({

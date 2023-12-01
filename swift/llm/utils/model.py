@@ -895,15 +895,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     function_kwargs={'bits': 4},
     support_flash_attn=True)
 @register_model(
-    ModelType.qwen_7b_chat_int4,
-    'qwen/Qwen-7B-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.4.2'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-@register_model(
     ModelType.tongyi_finance_14b_chat_int4,
     'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
     LoRATM.qwen,

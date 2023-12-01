@@ -16,7 +16,7 @@ torchrun \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset codefuse-python-zh \
+    --dataset codefuse-python-en \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \
@@ -45,4 +45,3 @@ torchrun \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
     --only_save_model true \
-    --test_oom_error true \
