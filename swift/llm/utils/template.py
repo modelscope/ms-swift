@@ -59,6 +59,20 @@ def _simplify_context_list(
     return res, res_idx
 
 
+def get_audio_info(
+        tokenizer: PreTrainedTokenizerBase,
+        *,
+        context: Optional[str] = None,
+        audio_info: Optional[Dict[str,
+                                  Any]] = None) -> Optional[Dict[str, Any]]:
+    if context is None:
+        audio_urls = audio_info['audio_urls']
+        input_audios = audio_info.get('input_audios')
+        if input_audios is None:
+            context = ''.join([f'<audio>{url}</audio>' for url in audio_urls])
+    return tokenizer.process_audio(context)
+
+
 def _concat_context_list(
     context_list: List[Context],
     res_context_list: List[Context],
@@ -111,9 +125,8 @@ def _encode_context_list(
                 input_ids.append(token)
                 labels.append(-100)
         elif isinstance(context, str):
-            if (getattr(tokenizer, 'model_type', '').startswith('qwen-audio')
-                    and '<audio>' in context and '</audio>' in context):
-                audio_info = tokenizer.process_audio(context)
+            if (getattr(tokenizer, 'model_type', '').startswith('qwen-audio')):
+                audio_info = get_audio_info(tokenizer, context=context)
                 assert 'audio_info' not in kwargs
                 kwargs['audio_info'] = audio_info
             token_list = tokenizer(

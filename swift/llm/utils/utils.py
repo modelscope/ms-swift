@@ -35,7 +35,7 @@ from swift.hub import ModelScopeConfig
 from swift.utils import (append_to_jsonl, get_dist_setting, get_logger,
                          is_ddp_plus_mp, is_dist, is_local_master, is_master,
                          stat_array, upper_bound)
-from .template import History, StopWordsCriteria, Template
+from .template import History, StopWordsCriteria, Template, get_audio_info
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -177,6 +177,9 @@ def dataset_map(
         d = map_func(d)
         if d is None or d['input_ids'] is None:
             continue
+        audio_info = d.get('audio_info')
+        if audio_info is not None:
+            audio_info.pop('input_audios', None)
         data.append(d)
     return LLMDataset(data)
 
@@ -245,12 +248,11 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         'attention_mask': attention_mask,
         'labels': labels,
     }
-    if getattr(tokenizer, 'model_type', '').startswith('qwen-audio'):
-        if 'audio_info' in batch[0]:
-            audio_info = []
-            for b in batch:
-                audio_info.append(b['audio_info'])
-            res['audio_info'] = audio_info
+    if batch[0].get('audio_info') is not None:
+        res['audio_info'] = [
+            get_audio_info(tokenizer, audio_info=b['audio_info'])
+            for b in batch
+        ]
     return res
 
 
@@ -370,6 +372,7 @@ def inference_stream(
     decode_kwargs = {}
     model_kwargs = {}
     if audio_info is not None:
+        audio_info = get_audio_info(tokenizer, audio_info=audio_info)
         decode_kwargs['audio_info'] = audio_info
         model_kwargs['audio_info'] = audio_info
     stopping_criteria = StoppingCriteriaList(
@@ -423,6 +426,7 @@ def inference(model: PreTrainedModel,
     decode_kwargs = {}
     model_kwargs = {}
     if audio_info is not None:
+        audio_info = get_audio_info(tokenizer, audio_info=audio_info)
         decode_kwargs['audio_info'] = audio_info
         model_kwargs['audio_info'] = audio_info
     if stream:
