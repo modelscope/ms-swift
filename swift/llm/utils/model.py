@@ -388,7 +388,7 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     if model is not None:
         new_forward = MethodType(patch_baichuan2_lm_head_forward,
                                  model.lm_head)
-        if hasattr(model, '_old_forward'):
+        if hasattr(model, '_old_forward'):  # device_map
             model.lm_head._old_forward = new_forward
         else:
             model.lm_head.forward = new_forward
@@ -479,12 +479,12 @@ def get_model_tokenizer_chatglm(model_dir: str,
                                                      **kwargs)
     if model is not None:
         from torch.nn import CrossEntropyLoss
-        _old_forward = CrossEntropyLoss.forward
+        __old_forward = CrossEntropyLoss.forward
 
         def cross_entropy_forward(self, inputs: Tensor,
                                   target: Tensor) -> Tensor:
             target = target.to(device=inputs.device)
-            return _old_forward(self, inputs, target)
+            return __old_forward(self, inputs, target)
 
         CrossEntropyLoss.forward = cross_entropy_forward
     return model, tokenizer
@@ -768,6 +768,21 @@ def get_model_tokenizer_qwen_chat(*args, **kwargs):
     return model, tokenizer
 
 
+def fix_qwen_inplace_bug(model) -> None:
+    first_drop = model.transformer.drop
+    if first_drop.p == 0.:
+        # fix in-place operation bug
+        __old_forward = first_drop.forward
+        if not hasattr(first_drop, '__old_forward'):  # Avoid double patching
+            first_drop.__old_forward = __old_forward
+            if hasattr(first_drop, '_old_forward'):  # device_map
+                first_drop._old_forward = lambda *args, **kwargs: __old_forward(
+                    *args, **kwargs).clone()
+            else:
+                first_drop.forwad = lambda *args, **kwargs: __old_forward(
+                    *args, **kwargs).clone()
+
+
 @register_model(
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
@@ -797,14 +812,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
-        first_drop = model.transformer.drop
-        if first_drop.p == 0.:
-            # fix in-place operation bug
-            _old_forward = first_drop.forward
-            if not hasattr(_old_forward, '_patching'):
-                first_drop.forward = lambda *args, **kwargs: _old_forward(
-                    *args, **kwargs).clone()
-                first_drop.forward._patching = True
+        fix_qwen_inplace_bug(model)
 
     _old_decode = tokenizer._decode
 
@@ -817,9 +825,9 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         else:
             return _old_decode(*args, skip_special_tokens=False, **kwargs)
 
-    if not hasattr(_old_decode, '_patching'):
+    if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
+        tokenizer._old_decode = _old_decode
         tokenizer._decode = _new_decode
-        tokenizer._decode._patching = True
 
     return model, tokenizer
 
@@ -847,14 +855,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
-        first_drop = model.transformer.drop
-        if first_drop.p == 0.:
-            # fix in-place operation bug
-            _old_forward = first_drop.forward
-            if not hasattr(_old_forward, '_patching'):
-                first_drop.forward = lambda *args, **kwargs: _old_forward(
-                    *args, **kwargs).clone()
-                first_drop.forward._patching = True
+        fix_qwen_inplace_bug(model)
     return model, tokenizer
 
 
@@ -968,11 +969,20 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
 
     # fix quantlinear bug
     from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
-    _old_qlinear_init = QuantLinear.__init__
-    if not hasattr(_old_qlinear_init, '_patching'):
-        QuantLinear.__init__ = (lambda *args, **kwargs: _old_qlinear_init(
-            *args, kernel_switch_threshold=1, **kwargs))
-        QuantLinear.__init__._patching = True
+    __old_forward = QuantLinear.forward
+
+    def _new_forward(self, x):
+        if not self.training or not self.autogptq_cuda_available:
+            return self.__old_forward(x)
+        # fix sft no grad
+        self.autogptq_cuda_available = False
+        res = self.__old_forward(x)
+        self.autogptq_cuda_available = True
+        return res
+
+    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
+        QuantLinear.__old_forward = __old_forward
+        QuantLinear.forward = _new_forward
     get_qwen_function = kwargs.pop('get_qwen_function',
                                    get_model_tokenizer_qwen_chat)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
@@ -1035,13 +1045,15 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
 def fix_gradient_checkpointing_warning() -> None:
     if version.parse(torch.__version__) < version.parse('2'):
         return
-    _old_forward = torch.utils.checkpoint.checkpoint
-    if getattr(_old_forward, '_patching', False) is False:
-        _old_forward._patching = True
+    _old_checkpoint = torch.utils.checkpoint.checkpoint
+    if not hasattr(torch.utils.checkpoint,
+                   '_old_checkpoint'):  # avoid double patching
+
+        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
         torch.utils.checkpoint.checkpoint = update_wrapper(
-            lambda *args, use_reentrant=False, **kwargs: _old_forward(
+            lambda *args, use_reentrant=False, **kwargs: _old_checkpoint(
                 *args, use_reentrant=use_reentrant, **kwargs),
-            _old_forward)
+            _old_checkpoint)
 
 
 def get_model_tokenizer(
