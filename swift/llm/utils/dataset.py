@@ -746,6 +746,22 @@ register_dataset(
     tags=['chat', 'coding', '🔥'])
 
 
+def add_self_cognition_dataset(train_dataset: HfDataset, model_name: str,
+                               model_author: str) -> None:
+    dataset_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), 'data',
+        'self_cognition.jsonl')
+    assert os.path.exists(dataset_path)
+    dataset = load_dataset_from_local([dataset_path], SmartPreprocessor())
+    response = []
+    for d in dataset:
+        response.append(d['response'].replace('{{NAME}}', model_name).replace(
+            '{{AUTHOR}}', model_author))
+    dataset = dataset.remove_columns('response').add_column(
+        'response', response)
+    return concatenate_datasets([train_dataset, dataset])
+
+
 def _check_dataset(
     dataset: Optional[None],
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']

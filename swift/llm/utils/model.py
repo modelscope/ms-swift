@@ -1112,3 +1112,7 @@ def get_model_tokenizer(
 
 def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
+
+
+def get_default_lora_target_modules(model_type: str) -> Optional[str]:
+    return MODEL_MAPPING[model_type].get('lora_target_modules')

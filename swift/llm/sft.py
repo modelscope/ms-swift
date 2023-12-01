@@ -16,10 +16,10 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, print_model_info,
                          seed_everything, show_layers)
-from .utils import (SftArguments, Template, data_collate_fn, dataset_map,
-                    find_all_linear_for_lora, get_dataset, get_model_tokenizer,
-                    get_template, print_example, sort_by_max_length,
-                    stat_dataset)
+from .utils import (SftArguments, Template, add_self_cognition_dataset,
+                    data_collate_fn, dataset_map, find_all_linear_for_lora,
+                    get_dataset, get_model_tokenizer, get_template,
+                    print_example, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -144,6 +144,11 @@ def llm_sft(args: SftArguments) -> str:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
+    # add self-cognition dataset
+    if args.use_self_cognition:
+        train_dataset = add_self_cognition_dataset(train_dataset,
+                                                   args.model_name,
+                                                   args.model_author)
 
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')

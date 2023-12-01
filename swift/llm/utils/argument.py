@@ -16,7 +16,7 @@ from swift.utils import (add_version_to_work_dir, broadcast_string,
 from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, ModelType, dtype_mapping,
-                    get_default_template_type)
+                    get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
 
 logger = get_logger()
@@ -70,6 +70,9 @@ class SftArguments:
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
     custom_train_dataset_path: Optional[List[str]] = None
     custom_val_dataset_path: Optional[List[str]] = None
+    use_self_cognition: bool = False
+    model_name: Optional[str] = None
+    model_author: Optional[str] = None
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -157,6 +160,11 @@ class SftArguments:
         set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
+        if self.use_self_cognition:
+            if self.model_name is None:
+                raise ValueError(f'self.model_name: {self.model_name}')
+            if self.model_author is None:
+                raise ValueError(f'self.model_author: {self.model_author}')
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             if is_master():
@@ -178,6 +186,8 @@ class SftArguments:
             self.output_dir = broadcast_string(self.output_dir)
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
+            if 'int4' in self.model_type or 'int8' in self.model_type:
+                assert self.quantization_bit == 0
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -199,17 +209,21 @@ class SftArguments:
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
         if self.dataset is None:
-            self.dataset = [DatasetName.blossom_math_zh]
+            raise ValueError(f'self.dataset: {self.dataset}')
+        elif isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
         assert isinstance(self.dataset, (list, tuple))
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         if self.lora_target_modules is None:
             self.lora_target_modules = ['DEFAULT']
-        if 'DEFAULT' in self.lora_target_modules:
+        elif isinstance(self.lora_target_modules, str):
+            self.lora_target_modules = [self.lora_target_modules]
+        if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
-            self.lora_target_modules = MODEL_MAPPING[
-                self.model_type]['lora_target_modules']
+            self.lora_target_modules = get_default_lora_target_modules(
+                self.model_type)
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
@@ -326,8 +340,10 @@ class InferArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if self.dataset is None:
-            self.dataset = [DatasetName.blossom_math_zh]
+        if not self.eval_human and self.dataset is None:
+            raise ValueError(f'self.dataset: {self.dataset}')
+        elif isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
         assert isinstance(self.dataset, (list, tuple))
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
@@ -428,11 +444,6 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = 'chatglm-generation'
     if args.template_type == 'qwen':
         args.template_type = TemplateType.chatml
-    if (isinstance(args, SftArguments) and isinstance(args.lora_target_modules,
-                                                      (list, tuple))
-            and 'AUTO' in args.lora_target_modules
-            and len(args.lora_target_modules) == 1):
-        args.lora_target_modules = ['DEFAULT']
     if (isinstance(args, InferArguments) and args.show_dataset_sample != 10
             and args.val_dataset_sample == 10):
         # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
@@ -527,10 +538,12 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
-    if args.custom_train_dataset_path is None:
-        args.custom_train_dataset_path = []
-    if args.custom_val_dataset_path is None:
-        args.custom_val_dataset_path = []
+    for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
+        value = getattr(args, key)
+        if value is None:
+            setattr(args, key, [])
+        elif isinstance(value, str):
+            setattr(args, key, [value])
     if len(args.custom_train_dataset_path) == 0 and len(
             args.custom_val_dataset_path) == 0:
         return

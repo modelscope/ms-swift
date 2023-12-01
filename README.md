@@ -22,7 +22,7 @@
 ## 📖 Table of Contents
 - [Introduction](#-introduction)
 - [News](#-news)
-- [LLM Training and Inference Example](#-llm-training-and-inference-example)
+- [LLM Training and Inference](#-llm-training-and-inference)
 - [Installation](#-installation)
 - [Getting Started](#-getting-started)
 - [Learn More](#-learn-more)
@@ -84,7 +84,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 
 
-## ✨ LLM Training and Inference Example
+## ✨ LLM Training and Inference
 ### Simple Usage
 - Quickly perform inference on LLM, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - Rapidly fine-tune and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).

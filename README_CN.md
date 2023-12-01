@@ -22,7 +22,7 @@
 ##  📖 目录
 - [简介](#-简介)
 - [新闻](#-新闻)
-- [大模型训练推理的例子](#-大模型训练推理的例子)
+- [大模型训练推理](#-大模型训练推理)
 - [安装](#-安装)
 - [快速开始](#-快速开始)
 - [了解更多](#-了解更多)
@@ -83,7 +83,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.9.3: 支持**baichuan2**系列模型: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 
 
-## ✨ 大模型训练推理的例子
+## ✨ 大模型训练推理
 ### 简单使用
 - 快速对LLM进行推理, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - 快速对LLM进行微调, 推理并搭建Web-UI. 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
