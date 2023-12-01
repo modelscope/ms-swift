@@ -65,11 +65,14 @@ def get_audio_info(
         context: Optional[str] = None,
         audio_info: Optional[Dict[str,
                                   Any]] = None) -> Optional[Dict[str, Any]]:
+    assert context is not None or audio_info is not None
+    assert context is None or audio_info is None
     if context is None:
-        audio_urls = audio_info['audio_urls']
         input_audios = audio_info.get('input_audios')
-        if input_audios is None:
-            context = ''.join([f'<audio>{url}</audio>' for url in audio_urls])
+        if isinstance(input_audios, Tensor):
+            return audio_info
+        audio_urls = audio_info['audio_urls']
+        context = ''.join([f'<audio>{url}</audio>' for url in audio_urls])
     return tokenizer.process_audio(context)
 
 
