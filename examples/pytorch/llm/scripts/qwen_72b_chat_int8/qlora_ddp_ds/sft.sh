@@ -16,7 +16,7 @@ torchrun \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset codefuse-python-zh \
+    --dataset codefuse-python-en \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \
