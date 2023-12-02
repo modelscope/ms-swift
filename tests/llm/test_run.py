@@ -170,10 +170,11 @@ class TestRun(unittest.TestCase):
             print(f'last_model_checkpoint: {last_model_checkpoint}')
             print(f'best_model_checkpoint: {best_model_checkpoint}')
             ckpt_dir = best_model_checkpoint or last_model_checkpoint
-            infer_args = InferArguments(ckpt_dir=ckpt_dir)
-            # merge_lora_main(infer_args)
             if dataset is None:
                 continue
+            infer_args = InferArguments(
+                ckpt_dir=ckpt_dir, show_dataset_sample=2)
+            # merge_lora_main(infer_args)
             result = infer_main(infer_args)
             print(result)
             torch.cuda.empty_cache()
