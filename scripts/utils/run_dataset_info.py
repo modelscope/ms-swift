@@ -21,7 +21,7 @@ def get_dataset_name_list() -> List[str]:
 def write_dataset_info(fpath: str) -> None:
     res_text_list = []
     if os.path.exists(fpath):
-        with open(fpath, 'r') as f:
+        with open(fpath, 'r', encoding='utf-8') as f:
             text_list = f.readlines()
     else:
         text_list = []
@@ -95,7 +95,7 @@ def write_dataset_info(fpath: str) -> None:
         res_text_list.append(
             f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
             f'{val_size}|{stat_str}|{tags_str}|')
-        with open(fpath, 'w') as f:
+        with open(fpath, 'w', encoding='utf-8') as f:
             f.write('\n'.join(res_text_list))
 
 

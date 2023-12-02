@@ -72,7 +72,7 @@ class PushToMsHubMixin:
         repo_dir = self.repo.model_dir
         gitignore_path = os.path.join(repo_dir, '.gitignore')
         if os.path.exists(gitignore_path):
-            with open(gitignore_path, 'r') as f:
+            with open(gitignore_path, 'r', encoding='utf-8') as f:
                 current_content = f.read()
         else:
             current_content = ''
@@ -88,7 +88,7 @@ class PushToMsHubMixin:
 
         # Write the .gitignore file if it has changed
         if content != current_content:
-            with open(gitignore_path, 'w') as f:
+            with open(gitignore_path, 'w', encoding='utf-8') as f:
                 logger.debug(f'Writing .gitignore file. Content: {content}')
                 f.write(content)
         self.repo.push(commit_message)
@@ -297,14 +297,14 @@ class SwiftMixin:
         configuration_path = os.path.join(output_dir, 'configuration.json')
         new_cfg = {}
         if os.path.exists(configuration_path):
-            with open(configuration_path, 'r') as f:
+            with open(configuration_path, 'r', encoding='utf-8') as f:
                 new_cfg = json.load(f)
 
         if 'framework' not in new_cfg:
             new_cfg['framework'] = cfg.get('framework', 'pytorch')
         if 'task' not in new_cfg:
             new_cfg['task'] = cfg.get('task', 'text-generation')
-        with open(configuration_path, 'w') as f:
+        with open(configuration_path, 'w', encoding='utf-8') as f:
             json.dump(new_cfg, f, ensure_ascii=False, indent=4)
 
     def _add_adapter_cfg(self, output_dir: str) -> None:
@@ -316,7 +316,7 @@ class SwiftMixin:
         configuration_path = os.path.join(output_dir, 'configuration.json')
         new_cfg = {}
         if os.path.exists(configuration_path):
-            with open(configuration_path, 'r') as f:
+            with open(configuration_path, 'r', encoding='utf-8') as f:
                 new_cfg = json.load(f)
 
         need_to_save = [
@@ -333,7 +333,7 @@ class SwiftMixin:
         for k in need_to_save:
             adapter_cfg[k] = getattr(sft_args, k)
         new_cfg['adapter_cfg'] = adapter_cfg
-        with open(configuration_path, 'w') as f:
+        with open(configuration_path, 'w', encoding='utf-8') as f:
             json.dump(new_cfg, f, ensure_ascii=False, indent=4)
 
     def _save_sft_args(self, output_dir: str) -> None:
@@ -341,7 +341,7 @@ class SwiftMixin:
         if sft_args is None:
             return
         fpath = os.path.join(output_dir, 'sft_args.json')
-        with open(fpath, 'w') as f:
+        with open(fpath, 'w', encoding='utf-8') as f:
             json.dump(
                 check_json_format(self.sft_args.__dict__),
                 f,

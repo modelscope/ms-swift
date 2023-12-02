@@ -423,7 +423,7 @@ def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
     file = 'firefly-train-1.1M.jsonl'
     dataset_dir = download_dataset(dataset_id, [file])
     fpath = os.path.join(dataset_dir, file)
-    with open(fpath, 'r') as f:
+    with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
         text = text.replace('}{', '},{')
         text = f'[{text}]'
@@ -913,7 +913,7 @@ def load_dataset_from_local(
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
         elif dataset_path.endswith('.json'):
-            with open(dataset_path, 'r') as f:
+            with open(dataset_path, 'r', encoding='utf-8') as f:
                 obj_list = json.load(f)
             df = transform_jsonl_to_df(obj_list)
         else:

@@ -271,12 +271,13 @@ def llm_sft(args: SftArguments) -> str:
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
-            with open(fpath, 'w') as f:
+            with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),
                     f,
                     ensure_ascii=False,
                     indent=2)
+
     trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)

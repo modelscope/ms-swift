@@ -64,20 +64,20 @@ def merge_lora(args: InferArguments,
         new_configuration_path = os.path.join(args.ckpt_dir,
                                               configuration_fname)
         if os.path.exists(old_configuration_path):
-            with open(old_configuration_path, 'r') as f:
+            with open(old_configuration_path, 'r', encoding='utf-8') as f:
                 res = json.load(f)
             res.pop('adapter_cfg', None)
-            with open(new_configuration_path, 'w') as f:
+            with open(new_configuration_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=4)
         # sft_args.json
         sft_args_fname = 'sft_args.json'
         old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
         new_sft_args_path = os.path.join(args.ckpt_dir, sft_args_fname)
         if os.path.exists(old_sft_args_path):
-            with open(old_sft_args_path, 'r') as f:
+            with open(old_sft_args_path, 'r', encoding='utf-8') as f:
                 res = json.load(f)
             res['sft_type'] = 'full'
-            with open(new_sft_args_path, 'w') as f:
+            with open(new_sft_args_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
         logger.info(f'Successfully merged LoRA and saved in {args.ckpt_dir}.')
     else:

@@ -260,7 +260,7 @@ class SftArguments:
         self.deepspeed = None
         if self.deepspeed_config_path is not None:
             require_version('deepspeed')
-            with open(self.deepspeed_config_path, 'r') as f:
+            with open(self.deepspeed_config_path, 'r', encoding='utf-8') as f:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
@@ -590,7 +590,7 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
     if not os.path.exists(sft_args_path):
         logger.info(f'{sft_args_path} not found')
         return
-    with open(sft_args_path, 'r') as f:
+    with open(sft_args_path, 'r', encoding='utf-8') as f:
         sft_args = json.load(f)
     imported_keys = [
         'model_type', 'model_id_or_path', 'model_revision', 'model_cache_dir',
