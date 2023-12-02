@@ -119,7 +119,7 @@ cd examples/pytorch/llm
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型)
 - 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式)
-- 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行超参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md).
+- 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`--ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看[scripts文件夹](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts). 如果你想要**自定义sh脚本**, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.

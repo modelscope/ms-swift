@@ -56,7 +56,7 @@ Key features:
 Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用.md) to get detail tutorials.
 
 ## 🎉 News
-- 🔥 2023.12.2: [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), 10 minutes for self-cognition fine-tuning for LLM, creating a LLM that is specific to oneself.
+- 🔥 2023.12.2: [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), **10 minutes for self-cognition fine-tuning for LLM**, creating a LLM that is specific to oneself.
 - 🔥 2023.11.30: Support for training and inference of the **qwen-1_8b**, **qwen-72b**, and **qwen-audio** model series. The corresponding shell scripts can be viewed at [qwen_1_8b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_1_8b_chat), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat), [qwen_audio_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_audio_chat).
 - 🔥 2023.11.29: Support the training and inference for AnimateDiff
 - 🔥 2023.11.24: Support for **yi-34b-chat**, **codefuse-codellama-34b-chat**: The corresponding shell script can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
@@ -91,7 +91,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - Rapidly **fine-tune** and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
 - View the models and datasets supported by Swift. You can check [supported models and datasets](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
 - Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md).
-- Check command-line hyperparameters for fine-tuning and inference, see [Command-Line Hyperparameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md).
+- Check command-line parameters for fine-tuning and inference, see [Command-Line parameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
 
 
 ### Features
