@@ -337,7 +337,7 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
 
 def _is_chinese_char(cp):
     """Checks whether CP is the codepoint of a CJK character."""
-    # copy from transformers.generation.streamers:TextStreamer
+    # copy from transformers.generation.streamers.TextStreamer
     if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF)
             or (cp >= 0x20000 and cp <= 0x2A6DF)
             or (cp >= 0x2A700 and cp <= 0x2B73F)

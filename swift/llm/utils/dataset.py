@@ -764,15 +764,13 @@ def add_self_cognition_dataset(
     response = []
     for d in dataset:
         if d['tag'] == 'zh':
-            response.append(d['response'].replace('{{NAME}}',
-                                                  model_name[0]).replace(
-                                                      '{{AUTHOR}}',
-                                                      model_author[0]))
+            model_n, model_a = model_name[0], model_author[0]
         else:
-            response.append(d['response'].replace('{{NAME}}',
-                                                  model_name[1]).replace(
-                                                      '{{AUTHOR}}',
-                                                      model_author[1]))
+            model_n, model_a = model_name[1], model_author[1]
+
+        r = d['response'].replace('{{NAME}}',
+                                  model_n).replace('{{AUTHOR}}', model_a)
+        response.append(r)
     dataset = dataset.remove_columns('response').add_column(
         'response', response).remove_columns('tag')
 
