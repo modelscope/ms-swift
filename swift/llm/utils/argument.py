@@ -63,14 +63,14 @@ class SftArguments:
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
-        default='truncation_left',
-        metadata={'choices': ['ignore', 'truncation_left']})
+        default='delete', metadata={'choices': ['delete', 'truncation_left']})
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
     custom_train_dataset_path: Optional[List[str]] = None
     custom_val_dataset_path: Optional[List[str]] = None
     self_cognition_sample: int = 0
+    # Chinese name and English name
     model_name: Optional[List[str]] = None  # e.g. ['小黄', 'Xiao Huang']
     model_author: Optional[List[str]] = None  # e.g. ['魔搭', 'ModelScope']
 
@@ -307,8 +307,7 @@ class InferArguments:
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: str = field(
-        default='truncation_left',
-        metadata={'choices': ['ignore', 'truncation_left']})
+        default='delete', metadata={'choices': ['delete', 'truncation_left']})
     check_dataset_strategy: str = field(
         default='none',
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
@@ -472,6 +471,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
             and args.val_dataset_sample == 10):
         # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
         args.val_dataset_sample = args.show_dataset_sample
+    if args.truncation_strategy == 'ignore':
+        args.truncation_strategy = 'delete'
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:

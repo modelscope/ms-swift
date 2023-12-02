@@ -187,7 +187,7 @@ def _encode(template: 'Template', query: str, response: Optional[str],
         labels = None
 
     if template.max_length is not None:
-        if truncation_strategy == 'ignore' and len(
+        if truncation_strategy == 'delete' and len(
                 input_ids) > template.max_length:
             return None
         input_ids = input_ids[-template.max_length:]
@@ -263,8 +263,7 @@ class Template:
         tokenizer: PreTrainedTokenizerBase,
         system: Optional[str] = None,
         max_length: Optional[int] = None,
-        truncation_strategy: Literal['ignore',
-                                     'truncation_left'] = 'truncation_left'
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     ) -> None:
         assert self._is_init is False
         self._is_init = True
@@ -446,8 +445,7 @@ def get_template(
     tokenizer: PreTrainedTokenizerBase,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
-    truncation_strategy: Literal['ignore',
-                                 'truncation_left'] = 'truncation_left'
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
 ) -> Template:
     template = deepcopy(TEMPLATE_MAPPING[template_type])
     template.init_template(tokenizer, system, max_length, truncation_strategy)
