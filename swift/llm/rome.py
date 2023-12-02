@@ -28,7 +28,7 @@ def rome_infer(args: RomeArguments) -> None:
                                            model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
 
-    with open(args.rome_request_file, 'r') as f:
+    with open(args.rome_request_file, 'r', encoding='utf-8') as f:
         request = json.load(f)
 
     rome_type: str = None

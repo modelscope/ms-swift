@@ -245,14 +245,14 @@ class Template:
             default_system: Optional[str] = None,
             before_encode_hook: Optional[BeforeEncodeHook] = None) -> None:
         self.prefix = prefix
-        self._has_system = False
+        self.has_system = False
         for p in prefix:
             if isinstance(p, str) and '{{SYSTEM}}' in p:
-                self._has_system = True
+                self.has_system = True
                 assert default_system is not None, 'Please set the `default_system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
-        self._support_multi_round = self.chat_sep is not None
+        self.support_multi_round = self.chat_sep is not None
         self.suffix = suffix
         self.default_system = default_system
         self.before_encode_hook = before_encode_hook
@@ -291,11 +291,11 @@ class Template:
         if history is None:
             history = []
         if len(history) > 0:
-            assert self._support_multi_round, 'the template not support multi-round chat'
+            assert self.support_multi_round, 'the template not support multi-round chat'
         if system is None:
             system = self.system
         else:
-            assert self._has_system, 'not support `system`'
+            assert self.has_system, 'not support `system`'
         if self.before_encode_hook is not None:
             self.before_encode_hook(self, query, response, history, system)
         return _encode(self, query, response, history, system,

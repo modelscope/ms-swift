@@ -158,9 +158,12 @@ def llm_infer(args: InferArguments) -> None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
-        logger.info(
-            'Input `exit` to exit the conversation, input `clear` to clear the history.'
-        )
+        print_str = 'Input `exit` to exit the conversation'
+        if template.support_multi_round:
+            print_str += ', input `clear` to clear the history.'
+        else:
+            print_str += ', The current template only supports single-round dialogues.'
+        logger.info(print_str)
         history = []
         while True:
             query = input('<<< ')
@@ -169,6 +172,8 @@ def llm_infer(args: InferArguments) -> None:
             elif query.strip().lower() == 'clear':
                 history = []
                 continue
+            if not template.support_multi_round:
+                history = []
             gen = inference_stream(model, template, query, history)
             print_idx = 0
             for response, history in gen:
