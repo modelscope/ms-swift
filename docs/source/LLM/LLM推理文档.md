@@ -2,17 +2,7 @@
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
-  - [qwen-7b-chat](#qwen-7b-chat)
-  - [qwen-7b-chat-int4](#qwen-7b-chat-int4)
-  - [qwen-7b](#qwen-7b)
-  - [流式输出](#流式输出)
-  - [qwen-vl-chat](#qwen-vl-chat)
-  - [qwen-audio-chat](#qwen-audio-chat)
-  - [chatglm3](#chatglm3)
-  - [bnb量化](#bnb量化)
 - [Web-UI](#web-ui)
-  - [qwen-7b-chat](#qwen-7b-chat)
-  - [qwen-7b](#qwen-7b)
 
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
