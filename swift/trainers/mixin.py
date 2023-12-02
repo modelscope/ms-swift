@@ -352,6 +352,7 @@ class SwiftMixin:
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
         # If we are executing this function, we are the process zero, so we don't check for that.
+        self.state.last_model_checkpoint = output_dir
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f'Saving model checkpoint to {output_dir}')

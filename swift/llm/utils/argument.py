@@ -366,7 +366,9 @@ class InferArguments:
             if len(self.dataset) == 0:
                 if (len(self.custom_train_dataset_path) == 0
                         and len(self.custom_val_dataset_path) == 0):
-                    raise ValueError(f'self.dataset: {self.dataset}')
+                    raise ValueError(
+                        f'self.dataset: {self.dataset}. Please set `--eval_human true` or `--dataset xxx`'
+                    )
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)

@@ -278,9 +278,12 @@ def llm_sft(args: SftArguments) -> str:
                     ensure_ascii=False,
                     indent=2)
     trainer.train(training_args.resume_from_checkpoint)
+    last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
+                                    None)
+    logger.info(
+        f'last_model_checkpoint: {trainer.state.last_model_checkpoint}')
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
-
     # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
@@ -291,6 +294,7 @@ def llm_sft(args: SftArguments) -> str:
             trainer._add_patterns_to_gitignores(['images/'])
             trainer.push_to_hub()
     return {
+        'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,

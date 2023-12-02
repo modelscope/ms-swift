@@ -23,7 +23,7 @@ class TestRun(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp_dir)
 
-    def test_run_basic(self):
+    def test_basic(self):
         output_dir = 'output'
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
@@ -56,7 +56,7 @@ class TestRun(unittest.TestCase):
         # if __name__ == '__main__':
         #     web_ui_main(infer_args)
 
-    def test_run_loss_matching(self):
+    def test_loss_matching(self):
         output_dir = 'output'
         if not __name__ == '__main__':
             # ignore citest error in github
@@ -80,9 +80,10 @@ class TestRun(unittest.TestCase):
             ])
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
+            torch.cuda.empty_cache()
         self.assertTrue(abs(losses[0] - losses[1]) < 1e-4)
 
-    def test_run_vl_audio(self):
+    def test_vl_audio(self):
         output_dir = 'output'
         if not __name__ == '__main__':
             # ignore citest error in github
@@ -113,7 +114,7 @@ class TestRun(unittest.TestCase):
             print(result)
             torch.cuda.empty_cache()
 
-    def run_custom_dataset(self):
+    def test_custom_dataset(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
@@ -127,7 +128,7 @@ class TestRun(unittest.TestCase):
             ],
             check_dataset_strategy='warning')
         best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
-
+        torch.cuda.empty_cache()
         for load_args_from_ckpt_dir in [True, False]:
             kwargs = {}
             if load_args_from_ckpt_dir is False:
@@ -145,6 +146,37 @@ class TestRun(unittest.TestCase):
                 ],
                 **kwargs)
             infer_main(infer_args)
+            torch.cuda.empty_cache()
+
+    def test_self_cognition(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        for dataset in [None, [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
+            sft_args = SftArguments(
+                model_type=ModelType.qwen_7b_chat,
+                dataset=dataset,  # no dataset
+                train_dataset_sample=100,
+                eval_steps=5,
+                output_dir='output',
+                lora_target_modules='ALL',
+                self_cognition_sample=100,
+                model_name=['小黄', 'Xiao Huang'],
+                model_author=['魔搭', 'ModelScope'])
+            output = sft_main(sft_args)
+            torch.cuda.empty_cache()
+            last_model_checkpoint = output['last_model_checkpoint']
+            best_model_checkpoint = output['best_model_checkpoint']
+            print(f'last_model_checkpoint: {last_model_checkpoint}')
+            print(f'best_model_checkpoint: {best_model_checkpoint}')
+            ckpt_dir = best_model_checkpoint or last_model_checkpoint
+            infer_args = InferArguments(ckpt_dir=ckpt_dir)
+            # merge_lora_main(infer_args)
+            if dataset is None:
+                continue
+            result = infer_main(infer_args)
+            print(result)
+            torch.cuda.empty_cache()
 
 
 if __name__ == '__main__':
