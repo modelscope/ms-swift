@@ -280,8 +280,7 @@ def llm_sft(args: SftArguments) -> str:
     trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)
-    logger.info(
-        f'last_model_checkpoint: {trainer.state.last_model_checkpoint}')
+    logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
     # Visualization
