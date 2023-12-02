@@ -23,7 +23,7 @@ class TestRun(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp_dir)
 
-    def test_run_1(self):
+    def test_run_basic(self):
         output_dir = 'output'
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
@@ -56,11 +56,10 @@ class TestRun(unittest.TestCase):
         # if __name__ == '__main__':
         #     web_ui_main(infer_args)
 
-    def test_run_2(self):
+    def test_run_loss_matching(self):
         output_dir = 'output'
         if not __name__ == '__main__':
             # ignore citest error in github
-            output_dir = self.tmp_dir
             return
         losses = []
         for tuner_backend in ['swift', 'peft']:
@@ -83,11 +82,10 @@ class TestRun(unittest.TestCase):
             losses.append(loss)
         self.assertTrue(abs(losses[0] - losses[1]) < 1e-4)
 
-    def test_run_3(self):
+    def test_run_vl_audio(self):
         output_dir = 'output'
         if not __name__ == '__main__':
             # ignore citest error in github
-            output_dir = self.tmp_dir
             return
         model_type_list = [ModelType.qwen_vl_chat, ModelType.qwen_audio_chat]
         dataset_list = [DatasetName.coco_mini_en, DatasetName.aishell1_mini_zh]
@@ -114,6 +112,39 @@ class TestRun(unittest.TestCase):
             result = infer_main(infer_args)
             print(result)
             torch.cuda.empty_cache()
+
+    def run_custom_dataset(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        sft_args = SftArguments(
+            model_type='qwen-7b-chat',
+            custom_train_dataset_path=[
+                'tests/llm/data/alpaca.csv', 'tests/llm/data/chatml.jsonl',
+                'tests/llm/data/swift_pre.json',
+                'tests/llm/data/swift_single.csv',
+                'tests/llm/data/swift_multi.jsonl'
+            ],
+            check_dataset_strategy='warning')
+        best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
+
+        for load_args_from_ckpt_dir in [True, False]:
+            kwargs = {}
+            if load_args_from_ckpt_dir is False:
+                kwargs = {'model_type': 'qwen-7b-chat'}
+            infer_args = InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_args_from_ckpt_dir=load_args_from_ckpt_dir,
+                val_dataset_sample=-1,
+                custom_val_dataset_path=[
+                    'tests/llm/data/alpaca.jsonl',
+                    'tests/llm/data/alpaca2.csv',
+                    'tests/llm/data/conversations.jsonl',
+                    'tests/llm/data/swift_pre.csv',
+                    'tests/llm/data/swift_single.jsonl'
+                ],
+                **kwargs)
+            infer_main(infer_args)
 
 
 if __name__ == '__main__':

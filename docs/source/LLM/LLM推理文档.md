@@ -395,12 +395,12 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 ```
 ## Web-UI
 ### qwen-7b-chat
-使用CLI
+使用CLI:
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
 ```
 
-使用python
+使用python:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -411,7 +411,7 @@ infer_args = InferArguments(model_type=ModelType.qwen_7b_chat)
 web_ui_main(infer_args)
 ```
 
-使用量化
+使用bnb量化:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -423,12 +423,12 @@ web_ui_main(infer_args)
 ```
 
 ### qwen-7b
-使用CLI
+使用CLI:
 ```bash
 swift web-ui --model_id_or_path qwen/Qwen-7B
 ```
 
-使用python
+使用python:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'

@@ -258,7 +258,7 @@ print(f'response: {response}')
 print(f'history: {history}')
 ```
 
-使用**数据集**评估
+使用**数据集**评估:
 ```bash
 # 直接推理
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
