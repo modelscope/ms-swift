@@ -10,6 +10,8 @@
   - [原始模型](#原始模型)
   - [微调后模型](#微调后模型)
 - [Web-UI](#web-ui)
+  - [原始模型](#原始模型)
+  - [微调后模型](#微调后模型)
 
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
@@ -40,7 +42,7 @@ pip install -r requirements/llm.txt  -U
 ## 微调
 ### 使用python
 ```python
-# Experimental environment: A10, 3090, A100, ...
+# Experimental environment: A10, 3090, V100, ...
 # 20GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -48,9 +50,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 
 from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments
+    DatasetName, InferArguments, ModelType, SftArguments,
+    infer_main, sft_main, web_ui_main, merge_lora_main
 )
-from swift.llm.run import infer_main, sft_main, web_ui_main, merge_lora_main
 
 model_type = ModelType.qwen_7b_chat
 sft_args = SftArguments(
@@ -75,7 +77,7 @@ web_ui_main(infer_args)
 
 ### 使用CLI
 ```bash
-# Experimental environment: A10, 3090, A100, ...
+# Experimental environment: A10, 3090, V100, ...
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
@@ -265,18 +267,21 @@ print(f'history: {history}')
 
 使用**数据集**评估
 ```bash
+# 直接推理
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
-# merge LoRA增量权重并推理
+# Merge LoRA增量权重并推理
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
+### 原始模型
 使用原始模型的web-ui可以查看[LLM推理文档](./LLM推理文档.md#-Web-UI)
 
-微调后模型的web-ui:
+### 微调后模型
 ```bash
+# 直接使用web-ui
 CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
 # merge LoRA增量权重并使用web-ui

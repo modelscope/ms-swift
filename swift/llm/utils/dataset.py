@@ -746,8 +746,16 @@ register_dataset(
     tags=['chat', 'coding', '🔥'])
 
 
-def add_self_cognition_dataset(train_dataset: HfDataset, model_name: str,
-                               model_author: str) -> None:
+def add_self_cognition_dataset(
+        train_dataset: HfDataset, dataset_sample: int,
+        model_name: Tuple[str, Optional[str]],
+        model_author: Tuple[str, Optional[str]]) -> None:
+    assert model_name[0] is not None
+    assert model_author[0] is not None
+    if model_name[1] is None:
+        model_name = (model_name[0], model_name[0])
+    if model_author[1] is None:
+        model_author = (model_author[0], model_author[0])
     dataset_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), 'data',
         'self_cognition.jsonl')
@@ -755,11 +763,26 @@ def add_self_cognition_dataset(train_dataset: HfDataset, model_name: str,
     dataset = load_dataset_from_local([dataset_path], SmartPreprocessor())
     response = []
     for d in dataset:
-        response.append(d['response'].replace('{{NAME}}', model_name).replace(
-            '{{AUTHOR}}', model_author))
+        if d['tag'] == 'zh':
+            response.append(d['response'].replace('{{NAME}}',
+                                                  model_name[0]).replace(
+                                                      '{{AUTHOR}}',
+                                                      model_author[0]))
+        else:
+            response.append(d['response'].replace('{{NAME}}',
+                                                  model_name[1]).replace(
+                                                      '{{AUTHOR}}',
+                                                      model_author[1]))
     dataset = dataset.remove_columns('response').add_column(
-        'response', response)
-    return concatenate_datasets([train_dataset, dataset])
+        'response', response).remove_columns('tag')
+
+    random_state = RandomState(42)
+    idx = random_state.choice(len(dataset), dataset_sample)
+    dataset = dataset.select(idx)
+    if train_dataset is None:
+        return dataset
+    else:
+        return concatenate_datasets([train_dataset, dataset])
 
 
 def _check_dataset(

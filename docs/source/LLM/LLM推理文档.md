@@ -415,8 +415,7 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm.run import web_ui_main
-from swift.llm import InferArguments, ModelType
+from swift.llm import InferArguments, ModelType, web_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b_chat)
 web_ui_main(infer_args)
@@ -427,8 +426,7 @@ web_ui_main(infer_args)
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm.run import web_ui_main
-from swift.llm import InferArguments, ModelType
+from swift.llm import InferArguments, ModelType, web_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b_chat, quantization_bit=4)
 web_ui_main(infer_args)
@@ -445,8 +443,7 @@ swift web-ui --model_id_or_path qwen/Qwen-7B
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm.run import web_ui_main
-from swift.llm import InferArguments, ModelType
+from swift.llm import InferArguments, ModelType, web_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b)
 web_ui_main(infer_args)

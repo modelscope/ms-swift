@@ -128,8 +128,7 @@ def llm_sft(args: SftArguments) -> str:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
-    assert train_dataset is not None
-    if args.train_dataset_sample >= 0:
+    if train_dataset is not None and args.train_dataset_sample >= 0:
         train_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])
         if train_dataset.shape[0] > train_dataset_sample:
@@ -139,14 +138,15 @@ def llm_sft(args: SftArguments) -> str:
         if val_dataset_sample is None:
             val_dataset_sample = max(
                 int(train_dataset_sample * args.dataset_test_ratio), 1)
-    if val_dataset_sample is not None and val_dataset_sample >= 0:
+    if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
         if val_dataset.shape[0] > val_dataset_sample:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
     # add self-cognition dataset
-    if args.use_self_cognition:
+    if args.self_cognition_sample > 0:
         train_dataset = add_self_cognition_dataset(train_dataset,
+                                                   args.self_cognition_sample,
                                                    args.model_name,
                                                    args.model_author)
 

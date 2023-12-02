@@ -70,9 +70,9 @@ class SftArguments:
         metadata={'choices': ['none', 'discard', 'error', 'warning']})
     custom_train_dataset_path: Optional[List[str]] = None
     custom_val_dataset_path: Optional[List[str]] = None
-    use_self_cognition: bool = False
-    model_name: Optional[str] = None
-    model_author: Optional[str] = None
+    self_cognition_sample: int = 0
+    model_name: Optional[List[str]] = None  # e.g. ['小黄', 'Xiao Huang']
+    model_author: Optional[List[str]] = None  # e.g. ['魔搭', 'ModelScope']
 
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
@@ -160,11 +160,25 @@ class SftArguments:
         set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
-        if self.use_self_cognition:
-            if self.model_name is None:
-                raise ValueError(f'self.model_name: {self.model_name}')
-            if self.model_author is None:
-                raise ValueError(f'self.model_author: {self.model_author}')
+        if self.self_cognition_sample > 0:
+            if self.model_name is None or self.model_author is None:
+                raise ValueError(
+                    'Please enter self.model_name self.model_author. '
+                    'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
+                    'Representing the model name and model author in Chinese and English.'
+                )
+            for k in ['model_name', 'model_author']:
+                v = getattr(self, k)
+                if len(v) == 1:
+                    v = v[0]
+                if isinstance(v, str):
+                    setattr(self, k, [v, v])
+            if self.sft_type == 'lora' and 'ALL' not in self.lora_target_modules:
+                logger.warning(
+                    'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
+                    'For example: `--lora_target_modules ALL`. '
+                    'If you have already added LoRA on MLP, please ignore this warning.'
+                )
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             if is_master():
@@ -208,11 +222,15 @@ class SftArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if self.dataset is None:
-            raise ValueError(f'self.dataset: {self.dataset}')
-        elif isinstance(self.dataset, str):
+        if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
-        assert isinstance(self.dataset, (list, tuple))
+        elif self.dataset is None:
+            self.dataset = []
+        if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
+                                       and len(
+                                           self.custom_val_dataset_path) == 0
+                                       and self.self_cognition_sample == 0):
+            raise ValueError(f'self.dataset: {self.dataset}')
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
@@ -340,11 +358,15 @@ class InferArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if not self.eval_human and self.dataset is None:
-            raise ValueError(f'self.dataset: {self.dataset}')
-        elif isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
-        assert isinstance(self.dataset, (list, tuple))
+        if not self.eval_human:
+            if isinstance(self.dataset, str):
+                self.dataset = [self.dataset]
+            elif self.dataset is None:
+                self.dataset = []
+            if len(self.dataset) == 0:
+                if (len(self.custom_train_dataset_path) == 0
+                        and len(self.custom_val_dataset_path) == 0):
+                    raise ValueError(f'self.dataset: {self.dataset}')
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)

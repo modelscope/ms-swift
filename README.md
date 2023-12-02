@@ -86,8 +86,9 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 ## ✨ LLM Training and Inference
 ### Simple Usage
-- Quickly perform inference on LLM, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
-- Rapidly fine-tune and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
+- [Must Read] **Self-cognitionfine-tuning** for large models in **10 minutes**, creating a personalized large model, please refer to [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
+- Quickly perform **inference** on LLM and build a **Web-UI**, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
+- Rapidly **fine-tune** and perform inference on LLM, and build a Web-UI. See the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
 - View the models and datasets supported by Swift. You can check [supported models and datasets](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
 - Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md).
 - Check command-line hyperparameters for fine-tuning and inference, see [Command-Line Hyperparameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行超参数.md)

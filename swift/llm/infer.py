@@ -10,10 +10,10 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import PreTrainedModel
 
 from swift.tuners import Swift
-from swift.utils import (get_logger, print_model_info, seed_everything,
-                         show_layers)
+from swift.utils import (append_to_jsonl, get_logger, print_model_info,
+                         seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference, save_result_to_jsonl)
+                    get_template, inference, inference_stream)
 
 logger = get_logger()
 
@@ -158,18 +158,34 @@ def llm_infer(args: InferArguments) -> None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
+        logger.info(
+            'Input `exit` to exit the conversation, input `clear` to clear the history.'
+        )
+        history = []
         while True:
             query = input('<<< ')
-            _, history = inference(
-                model, template, query, stream=args.stream, verbose=True)
-            item = history[0]
-            if jsonl_path is not None:
-                save_result_to_jsonl(jsonl_path, item[0], item[1])
-            result.append({
+            if query.strip().lower() == 'exit':
+                break
+            elif query.strip().lower() == 'clear':
+                history = []
+                continue
+            gen = inference_stream(model, template, query, history)
+            print_idx = 0
+            for response, history in gen:
+                if len(response) > print_idx:
+                    print(response[print_idx:], end='', flush=True)
+                    print_idx = len(response)
+            print()
+            print('-' * 50)
+            item = history[-1]
+            obj = {
                 'query': item[0],
                 'response': item[1],
-                'label': None
-            })
+                'history': history,
+            }
+            if jsonl_path is not None:
+                append_to_jsonl(jsonl_path, obj)
+            result.append(obj)
     else:
         _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
                                      args.dataset_seed)
@@ -188,17 +204,13 @@ def llm_infer(args: InferArguments) -> None:
                 verbose=True)
             label = data.get('response')
             item = history[0]
+            obj = {'query': item[0], 'response': item[1], 'label': label}
             if jsonl_path is not None:
-                save_result_to_jsonl(jsonl_path, item[0], item[1], label)
-            result.append({
-                'query': item[0],
-                'response': item[1],
-                'label': label
-            })
+                append_to_jsonl(jsonl_path, obj)
+            result.append(obj)
             print()
             print(f'[LABELS]{label}')
-            print('-' * 80)
-            # input('next[ENTER]')
+            print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}
