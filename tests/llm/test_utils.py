@@ -3,7 +3,7 @@ import unittest
 
 from swift.llm import (ModelType, get_default_template_type,
                        get_model_tokenizer, get_template, inference,
-                       inference_stream, print_example)
+                       inference_stream, limit_history_length, print_example)
 from swift.utils import lower_bound, seed_everything
 
 
@@ -67,6 +67,23 @@ class TestLlmUtils(unittest.TestCase):
         print_example({'input_ids': input_ids, 'labels': labels}, tokenizer)
         assert _get_labels_str(
             labels, tokenizer) == 'before States appe innov developingishes'
+
+    def test_limit_history_length(self):
+        model_type = ModelType.qwen_7b_chat
+        _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        old_history, new_history = limit_history_length(
+            template, '你' * 100, [], 128)
+        self.assertTrue(len(old_history) == 0 and len(new_history) == 0)
+        old_history, new_history = limit_history_length(
+            template, '你' * 100, [], 256)
+        self.assertTrue(len(old_history) == 0 and len(new_history) == 0)
+        self.assertTrue(len(tokenizer.encode('你' * 100)))
+        old_history, new_history = limit_history_length(
+            template, '你' * 100, [['你' * 100, '你' * 100] for i in range(5)],
+            600)
+        self.assertTrue(len(old_history) == 3 and len(new_history) == 2)
 
 
 if __name__ == '__main__':

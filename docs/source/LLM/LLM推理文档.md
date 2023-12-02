@@ -1,4 +1,9 @@
 # LLM推理文档
+## 目录
+- [环境准备](#环境准备)
+- [推理](#推理)
+- [Web-UI](#web-ui)
+
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
@@ -12,7 +17,7 @@ pip install -e .[llm]
 # 如果你想要使用基于auto_gptq的模型进行推理.
 # 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
-pip install auto_gptq
+pip install auto_gptq -U
 
 # 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -335,7 +340,7 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 ```
 
 
-### 量化
+### bnb量化
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -390,48 +395,45 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 ```
 ## Web-UI
 ### qwen-7b-chat
-使用CLI
+使用CLI:
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
 ```
 
-使用python
+使用python:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm.run import web_ui_main
-from swift.llm import InferArguments, ModelType
+from swift.llm import InferArguments, ModelType, web_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b_chat)
 web_ui_main(infer_args)
 ```
 
-使用量化
+使用bnb量化:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm.run import web_ui_main
-from swift.llm import InferArguments, ModelType
+from swift.llm import InferArguments, ModelType, web_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b_chat, quantization_bit=4)
 web_ui_main(infer_args)
 ```
 
 ### qwen-7b
-使用CLI
+使用CLI:
 ```bash
 swift web-ui --model_id_or_path qwen/Qwen-7B
 ```
 
-使用python
+使用python:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm.run import web_ui_main
-from swift.llm import InferArguments, ModelType
+from swift.llm import InferArguments, ModelType, web_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b)
 web_ui_main(infer_args)

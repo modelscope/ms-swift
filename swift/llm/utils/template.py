@@ -187,7 +187,7 @@ def _encode(template: 'Template', query: str, response: Optional[str],
         labels = None
 
     if template.max_length is not None:
-        if truncation_strategy == 'ignore' and len(
+        if truncation_strategy == 'delete' and len(
                 input_ids) > template.max_length:
             return None
         input_ids = input_ids[-template.max_length:]
@@ -245,14 +245,14 @@ class Template:
             default_system: Optional[str] = None,
             before_encode_hook: Optional[BeforeEncodeHook] = None) -> None:
         self.prefix = prefix
-        self._has_system = False
+        self.has_system = False
         for p in prefix:
             if isinstance(p, str) and '{{SYSTEM}}' in p:
-                self._has_system = True
+                self.has_system = True
                 assert default_system is not None, 'Please set the `default_system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
-        self._support_multi_round = self.chat_sep is not None
+        self.support_multi_round = self.chat_sep is not None
         self.suffix = suffix
         self.default_system = default_system
         self.before_encode_hook = before_encode_hook
@@ -263,8 +263,7 @@ class Template:
         tokenizer: PreTrainedTokenizerBase,
         system: Optional[str] = None,
         max_length: Optional[int] = None,
-        truncation_strategy: Literal['ignore',
-                                     'truncation_left'] = 'truncation_left'
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     ) -> None:
         assert self._is_init is False
         self._is_init = True
@@ -291,11 +290,11 @@ class Template:
         if history is None:
             history = []
         if len(history) > 0:
-            assert self._support_multi_round, 'the template not support multi-round chat'
+            assert self.support_multi_round, 'the template not support multi-round chat'
         if system is None:
             system = self.system
         else:
-            assert self._has_system, 'not support `system`'
+            assert self.has_system, 'not support `system`'
         if self.before_encode_hook is not None:
             self.before_encode_hook(self, query, response, history, system)
         return _encode(self, query, response, history, system,
@@ -446,8 +445,7 @@ def get_template(
     tokenizer: PreTrainedTokenizerBase,
     system: Optional[str] = None,
     max_length: Optional[int] = None,
-    truncation_strategy: Literal['ignore',
-                                 'truncation_left'] = 'truncation_left'
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
 ) -> Template:
     template = deepcopy(TEMPLATE_MAPPING[template_type])
     template.init_template(tokenizer, system, max_length, truncation_strategy)

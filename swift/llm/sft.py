@@ -16,10 +16,10 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, print_model_info,
                          seed_everything, show_layers)
-from .utils import (SftArguments, Template, data_collate_fn, dataset_map,
-                    find_all_linear_for_lora, get_dataset, get_model_tokenizer,
-                    get_template, print_example, sort_by_max_length,
-                    stat_dataset)
+from .utils import (SftArguments, Template, add_self_cognition_dataset,
+                    data_collate_fn, dataset_map, find_all_linear_for_lora,
+                    get_dataset, get_model_tokenizer, get_template,
+                    print_example, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -128,8 +128,7 @@ def llm_sft(args: SftArguments) -> str:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
-    assert train_dataset is not None
-    if args.train_dataset_sample >= 0:
+    if train_dataset is not None and args.train_dataset_sample >= 0:
         train_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])
         if train_dataset.shape[0] > train_dataset_sample:
@@ -139,11 +138,17 @@ def llm_sft(args: SftArguments) -> str:
         if val_dataset_sample is None:
             val_dataset_sample = max(
                 int(train_dataset_sample * args.dataset_test_ratio), 1)
-    if val_dataset_sample is not None and val_dataset_sample >= 0:
+    if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
         if val_dataset.shape[0] > val_dataset_sample:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
+    # add self-cognition dataset
+    if args.self_cognition_sample > 0:
+        train_dataset = add_self_cognition_dataset(train_dataset,
+                                                   args.self_cognition_sample,
+                                                   args.model_name,
+                                                   args.model_author)
 
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
@@ -266,16 +271,19 @@ def llm_sft(args: SftArguments) -> str:
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
-            with open(fpath, 'w') as f:
+            with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),
                     f,
                     ensure_ascii=False,
                     indent=2)
+
     trainer.train(training_args.resume_from_checkpoint)
+    last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
+                                    None)
+    logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
-
     # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
@@ -286,6 +294,7 @@ def llm_sft(args: SftArguments) -> str:
             trainer._add_patterns_to_gitignores(['images/'])
             trainer.push_to_hub()
     return {
+        'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,

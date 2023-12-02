@@ -423,7 +423,7 @@ def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
     file = 'firefly-train-1.1M.jsonl'
     dataset_dir = download_dataset(dataset_id, [file])
     fpath = os.path.join(dataset_dir, file)
-    with open(fpath, 'r') as f:
+    with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
         text = text.replace('}{', '},{')
         text = f'[{text}]'
@@ -746,6 +746,43 @@ register_dataset(
     tags=['chat', 'coding', '🔥'])
 
 
+def add_self_cognition_dataset(
+        train_dataset: HfDataset, dataset_sample: int,
+        model_name: Tuple[str, Optional[str]],
+        model_author: Tuple[str, Optional[str]]) -> None:
+    assert model_name[0] is not None
+    assert model_author[0] is not None
+    if model_name[1] is None:
+        model_name = (model_name[0], model_name[0])
+    if model_author[1] is None:
+        model_author = (model_author[0], model_author[0])
+    dataset_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), 'data',
+        'self_cognition.jsonl')
+    assert os.path.exists(dataset_path)
+    dataset = load_dataset_from_local([dataset_path], SmartPreprocessor())
+    response = []
+    for d in dataset:
+        if d['tag'] == 'zh':
+            model_n, model_a = model_name[0], model_author[0]
+        else:
+            model_n, model_a = model_name[1], model_author[1]
+
+        r = d['response'].replace('{{NAME}}',
+                                  model_n).replace('{{AUTHOR}}', model_a)
+        response.append(r)
+    dataset = dataset.remove_columns('response').add_column(
+        'response', response).remove_columns('tag')
+
+    random_state = RandomState(42)
+    idx = random_state.choice(len(dataset), dataset_sample)
+    dataset = dataset.select(idx)
+    if train_dataset is None:
+        return dataset
+    else:
+        return concatenate_datasets([train_dataset, dataset])
+
+
 def _check_dataset(
     dataset: Optional[None],
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']
@@ -874,7 +911,7 @@ def load_dataset_from_local(
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
         elif dataset_path.endswith('.json'):
-            with open(dataset_path, 'r') as f:
+            with open(dataset_path, 'r', encoding='utf-8') as f:
                 obj_list = json.load(f)
             df = transform_jsonl_to_df(obj_list)
         else:

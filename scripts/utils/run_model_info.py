@@ -14,7 +14,7 @@ def get_model_name_list() -> List[str]:
 
 def write_model_info_table2(fpath: str) -> None:
     model_name_list = get_model_name_list()
-    with open(fpath, 'w') as f:
+    with open(fpath, 'w', encoding='utf-8') as f:
         f.write(
             '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
             ' Support Flash Attn | Requires |\n'
@@ -39,7 +39,7 @@ def write_model_info_table2(fpath: str) -> None:
     for r in res:
         url = f'https://modelscope.cn/models/{r[1]}/summary'
         text += f'{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}\n'
-    with open(fpath, 'a') as f:
+    with open(fpath, 'a', encoding='utf-8') as f:
         f.write(text)
     print()
 

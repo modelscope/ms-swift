@@ -32,9 +32,8 @@ from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (append_to_jsonl, get_dist_setting, get_logger,
-                         is_ddp_plus_mp, is_dist, is_local_master, is_master,
-                         stat_array, upper_bound)
+from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
+                         is_local_master, is_master, stat_array, upper_bound)
 from .template import History, StopWordsCriteria, Template, get_audio_info
 
 logger = get_logger()
@@ -336,6 +335,21 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
     return llm_dataset.select(idx)
 
 
+def _is_chinese_char(cp):
+    """Checks whether CP is the codepoint of a CJK character."""
+    # copy from transformers.generation.streamers.TextStreamer
+    if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF)
+            or (cp >= 0x20000 and cp <= 0x2A6DF)
+            or (cp >= 0x2A700 and cp <= 0x2B73F)
+            or (cp >= 0x2B740 and cp <= 0x2B81F)
+            or (cp >= 0x2B820 and cp <= 0x2CEAF)
+            or (cp >= 0xF900 and cp <= 0xFAFF)
+            or (cp >= 0x2F800 and cp <= 0x2FA1F)):
+        return True
+
+    return False
+
+
 def inference_stream(
         model: PreTrainedModel,
         template: Template,
@@ -389,8 +403,16 @@ def inference_stream(
     for token in gen:
         generate_ids.append(token.item())
         response = tokenizer.decode(generate_ids, True, **decode_kwargs)
-        history[-1] = (query, response)
-        yield response, history
+        if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
+                ord(response[-1])):
+            safe_response = response
+        else:
+            safe_response = response[:response.rfind(' ')
+                                     + 1]  # avoid printing incomplete words
+        history[-1] = (query, safe_response)
+        yield safe_response, history
+    history[-1] = (query, response)
+    yield response, history
 
 
 def inference(model: PreTrainedModel,
@@ -478,15 +500,6 @@ def limit_history_length(template: Template, query: str,
     old_history = history[:len(history) - history_length]
     history = history[len(history) - history_length:]
     return old_history, history
-
-
-def save_result_to_jsonl(fpath: str,
-                         query: str,
-                         response: str,
-                         label: Optional[str] = None) -> None:
-
-    obj = {'query': query, 'response': response, 'label': label}
-    append_to_jsonl(fpath, obj)
 
 
 # monkey patching

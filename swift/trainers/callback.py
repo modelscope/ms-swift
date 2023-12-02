@@ -42,7 +42,7 @@ class ProgressCallbackNew(ProgressCallback):
                 logs[k] = round(logs[k], 8)
         if state.is_local_process_zero and self.training_bar is not None:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
-            with open(jsonl_path, 'a') as f:
+            with open(jsonl_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(logs) + '\n')
         super().on_log(args, state, control, logs, **kwargs)
         if state.is_local_process_zero and self.training_bar is not None:

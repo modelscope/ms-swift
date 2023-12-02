@@ -20,11 +20,12 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: LLM Training and Inference Example
 
+   LLM/自我认知微调最佳实践.md
    LLM/LLM推理文档.md
    LLM/LLM微调文档.md
    LLM/支持的模型和数据集.md
    LLM/自定义与拓展.md
-   LLM/命令行超参数.md
+   LLM/命令行参数.md
 
 .. toctree::
    :maxdepth: 2
