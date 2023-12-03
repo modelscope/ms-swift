@@ -502,6 +502,41 @@ def limit_history_length(template: Template, query: str,
     return old_history, history
 
 
+Messages = List[Dict[str, str]]
+
+
+def history_to_messages(history: History,
+                        query: Optional[str] = None,
+                        system: Optional[str] = None) -> Messages:
+    messages = []
+    if system is not None:
+        messages.append({'role': 'system', 'content': system})
+    for h in history:
+        messages.append({'role': 'user', 'content': h[0]})
+        messages.append({'role': 'assistant', 'content': h[1]})
+    if query is not None:
+        messages.append({'role': 'user', 'content': query})
+    return messages
+
+
+def messages_to_history(messages: Messages) -> Dict[str, Any]:
+    system = None
+    if messages[0]['role'] == 'system':
+        system = messages[0]['content']
+        messages = messages[1::]
+    history = []
+    for q, r in zip(messages[::2], messages[1::2]):
+        history.append([q['content'], r['content']])
+    query = None
+    if len(messages) % 2 == 1:
+        query = messages[-1]['content']
+    return {
+        'history': history,
+        'query': query,
+        'system': system,
+    }
+
+
 # monkey patching
 MsDataset.load = _msdataset_ddp_load
 if is_ddp_plus_mp():

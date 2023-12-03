@@ -85,6 +85,8 @@ class DatasetName:
     cmnli_zh = 'cmnli-zh'
     cmnli_mini_zh = 'cmnli-mini-zh'
     jd_sentiment_zh = 'jd-sentiment-zh'
+    hc3_zh = 'hc3-zh'
+    hc3_en = 'hc3-en'
     # other (e.g. example dataset for specific model)
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -745,6 +747,47 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
 
+hc3_chinese_subset = [
+    'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
+    'psychology'
+]
+
+
+def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
+    prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
+Question: {question}
+Answer: {answer}
+Category: Human, ChatGPT
+Output: """
+    query = []
+    response = []
+    for d in dataset:
+        question = d['question']
+        for h in d['human_answers']:
+            query.append(prompt.format(question=question, answer=h))
+            response.append('Human')
+        for c in d['chatgpt_answers']:
+            query.append(prompt.format(question=question, answer=c))
+            response.append('ChatGPT')
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+register_dataset(
+    DatasetName.hc3_zh,
+    'simpleai/HC3-Chinese',
+    [[subset, 'train'] for subset in hc3_chinese_subset], [],
+    _preprocess_hc3,
+    get_dataset_from_repo,
+    tags=['text-generation', 'classification', '🔥'])
+
+register_dataset(
+    DatasetName.hc3_en,
+    'simpleai/HC3', [[subset, 'train'] for subset in ['finance', 'medicine']],
+    [],
+    _preprocess_hc3,
+    get_dataset_from_repo,
+    tags=['text-generation', 'classification', '🔥'])
+
 
 def add_self_cognition_dataset(
         train_dataset: HfDataset, dataset_sample: int,
@@ -775,7 +818,11 @@ def add_self_cognition_dataset(
         'response', response).remove_columns('tag')
 
     random_state = RandomState(42)
-    idx = random_state.choice(len(dataset), dataset_sample)
+    idx = random_state.permutation(len(dataset))[:dataset_sample]
+    dataset_sample -= len(idx)
+    if dataset_sample > 0:
+        idx2 = random_state.choice(len(dataset), dataset_sample)
+        idx = np.concatenate([idx, idx2], axis=0)
     dataset = dataset.select(idx)
     if train_dataset is None:
         return dataset

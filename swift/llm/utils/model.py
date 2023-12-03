@@ -86,6 +86,7 @@ class ModelType:
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
+    openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -116,6 +117,8 @@ class ModelType:
     # skywork
     skywork_13b = 'skywork-13b'
     skywork_13b_chat = 'skywork-13b-chat'
+    # zephyr
+    zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
@@ -490,6 +493,20 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.openbuddy_zephyr_7b_chat,
+    'OpenBuddy/openbuddy-zephyr-7b-v14.1',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True)
+@register_model(
+    ModelType.zephyr_7b_beta_chat,
+    'modelscope/zephyr-7b-beta',
+    LoRATM.llama2,
+    TemplateType.zephyr,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True)
 @register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
@@ -1054,6 +1071,14 @@ def fix_gradient_checkpointing_warning() -> None:
             lambda *args, use_reentrant=False, **kwargs: _old_checkpoint(
                 *args, use_reentrant=use_reentrant, **kwargs),
             _old_checkpoint)
+    try:
+        import transformers.modeling_utils
+        if hasattr(transformers.modeling_utils, 'checkpoint'):
+            transformers.modeling_utils.checkpoint = (
+                lambda *args, use_reentrant=False, **kwargs: _old_checkpoint(
+                    *args, use_reentrant=use_reentrant, **kwargs))
+    except ImportError:
+        pass
 
 
 def get_model_tokenizer(
