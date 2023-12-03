@@ -143,25 +143,35 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, system='')
+        template.use_default_system = False
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat({'text': query}, tokenizer)['response']
         print(f'official response: {response}')
         # ref: https://huggingface.co/blog/zh/llama2#%E5%A6%82%E4%BD%95%E6%8F%90%E7%A4%BA-llama-2
-        text_official = (
-            '<s>[INST] <<SYS>>\n'
-            'You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, '
-            'while being safe. Your answers should not include any '
-            'harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. '
-            'Please ensure that your responses are socially unbiased and positive in nature.\n\n'
-            'If a question does not make any sense, or is not factually coherent, '
-            'explain why instead of answering something not correct. '
-            "If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n\n"
-            "There's a llama in my garden 😱 What should I do? [/INST] ")
         query = "There's a llama in my garden 😱 What should I do?"
+        template.tokenizer.use_default_system_prompt = False
         input_ids_swift = template.encode({'query': query})['input_ids']
-        text_swift = template.tokenizer.decode(input_ids_swift)
-        self.assertTrue(text_swift == text_official)
+        input_ids_official = template.tokenizer.apply_chat_template(
+            [{
+                'role': 'user',
+                'content': query
+            }],
+            tokenize=True,
+            add_generation_prompt=True)
+
+        self.assertTrue(input_ids_swift == input_ids_official)
+        template.use_default_system = True
+        template.tokenizer.use_default_system_prompt = True
+        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_official = template.tokenizer.apply_chat_template(
+            [{
+                'role': 'user',
+                'content': query
+            }],
+            tokenize=True,
+            add_generation_prompt=True)
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -267,7 +277,7 @@ you are a helpful assistant!<|im_end|>
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_bluelm_template(self):
-        model_type = ModelType.bluelm_7b_chat
+        model_type = ModelType.bluelm_7b_chat_32k
         template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
@@ -411,7 +421,7 @@ you are a helpful assistant!<|im_end|>
             f"""you are based on LLaMA and Falcon transformers model, not related to GPT or OpenAI.
 
 User: {query}
-Assistant: """)
+Assistant:""")
         inputs = tokenizer.encode(prompt, return_tensors='pt')
         inputs = inputs.to('cuda')
         outputs = model.generate(inputs, max_length=512)

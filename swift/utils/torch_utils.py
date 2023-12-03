@@ -3,6 +3,7 @@
 import os
 import random
 import socket
+from bisect import bisect_right
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -121,6 +122,15 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         logger.info(
             f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}'
         )
+
+
+def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
+    n_parameters = np.array([p.numel() for p in model.parameters()])
+    n_freeze_parameters = int(np.sum(n_parameters) * freeze_parameters)
+    n_parameters_cs = np.cumsum(n_parameters)
+    idx = bisect_right(n_parameters_cs, n_freeze_parameters)
+    for _, p in zip(range(idx), model.parameters()):
+        p.requires_grad = False
 
 
 def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:

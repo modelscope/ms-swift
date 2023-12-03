@@ -72,7 +72,7 @@ history: [('浙江的省会在哪里？', '浙江省的省会是杭州。'), ('�
 inference(model, template, '第一个问题是什么', history, verbose=True, stream=True)
 """Out[1]
 [PROMPT]<|im_start|>system
-you are a helpful assistant!<|im_end|>
+You are a helpful assistant.<|im_end|>
 <|im_start|>user
 浙江的省会在哪里？<|im_end|>
 <|im_start|>assistant
