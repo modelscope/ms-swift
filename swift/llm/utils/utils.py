@@ -506,6 +506,7 @@ Messages = List[Dict[str, str]]
 
 
 def history_to_messages(history: History,
+                        query: Optional[str] = None,
                         system: Optional[str] = None) -> Messages:
     messages = []
     if system is not None:
@@ -513,10 +514,12 @@ def history_to_messages(history: History,
     for h in history:
         messages.append({'role': 'user', 'content': h[0]})
         messages.append({'role': 'assistant', 'content': h[1]})
+    if query is not None:
+        messages.append({'role': 'user', 'content': query})
     return messages
 
 
-def messages_to_history(messages: Messages) -> Tuple[Optional[str], History]:
+def messages_to_history(messages: Messages) -> Dict[str, Any]:
     system = None
     if messages[0]['role'] == 'system':
         system = messages[0]['content']
@@ -524,7 +527,14 @@ def messages_to_history(messages: Messages) -> Tuple[Optional[str], History]:
     history = []
     for q, r in zip(messages[::2], messages[1::2]):
         history.append([q['content'], r['content']])
-    return system, history
+    query = None
+    if len(messages) % 2 == 1:
+        query = messages[-1]['content']
+    return {
+        'history': history,
+        'query': query,
+        'system': system,
+    }
 
 
 # monkey patching

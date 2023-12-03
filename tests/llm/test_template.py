@@ -434,6 +434,44 @@ Assistant:""")
         input_ids_swift = template.encode({'query': query})['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
+    @unittest.skipIf(
+        SKPT_TEST,
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_zephyr_template(self):
+        model_type = ModelType.zephyr_7b_beta_chat
+        model, tokenizer = get_model_tokenizer(model_type)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        model.generation_config.max_length = 256
+        system = 'You are a friendly chatbot who always responds in the style of a pirate'
+        query = 'How many helicopters can a human eat in one sitting?'
+        for sys in [system, None]:
+            print(f'query: {query}')
+            input_ids_swift = template.encode({
+                'query': query,
+                'system': sys
+            })['input_ids']
+            response, _ = inference(model, template, query)
+            print(f'swift response: {response}')
+            #
+            messages = [
+                {
+                    'role': 'user',
+                    'content': query
+                },
+            ]
+            if sys is not None:
+                messages.insert(0, {'role': 'system', 'content': sys})
+            input_ids_official = tokenizer.apply_chat_template(
+                messages, tokenize=True, add_generation_prompt=True)
+            inputs = torch.tensor(input_ids_official, device='cuda')[None]
+            outputs = model.generate(input_ids=inputs)
+            response = tokenizer.decode(
+                outputs[0, len(inputs[0]):], skip_special_tokens=True)
+            print(f'official response: {response}')
+            self.assertTrue(input_ids_swift == input_ids_official)
+
 
 if __name__ == '__main__':
     unittest.main()

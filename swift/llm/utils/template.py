@@ -29,6 +29,7 @@ class TemplateType:
     ziya = 'ziya'
     skywork = 'skywork'
     bluelm = 'bluelm'
+    zephyr = 'zephyr'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -436,6 +437,11 @@ register_template(
     Template(['{{SYSTEM}}'], [
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
     ], [], [['eos_token_id']], ''))
+
+register_template(
+    TemplateType.zephyr,
+    Template([], ['<|user|>\n{{QUERY}}</s>\n<|assistant|>\n'], ['</s>\n'],
+             ['</s>'], None, ['<|system|>\n{{SYSTEM}}</s>\n']))
 
 
 def get_template(
