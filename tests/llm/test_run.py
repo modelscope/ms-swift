@@ -69,7 +69,8 @@ class TestRun(unittest.TestCase):
                 '--train_dataset_sample', '200', '--predict_with_generate',
                 'true', '--dataset', DatasetName.leetcode_python_en,
                 '--output_dir', output_dir, '--gradient_checkpointing', 'true',
-                '--max_new_tokens', '100', '--use_flash_attn', 'true'
+                '--max_new_tokens', '100', '--use_flash_attn', 'true',
+                '--lora_target_modules', 'ALL'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')

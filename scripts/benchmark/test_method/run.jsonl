@@ -1,0 +1,5 @@
+["--sft_type", "lora", "--model_type", "qwen-7b-chat"]
+["--sft_type", "lora", "--model_type", "qwen-7b-chat-int4"]
+["--sft_type", "lora", "--model_type", "qwen-7b-chat-int8"]
+["--sft_type", "lora", "--model_type", "qwen-7b-chat", "--lora_target_modules", "ALL"]
+[]
