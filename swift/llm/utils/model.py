@@ -805,8 +805,7 @@ def fix_qwen_inplace_bug(model) -> None:
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_vl,
     'qwen/Qwen-VL',
@@ -825,7 +824,8 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
-    get_qwen_function = kwargs.pop('get_qwen_function')
+    get_qwen_function = kwargs.pop('get_qwen_function',
+                                   get_model_tokenizer_qwen_chat)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:

@@ -251,8 +251,7 @@ class Template:
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
                  default_system: Optional[str] = None,
-                 prefix_has_system: Optional[Prompt] = None,
-                 last_prompt: Optional[Prompt] = None) -> None:
+                 prefix_has_system: Optional[Prompt] = None) -> None:
         self.prefix = prefix
         if _has_system(prefix):
             assert prefix_has_system is None
@@ -266,9 +265,6 @@ class Template:
         self.support_multi_round = self.chat_sep is not None
         self.suffix = suffix
         self.default_system = default_system
-        if last_prompt is None:
-            last_prompt = prompt
-        self.last_prompt = last_prompt
         self.use_default_system = True
         self._is_init = False
 
@@ -283,9 +279,8 @@ class Template:
         self._is_init = True
         self.tokenizer = tokenizer
         if default_system is not None:
+            assert self.prefix_has_system is not None
             self.default_system = default_system
-        if self.prefix_has_system is None:
-            assert self.default_system is None
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
 
@@ -309,7 +304,7 @@ class Template:
             if self.use_default_system:
                 system = self.default_system
         else:
-            assert self.prefix_has_system, 'not support `system`'
+            assert self.prefix_has_system is not None, 'not support `system`'
         return _encode(self, query, response, history, system,
                        self.truncation_strategy)
 
@@ -382,11 +377,9 @@ LLAMA_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.llama,
-    Template(['<s>[INST] '], ['{{QUERY}} [/INST] '],
-             [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
-             [['eos_token_id']], LLAMA_DEFAULT_SYSTEM,
-             ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
-             ['{{QUERY}} [/INST]']))
+    Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '],
+             ['</s>'], LLAMA_DEFAULT_SYSTEM,
+             ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
     'Always answer as helpfully and logically as possible, while being safe. '
@@ -404,10 +397,9 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant: '], ['\n'],
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
-             [['bos_token_id'], '{{SYSTEM}}\n\n'],
-             ['User: {{QUERY}}\nAssistant:']))
+             [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
 register_template(
     TemplateType.internlm,
