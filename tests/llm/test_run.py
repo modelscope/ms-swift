@@ -118,13 +118,19 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
+        train_dataset_fnames = [
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl',
+            'swift_single.csv', 'swift_multi.jsonl', 'swift_multi.json'
+        ]
+        val_dataset_fnames = [
+            'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl',
+            'swift_pre.csv', 'swift_single.jsonl'
+        ]
+        folder = os.path.join(os.path.dirname(__file__), 'data')
         sft_args = SftArguments(
             model_type='qwen-7b-chat',
             custom_train_dataset_path=[
-                'tests/llm/data/alpaca.csv', 'tests/llm/data/chatml.jsonl',
-                'tests/llm/data/swift_pre.json',
-                'tests/llm/data/swift_single.csv',
-                'tests/llm/data/swift_multi.jsonl'
+                os.path.join(folder, fname) for fname in train_dataset_fnames
             ],
             check_dataset_strategy='warning')
         best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
@@ -138,11 +144,7 @@ class TestRun(unittest.TestCase):
                 load_args_from_ckpt_dir=load_args_from_ckpt_dir,
                 val_dataset_sample=-1,
                 custom_val_dataset_path=[
-                    'tests/llm/data/alpaca.jsonl',
-                    'tests/llm/data/alpaca2.csv',
-                    'tests/llm/data/conversations.jsonl',
-                    'tests/llm/data/swift_pre.csv',
-                    'tests/llm/data/swift_single.jsonl'
+                    os.path.join(folder, fname) for fname in val_dataset_fnames
                 ],
                 **kwargs)
             infer_main(infer_args)
@@ -162,7 +164,8 @@ class TestRun(unittest.TestCase):
                 lora_target_modules='ALL',
                 self_cognition_sample=100,
                 model_name=['小黄', 'Xiao Huang'],
-                model_author=['魔搭', 'ModelScope'])
+                model_author=['魔搭', 'ModelScope'],
+                use_flash_attn=False)
             output = sft_main(sft_args)
             torch.cuda.empty_cache()
             last_model_checkpoint = output['last_model_checkpoint']
