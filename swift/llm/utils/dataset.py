@@ -912,6 +912,7 @@ def get_dataset(
             train_subset_split_list=dataset_info['train_subset_split_list'],
             val_subset_split_list=dataset_info['val_subset_split_list'],
             preprocess_func=dataset_info['preprocess_func'])
+        train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
         else:

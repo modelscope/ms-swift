@@ -7,6 +7,7 @@ from typing import Tuple
 import json
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from swift.tuners import Swift
@@ -198,6 +199,14 @@ def llm_infer(args: InferArguments) -> None:
             val_dataset = val_dataset.select(
                 range(min(args.val_dataset_sample, val_dataset.shape[0])))
         logger.info(f'val_dataset: {val_dataset}')
+        if args.verbose is None:
+            if len(val_dataset) >= 100:
+                args.verbose = False
+            else:
+                args.verbose = True
+            logger.info(f'Setting args.verbose: {args.verbose}')
+        if not args.verbose:
+            val_dataset = tqdm(val_dataset)
         for data in val_dataset:
             _, history = inference(
                 model,
@@ -205,17 +214,18 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream,
-                verbose=True)
+                stream=args.stream and args.verbose,
+                verbose=args.verbose)
             label = data.get('response')
             item = history[0]
             obj = {'query': item[0], 'response': item[1], 'label': label}
             if jsonl_path is not None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
-            print()
-            print(f'[LABELS]{label}')
-            print('-' * 50)
+            if args.verbose:
+                print()
+                print(f'[LABELS]{label}')
+                print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}

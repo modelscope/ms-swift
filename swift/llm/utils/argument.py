@@ -146,6 +146,8 @@ class SftArguments:
     logging_dir: Optional[str] = None
     report_to: Optional[List[str]] = None
     check_model_is_latest: bool = True
+    acc_strategy: str = field(
+        default='token', metadata={'choices': ['token', 'sentence']})
 
     # generation config
     max_new_tokens: int = 2048
@@ -339,6 +341,7 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
+    verbose: Optional[bool] = None
     # compatibility
     show_dataset_sample: int = 10
 
