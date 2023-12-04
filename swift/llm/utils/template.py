@@ -172,7 +172,7 @@ def _encode(template: 'Template', query: str, response: Optional[str],
             response=r,
             round0=i)
     _concat_context_list(
-        template.last_prompt,
+        template.prompt,
         res_context_list,
         compute_loss_idx,
         query=query,
