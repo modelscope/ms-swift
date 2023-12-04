@@ -155,7 +155,7 @@ def llm_sft(args: SftArguments) -> str:
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length,
                                       args.truncation_strategy)
-    args.system = template.system
+    args.system = template.default_system
     logger.info(f'system: {args.system}')
     train_dataset = dataset_map(train_dataset, template.encode)
     if val_dataset is not None:

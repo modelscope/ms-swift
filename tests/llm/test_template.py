@@ -8,7 +8,8 @@ import torch
 from modelscope import GenerationConfig
 
 from swift.llm import (ModelType, get_default_template_type,
-                       get_model_tokenizer, get_template, inference)
+                       get_model_tokenizer, get_template, inference,
+                       messages_to_history)
 
 SKPT_TEST = True
 
@@ -143,25 +144,41 @@ you are a helpful assistant!<|im_end|>
             pad_token_id=tokenizer.eos_token_id)
         query = '12345+234=？'
         print(f'query: {query}')
-        response, _ = inference(model, template, query, system='')
+        template.use_default_system = False
+        response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         response = model.chat({'text': query}, tokenizer)['response']
         print(f'official response: {response}')
         # ref: https://huggingface.co/blog/zh/llama2#%E5%A6%82%E4%BD%95%E6%8F%90%E7%A4%BA-llama-2
-        text_official = (
-            '<s>[INST] <<SYS>>\n'
-            'You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, '
-            'while being safe. Your answers should not include any '
-            'harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. '
-            'Please ensure that your responses are socially unbiased and positive in nature.\n\n'
-            'If a question does not make any sense, or is not factually coherent, '
-            'explain why instead of answering something not correct. '
-            "If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n\n"
-            "There's a llama in my garden 😱 What should I do? [/INST] ")
         query = "There's a llama in my garden 😱 What should I do?"
+        response = '123'
+        template.tokenizer.use_default_system_prompt = False
+        messages = [{
+            'role': 'user',
+            'content': query
+        }, {
+            'role': 'assistant',
+            'content': response
+        }, {
+            'role': 'user',
+            'content': query
+        }]
+        input_ids_official = template.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True)
+        example = messages_to_history(messages)
+        input_ids_swift = template.encode(example)['input_ids']
+        self.assertTrue(input_ids_swift == input_ids_official)
+        template.use_default_system = True
+        template.tokenizer.use_default_system_prompt = True
         input_ids_swift = template.encode({'query': query})['input_ids']
-        text_swift = template.tokenizer.decode(input_ids_swift)
-        self.assertTrue(text_swift == text_official)
+        input_ids_official = template.tokenizer.apply_chat_template(
+            [{
+                'role': 'user',
+                'content': query
+            }],
+            tokenize=True,
+            add_generation_prompt=True)
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
@@ -267,7 +284,7 @@ you are a helpful assistant!<|im_end|>
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_bluelm_template(self):
-        model_type = ModelType.bluelm_7b_chat
+        model_type = ModelType.bluelm_7b_chat_32k
         template_type = get_default_template_type(model_type)
         model, tokenizer = get_model_tokenizer(model_type, load_model=True)
         template = get_template(template_type, tokenizer)
@@ -411,7 +428,7 @@ you are a helpful assistant!<|im_end|>
             f"""you are based on LLaMA and Falcon transformers model, not related to GPT or OpenAI.
 
 User: {query}
-Assistant: """)
+Assistant:""")
         inputs = tokenizer.encode(prompt, return_tensors='pt')
         inputs = inputs.to('cuda')
         outputs = model.generate(inputs, max_length=512)
@@ -423,6 +440,49 @@ Assistant: """)
         input_ids_official = inputs[0].tolist()
         input_ids_swift = template.encode({'query': query})['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
+        input_ids_swift = template.encode({
+            'query': query,
+            'history': [['1234', 'avdc']]
+        })['input_ids']
+        print(tokenizer.decode(input_ids_swift))
+
+    @unittest.skipIf(
+        SKPT_TEST,
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_zephyr_template(self):
+        model_type = ModelType.zephyr_7b_beta_chat
+        model, tokenizer = get_model_tokenizer(model_type)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        model.generation_config.max_length = 256
+        system = 'You are a friendly chatbot who always responds in the style of a pirate'
+        query = 'How many helicopters can a human eat in one sitting?'
+        for sys in [system, None]:
+            print(f'query: {query}')
+            input_ids_swift = template.encode({
+                'query': query,
+                'system': sys
+            })['input_ids']
+            response, _ = inference(model, template, query)
+            print(f'swift response: {response}')
+            #
+            messages = [
+                {
+                    'role': 'user',
+                    'content': query
+                },
+            ]
+            if sys is not None:
+                messages.insert(0, {'role': 'system', 'content': sys})
+            input_ids_official = tokenizer.apply_chat_template(
+                messages, tokenize=True, add_generation_prompt=True)
+            inputs = torch.tensor(input_ids_official, device='cuda')[None]
+            outputs = model.generate(input_ids=inputs)
+            response = tokenizer.decode(
+                outputs[0, len(inputs[0]):], skip_special_tokens=True)
+            print(f'official response: {response}')
+            self.assertTrue(input_ids_swift == input_ids_official)
 
 
 if __name__ == '__main__':

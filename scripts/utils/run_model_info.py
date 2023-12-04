@@ -38,7 +38,7 @@ def write_model_info_table2(fpath: str) -> None:
     text = ''
     for r in res:
         url = f'https://modelscope.cn/models/{r[1]}/summary'
-        text += f'{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}\n'
+        text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|\n'
     with open(fpath, 'a', encoding='utf-8') as f:
         f.write(text)
     print()

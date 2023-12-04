@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 from torch import Tensor
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-DEFAULT_SYSTEM = 'you are a helpful assistant!'
+DEFAULT_SYSTEM = 'You are a helpful assistant.'  # qwen system
 History = List[Union[Tuple[str, str], List[str]]]
 
 
@@ -29,6 +29,7 @@ class TemplateType:
     ziya = 'ziya'
     skywork = 'skywork'
     bluelm = 'bluelm'
+    zephyr = 'zephyr'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -151,12 +152,17 @@ def _encode_context_list(
 
 
 def _encode(template: 'Template', query: str, response: Optional[str],
-            history: History, system: str,
+            history: History, system: Optional[str],
             truncation_strategy: str) -> Dict[str, Optional[List[int]]]:
     res_context_list: List[Context] = []
     compute_loss_idx: List[int] = []
+    if system is None:
+        assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
+        prefix = template.prefix
+    else:
+        prefix = template.prefix_has_system
     _concat_context_list(
-        template.prefix, res_context_list, compute_loss_idx, system=system)
+        prefix, res_context_list, compute_loss_idx, system=system)
     for i, (q, r) in enumerate(history):
         _concat_context_list(
             [*template.prompt, '{{RESPONSE}}', *template.chat_sep],
@@ -230,48 +236,51 @@ class StopWordsCriteria(StoppingCriteria):
         return False
 
 
-BeforeEncodeHook = Callable[['Template', str, Optional[str], History, str],
-                            None]
+def _has_system(prefix: Prompt) -> bool:
+    for p in prefix:
+        if '{{SYSTEM}}' in p:
+            return True
+    return False
 
 
 class Template:
 
-    def __init__(
-            self,
-            prefix: Prompt,
-            prompt: Prompt,
-            chat_sep: Optional[Prompt],
-            suffix: Prompt,
-            default_system: Optional[str] = None,
-            before_encode_hook: Optional[BeforeEncodeHook] = None) -> None:
+    def __init__(self,
+                 prefix: Prompt,
+                 prompt: Prompt,
+                 chat_sep: Optional[Prompt],
+                 suffix: Prompt,
+                 default_system: Optional[str] = None,
+                 prefix_has_system: Optional[Prompt] = None) -> None:
         self.prefix = prefix
-        self.has_system = False
-        for p in prefix:
-            if isinstance(p, str) and '{{SYSTEM}}' in p:
-                self.has_system = True
-                assert default_system is not None, 'Please set the `default_system`.'
+        if _has_system(prefix):
+            assert prefix_has_system is None
+            assert default_system is not None
+            prefix_has_system = prefix
+        self.prefix_has_system = prefix_has_system
+        if self.prefix_has_system is None:
+            assert default_system is None
         self.prompt = prompt
         self.chat_sep = chat_sep
         self.support_multi_round = self.chat_sep is not None
         self.suffix = suffix
         self.default_system = default_system
-        self.before_encode_hook = before_encode_hook
+        self.use_default_system = True
         self._is_init = False
 
-    def init_template(
+    def _init_template(
         self,
         tokenizer: PreTrainedTokenizerBase,
-        system: Optional[str] = None,
+        default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     ) -> None:
         assert self._is_init is False
         self._is_init = True
         self.tokenizer = tokenizer
-        if system is None:
-            self.system = self.default_system
-        else:
-            self.system = system
+        if default_system is not None:
+            assert self.prefix_has_system is not None
+            self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
 
@@ -284,7 +293,7 @@ class Template:
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
-        system = example.get('system', None)
+        system: Optional[str] = example.get('system', None)
         if query is None:
             query = ''
         if history is None:
@@ -292,11 +301,10 @@ class Template:
         if len(history) > 0:
             assert self.support_multi_round, 'the template not support multi-round chat'
         if system is None:
-            system = self.system
+            if self.use_default_system:
+                system = self.default_system
         else:
-            assert self.has_system, 'not support `system`'
-        if self.before_encode_hook is not None:
-            self.before_encode_hook(self, query, response, history, system)
+            assert self.prefix_has_system is not None, 'not support `system`'
         return _encode(self, query, response, history, system,
                        self.truncation_strategy)
 
@@ -314,9 +322,8 @@ def register_template(template_type: str, template: Template) -> None:
 
 register_template(
     TemplateType.default,
-    Template(['{{SYSTEM}}\n\n'],
-             ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'], ['\n\n'],
-             [['eos_token_id']], DEFAULT_SYSTEM))
+    Template([], ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'],
+             ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n']))
 
 # You can set the query as '' to serve as a template for pre-training.
 register_template(TemplateType.default_generation,
@@ -327,24 +334,16 @@ register_template(
 register_template(
     TemplateType.chatml,
     Template(
-        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
-        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|>'], 'You are a helpful assistant.'))
-
-
-def before_encode_hook_yi(template: 'Template', query: str,
-                          response: Optional[str], history: History,
-                          system: str) -> None:
-    if len(system) > 0:
-        template.prefix = ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']
-
+        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>'], 'You are a helpful assistant.',
+        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 register_template(
     TemplateType.yi,
     Template(
-        ['{{SYSTEM}}'],
-        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|>'], '', before_encode_hook_yi))
+        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>'], None,
+        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 register_template(
     TemplateType.baichuan,
@@ -352,26 +351,19 @@ register_template(
              [['eos_token_id']], ''))
 register_template(
     TemplateType.chatglm2,
-    Template([[64790, 64792]], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'],
-             ['\n\n'], [['eos_token_id']]))
+    Template([[64790, 64792], '{{SYSTEM}}'],
+             ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
+             [['eos_token_id']], ''))
 
 register_template(
     TemplateType.chatglm_generation,
     Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]))
 
-
-def before_encode_hook_chatglm3(template: 'Template', query: str,
-                                response: Optional[str], history: History,
-                                system: str) -> None:
-    if len(system) > 0:
-        template.prefix = [[64790, 64792, 64794], '\n {{SYSTEM}}']
-
-
 register_template(
     TemplateType.chatglm3,
-    Template([[64790, 64792], '{{SYSTEM}}'],
-             [[64795], '\n {{QUERY}}', [64796], '\n '], [], [['eos_token_id']],
-             '', before_encode_hook_chatglm3))
+    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n '], [],
+             [['eos_token_id']], None,
+             [[64790, 64792, 64794], '\n {{SYSTEM}}']))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
@@ -385,10 +377,9 @@ LLAMA_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.llama,
-    Template(['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n'],
-             ['{{QUERY}} [/INST] '],
-             [' ', ['eos_token_id', 'bos_token_id'], '[INST] '],
-             [['eos_token_id']], LLAMA_DEFAULT_SYSTEM))
+    Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '],
+             ['</s>'], LLAMA_DEFAULT_SYSTEM,
+             ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
     'Always answer as helpfully and logically as possible, while being safe. '
@@ -406,9 +397,9 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id'], '{{SYSTEM}}\n\n'],
-             ['User: {{QUERY}}\nAssistant: '], ['\n'], [['eos_token_id']],
-             OPENBUDDY_DEFAULT_SYSTEM))
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
+             [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
+             [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
 register_template(
     TemplateType.internlm,
@@ -439,15 +430,21 @@ register_template(
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
     ], [], [['eos_token_id']], ''))
 
+register_template(
+    TemplateType.zephyr,
+    Template([], ['<|user|>\n{{QUERY}}</s>\n<|assistant|>\n'], ['</s>\n'],
+             ['</s>'], None, ['<|system|>\n{{SYSTEM}}</s>\n']))
+
 
 def get_template(
     template_type: str,
     tokenizer: PreTrainedTokenizerBase,
-    system: Optional[str] = None,
+    default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
 ) -> Template:
     template = deepcopy(TEMPLATE_MAPPING[template_type])
-    template.init_template(tokenizer, system, max_length, truncation_strategy)
+    template._init_template(tokenizer, default_system, max_length,
+                            truncation_strategy)
     template.template_type = template_type
     return template
