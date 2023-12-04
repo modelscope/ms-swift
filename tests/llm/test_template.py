@@ -8,7 +8,8 @@ import torch
 from modelscope import GenerationConfig
 
 from swift.llm import (ModelType, get_default_template_type,
-                       get_model_tokenizer, get_template, inference)
+                       get_model_tokenizer, get_template, inference,
+                       messages_to_history)
 
 SKPT_TEST = True
 
@@ -150,16 +151,22 @@ you are a helpful assistant!<|im_end|>
         print(f'official response: {response}')
         # ref: https://huggingface.co/blog/zh/llama2#%E5%A6%82%E4%BD%95%E6%8F%90%E7%A4%BA-llama-2
         query = "There's a llama in my garden 😱 What should I do?"
+        response = '123'
         template.tokenizer.use_default_system_prompt = False
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        messages = [{
+            'role': 'user',
+            'content': query
+        }, {
+            'role': 'assistant',
+            'content': response
+        }, {
+            'role': 'user',
+            'content': query
+        }]
         input_ids_official = template.tokenizer.apply_chat_template(
-            [{
-                'role': 'user',
-                'content': query
-            }],
-            tokenize=True,
-            add_generation_prompt=True)
-
+            messages, tokenize=True, add_generation_prompt=True)
+        example = messages_to_history(messages)
+        input_ids_swift = template.encode(example)['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
         template.use_default_system = True
         template.tokenizer.use_default_system_prompt = True
@@ -433,6 +440,11 @@ Assistant:""")
         input_ids_official = inputs[0].tolist()
         input_ids_swift = template.encode({'query': query})['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
+        input_ids_swift = template.encode({
+            'query': query,
+            'history': [['1234', 'avdc']]
+        })['input_ids']
+        print(tokenizer.decode(input_ids_swift))
 
     @unittest.skipIf(
         SKPT_TEST,
