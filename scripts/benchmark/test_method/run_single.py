@@ -74,7 +74,7 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         best_model_checkpoint = output['best_model_checkpoint']
         print(f'best_model_checkpoint: {best_model_checkpoint}')
         t = time.time() - start_t
-        max_memory = torch.cuda.max_memory_reserved()
+        max_memory = torch.cuda.max_memory_reserved() / 1e9
         torch.cuda.empty_cache()
         infer_args = InferArguments(
             ckpt_dir=best_model_checkpoint,
@@ -85,15 +85,12 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         acc = test_eval_acc(result['result'])
         print({'time': t, 'acc': acc, 'memory': max_memory})
         t_list.append(t)
-        m_list.append(max_memory / 1e9)
+        m_list.append(max_memory)
         acc_list.append(acc)
-    t = stat_array(t_list)[0]
-    m = stat_array(m_list)[0]
-    acc = stat_array(acc_list)[0]
     output = {
-        'time': f"{t['mean']:.6f}±{t['std']:.6f}",
-        'acc': f"{acc['mean']:.6f}±{acc['std']:.6f}",
-        'memory': f"{m['mean']:.6f}±{m['std']:.6f}",
+        'time': stat_array(t_list)[1],
+        'acc': stat_array(acc_list)[1],
+        'memory': stat_array(m_list)[1],
         'train_args': check_json_format(get_non_default_args(train_args))
     }
     append_to_jsonl('scripts/benchmark/test_method/result.jsonl', output)
