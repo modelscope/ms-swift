@@ -174,7 +174,7 @@ def dataset_map(
     data = []
     for d in tqdm(dataset):
         d = map_func(d)
-        if d is None or d['input_ids'] is None:
+        if d is None or d.get('input_ids') is None:
             continue
         audio_info = d.get('audio_info')
         if audio_info is not None:

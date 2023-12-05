@@ -35,10 +35,12 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         eval_steps = 50
         train_dataset_sample = 50 * 16
         val_dataset_sample = 100
+        total_val_dataset_sample = 100
     else:
         eval_steps = 100
         train_dataset_sample = 20000
-        val_dataset_sample = -1
+        val_dataset_sample = 500
+        total_val_dataset_sample = -1
     t_list = []
     m_list = []
     acc_list = []
@@ -65,7 +67,7 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         torch.cuda.empty_cache()
         infer_args = InferArguments(
             ckpt_dir=best_model_checkpoint,
-            val_dataset_sample=val_dataset_sample,
+            val_dataset_sample=total_val_dataset_sample,
             verbose=False)
         result = infer_main(infer_args)
         torch.cuda.empty_cache()

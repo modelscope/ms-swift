@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Set, Tuple, Union
@@ -102,7 +103,7 @@ class SftArguments:
     optim: str = 'adamw_torch'
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
-    gradient_accumulation_steps: int = 16
+    gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
@@ -189,8 +190,9 @@ class SftArguments:
                 logger.info(f'output_dir: {self.output_dir}')
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
+        world_size = 1
         if is_dist():
-            rank, local_rank, _, _ = get_dist_setting()
+            rank, local_rank, world_size, _ = get_dist_setting()
             torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
@@ -274,6 +276,9 @@ class SftArguments:
             self.logging_dir = f'{self.output_dir}/runs'
         if self.report_to is None:
             self.report_to == ['all']
+        if self.gradient_accumulation_steps is None:
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
+                                                         / world_size)
 
 
 @dataclass
