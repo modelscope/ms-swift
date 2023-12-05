@@ -20,7 +20,7 @@ def get_main(
         else:
             args, remaining_argv = parse_args(args_class, argv)
         if len(remaining_argv) > 0:
-            if args.ignore_args_error:
+            if getattr(args, 'ignore_args_error', False):
                 logger.warning(f'remaining_argv: {remaining_argv}')
             else:
                 raise ValueError(f'remaining_argv: {remaining_argv}')

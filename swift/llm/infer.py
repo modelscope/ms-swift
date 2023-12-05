@@ -7,11 +7,12 @@ from typing import Tuple
 import json
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, print_model_info,
-                         seed_everything, show_layers)
+                         read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference, inference_stream)
 
@@ -157,20 +158,34 @@ def llm_infer(args: InferArguments) -> None:
     if args.save_result and args.ckpt_dir is not None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
+    input_mode: Literal['S', 'M'] = 'S'
     if args.eval_human:
-        print_str = 'Input `exit` to exit the conversation'
+        logger.info('Input `exit` to exit the conversation.')
+        logger.info('Input `multi-line` to switch to multi-line input mode.')
         if template.support_multi_round:
-            print_str += ', input `clear` to clear the history.'
+            logger.info('Input `clear` to clear the history.')
         else:
-            print_str += ', The current template only supports single-round dialogues.'
-        logger.info(print_str)
+            logger.info(
+                'The current template only supports single-round dialogues.')
         history = []
         while True:
-            query = input('<<< ')
+            if input_mode == 'S':
+                query = input('<<< ')
+            else:
+                query = read_multi_line()
             if query.strip().lower() == 'exit':
                 break
             elif query.strip().lower() == 'clear':
                 history = []
+                continue
+            if input_mode == 'S' and query.strip().lower() == 'multi-line':
+                input_mode = 'M'
+                logger.info('End multi-line input with `#`.')
+                logger.info(
+                    'Input `single-line` to switch to single-line input mode.')
+                continue
+            if input_mode == 'M' and query.strip().lower() == 'single-line':
+                input_mode == 'S'
                 continue
             if not template.support_multi_round:
                 history = []
@@ -198,6 +213,14 @@ def llm_infer(args: InferArguments) -> None:
             val_dataset = val_dataset.select(
                 range(min(args.val_dataset_sample, val_dataset.shape[0])))
         logger.info(f'val_dataset: {val_dataset}')
+        if args.verbose is None:
+            if len(val_dataset) >= 100:
+                args.verbose = False
+            else:
+                args.verbose = True
+            logger.info(f'Setting args.verbose: {args.verbose}')
+        if not args.verbose:
+            val_dataset = tqdm(val_dataset)
         for data in val_dataset:
             _, history = inference(
                 model,
@@ -205,17 +228,18 @@ def llm_infer(args: InferArguments) -> None:
                 data.get('query'),
                 data.get('history'),
                 data.get('system'),
-                stream=args.stream,
-                verbose=True)
+                stream=args.stream and args.verbose,
+                verbose=args.verbose)
             label = data.get('response')
             item = history[0]
             obj = {'query': item[0], 'response': item[1], 'label': label}
             if jsonl_path is not None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
-            print()
-            print(f'[LABELS]{label}')
-            print('-' * 50)
+            if args.verbose:
+                print()
+                print(f'[LABELS]{label}')
+                print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}
