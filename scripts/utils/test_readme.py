@@ -21,8 +21,12 @@ def test_readme():
         for code in code_list:
             if 'import' not in code or 'modelscope' not in code:
                 continue
-            exec(code)
-
+            try:
+                exec(code)
+            except Exception:
+                print(code)
+                input('[ENTER]...')
+                raise
         torch.cuda.empty_cache()
 
 
