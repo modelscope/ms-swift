@@ -43,6 +43,11 @@ class TestExtraStateDict(unittest.TestCase):
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         model = Swift.from_pretrained(model, self.tmp_dir)
+        names = [
+            name for name, value in model.named_parameters()
+            if value.requires_grad
+        ]
+        self.assertTrue(any('classifier' in name for name in names))
         self.assertTrue(
             torch.allclose(state_dict['classifier.weight'],
                            model.base_model.classifier.weight))
@@ -78,6 +83,11 @@ class TestExtraStateDict(unittest.TestCase):
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         model = Swift.from_pretrained(
             model, self.tmp_dir, adapter_name='lora2')
+        names = [
+            name for name, value in model.named_parameters()
+            if value.requires_grad
+        ]
+        self.assertTrue(any('classifier' in name for name in names))
         self.assertTrue(
             torch.allclose(
                 state_dict['classifier.weight'],

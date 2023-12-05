@@ -122,7 +122,9 @@ class SwiftModel(nn.Module):
                 output.mark_trainable_callback(model)
             if self.extra_state_keys:
                 for n, p in model.named_parameters():
-                    if n in self.extra_state_keys:
+                    if any(
+                            re.fullmatch(extra_key, n)
+                            for extra_key in self.extra_state_keys):
                         p.requires_grad = True
 
     def load_state_dict(self,
@@ -142,7 +144,11 @@ class SwiftModel(nn.Module):
                             )
                             break
                     state_dict[key] = value
-        return self.model.load_state_dict(state_dict, False)
+        incompatible_keys = self.model.load_state_dict(state_dict, False)
+        if len(incompatible_keys[1]) > 0:
+            logger.error(
+                f'Load state dict with unexpected keys: {incompatible_keys[1]}'
+            )
 
     def state_dict(self,
                    *args,
