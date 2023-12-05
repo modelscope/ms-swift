@@ -498,11 +498,15 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         model_id_or_path = args.model_id_or_path
         model_id_or_path_lower = model_id_or_path.lower()
         if model_id_or_path_lower not in model_mapping_reversed:
-            error_msg = f"`model_id_or_path`: '{model_id_or_path}' is not registered."
-            if os.path.exists(model_id_or_path):
-                error_msg += (
-                    ' Please use `--model_id_or_path <model_id> --model_cache_dir <local_path>` '
-                    'to specify the local cache path for the model.')
+            if isinstance(args,
+                          InferArguments) and 'checkpoint' in model_id_or_path:
+                error_msg = 'Please use `--ckpt_dir vx_xxx/checkpoint-xxx` to use the checkpoint.'
+            else:
+                error_msg = f"`model_id_or_path`: '{model_id_or_path}' is not registered."
+                if os.path.exists(model_id_or_path):
+                    error_msg += (
+                        ' Please use `--model_id_or_path <model_id> --model_cache_dir <local_path>` '
+                        'to specify the local cache path for the model.')
             raise ValueError(error_msg)
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 

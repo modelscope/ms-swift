@@ -32,6 +32,7 @@ class TestRun(unittest.TestCase):
             model_type=model_type,
             template_type='AUTO',
             quantization_bit=4,
+            batch_size=2,
             eval_steps=5,
             check_dataset_strategy='warning',
             train_dataset_sample=200,
@@ -39,6 +40,7 @@ class TestRun(unittest.TestCase):
             dataset=[DatasetName.jd_sentiment_zh],
             output_dir=output_dir,
             gradient_checkpointing=True)
+        self.assertTrue(sft_args.gradient_accumulation_steps == 8)
         output = sft_main(sft_args)
         print(output)
         best_model_checkpoint = output['best_model_checkpoint']
