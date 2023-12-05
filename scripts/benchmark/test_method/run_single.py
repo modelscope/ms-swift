@@ -7,7 +7,8 @@ import torch
 
 from swift.llm import (MODEL_MAPPING, DatasetName, InferArguments,
                        SftArguments, infer_main, sft_main)
-from swift.utils import append_to_jsonl, get_main, get_seed, stat_array
+from swift.utils import (append_to_jsonl, check_json_format, get_main,
+                         get_seed, stat_array)
 
 DEBUG = False
 
@@ -29,13 +30,23 @@ class TrainArguments(SftArguments):
         return
 
 
+def get_non_default_args(train_args) -> Dict[str, Any]:
+    train_args_default = train_args.__class__()
+    res = {}
+    for k, v in train_args.__dict__.items():
+        v_default = getattr(train_args_default, k)
+        if v != v_default:
+            res[k] = v
+    return res
+
+
 def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     start_t = time.time()
     if DEBUG:
-        eval_steps = 50
-        train_dataset_sample = 50 * 16
-        val_dataset_sample = 100
-        total_val_dataset_sample = 100
+        eval_steps = 20
+        train_dataset_sample = 500
+        val_dataset_sample = 50
+        total_val_dataset_sample = 50
     else:
         eval_steps = 100
         train_dataset_sample = 20000
@@ -74,16 +85,16 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         acc = test_eval_acc(result['result'])
         print({'time': t, 'acc': acc, 'memory': max_memory})
         t_list.append(t)
-        m_list.append(max_memory)
+        m_list.append(max_memory / 1e9)
         acc_list.append(acc)
-    t = stat_array(t_list)
-    m = stat_array(m_list)
-    acc = stat_array(acc_list)
+    t = stat_array(t_list)[0]
+    m = stat_array(m_list)[0]
+    acc = stat_array(acc_list)[0]
     output = {
         'time': f"{t['mean']:.6f}±{t['std']:.6f}",
         'acc': f"{acc['mean']:.6f}±{acc['std']:.6f}",
-        'memory': m / 1e9,
-        'train_args': train_args.__dict__
+        'memory': f"{m['mean']:.6f}±{m['std']:.6f}",
+        'train_args': check_json_format(get_non_default_args(train_args))
     }
     append_to_jsonl('scripts/benchmark/test_method/result.jsonl', output)
     print(output)
