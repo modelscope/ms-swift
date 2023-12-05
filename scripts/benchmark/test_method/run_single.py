@@ -1,3 +1,4 @@
+import inspect
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -56,9 +57,9 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     m_list = []
     acc_list = []
     random_state = np.random.RandomState(train_args.global_seed)
+    args_kwargs = get_non_default_args(train_args)
     for i in range(train_args.run_time):
         sft_args = SftArguments(
-            model_type=train_args.model_type,
             eval_steps=eval_steps,
             check_dataset_strategy='warning',
             train_dataset_sample=train_dataset_sample,
@@ -69,7 +70,7 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
             output_dir='output',
             acc_strategy='sentence',
             use_flash_attn=True,
-            sft_type=train_args.sft_type)
+            **args_kwargs)
         output = sft_main(sft_args)
         best_model_checkpoint = output['best_model_checkpoint']
         print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -91,7 +92,7 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         'time': stat_array(t_list)[1],
         'acc': stat_array(acc_list)[1],
         'memory': stat_array(m_list)[1],
-        'train_args': check_json_format(get_non_default_args(train_args))
+        'train_args': check_json_format(args_kwargs)
     }
     append_to_jsonl('scripts/benchmark/test_method/result.jsonl', output)
     print(output)
