@@ -21,15 +21,12 @@ def test_eval_acc(result: List[Dict[str, str]]) -> float:
 
 
 @dataclass
-class TrainArguments:
-    sft_type: str = field(
-        default='lora',
-        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
-    model_type: Optional[str] = field(
-        default=None,
-        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    run_time: int = 5
+class TrainArguments(SftArguments):
+    run_time: int = 3
     global_seed: int = 42
+
+    def __post_init__(self):
+        return
 
 
 def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:

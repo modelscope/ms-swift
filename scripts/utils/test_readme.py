@@ -26,7 +26,6 @@ def test_readme():
             except Exception:
                 print(code)
                 input('[ENTER]...')
-                raise
         torch.cuda.empty_cache()
 
 

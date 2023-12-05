@@ -15,8 +15,9 @@ def test_method_loop(train_kwargs_jsonl: str) -> None:
         obj: List[str] = obj_list.pop(0)
         obj_list.append(obj)
         write_to_jsonl(train_kwargs_jsonl, obj_list)
-        subprocess.run(
+        ret = subprocess.run(
             ['python', 'scripts/benchmark/test_method/run_single.py', *obj])
+        assert ret.returncode == 0
 
 
 if __name__ == '__main__':
