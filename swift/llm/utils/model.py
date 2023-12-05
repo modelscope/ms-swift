@@ -789,15 +789,16 @@ def fix_qwen_inplace_bug(model) -> None:
     first_drop = model.transformer.drop
     if first_drop.p == 0.:
         # fix in-place operation bug
-        __old_forward = first_drop.forward
         if not hasattr(first_drop, '__old_forward'):  # Avoid double patching
-            first_drop.__old_forward = __old_forward
             if hasattr(first_drop, '_old_forward'):  # device_map
+                __old_forward = first_drop._old_forward
                 first_drop._old_forward = lambda *args, **kwargs: __old_forward(
                     *args, **kwargs).clone()
             else:
+                __old_forward = first_drop.forward
                 first_drop.forwad = lambda *args, **kwargs: __old_forward(
                     *args, **kwargs).clone()
+            first_drop.__old_forward = __old_forward
 
 
 @register_model(
