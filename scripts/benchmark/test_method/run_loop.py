@@ -8,9 +8,10 @@ from swift.utils import read_from_jsonl, write_to_jsonl
 
 
 def test_method_loop(train_kwargs_jsonl: str) -> None:
-    obj_list = read_from_jsonl(train_kwargs_jsonl)
-
-    while len(obj_list[0]) > 0:
+    while True:
+        obj_list = read_from_jsonl(train_kwargs_jsonl)
+        if len(obj_list[0]) == 0:
+            break
         obj: List[str] = obj_list.pop(0)
         obj_list.append(obj)
         write_to_jsonl(train_kwargs_jsonl, obj_list)

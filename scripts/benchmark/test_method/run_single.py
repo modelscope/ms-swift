@@ -8,6 +8,8 @@ from swift.llm import (MODEL_MAPPING, DatasetName, InferArguments,
                        SftArguments, infer_main, sft_main)
 from swift.utils import append_to_jsonl, get_main
 
+DEBUG = False
+
 
 def test_eval_acc(result: List[Dict[str, str]]) -> float:
     n_correct = 0
@@ -25,12 +27,11 @@ class TrainArguments:
     model_type: Optional[str] = field(
         default=None,
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    debug: bool = False
 
 
 def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     start_t = time.time()
-    if train_args.debug:
+    if DEBUG:
         eval_steps = 20
         train_dataset_sample = 200
         val_dataset_sample = 10
