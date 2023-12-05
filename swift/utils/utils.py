@@ -114,3 +114,16 @@ def test_time(func: Callable[[], _T],
     # print
     logger.info(f'time[number={number}]: {stat_str}')
     return res
+
+
+def read_multi_line() -> str:
+    res = []
+    prompt = '<<<[M] '
+    while True:
+        text = input(prompt) + '\n'
+        prompt = ''
+        res.append(text)
+        if text.endswith('#\n'):
+            res[-1] = text[:-2]
+            break
+    return ''.join(res)
