@@ -160,13 +160,13 @@ def llm_infer(args: InferArguments) -> None:
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     input_mode: Literal['S', 'M'] = 'S'
     if args.eval_human:
-        print_str = ('Input `exit` to exit the conversation'
-                     ', input `multi-line` to switch to multi-line input mode')
+        logger.info('Input `exit` to exit the conversation.')
+        logger.info('Input `multi-line` to switch to multi-line input mode.')
         if template.support_multi_round:
-            print_str += ', input `clear` to clear the history.'
+            logger.info('Input `clear` to clear the history.')
         else:
-            print_str += ', The current template only supports single-round dialogues.'
-        logger.info(print_str)
+            logger.info(
+                'The current template only supports single-round dialogues.')
         history = []
         while True:
             if input_mode == 'S':
@@ -180,9 +180,9 @@ def llm_infer(args: InferArguments) -> None:
                 continue
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
+                logger.info('End multi-line input with `#`.')
                 logger.info(
-                    'End multi-line input with `#`. Input `single-line` to switch to single-line input mode.'
-                )
+                    'Input `single-line` to switch to single-line input mode.')
                 continue
             if input_mode == 'M' and query.strip().lower() == 'single-line':
                 input_mode == 'S'
