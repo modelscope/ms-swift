@@ -42,7 +42,6 @@ def get_non_default_args(train_args) -> Dict[str, Any]:
 
 
 def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
-    start_t = time.time()
     if DEBUG:
         eval_steps = 20
         train_dataset_sample = 500
@@ -59,6 +58,7 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     random_state = np.random.RandomState(train_args.global_seed)
     args_kwargs = get_non_default_args(train_args)
     for i in range(train_args.run_time):
+        start_t = time.time()
         sft_args = SftArguments(
             eval_steps=eval_steps,
             check_dataset_strategy='warning',
