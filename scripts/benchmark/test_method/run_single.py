@@ -38,7 +38,7 @@ def test_method(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     else:
         eval_steps = 100
         train_dataset_sample = 20000
-        val_dataset_sample = 1000
+        val_dataset_sample = -1
     sft_args = SftArguments(
         model_type=train_args.model_type,
         eval_steps=eval_steps,
