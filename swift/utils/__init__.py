@@ -14,4 +14,4 @@ from .torch_utils import (broadcast_string, freeze_model_parameters,
                           print_model_info, seed_everything, show_layers,
                           time_synchronize)
 from .utils import (add_version_to_work_dir, check_json_format, lower_bound,
-                    parse_args, test_time, upper_bound)
+                    parse_args, read_multi_line, test_time, upper_bound)

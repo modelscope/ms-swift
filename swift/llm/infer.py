@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Tuple
+from typing import Literal, Tuple
 
 import json
 import torch
@@ -12,7 +12,7 @@ from transformers import PreTrainedModel
 
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, print_model_info,
-                         seed_everything, show_layers)
+                         read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference, inference_stream)
 
@@ -158,8 +158,10 @@ def llm_infer(args: InferArguments) -> None:
     if args.save_result and args.ckpt_dir is not None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
+    input_mode: Literal['S', 'M'] = 'S'
     if args.eval_human:
-        print_str = 'Input `exit` to exit the conversation'
+        print_str = ('Input `exit` to exit the conversation'
+                     ', input `multi-line` to switch to multi-line input mode')
         if template.support_multi_round:
             print_str += ', input `clear` to clear the history.'
         else:
@@ -167,11 +169,23 @@ def llm_infer(args: InferArguments) -> None:
         logger.info(print_str)
         history = []
         while True:
-            query = input('<<< ')
+            if input_mode == 'S':
+                query = input('<<< ')
+            else:
+                query = read_multi_line()
             if query.strip().lower() == 'exit':
                 break
             elif query.strip().lower() == 'clear':
                 history = []
+                continue
+            if input_mode == 'S' and query.strip().lower() == 'multi-line':
+                input_mode = 'M'
+                logger.info(
+                    'End multi-line input with `#`. Input `single-line` to switch to single-line input mode.'
+                )
+                continue
+            if input_mode == 'M' and query.strip().lower() == 'single-line':
+                input_mode == 'S'
                 continue
             if not template.support_multi_round:
                 history = []
