@@ -102,7 +102,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=200,
                 dataset=[dataset],
                 output_dir=output_dir,
-                gradient_checkpointing=False)
+                gradient_checkpointing=True)
             output = sft_main(sft_args)
             print(output)
             best_model_checkpoint = output['best_model_checkpoint']
