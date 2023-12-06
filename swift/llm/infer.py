@@ -158,8 +158,8 @@ def llm_infer(args: InferArguments) -> None:
     if args.save_result and args.ckpt_dir is not None:
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
-    input_mode: Literal['S', 'M'] = 'S'
     if args.eval_human:
+        input_mode: Literal['S', 'M'] = 'S'
         logger.info('Input `exit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
         if template.support_multi_round:
