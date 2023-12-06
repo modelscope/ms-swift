@@ -8,7 +8,7 @@ from packaging import version
 
 from swift import LoraConfig
 from .lora_layers import *  # noqa
-from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
+from .utils import SwiftAdapter, SwiftConfig, SwiftOutput, set_adapter
 
 logger = get_logger()
 
@@ -64,6 +64,7 @@ class LoRA(SwiftAdapter):
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str,
                          activate: bool):
+        set_adapter(module, adapter_name, activate)
         for sub_module in module.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.set_activation(adapter_name, activate)

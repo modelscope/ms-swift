@@ -5,14 +5,20 @@ import os
 import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
-from typing import Dict
+from typing import Dict, List, Optional
 
 import json
+import peft.utils
 import torch
 from peft.utils import CONFIG_NAME
+from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
+from peft.utils import _get_submodules
 
 from swift.hub.snapshot_download import snapshot_download
 from swift.utils.constants import BIN_EXTENSIONS
+from swift.utils.logger import get_logger
+
+logger = get_logger()
 
 
 @dataclass
@@ -138,6 +144,10 @@ class ActivationMixin:
         self._thread_inf: Dict[int, Dict[str, bool]] = {}
         self._unique_thread = bool(
             int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '1')))
+        if not self._unique_thread:
+            logger.info(
+                'Using multiple thread mode, gradient checkpointing is not supported.'
+            )
 
     @property
     def indent(self):
@@ -180,3 +190,59 @@ class SwiftAdapter:
     @staticmethod
     def freeze_model():
         return True
+
+
+class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
+
+    def __init__(self, *args, **kwargs):
+        super(ModulesToSaveWrapper, self).__init__()
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+
+    @property
+    def active_adapter(self):
+        active_adapters = self.get_activated_adapters()
+        if not active_adapters:
+            return None
+        elif len(active_adapters) > 1:
+            raise ValueError(
+                'ModulesToSaveWrapper does not support multiple active adapters'
+            )
+        return active_adapters[0]
+
+    def set_adapter(self, adapter_name: str):
+        if adapter_name not in self.modules_to_save:
+            raise ValueError(
+                f'Adapter {adapter_name} not found in {self.modules_to_save.keys()}'
+            )
+        self.modules_to_save[adapter_name].requires_grad_(True)
+        self.set_activation(adapter_name, True)
+
+    def deactivate_adapter(self, adapter_name: str):
+        if adapter_name in self.modules_to_save and self.unique_thread:
+            self.modules_to_save[adapter_name].requires_grad_(False)
+        self.set_activation(adapter_name, False)
+
+
+def set_adapter(model, adapter_name, activate):
+    for module in model.modules():
+        if isinstance(module, ModulesToSaveWrapper):
+            if activate:
+                module.set_adapter(adapter_name)
+            else:
+                module.deactivate_adapter(adapter_name)
+
+
+def set_trainable(model, adapter_name):
+    key_list = [key for key, _ in model.named_modules()]
+    for key in key_list:
+        target_module_found = any(
+            key.endswith(target_key) for target_key in model.modules_to_save)
+        if target_module_found:
+            parent, target, target_name = _get_submodules(model, key)
+            if isinstance(target, ModulesToSaveWrapper):
+                target.update(adapter_name)
+                target.set_adapter(target.active_adapter)
+            else:
+                new_module = ModulesToSaveWrapper(target, adapter_name)
+                new_module.set_adapter(adapter_name)
+                setattr(parent, target_name, new_module)
