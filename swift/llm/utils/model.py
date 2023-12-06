@@ -796,7 +796,7 @@ def fix_qwen_inplace_bug(model) -> None:
                     *args, **kwargs).clone()
             else:
                 __old_forward = first_drop.forward
-                first_drop.forwad = lambda *args, **kwargs: __old_forward(
+                first_drop.forward = lambda *args, **kwargs: __old_forward(
                     *args, **kwargs).clone()
             first_drop.__old_forward = __old_forward
 
