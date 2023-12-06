@@ -3,6 +3,7 @@
 import inspect
 import os
 import re
+from copy import copy
 from inspect import Parameter, Signature, signature
 from types import MethodType
 from typing import Dict, List, Union
@@ -118,9 +119,35 @@ class SwiftModel(nn.Module):
         else:
             for output in self.adapters.values():
                 output.mark_trainable_callback(model)
+            if self.extra_state_keys:
+                for n, p in model.named_parameters():
+                    if any(
+                            re.fullmatch(extra_key, n)
+                            for extra_key in self.extra_state_keys):
+                        p.requires_grad = True
 
-    def load_state_dict(self, state_dict, strict=True):
-        return self.model.load_state_dict(state_dict, False)
+    def load_state_dict(self,
+                        state_dict,
+                        strict=True,
+                        adapter_name: str = None):
+        if adapter_name is not None:
+            output = self.adapters[adapter_name]
+            if getattr(output.config, 'modules_to_save', None):
+                for key, value in copy(state_dict).items():
+                    for module_name in output.config.modules_to_save:
+                        if module_name in key:
+                            state_dict.pop(key)
+                            key = key.replace(
+                                module_name,
+                                f'{module_name}.modules_to_save.{adapter_name}'
+                            )
+                            break
+                    state_dict[key] = value
+        incompatible_keys = self.model.load_state_dict(state_dict, False)
+        if len(incompatible_keys[1]) > 0:
+            logger.error(
+                f'Load state dict with unexpected keys: {incompatible_keys[1]}'
+            )
 
     def state_dict(self,
                    *args,
@@ -149,18 +176,28 @@ class SwiftModel(nn.Module):
         Returns:
             The state dict to be saved.
         """
-        destination = self.model.state_dict(
+        state_dict = self.model.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
         state_dicts = {}
         if kwargs.get('save_adapter', True):
             for name, output in self.adapters.items():
                 if adapter_name == name or adapter_name is None:
                     state_dicts.update(
-                        output.state_dict_callback(destination, name))
+                        output.state_dict_callback(state_dict, name))
+                    modules_to_save_names = [
+                        sub_name
+                        for sub_name, _ in self.model.named_parameters()
+                        if 'modules_to_save' in sub_name
+                    ]
+                    for module_name in modules_to_save_names:
+                        if f'modules_to_save.{name}' in module_name:
+                            state_dicts[module_name.replace(
+                                f'modules_to_save.{name}.',
+                                '')] = state_dict[module_name]
         if kwargs.get('save_extra_states', True):
             state_dicts.update({
                 k: v
-                for k, v in destination.items() if any(
+                for k, v in state_dict.items() if any(
                     re.fullmatch(extra_key, k)
                     for extra_key in self.extra_state_keys)
             })
@@ -289,10 +326,10 @@ class SwiftModel(nn.Module):
                                     f'lora_B.{_name}.weight'): value
                         for key, value in state_dict.items()
                     }
-                self.model.load_state_dict(state_dict, strict=False)
+                self.load_state_dict(state_dict, adapter_name=_name)
         state_dict = cls.load_state_file(model_dir)
         if state_dict is not None:
-            self.model.load_state_dict(state_dict, strict=False)
+            self.load_state_dict(state_dict)
         return self
 
     @classmethod
@@ -597,7 +634,7 @@ class Swift:
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
             with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
                 _json = json.load(f)
-            is_peft_model = SWIFT_TYPE_KEY not in _json
+            is_peft_model = SWIFT_TYPE_KEY not in _json and 'extra_state_keys' not in _json
         if is_peft_model:
             return PeftModel.from_pretrained(
                 model,
