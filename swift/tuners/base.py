@@ -318,13 +318,17 @@ class SwiftModel(nn.Module):
                 if any(['loramodule' in key for key in state_dict]):
                     # Compatible with old checkpoints before ms-swift:1.5.0
                     state_dict = {
-                        key.replace(f'loramodule_{_name}',
-                                    ''): value
+                        key.replace(f'loramodule_{_name}', '')
+                        if f'loramodule_{_name}.lora_A.{_name}' not in key else
+                        key.replace(f'loramodule_{_name}.lora_A',
+                                    f'lora_A.{_name}.weight'): value
                         for key, value in state_dict.items()
                     }
                     state_dict = {
-                        key.replace(f'loramodule_{_name}',
-                                    ''): value
+                        key.replace(f'loramodule_{_name}', '')
+                        if f'loramodule_{_name}.lora_B.{_name}' not in key else
+                        key.replace(f'loramodule_{_name}.lora_B',
+                                    f'lora_B.{_name}.weight'): value
                         for key, value in state_dict.items()
                     }
                 self.load_state_dict(state_dict, adapter_name=_name)
