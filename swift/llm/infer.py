@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Tuple
+from typing import Literal, Tuple
 
 import json
 import torch
