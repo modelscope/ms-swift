@@ -180,6 +180,9 @@ def dataset_map(
         if audio_info is not None:
             audio_info.pop('input_audios', None)
         data.append(d)
+    if len(data) == 0:
+        logger.info('len(dataset): 0')
+        return None
     return LLMDataset(data)
 
 

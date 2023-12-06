@@ -296,6 +296,7 @@ class InferArguments:
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
+    load_dataset_config: bool = True
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
@@ -609,7 +610,7 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
         'bnb_4bit_use_double_quant'
     ]
-    if not args.eval_human:
+    if not args.eval_human and args.load_dataset_config:
         imported_keys += [
             'dataset', 'dataset_seed', 'dataset_test_ratio',
             'check_dataset_strategy', 'custom_train_dataset_path',
