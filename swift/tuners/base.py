@@ -117,7 +117,6 @@ class SwiftModel(nn.Module):
         if inference_mode:
             self.eval()
         else:
-            self.train()
             for output in self.adapters.values():
                 output.mark_trainable_callback(model)
             if self.extra_state_keys:
