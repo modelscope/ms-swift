@@ -133,7 +133,7 @@ class SwiftModel(nn.Module):
                         adapter_name: str = None):
         if adapter_name is not None:
             output = self.adapters[adapter_name]
-            if output.config.modules_to_save:
+            if getattr(output.config, 'modules_to_save', None):
                 for key, value in copy(state_dict).items():
                     for module_name in output.config.modules_to_save:
                         if module_name in key:
