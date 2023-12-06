@@ -431,8 +431,13 @@ def select_dtype(
     assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
     if torch_dtype == torch.float16:
         if isinstance(args, SftArguments) and args.sft_type == 'full':
+            args.dtype = 'fp32'
             torch_dtype = torch.float32
-            logger.warning('Setting torch_dtype: torch.float32')
+            logger.warning(
+                'Fine-tuning with full parameters does not support fp16, and is prone to NaN. '
+                'We will use the fp32 & AMP approach, which consumes approximately twice the memory of bf16.'
+            )
+            logger.info(f'Setting torch_dtype: {torch_dtype}')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
         support_bf16 = torch.cuda.is_bf16_supported()
