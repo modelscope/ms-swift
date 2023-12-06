@@ -3,7 +3,7 @@
 import inspect
 import os
 import re
-from copy import deepcopy
+from copy import copy
 from inspect import Parameter, Signature, signature
 from types import MethodType
 from typing import Dict, List, Union
@@ -134,7 +134,7 @@ class SwiftModel(nn.Module):
         if adapter_name is not None:
             output = self.adapters[adapter_name]
             if output.config.modules_to_save:
-                for key, value in deepcopy(state_dict).items():
+                for key, value in copy(state_dict).items():
                     for module_name in output.config.modules_to_save:
                         if module_name in key:
                             state_dict.pop(key)
