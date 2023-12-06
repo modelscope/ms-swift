@@ -316,14 +316,15 @@ class SwiftModel(nn.Module):
                         for k, v in state_dict.items()
                     }
                 if any(['loramodule' in key for key in state_dict]):
+                    # Compatible with old checkpoints before ms-swift:1.5.0
                     state_dict = {
-                        key.replace(f'loramodule_{_name}.lora_A',
-                                    f'lora_A.{_name}.weight'): value
+                        key.replace(f'loramodule_{_name}',
+                                    ''): value
                         for key, value in state_dict.items()
                     }
                     state_dict = {
-                        key.replace(f'loramodule_{_name}.lora_B',
-                                    f'lora_B.{_name}.weight'): value
+                        key.replace(f'loramodule_{_name}',
+                                    ''): value
                         for key, value in state_dict.items()
                     }
                 self.load_state_dict(state_dict, adapter_name=_name)
