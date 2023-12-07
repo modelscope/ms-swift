@@ -161,7 +161,7 @@ def llm_infer(args: InferArguments) -> None:
         jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
     if args.eval_human:
         input_mode: Literal['S', 'M'] = 'S'
-        logger.info('Input `exit` to exit the conversation.')
+        logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
         if template.support_multi_round:
             logger.info('Input `clear` to clear the history.')
@@ -174,7 +174,7 @@ def llm_infer(args: InferArguments) -> None:
                 query = input('<<< ')
             else:
                 query = read_multi_line()
-            if query.strip().lower() == 'exit':
+            if query.strip().lower() in {'exit', 'quit'}:
                 break
             elif query.strip().lower() == 'clear':
                 history = []
