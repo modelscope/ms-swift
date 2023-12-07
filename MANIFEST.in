@@ -1,2 +1,3 @@
 recursive-include swift/utils *.py
-include swift/llm/data *.*
+recursive-include swift/llm/data *.*
+recursive-include requirements *.txt
