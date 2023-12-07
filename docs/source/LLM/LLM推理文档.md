@@ -274,24 +274,24 @@ template = get_template(template_type, tokenizer)
 
 seed_everything(42)
 query = tokenizer.from_list_format([
-    {'audio': 'demo.wav'},
-    {'text': '请将语音转成文本'},
+    {'audio': 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac'},
+    {'text': 'what does the person say?'},
 ])
 response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
-query = '这句话一般在什么语境下使用'
+query = 'Find the start time and end time of the word "middle classes'
 response, history = inference(model, template, query, history)
 print(f'query: {query}')
 print(f'response: {response}')
 print(f'history: {history}')
-"""
-query: Audio 1:<audio>demo.wav</audio>
-请将语音转成文本
-response: 好的，这是转成的文本："每一天都要快乐哦"。
-query: 这句话一般在什么语境下使用
-response: 这句话一般在表达祝福或者鼓励的时候使用，比如在朋友或者亲人过生日的时候说"每一天都要快乐哦"，表达祝福的意思。
-history: [('Audio 1:<audio>demo.wav</audio>\n请将语音转成文本', '好的，这是转成的文本："每一天都要快乐哦"。'), ('这句话一般在什么语境下使用', '这句话一般在表达祝福或者鼓励的时候使用，比如在朋友或者亲人过生日的时候说"每一天都要快乐哦"，表达祝福的意思。')]
+"""Out[0]
+query: Audio 1:<audio>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac</audio>
+what does the person say?
+response: The person says: "mister quilter is the apostle of the middle classes and we are glad to welcome his gospel".
+query: Find the start time and end time of the word "middle classes
+response: The word "middle classes" starts at <|2.33|> seconds and ends at <|3.26|> seconds.
+history: [('Audio 1:<audio>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac</audio>\nwhat does the person say?', 'The person says: "mister quilter is the apostle of the middle classes and we are glad to welcome his gospel".'), ('Find the start time and end time of the word "middle classes', 'The word "middle classes" starts at <|2.33|> seconds and ends at <|3.26|> seconds.')]
 """
 ```
 
