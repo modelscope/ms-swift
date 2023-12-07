@@ -267,7 +267,7 @@ class SftArguments:
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
         if self.report_to is None:
-            self.report_to == ['all']
+            self.report_to = ['all']
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
@@ -296,7 +296,7 @@ class InferArguments:
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = True
-    eval_human: bool = False  # False: eval val_dataset
+    eval_human: Optional[bool] = None  # False: eval val_dataset
 
     seed: int = 42
     dtype: str = field(
@@ -363,17 +363,22 @@ class InferArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if not self.eval_human:
-            if isinstance(self.dataset, str):
-                self.dataset = [self.dataset]
-            elif self.dataset is None:
-                self.dataset = []
-            if len(self.dataset) == 0:
-                if (len(self.custom_train_dataset_path) == 0
-                        and len(self.custom_val_dataset_path) == 0):
-                    raise ValueError(
-                        f'self.dataset: {self.dataset}. Please set `--eval_human true` or `--dataset xxx`'
-                    )
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
+        elif self.dataset is None:
+            self.dataset = []
+        if (len(self.dataset) == 0 and len(self.custom_train_dataset_path) == 0
+                and len(self.custom_val_dataset_path) == 0):
+            if self.eval_human is None:
+                self.eval_human = True
+                logger.info(f'Setting self.eval_human: {self.eval_human}')
+            if not self.eval_human:
+                raise ValueError(
+                    f'self.dataset: {self.dataset}. Please set `--eval_human true` or `--dataset xxx`'
+                )
+        elif self.eval_human is None:
+            self.eval_human = False
+            logger.info(f'Setting self.eval_human: {self.eval_human}')
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
