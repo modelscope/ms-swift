@@ -186,7 +186,7 @@ def llm_infer(args: InferArguments) -> None:
                     'Input `single-line` to switch to single-line input mode.')
                 continue
             if input_mode == 'M' and query.strip().lower() == 'single-line':
-                input_mode == 'S'
+                input_mode = 'S'
                 continue
             if not template.support_multi_round:
                 history = []
