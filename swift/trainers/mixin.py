@@ -417,9 +417,8 @@ class SwiftMixin:
             for file in additional_files:
                 src_path = os.path.join(model_dir, file)
                 dst_path = os.path.join(output_dir, file)
-                assert not os.path.exists(dst_path) and os.path.exists(
-                    src_path)
-                shutil.copy(src_path, dst_path)
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
         only_save_model = self.args.only_save_model

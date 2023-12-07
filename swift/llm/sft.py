@@ -191,7 +191,7 @@ def llm_sft(args: SftArguments) -> str:
         load_best_model_at_end = False
     additional_saved_files = []
     if args.sft_type == 'full':
-        additional_saved_files = get_additional_saved_files(model.model_type)
+        additional_saved_files = get_additional_saved_files(args.model_type)
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
         evaluation_strategy=evaluation_strategy,
