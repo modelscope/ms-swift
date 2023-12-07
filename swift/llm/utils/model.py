@@ -827,6 +827,13 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         ]
     get_qwen_function = kwargs.pop('get_qwen_function',
                                    get_model_tokenizer_qwen_chat)
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+        model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
@@ -870,6 +877,13 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
                                    load_model: bool = True,
                                    **kwargs):
     get_qwen_function = kwargs.pop('get_qwen_function')
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+        model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:

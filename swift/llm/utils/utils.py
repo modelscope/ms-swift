@@ -28,8 +28,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
-from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
-                          StoppingCriteriaList, TextStreamer, trainer)
+from transformers import (GenerationConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase, StoppingCriteriaList,
+                          TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
@@ -538,6 +539,16 @@ def messages_to_history(messages: Messages) -> Dict[str, Any]:
         'query': query,
         'system': system,
     }
+
+
+def set_generation_config(model: Module,
+                          generation_config: GenerationConfig) -> None:
+    if hasattr(model, 'generation_config'):
+        old_generation_config = model.generation_config
+        for k, v in old_generation_config.__dict__.items():
+            if k not in generation_config.__dict__:
+                setattr(generation_config, k, v)
+    model.geneartion_config = generation_config
 
 
 # monkey patching

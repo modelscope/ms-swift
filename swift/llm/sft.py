@@ -19,7 +19,8 @@ from swift.utils import (check_json_format, compute_acc_metrics,
 from .utils import (SftArguments, Template, add_self_cognition_dataset,
                     data_collate_fn, dataset_map, find_all_linear_for_lora,
                     get_dataset, get_model_tokenizer, get_template,
-                    print_example, sort_by_max_length, stat_dataset)
+                    print_example, set_generation_config, sort_by_max_length,
+                    stat_dataset)
 
 logger = get_logger()
 
@@ -182,6 +183,7 @@ def llm_sft(args: SftArguments) -> str:
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
+    set_generation_config(model, generation_config)
     evaluation_strategy = IntervalStrategy.STEPS
     load_best_model_at_end = True
     if val_dataset is None:
