@@ -7,6 +7,7 @@ from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Type, TypeVar)
 
 import numpy as np
+import torch.distributed as dist
 from transformers import HfArgumentParser
 
 from .logger import get_logger
@@ -53,7 +54,7 @@ def add_version_to_work_dir(work_dir: str) -> str:
     """add version"""
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-    if is_dist():
+    if dist.is_initialized() and is_dist():
         time = broadcast_string(time)
     work_dir = os.path.join(work_dir, f'v{version}-{time}')
     return work_dir
