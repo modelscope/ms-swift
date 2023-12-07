@@ -801,6 +801,19 @@ def fix_qwen_inplace_bug(model) -> None:
             first_drop.__old_forward = __old_forward
 
 
+def _qwen_vl_audio_decode(self,
+                          *args,
+                          skip_special_tokens=False,
+                          **kwargs) -> str:
+    if skip_special_tokens:
+        token_ids = kwargs['token_ids']
+        while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
+            token_ids.pop()
+        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
+    else:
+        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
+
+
 @register_model(
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
@@ -838,21 +851,9 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
-
-    _old_decode = tokenizer._decode
-
-    def _new_decode(*args, skip_special_tokens=False, **kwargs) -> str:
-        if skip_special_tokens:
-            token_ids = kwargs['token_ids']
-            while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
-                token_ids.pop()
-            return _old_decode(*args, skip_special_tokens=False, **kwargs)
-        else:
-            return _old_decode(*args, skip_special_tokens=False, **kwargs)
-
     if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
-        tokenizer._old_decode = _old_decode
-        tokenizer._decode = _new_decode
+        tokenizer._old_decode = tokenizer._decode
+        tokenizer._decode = MethodType(_qwen_vl_audio_decode, tokenizer)
 
     return model, tokenizer
 
@@ -888,6 +889,10 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
+    if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
+        tokenizer._old_decode = tokenizer._decode
+        tokenizer._decode = MethodType(_qwen_vl_audio_decode, tokenizer)
+
     return model, tokenizer
 
 
