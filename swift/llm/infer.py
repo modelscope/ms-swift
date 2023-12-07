@@ -14,7 +14,8 @@ from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, print_model_info,
                          read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference, inference_stream)
+                    get_template, inference, inference_stream,
+                    set_generation_config)
 
 logger = get_logger()
 
@@ -141,7 +142,7 @@ def prepare_model_template(
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
-    model.generation_config = generation_config
+    set_generation_config(model, generation_config)
     return model, template
 
 

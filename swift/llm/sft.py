@@ -18,8 +18,9 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          seed_everything, show_layers)
 from .utils import (SftArguments, Template, add_self_cognition_dataset,
                     data_collate_fn, dataset_map, find_all_linear_for_lora,
-                    get_dataset, get_model_tokenizer, get_template,
-                    print_example, sort_by_max_length, stat_dataset)
+                    get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, print_example,
+                    set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -182,11 +183,15 @@ def llm_sft(args: SftArguments) -> str:
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
+    set_generation_config(model, generation_config)
     evaluation_strategy = IntervalStrategy.STEPS
     load_best_model_at_end = True
     if val_dataset is None:
         evaluation_strategy = IntervalStrategy.NO
         load_best_model_at_end = False
+    additional_saved_files = []
+    if args.sft_type == 'full':
+        additional_saved_files = get_additional_saved_files(args.model_type)
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
         evaluation_strategy=evaluation_strategy,
@@ -230,7 +235,8 @@ def llm_sft(args: SftArguments) -> str:
         only_save_model=args.only_save_model,
         train_sampler_random=args.train_sampler_random,
         report_to=args.report_to,
-        deepspeed=args.deepspeed)
+        deepspeed=args.deepspeed,
+        additional_saved_files=additional_saved_files)
 
     if args.gradient_checkpointing:
         model.enable_input_require_grads()

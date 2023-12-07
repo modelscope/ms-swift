@@ -8,7 +8,7 @@ from swift.utils import (get_logger, print_model_info, seed_everything,
                          show_layers)
 from ..tuners.rome import RomeConfig
 from .utils import (RomeArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference)
+                    get_template, inference, set_generation_config)
 
 logger = get_logger()
 
@@ -72,7 +72,7 @@ def rome_infer(args: RomeArguments) -> None:
     logger.info(f'generation_config: {generation_config}')
     if args.overwrite_generation_config:
         generation_config.save_pretrained(args.ckpt_dir)
-    model.generation_config = generation_config
+    set_generation_config(model, generation_config)
 
     # Inference
     if args.eval_human:
