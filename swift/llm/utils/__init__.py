@@ -5,9 +5,9 @@ from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       get_dataset_from_repo, load_dataset_from_local,
                       load_ms_dataset, register_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
-                    ModelType, get_default_lora_target_modules,
-                    get_default_template_type, get_model_tokenizer,
-                    get_model_tokenizer_from_repo,
+                    ModelType, get_additional_saved_files,
+                    get_default_lora_target_modules, get_default_template_type,
+                    get_model_tokenizer, get_model_tokenizer_from_repo,
                     get_model_tokenizer_from_sdk, register_model)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,

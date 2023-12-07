@@ -1162,6 +1162,14 @@ def get_model_tokenizer(
     return model, tokenizer
 
 
+def get_additional_saved_files(model_type: str) -> List[str]:
+    if 'qwen-vl' in model_type:
+        return ['SimSun.ttf']
+    elif 'qwen-audio' in model_type:
+        return ['mel_filters.npz']
+    return []
+
+
 def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
 

@@ -411,6 +411,15 @@ class SwiftMixin:
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
+        # additional files
+        additional_files = getattr(self.args, 'additional_saved_files', [])
+        if model_dir is not None:
+            for file in additional_files:
+                src_path = os.path.join(model_dir, file)
+                dst_path = os.path.join(output_dir, file)
+                assert not os.path.exists(dst_path) and os.path.exists(
+                    src_path)
+                shutil.copy(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
         only_save_model = self.args.only_save_model
