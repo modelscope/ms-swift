@@ -236,7 +236,8 @@ def llm_sft(args: SftArguments) -> str:
         train_sampler_random=args.train_sampler_random,
         report_to=args.report_to,
         deepspeed=args.deepspeed,
-        additional_saved_files=additional_saved_files)
+        additional_saved_files=additional_saved_files,
+        save_on_each_node=True)
 
     if args.gradient_checkpointing:
         model.enable_input_require_grads()

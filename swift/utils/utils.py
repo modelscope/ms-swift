@@ -11,6 +11,7 @@ from transformers import HfArgumentParser
 
 from .logger import get_logger
 from .np_utils import stat_array
+from .torch_utils import broadcast_string, is_dist
 
 logger = get_logger()
 
@@ -52,7 +53,8 @@ def add_version_to_work_dir(work_dir: str) -> str:
     """add version"""
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-
+    if is_dist():
+        time = broadcast_string(time)
     work_dir = os.path.join(work_dir, f'v{version}-{time}')
     return work_dir
 

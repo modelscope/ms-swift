@@ -78,6 +78,13 @@ swift sft \
     --dataset blossom-math-zh \
     --output_dir output \
 
+# 使用自己的数据集
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --custom_train_dataset_path chatml.jsonl \
+    --output_dir output \
+
 # 使用DDP
 # Experimental environment: 2 * 3090
 # 2 * 23GB GPU memory
@@ -88,11 +95,26 @@ swift sft \
     --dataset blossom-math-zh \
     --output_dir output \
 
-# 使用自己的数据集
-CUDA_VISIBLE_DEVICES=0 \
+# 多机多卡
+# node0
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NNODES=2 \
+NODE_RANK=0 \
+MASTER_ADDR=127.0.0.1 \
+NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --custom_train_dataset_path chatml.jsonl \
+    --dataset blossom-math-zh \
+    --output_dir output \
+# node1
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NNODES=2 \
+NODE_RANK=1 \
+MASTER_ADDR=xxx.xxx.xxx.xxx \
+NPROC_PER_NODE=4 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset blossom-math-zh \
     --output_dir output \
 ```
 
