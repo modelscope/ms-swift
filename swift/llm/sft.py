@@ -12,10 +12,10 @@ from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
-                         compute_nlg_metrics, get_dist_setting, get_logger,
-                         is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_metrics, print_model_info,
-                         seed_everything, show_layers)
+                         compute_nlg_metrics, freeze_model_parameters,
+                         get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
+                         is_master, plot_images, preprocess_logits_for_metrics,
+                         print_model_info, seed_everything, show_layers)
 from .utils import (SftArguments, Template, add_self_cognition_dataset,
                     data_collate_fn, dataset_map, find_all_linear_for_lora,
                     get_additional_saved_files, get_dataset,
@@ -111,6 +111,11 @@ def llm_sft(args: SftArguments) -> str:
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
+    elif args.sft_type == 'full':
+        if args.freeze_parameters > 0:
+            freeze_model_parameters(model, args.freeze_parameters)
+    else:
+        raise ValueError(f'args.sft_type: {args.sft_type}')
 
     if args.neftune_alpha > 0.001:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
