@@ -322,7 +322,6 @@ output
 
 The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from PEFT, which stores the weights and config of the `default` tuner.
 
-
 ## 🔍 Learn More
 
 - [ModelScope library](https://github.com/modelscope/modelscope/)
