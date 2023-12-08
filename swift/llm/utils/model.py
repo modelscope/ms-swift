@@ -109,7 +109,9 @@ class ModelType:
     mistral_7b_chat = 'mistral-7b-chat'
     # yi
     yi_6b = 'yi-6b'
+    yi_6b_200k = 'yi-6b-200k'
     yi_34b = 'yi-34b'
+    yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
@@ -119,6 +121,8 @@ class ModelType:
     skywork_13b_chat = 'skywork-13b-chat'
     # zephyr
     zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
+    # sus
+    sus_34b_chat = 'sus-34b-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
@@ -146,6 +150,7 @@ class LoRATM(NamedTuple):
     ziya = llama2
     yi = llama2
     bluelm = llama2
+    zephyr = llama2
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -494,22 +499,40 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.sus_34b_chat,
+    'SUSTC/SUS-Chat-34B',
+    LoRATM.yi,
+    TemplateType.sus,
+    support_flash_attn=True)
+@register_model(
     ModelType.openbuddy_zephyr_7b_chat,
     'OpenBuddy/openbuddy-zephyr-7b-v14.1',
-    LoRATM.llama2,
+    LoRATM.zephyr,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.zephyr_7b_beta_chat,
     'modelscope/zephyr-7b-beta',
-    LoRATM.llama2,
+    LoRATM.zephyr,
     TemplateType.zephyr,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
+    ModelType.yi_34b_200k,
+    '01ai/Yi-34B-200K',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yi_6b_200k,
+    '01ai/Yi-6B-200K',
     LoRATM.yi,
     TemplateType.default_generation,
     support_flash_attn=True)
