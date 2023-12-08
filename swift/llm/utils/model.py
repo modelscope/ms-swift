@@ -109,9 +109,9 @@ class ModelType:
     mistral_7b_chat = 'mistral-7b-chat'
     # yi
     yi_6b = 'yi-6b'
-    yi_6b_200k = 'yi_6b_200k'
+    yi_6b_200k = 'yi-6b-200k'
     yi_34b = 'yi-34b'
-    yi_34b_200k = 'yi_34b_200k'
+    yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
