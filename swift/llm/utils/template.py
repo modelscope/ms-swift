@@ -31,6 +31,7 @@ class TemplateType:
     skywork = 'skywork'
     bluelm = 'bluelm'
     zephyr = 'zephyr'
+    sus = 'sus'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -442,6 +443,11 @@ register_template(
     TemplateType.zephyr,
     Template([], ['<|user|>\n{{QUERY}}</s>\n<|assistant|>\n'], ['</s>\n'],
              ['</s>'], None, ['<|system|>\n{{SYSTEM}}</s>\n']))
+
+register_template(
+    TemplateType.sus,
+    Template(['{{SYSTEM}}'], ['### Human: {{QUERY}}\n\n### Assistant: '],
+             ['<|endoftext|>'], ['<|endoftext|>'], ''))
 
 
 def get_template(

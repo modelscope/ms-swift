@@ -109,7 +109,9 @@ class ModelType:
     mistral_7b_chat = 'mistral-7b-chat'
     # yi
     yi_6b = 'yi-6b'
+    yi_6b_200k = 'yi_6b_200k'
     yi_34b = 'yi-34b'
+    yi_34b_200k = 'yi_34b_200k'
     yi_34b_chat = 'yi-34b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
@@ -517,8 +519,20 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
+    ModelType.yi_34b_200k,
+    '01ai/Yi-34B-200K',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yi_6b_200k,
+    '01ai/Yi-6B-200K',
     LoRATM.yi,
     TemplateType.default_generation,
     support_flash_attn=True)
