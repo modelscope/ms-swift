@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 from dataclasses import dataclass, field
+from typing import List, Optional
 
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import \
@@ -20,6 +21,12 @@ class SwiftArgumentsMixin:
         })
     acc_strategy: str = field(
         default='token', metadata={'choices': ['token', 'sentence']})
+    additional_saved_files: Optional[List[str]] = None
+
+    def __post_init__(self):
+        if self.additional_saved_files is None:
+            self.additional_saved_files = []
+        super().__post_init__()
 
 
 @dataclass

@@ -484,6 +484,63 @@ Assistant:""")
             print(f'official response: {response}')
             self.assertTrue(input_ids_swift == input_ids_official)
 
+    @unittest.skipIf(
+        SKPT_TEST,
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_sus_template(self):
+        model_type = ModelType.sus_34b_chat
+        model, tokenizer = get_model_tokenizer(model_type)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        model.generation_config.max_length = 256
+        query = 'hi'
+        print(f'query: {query}')
+        input_ids_swift = template.encode({
+            'query': query,
+            'history': [('你好', '你好呀！')]
+        })['input_ids']
+        response, _ = inference(model, template, query)
+        print(f'swift response: {response}')
+        #
+        messages = [
+            {
+                'role': 'user',
+                'content': '你好'
+            },
+            {
+                'role': 'assistant',
+                'content': '你好呀！<|endoftext|>'
+            },
+            {
+                'role': 'user',
+                'content': query
+            },
+        ]
+
+        def chat_template(messages):
+            history = ''
+            for message in messages:
+                if message['role'] == 'user':
+                    message = message['content']
+                    history += f'### Human: {message}\n\n### Assistant: '
+                elif message['role'] == 'assistant':
+                    message = message['content']
+                    history += message
+            return history
+
+        input_ids_official = tokenizer.encode(
+            chat_template(messages),
+            return_tensors='pt',
+            add_special_tokens=False).to('cuda')
+        output_ids = model.generate(
+            input_ids_official.to('cuda'), max_length=256)
+        response = tokenizer.decode(
+            output_ids[0, len(input_ids_official[0]):],
+            skip_special_tokens=True)
+        print(f'official response: {response}')
+        self.assertTrue(input_ids_swift == input_ids_official[0].tolist())
+
 
 if __name__ == '__main__':
     unittest.main()

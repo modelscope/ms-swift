@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import torch
 from torch import Tensor
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
@@ -30,6 +31,7 @@ class TemplateType:
     skywork = 'skywork'
     bluelm = 'bluelm'
     zephyr = 'zephyr'
+    sus = 'sus'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -131,8 +133,15 @@ def _encode_context_list(
         elif isinstance(context, str):
             if (getattr(tokenizer, 'model_type', '').startswith('qwen-audio')):
                 audio_info = get_audio_info(tokenizer, context=context)
-                assert 'audio_info' not in kwargs
-                kwargs['audio_info'] = audio_info
+                old_audio_info = kwargs.get('audio_info')
+                if old_audio_info is None:
+                    kwargs['audio_info'] = audio_info
+                elif audio_info is not None:
+                    for k in ['input_audios', 'input_audio_lengths']:
+                        old_audio_info[k] = torch.concat(
+                            [old_audio_info[k], audio_info[k]], dim=0)
+                    for k in ['audio_span_tokens', 'audio_urls']:
+                        old_audio_info[k] = old_audio_info[k] + audio_info[k]
             token_list = tokenizer(
                 context,
                 return_attention_mask=False,
@@ -434,6 +443,11 @@ register_template(
     TemplateType.zephyr,
     Template([], ['<|user|>\n{{QUERY}}</s>\n<|assistant|>\n'], ['</s>\n'],
              ['</s>'], None, ['<|system|>\n{{SYSTEM}}</s>\n']))
+
+register_template(
+    TemplateType.sus,
+    Template(['{{SYSTEM}}'], ['### Human: {{QUERY}}\n\n### Assistant: '],
+             ['<|endoftext|>'], ['<|endoftext|>'], ''))
 
 
 def get_template(

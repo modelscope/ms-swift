@@ -5,10 +5,11 @@ from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       get_dataset_from_repo, load_dataset_from_local,
                       load_ms_dataset, register_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
-                    ModelType, get_default_lora_target_modules,
-                    get_default_template_type, get_model_tokenizer,
-                    get_model_tokenizer_from_repo,
-                    get_model_tokenizer_from_sdk, register_model)
+                    ModelType, get_additional_saved_files,
+                    get_default_lora_target_modules, get_default_template_type,
+                    get_model_tokenizer, get_model_tokenizer_from_repo,
+                    get_model_tokenizer_from_sdk,
+                    get_model_tokenizer_with_flash_attn, register_model)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
@@ -19,5 +20,5 @@ from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
 from .utils import (data_collate_fn, dataset_map, download_dataset,
                     find_all_linear_for_lora, history_to_messages, inference,
                     inference_stream, limit_history_length,
-                    messages_to_history, print_example, sort_by_max_length,
-                    stat_dataset)
+                    messages_to_history, print_example, set_generation_config,
+                    sort_by_max_length, stat_dataset)

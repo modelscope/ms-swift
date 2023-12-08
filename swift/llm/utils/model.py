@@ -109,7 +109,9 @@ class ModelType:
     mistral_7b_chat = 'mistral-7b-chat'
     # yi
     yi_6b = 'yi-6b'
+    yi_6b_200k = 'yi-6b-200k'
     yi_34b = 'yi-34b'
+    yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
@@ -119,6 +121,8 @@ class ModelType:
     skywork_13b_chat = 'skywork-13b-chat'
     # zephyr
     zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
+    # sus
+    sus_34b_chat = 'sus-34b-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
@@ -146,6 +150,7 @@ class LoRATM(NamedTuple):
     ziya = llama2
     yi = llama2
     bluelm = llama2
+    zephyr = llama2
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -494,22 +499,40 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.sus_34b_chat,
+    'SUSTC/SUS-Chat-34B',
+    LoRATM.yi,
+    TemplateType.sus,
+    support_flash_attn=True)
+@register_model(
     ModelType.openbuddy_zephyr_7b_chat,
     'OpenBuddy/openbuddy-zephyr-7b-v14.1',
-    LoRATM.llama2,
+    LoRATM.zephyr,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.zephyr_7b_beta_chat,
     'modelscope/zephyr-7b-beta',
-    LoRATM.llama2,
+    LoRATM.zephyr,
     TemplateType.zephyr,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
+    ModelType.yi_34b_200k,
+    '01ai/Yi-34B-200K',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
+    LoRATM.yi,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yi_6b_200k,
+    '01ai/Yi-6B-200K',
     LoRATM.yi,
     TemplateType.default_generation,
     support_flash_attn=True)
@@ -801,6 +824,19 @@ def fix_qwen_inplace_bug(model) -> None:
             first_drop.__old_forward = __old_forward
 
 
+def _qwen_vl_audio_decode(self,
+                          *args,
+                          skip_special_tokens=False,
+                          **kwargs) -> str:
+    if skip_special_tokens:
+        token_ids = kwargs['token_ids']
+        while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
+            token_ids.pop()
+        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
+    else:
+        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
+
+
 @register_model(
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
@@ -827,25 +863,20 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         ]
     get_qwen_function = kwargs.pop('get_qwen_function',
                                    get_model_tokenizer_qwen_chat)
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+        model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
-
-    _old_decode = tokenizer._decode
-
-    def _new_decode(*args, skip_special_tokens=False, **kwargs) -> str:
-        if skip_special_tokens:
-            token_ids = kwargs['token_ids']
-            while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
-                token_ids.pop()
-            return _old_decode(*args, skip_special_tokens=False, **kwargs)
-        else:
-            return _old_decode(*args, skip_special_tokens=False, **kwargs)
-
     if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
-        tokenizer._old_decode = _old_decode
-        tokenizer._decode = _new_decode
+        tokenizer._old_decode = tokenizer._decode
+        tokenizer._decode = MethodType(_qwen_vl_audio_decode, tokenizer)
 
     return model, tokenizer
 
@@ -870,10 +901,21 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
                                    load_model: bool = True,
                                    **kwargs):
     get_qwen_function = kwargs.pop('get_qwen_function')
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+        model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
+    if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
+        tokenizer._old_decode = tokenizer._decode
+        tokenizer._decode = MethodType(_qwen_vl_audio_decode, tokenizer)
+
     return model, tokenizer
 
 
@@ -1146,6 +1188,14 @@ def get_model_tokenizer(
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
     return model, tokenizer
+
+
+def get_additional_saved_files(model_type: str) -> List[str]:
+    if 'qwen-vl' in model_type:
+        return ['SimSun.ttf']
+    elif 'qwen-audio' in model_type:
+        return ['mel_filters.npz']
+    return []
 
 
 def get_default_template_type(model_type: str) -> Optional[str]:

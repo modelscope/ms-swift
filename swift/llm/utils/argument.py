@@ -14,9 +14,8 @@ from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
-from .dataset import (DATASET_MAPPING, DatasetName, get_custom_dataset,
-                      register_dataset)
-from .model import (MODEL_MAPPING, ModelType, dtype_mapping,
+from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset
+from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
 
@@ -149,6 +148,7 @@ class SftArguments:
     check_model_is_latest: bool = True
     acc_strategy: str = field(
         default='token', metadata={'choices': ['token', 'sentence']})
+    save_on_each_node: bool = True
 
     # generation config
     max_new_tokens: int = 2048
@@ -183,11 +183,6 @@ class SftArguments:
                     'For example: `--lora_target_modules ALL`. '
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
-        if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
-            if is_master():
-                self.output_dir = add_version_to_work_dir(self.output_dir)
-                logger.info(f'output_dir: {self.output_dir}')
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         world_size = 1
@@ -201,8 +196,11 @@ class SftArguments:
             # Initialize in advance
             if not dist.is_initialized():
                 dist.init_process_group(backend=self.ddp_backend)
-            # Make sure to set the same output_dir when using DDP.
-            self.output_dir = broadcast_string(self.output_dir)
+
+        if self.add_output_dir_suffix:
+            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            self.output_dir = add_version_to_work_dir(self.output_dir)
+            logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
             assert self.freeze_parameters == 0., (
@@ -275,7 +273,7 @@ class SftArguments:
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
         if self.report_to is None:
-            self.report_to == ['all']
+            self.report_to = ['all']
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
@@ -304,7 +302,7 @@ class InferArguments:
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = True
-    eval_human: bool = False  # False: eval val_dataset
+    eval_human: Optional[bool] = None  # False: eval val_dataset
 
     seed: int = 42
     dtype: str = field(
@@ -348,6 +346,8 @@ class InferArguments:
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
+    # web-ui
+    share: bool = False
     # compatibility
     show_dataset_sample: int = 10
 
@@ -371,17 +371,22 @@ class InferArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if not self.eval_human:
-            if isinstance(self.dataset, str):
-                self.dataset = [self.dataset]
-            elif self.dataset is None:
-                self.dataset = []
-            if len(self.dataset) == 0:
-                if (len(self.custom_train_dataset_path) == 0
-                        and len(self.custom_val_dataset_path) == 0):
-                    raise ValueError(
-                        f'self.dataset: {self.dataset}. Please set `--eval_human true` or `--dataset xxx`'
-                    )
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
+        elif self.dataset is None:
+            self.dataset = []
+        if (len(self.dataset) == 0 and len(self.custom_train_dataset_path) == 0
+                and len(self.custom_val_dataset_path) == 0):
+            if self.eval_human is None:
+                self.eval_human = True
+                logger.info(f'Setting self.eval_human: {self.eval_human}')
+            if not self.eval_human:
+                raise ValueError(
+                    f'self.dataset: {self.dataset}. Please set `--eval_human true` or `--dataset xxx`'
+                )
+        elif self.eval_human is None:
+            self.eval_human = False
+            logger.info(f'Setting self.eval_human: {self.eval_human}')
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
@@ -423,6 +428,18 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    if not torch.cuda.is_available():
+        if args.dtype == 'AUTO':
+            args.dtype = 'fp32'
+            logger.info(f'Setting args.dtype: {args.dtype}')
+        assert args.dtype != 'fp16', 'The CPU does not support matrix multiplication with FP16.'
+        if args.dtype == 'fp32':
+            return torch.float32, False, False
+        elif args.dtype == 'bf16':
+            return torch.bfloat16, False, True
+        else:
+            raise ValueError(f'args.dtype: {args.dtype}')
+
     if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
         args.dtype = 'fp16'
     if args.dtype == 'AUTO' and ('int4' in args.model_type
@@ -438,8 +455,13 @@ def select_dtype(
     assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
     if torch_dtype == torch.float16:
         if isinstance(args, SftArguments) and args.sft_type == 'full':
+            args.dtype = 'fp32'
             torch_dtype = torch.float32
-            logger.warning('Setting torch_dtype: torch.float32')
+            logger.warning(
+                'Fine-tuning with full parameters does not support fp16, and is prone to NaN. '
+                'We will use the fp32 & AMP approach, which consumes approximately twice the memory of bf16.'
+            )
+            logger.info(f'Setting torch_dtype: {torch_dtype}')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
         support_bf16 = torch.cuda.is_bf16_supported()
