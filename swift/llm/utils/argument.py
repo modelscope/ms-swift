@@ -145,6 +145,7 @@ class SftArguments:
     logging_dir: Optional[str] = None
     report_to: Optional[List[str]] = None
     check_model_is_latest: bool = True
+    save_on_each_node: bool = True
 
     # generation config
     max_new_tokens: int = 2048
@@ -179,11 +180,6 @@ class SftArguments:
                     'For example: `--lora_target_modules ALL`. '
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
-        if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
-            if is_master():
-                self.output_dir = add_version_to_work_dir(self.output_dir)
-                logger.info(f'output_dir: {self.output_dir}')
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         world_size = 1
@@ -197,8 +193,11 @@ class SftArguments:
             # Initialize in advance
             if not dist.is_initialized():
                 dist.init_process_group(backend=self.ddp_backend)
-            # Make sure to set the same output_dir when using DDP.
-            self.output_dir = broadcast_string(self.output_dir)
+
+        if self.add_output_dir_suffix:
+            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            self.output_dir = add_version_to_work_dir(self.output_dir)
+            logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
             if 'int4' in self.model_type or 'int8' in self.model_type:
