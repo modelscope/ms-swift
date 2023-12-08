@@ -548,7 +548,7 @@ def set_generation_config(model: Module,
         for k, v in old_generation_config.__dict__.items():
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)
-    model.geneartion_config = generation_config
+    model.generation_config = generation_config
 
 
 # monkey patching
