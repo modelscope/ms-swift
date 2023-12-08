@@ -419,25 +419,13 @@ class RomeArguments(InferArguments):
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 
-def cpu_support_bf16() -> bool:
-    try:
-        x = torch.tensor([[1.]], dtype=torch.bfloat16)
-        print(x @ x)
-    except Exception:
-        return False
-    return True
-
-
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
     if not torch.cuda.is_available():
         if args.dtype == 'AUTO':
-            if cpu_support_bf16():
-                args.dtype = 'bf16'
-            else:
-                args.dtype = 'fp32'
-            logger.info(f'args.dtype: {args.dtype}')
-        assert args.dtype != 'fp16'
+            args.dtype = 'fp32'
+            logger.info(f'Setting args.dtype: {args.dtype}')
+        assert args.dtype != 'fp16', 'The CPU does not support matrix multiplication with FP16.'
         if args.dtype == 'fp32':
             return torch.float32, False, False
         elif args.dtype == 'bf16':
