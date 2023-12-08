@@ -339,6 +339,8 @@ class InferArguments:
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
+    # web-ui
+    share: bool = False
     # compatibility
     show_dataset_sample: int = 10
 
