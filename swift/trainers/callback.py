@@ -4,8 +4,8 @@ import os
 import json
 from tqdm.auto import tqdm
 from transformers.trainer_callback import (DefaultFlowCallback,
-                                           ProgressCallback, TrainerControl,
-                                           TrainerState)
+                                           ProgressCallback, TrainerCallback,
+                                           TrainerControl, TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
 from swift.trainers import TrainingArguments
@@ -60,3 +60,20 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
                 control.should_evaluate = True
             control.should_save = True
         return control
+
+
+class PrinterCallbackNew(TrainerCallback):
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        logs['global_step'] = state.global_step
+        for k, v in logs.items():
+            if isinstance(v, float):
+                logs[k] = round(logs[k], 8)
+        if state.is_local_process_zero:
+            jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
+            with open(jsonl_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(logs) + '\n')
+
+        _ = logs.pop('total_flos', None)
+        if state.is_local_process_zero:
+            print(logs, flush=True)

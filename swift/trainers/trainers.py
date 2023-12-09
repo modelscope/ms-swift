@@ -10,7 +10,8 @@ from transformers import Trainer as HfTrainer
 from transformers import trainer
 
 from swift.utils import lower_bound
-from .callback import DefaultFlowCallbackNew, ProgressCallbackNew
+from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
+                       ProgressCallbackNew)
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 try:
@@ -197,3 +198,4 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew

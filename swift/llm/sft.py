@@ -242,6 +242,7 @@ def llm_sft(args: SftArguments) -> str:
         report_to=args.report_to,
         deepspeed=args.deepspeed,
         additional_saved_files=additional_saved_files,
+        disable_tqdm=args.disable_tqdm,
         save_on_each_node=args.save_on_each_node)
 
     if args.gradient_checkpointing:
@@ -290,7 +291,7 @@ def llm_sft(args: SftArguments) -> str:
                     ensure_ascii=False,
                     indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
-    logger.info(f'The training log files will be saved in: {logging_path}')
+    logger.info(f'The logging file will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)
