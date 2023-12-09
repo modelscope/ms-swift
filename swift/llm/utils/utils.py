@@ -178,6 +178,20 @@ class LLMDataset(Dataset):
         return len(self.data)
 
 
+class LazyLLMDataset(Dataset):
+
+    def __init__(self, dataset: HfDataset, template: Template) -> None:
+        self.dataset = dataset
+        self.template = template
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        data = self.dataset[idx]
+        return self.template.encode(data)
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+
 def dataset_map(
     dataset: HfDataset, map_func: Callable[[Dict[str, Any]],
                                            Dict[str, Optional[List[int]]]]

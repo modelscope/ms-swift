@@ -142,6 +142,7 @@ class SftArguments:
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
     disable_tqdm: bool = False
+    lazy_tokenize: bool = False
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
