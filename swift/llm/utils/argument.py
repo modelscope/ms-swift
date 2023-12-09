@@ -339,6 +339,8 @@ class InferArguments:
     merge_lora_and_save: bool = False
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
+    # web-ui
+    share: bool = False
     # compatibility
     show_dataset_sample: int = 10
 
@@ -419,6 +421,18 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    if not torch.cuda.is_available():
+        if args.dtype == 'AUTO':
+            args.dtype = 'fp32'
+            logger.info(f'Setting args.dtype: {args.dtype}')
+        assert args.dtype != 'fp16', 'The CPU does not support matrix multiplication with FP16.'
+        if args.dtype == 'fp32':
+            return torch.float32, False, False
+        elif args.dtype == 'bf16':
+            return torch.bfloat16, False, True
+        else:
+            raise ValueError(f'args.dtype: {args.dtype}')
+
     if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
         args.dtype = 'fp16'
     if args.dtype == 'AUTO' and ('int4' in args.model_type
