@@ -841,7 +841,7 @@ register_dataset(
     tags=['chat', 'multilingual', 'general'])
 register_dataset(
     DatasetName.open_orca,
-    'AI-ModelScope/OpenOrca', ['3_5M', 'train'],
+    'AI-ModelScope/OpenOrca', [['3_5M', 'train']],
     None,
     RenameColumnsPreprocessor({'question': 'query'}),
     get_dataset_from_repo,
