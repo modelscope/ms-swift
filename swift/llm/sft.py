@@ -12,10 +12,10 @@ from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
-                         compute_nlg_metrics, get_dist_setting, get_logger,
-                         is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_metrics, print_model_info,
-                         seed_everything, show_layers)
+                         compute_nlg_metrics, freeze_model_parameters,
+                         get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
+                         is_master, plot_images, preprocess_logits_for_metrics,
+                         print_model_info, seed_everything, show_layers)
 from .utils import (SftArguments, Template, add_self_cognition_dataset,
                     data_collate_fn, dataset_map, find_all_linear_for_lora,
                     get_additional_saved_files, get_dataset,
@@ -111,6 +111,11 @@ def llm_sft(args: SftArguments) -> str:
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
+    elif args.sft_type == 'full':
+        if args.freeze_parameters > 0:
+            freeze_model_parameters(model, args.freeze_parameters)
+    else:
+        raise ValueError(f'args.sft_type: {args.sft_type}')
 
     if args.neftune_alpha > 0.001:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
@@ -237,6 +242,7 @@ def llm_sft(args: SftArguments) -> str:
         report_to=args.report_to,
         deepspeed=args.deepspeed,
         additional_saved_files=additional_saved_files,
+        disable_tqdm=args.disable_tqdm,
         save_on_each_node=args.save_on_each_node)
 
     if args.gradient_checkpointing:
@@ -277,13 +283,15 @@ def llm_sft(args: SftArguments) -> str:
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
+            logger.info(f'Save {args_obj.__class__.__name__} to file: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),
                     f,
                     ensure_ascii=False,
                     indent=2)
-
+    logging_path = os.path.join(args.output_dir, 'logging.jsonl')
+    logger.info(f'The logging file will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)

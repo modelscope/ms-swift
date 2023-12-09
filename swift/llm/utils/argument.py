@@ -35,6 +35,7 @@ class SftArguments:
     sft_type: str = field(
         default='lora',
         metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
+    freeze_parameters: float = 0.  # 0 ~ 1
     tuner_backend: str = field(
         default='swift', metadata={'choices': ['swift', 'peft']})
     template_type: str = field(
@@ -140,6 +141,7 @@ class SftArguments:
             'If set to True, the train_dataset will be sorted in descending order based on max_length, '
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
+    disable_tqdm: bool = False
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
@@ -200,6 +202,9 @@ class SftArguments:
             logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
+            assert self.freeze_parameters == 0., (
+                'lora does not support `freeze_parameters`, please set `--sft_type full`'
+            )
             if 'int4' in self.model_type or 'int8' in self.model_type:
                 assert self.quantization_bit == 0
             if self.learning_rate is None:
@@ -210,6 +215,7 @@ class SftArguments:
                 else:
                     self.only_save_model = True
         elif self.sft_type == 'full':
+            assert 0 <= self.freeze_parameters < 1
             assert self.quantization_bit == 0, 'not supported'
             assert self.dtype != 'fp16', 'please use bf16 or fp32'
             if self.learning_rate is None:
