@@ -1,5 +1,5 @@
 import ast
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Literal, Optional
 
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
@@ -71,7 +71,8 @@ class ConversationsPreprocessor:
                  from_key: str = 'from',
                  value_key: str = 'value',
                  repair_conversations: Callable[[str], Optional[Dict[
-                     str, str]]] = _default_repair_conversations):
+                     str, str]]] = _default_repair_conversations,
+                 error_strategy: Literal['delete', 'raise'] = 'raise'):
         self.user_role = user_role
         self.assistant_role = assistant_role
         self.system_role = system_role
@@ -79,6 +80,7 @@ class ConversationsPreprocessor:
         self.from_key = from_key
         self.value_key = value_key
         self.repair_conversations = repair_conversations
+        self.error_strategy = error_strategy
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
         query: List[str] = []
@@ -89,30 +91,35 @@ class ConversationsPreprocessor:
         has_history = False
 
         for d in tqdm(dataset):
-            conversations = d[self.conversations_key]
-            conversations = self.repair_conversations(conversations)
-            if conversations is None:
-                continue
-            lo = 0
-            sys = None
-            h: History = []
-            if conversations[0][self.from_key] == self.system_role:
-                has_system = True
-                lo += 1
-                sys = conversations[0][self.value_key]
-            assert conversations[-2][self.from_key] == self.user_role
-            assert conversations[-1][self.from_key] == self.assistant_role
-            query.append(conversations[-2][self.value_key])
-            response.append(conversations[-1][self.value_key])
-            system.append(sys)
-            for q, r in zip(conversations[lo:-2:2],
-                            conversations[lo + 1:-2:2]):
-                assert q[self.from_key] == self.user_role
-                assert r[self.from_key] == self.assistant_role
-                h.append([q[self.value_key], r[self.value_key]])
-            history.append(h)
-            if len(h) > 0:
-                has_history = True
+            try:
+                conversations = d[self.conversations_key]
+                conversations = self.repair_conversations(conversations)
+                if conversations is None:
+                    continue
+                lo = 0
+                sys = None
+                h: History = []
+                if conversations[0][self.from_key] == self.system_role:
+                    has_system = True
+                    lo += 1
+                    sys = conversations[0][self.value_key]
+                assert conversations[-2][self.from_key] == self.user_role
+                assert conversations[-1][self.from_key] == self.assistant_role
+
+                for q, r in zip(conversations[lo:-2:2],
+                                conversations[lo + 1:-2:2]):
+                    assert q[self.from_key] == self.user_role
+                    assert r[self.from_key] == self.assistant_role
+                    h.append([q[self.value_key], r[self.value_key]])
+                if len(h) > 0:
+                    has_history = True
+                query.append(conversations[-2][self.value_key])
+                response.append(conversations[-1][self.value_key])
+                system.append(sys)
+                history.append(h)
+            except AssertionError:
+                if self.error_strategy == 'raise':
+                    raise ValueError(f'conversations: {conversations}')
         kwargs = {}
         if has_system:
             kwargs['system'] = system

@@ -318,15 +318,20 @@ class Template:
                        self.truncation_strategy)
 
 
-TEMPLATE_MAPPING: Dict[str, Template] = {}
+TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
-def register_template(template_type: str, template: Template) -> None:
-    if template_type in TEMPLATE_MAPPING:
+def register_template(template_type: str,
+                      template: Template,
+                      *,
+                      exists_ok: bool = False,
+                      **kwargs) -> None:
+    if not exists_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(
             f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.'
         )
-    TEMPLATE_MAPPING[template_type] = template
+    template_info = {'template': template, **kwargs}
+    TEMPLATE_MAPPING[template_type] = template_info
 
 
 register_template(
@@ -457,7 +462,8 @@ def get_template(
     max_length: Optional[int] = None,
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
 ) -> Template:
-    template = deepcopy(TEMPLATE_MAPPING[template_type])
+    template_info = TEMPLATE_MAPPING[template_type]
+    template = deepcopy(template_info['template'])
     template._init_template(tokenizer, default_system, max_length,
                             truncation_strategy)
     template.template_type = template_type
