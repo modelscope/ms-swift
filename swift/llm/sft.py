@@ -282,13 +282,15 @@ def llm_sft(args: SftArguments) -> str:
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
+            logger.info(f'Save {args_obj.__class__.__name__} to file: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),
                     f,
                     ensure_ascii=False,
                     indent=2)
-
+    logging_path = os.path.join(args.output_dir, 'logging.jsonl')
+    logger.info(f'The training log files will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)
