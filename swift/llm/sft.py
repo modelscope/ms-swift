@@ -291,7 +291,8 @@ def llm_sft(args: SftArguments) -> str:
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
-            logger.info(f'Save {args_obj.__class__.__name__} to file: {fpath}')
+            logger.info(
+                f'The {args_obj.__class__.__name__} will be saved in: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(
                     check_json_format(args_obj.__dict__),

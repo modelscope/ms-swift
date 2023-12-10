@@ -210,10 +210,10 @@ def _single_map(d: Dict[str, Any],
     return d
 
 
-def _map_mp_s(subset: HfDataset, map_func: MapFunc, queue: Queue,
-              start_idx: int):
+def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue,
+                   start_idx: int):
     for i, d in enumerate(subset, start=start_idx):
-        queue.put((i, map_func(d)))
+        queue.put((i, map_func(d)))  # idx, result
 
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc,
@@ -227,22 +227,22 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc,
             subset = dataset.select(range(split_idx[i], split_idx[i + 1]))
             async_results.append(
                 pool.apply_async(
-                    _map_mp_s, args=(subset, map_func, queue, split_idx[i])))
-        try:
-            while True:
-                try:
-                    yield queue.get(timeout=0.05)
-                except Empty:
-                    if all(async_result.ready() for async_result in
-                           async_results) and queue.empty():
-                        break
-        finally:
-            [async_result.get(timeout=0.05) for async_result in async_results]
+                    _map_mp_single,
+                    args=(subset, map_func, queue, split_idx[i])))
+        while True:
+            try:
+                yield queue.get(timeout=0.05)
+            except Empty:
+                if all(async_result.ready()
+                       for async_result in async_results) and queue.empty():
+                    break
 
 
 def _map_mp(dataset: HfDataset, map_func: MapFunc,
             num_proc: int) -> List[Dict[str, Any]]:
+    # Solving the unordered problem
     data = [None] * len(dataset)
+    num_proc = min(num_proc, len(dataset))
     for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset)):
         data[d[0]] = d[1]
     return data
