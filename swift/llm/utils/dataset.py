@@ -56,6 +56,11 @@ class DatasetName:
     gpt4all_en = 'gpt4all-en'
     sharegpt_en = 'sharegpt-en'
     sharegpt_zh = 'sharegpt-zh'
+    tutu_v2_sft_mixture = 'tutu-v2-sft-mixture'
+    wikipedia_zh = 'wikipedia-zh'
+    open_orca = 'open-orca'
+    open_orca_gpt4 = 'open-orca-gpt4'
+    sharegpt_gpt4 = 'sharegpt-gpt4'
     # agent
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
@@ -75,6 +80,7 @@ class DatasetName:
     # math
     blossom_math_zh = 'blossom-math-zh'
     school_math_zh = 'school-math-zh'
+    open_platypus_en = 'open-platypus-en'
     # sql
     text2sql_en = 'text2sql-en'
     sql_create_context_en = 'sql-create-context-en'
@@ -87,9 +93,12 @@ class DatasetName:
     jd_sentiment_zh = 'jd-sentiment-zh'
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
-    # other (e.g. example dataset for specific model)
+    # other
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
+    webnovel_zh = 'webnovel-zh'
+    generated_chat_zh = 'generated-chat-zh'
+    # example dataset for specific model
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
 
@@ -107,13 +116,16 @@ def register_dataset(
         dataset_id_or_path: str,
         train_subset_split_list: Optional[List[SubsetSplit]] = None,
         val_subset_split_list: Optional[List[SubsetSplit]] = None,
-        preprocess_func: Optional[PreprocessFunc] = SmartPreprocessor(),
+        preprocess_func: Optional[PreprocessFunc] = None,
         get_function: Optional[GetDatasetFunction] = None,
         *,
         function_kwargs: Optional[Dict[str, Any]] = None,
+        exists_ok: bool = False,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
-    if dataset_name in DATASET_MAPPING:
+    if preprocess_func is None:
+        preprocess_func = SmartPreprocessor()
+    if not exists_ok and dataset_name in DATASET_MAPPING:
         raise ValueError(
             f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
         )
@@ -237,9 +249,9 @@ register_dataset(
     'damo/nlp_polylm_multialpaca_sft',
     [(subset, 'train') for subset in _multi_alpaca_subset_list],
     None,
-    SmartPreprocessor(),
+    None,
     get_dataset_from_repo,
-    tags=['chat', 'general'],
+    tags=['chat', 'general', 'multilingual'],
     help="""language_list
     Language-key	Language	# examples
     ar	Arabic	14,671
@@ -438,7 +450,7 @@ register_dataset(
     'modelscope/chinese-poetry-collection', ['train'], ['test'],
     RenameColumnsPreprocessor({'text1': 'response'}),
     get_dataset_from_repo,
-    tags=['text-generation', 'other'])
+    tags=['text-generation', 'poetry'])
 
 register_dataset(
     DatasetName.instruct_en,
@@ -787,6 +799,62 @@ register_dataset(
     _preprocess_hc3,
     get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'])
+
+register_dataset(
+    DatasetName.tutu_v2_sft_mixture,
+    'AI-ModelScope/tulu-v2-sft-mixture', ['train'], [],
+    None,
+    get_dataset_from_repo,
+    tag=['chat', 'multilingual', 'general', 'multi-round'])
+register_dataset(
+    DatasetName.webnovel_zh,
+    'AI-ModelScope/webnovel_cn', ['train'], [],
+    None,
+    get_dataset_from_repo,
+    tags=['chat', 'novel'])
+register_dataset(
+    DatasetName.generated_chat_zh,
+    'AI-ModelScope/generated_chat_0.4M', ['train'], [],
+    None,
+    get_dataset_from_repo,
+    tags=['chat', 'character-dialogue'])
+register_dataset(
+    DatasetName.wikipedia_zh,
+    'AI-ModelScope/wikipedia-cn-20230720-filtered', ['train'],
+    None,
+    RenameColumnsPreprocessor({'completion': 'response'}),
+    get_dataset_from_repo,
+    tags=['text-generation', 'general', 'pretrained'])
+register_dataset(
+    DatasetName.open_platypus_en,
+    'AI-ModelScope/Open-Platypus', ['train'],
+    None,
+    None,
+    get_dataset_from_repo,
+    tags=['chat', 'math'])
+register_dataset(
+    DatasetName.open_orca_gpt4,
+    'AI-ModelScope/OpenOrca', ['train'],
+    None,
+    RenameColumnsPreprocessor({'question': 'query'}),
+    get_dataset_from_repo,
+    tags=['chat', 'multilingual', 'general'])
+register_dataset(
+    DatasetName.open_orca,
+    'AI-ModelScope/OpenOrca', [['3_5M', 'train']],
+    None,
+    RenameColumnsPreprocessor({'question': 'query'}),
+    get_dataset_from_repo,
+    tags=['chat', 'multilingual', 'general'])
+register_dataset(
+    DatasetName.sharegpt_gpt4,
+    'AI-ModelScope/sharegpt_gpt4',
+    [[subset, 'train']
+     for subset in ['default', 'V3_format', 'zh_38K_format']],
+    None,
+    ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'multilingual', 'general', 'multi-round'])
 
 
 def add_self_cognition_dataset(
