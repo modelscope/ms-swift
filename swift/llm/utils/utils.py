@@ -2,9 +2,13 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import heapq
 import logging
+import multiprocessing
 import os
 import shutil
+import time
 from functools import wraps
+from multiprocessing.pool import AsyncResult
+from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
                     TypeVar, Union)
@@ -178,29 +182,88 @@ class LLMDataset(Dataset):
         return len(self.data)
 
 
-def dataset_map(
-    dataset: HfDataset, map_func: Callable[[Dict[str, Any]],
-                                           Dict[str, Optional[List[int]]]]
-) -> LLMDataset:
-    # faster than dataset.map
-    data = []
-    for d in tqdm(dataset):
-        d = map_func(d)
-        if d is None or d.get('input_ids') is None:
-            continue
-        audio_info = d.get('audio_info')
-        if audio_info is not None:
-            audio_info.pop('input_audios', None)
-        data.append(d)
+class LazyLLMDataset(Dataset):
+
+    def __init__(self, dataset: HfDataset, template: Template) -> None:
+        self.dataset = dataset
+        self.template = template
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        data = self.dataset[idx]
+        return self.template.encode(data)
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+
+MapFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
+
+
+def _single_map(d: Dict[str, Any],
+                map_func: MapFunc) -> Optional[Dict[str, Any]]:
+    d = map_func(d)
+    if d is None or d.get('input_ids') is None:
+        return None
+    audio_info = d.get('audio_info')
+    if audio_info is not None:
+        audio_info.pop('input_audios', None)
+    return d
+
+
+def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue,
+                   start_idx: int):
+    for i, d in enumerate(subset, start=start_idx):
+        queue.put((i, map_func(d)))  # idx, result
+
+
+def _map_mp_i(dataset: HfDataset, map_func: MapFunc,
+              num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
+    with multiprocessing.Pool(
+            num_proc) as pool, multiprocessing.Manager() as manager:
+        queue = manager.Queue()
+        async_results: List[AsyncResult] = []
+        split_idx = np.linspace(0, len(dataset), num_proc + 1, dtype=np.int32)
+        for i in range(num_proc):
+            subset = dataset.select(range(split_idx[i], split_idx[i + 1]))
+            async_results.append(
+                pool.apply_async(
+                    _map_mp_single,
+                    args=(subset, map_func, queue, split_idx[i])))
+        while True:
+            try:
+                yield queue.get(timeout=0.05)
+            except Empty:
+                if all(async_result.ready()
+                       for async_result in async_results) and queue.empty():
+                    break
+
+
+def _map_mp(dataset: HfDataset, map_func: MapFunc,
+            num_proc: int) -> List[Dict[str, Any]]:
+    # Solving the unordered problem
+    data = [None] * len(dataset)
+    num_proc = min(num_proc, len(dataset))
+    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset)):
+        data[d[0]] = d[1]
+    return data
+
+
+def dataset_map(dataset: HfDataset,
+                map_func: MapFunc,
+                num_proc: int = 1) -> LLMDataset:
+    if num_proc == 1:
+        data = []
+        for d in tqdm(dataset):
+            d = _single_map(d, map_func)
+            data.append(d)
+    else:
+        assert num_proc > 1
+        data = _map_mp(dataset, map_func, num_proc)
+    data = [d for d in data if d is not None]
     if len(data) == 0:
         logger.info('len(dataset): 0')
         return None
     return LLMDataset(data)
-
-
-_TArgsClass = TypeVar('_TArgsClass')
-_T = TypeVar('_T')
-NoneType = type(None)
 
 
 def stat_dataset(llm_dataset: HfDataset) -> None:
