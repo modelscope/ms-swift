@@ -170,10 +170,11 @@ def register_model(
     revision: str = 'master',
     ignore_file_pattern: Optional[List[str]] = None,
     function_kwargs: Optional[Dict[str, Any]] = None,
+    exists_ok: bool = False,
     **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
                        GetModelTokenizerFunction]]:
-    if model_type in MODEL_MAPPING:
+    if not exists_ok and model_type in MODEL_MAPPING:
         raise ValueError(
             f'The `{model_type}` has already been registered in the MODEL_MAPPING.'
         )
