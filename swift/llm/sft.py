@@ -243,7 +243,8 @@ def llm_sft(args: SftArguments) -> str:
         deepspeed=args.deepspeed,
         additional_saved_files=additional_saved_files,
         disable_tqdm=args.disable_tqdm,
-        save_on_each_node=args.save_on_each_node)
+        save_on_each_node=args.save_on_each_node,
+        acc_strategy=args.acc_strategy)
 
     if args.gradient_checkpointing:
         model.enable_input_require_grads()
@@ -264,7 +265,9 @@ def llm_sft(args: SftArguments) -> str:
         trainer_kwargs['compute_metrics'] = partial(
             compute_nlg_metrics, tokenizer=tokenizer)
     else:
-        trainer_kwargs['compute_metrics'] = compute_acc_metrics
+        compute_metrics = partial(
+            compute_acc_metrics, acc_strategy=args.acc_strategy)
+        trainer_kwargs['compute_metrics'] = compute_metrics
         trainer_kwargs[
             'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
