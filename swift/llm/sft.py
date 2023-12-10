@@ -164,9 +164,12 @@ def llm_sft(args: SftArguments) -> str:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     if not args.lazy_tokenize:
-        train_dataset = dataset_map(train_dataset, template.encode)
+        logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        train_dataset = dataset_map(train_dataset, template.encode,
+                                    args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode)
+            val_dataset = dataset_map(val_dataset, template.encode,
+                                      args.preprocess_num_proc)
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis

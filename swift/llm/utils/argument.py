@@ -143,6 +143,7 @@ class SftArguments:
         })
     disable_tqdm: bool = False
     lazy_tokenize: bool = False
+    preprocess_num_proc: int = 1
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     logging_dir: Optional[str] = None
@@ -277,6 +278,17 @@ class SftArguments:
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
+        if self.preprocess_num_proc > 1 and 'qwen-audio' in self.model_type:
+            logger.warning(
+                'qwen-audio does not support multi-process preprocess, '
+                'because qwen-audio\'s preprocessing functions use torch\'s multi-processing, '
+                'which causes compatibility issues. '
+                'You can use `--lazy_tokenize true` to avoid long preprocessing times.'
+            )
+            self.preprocess_num_proc = 1
+            logger.info(
+                f'Setting self.preprocess_num_proc: {self.preprocess_num_proc}'
+            )
 
 
 @dataclass

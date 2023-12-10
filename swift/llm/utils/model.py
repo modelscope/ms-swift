@@ -868,15 +868,15 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
+    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
         model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
-    if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
-        tokenizer._old_decode = tokenizer._decode
-        tokenizer._decode = MethodType(_qwen_vl_audio_decode, tokenizer)
 
     return model, tokenizer
 
@@ -906,15 +906,15 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
+    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
         model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
-    if not hasattr(tokenizer, '_old_decode'):  # avoid double patching
-        tokenizer._old_decode = tokenizer._decode
-        tokenizer._decode = MethodType(_qwen_vl_audio_decode, tokenizer)
 
     return model, tokenizer
 
