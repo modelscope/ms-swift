@@ -13,3 +13,4 @@ swift sft \
     --use_flash_attn true \
     --only_save_model true \
     --dataset codefuse-evol-instruction-zh \
+    --preprocess_num_proc 4 \
