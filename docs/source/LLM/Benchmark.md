@@ -1,4 +1,15 @@
 # Benchmark
+## 目录
+- [参数设置](#参数设置)
+- [量化](#量化)
+- [Max Length](#max-length)
+- [Batch Size](#batch-size)
+- [Use Flash Attn & Gradient Checkpointing](#use-flash-attn--gradient-checkpointing)
+- [Model Type](#model-type)
+- [LoRA Rank & LoRA Target Modules](#lora-rank--lora-target-modules)
+
+## 参数设置
+
 测试参数对于训练速度和训练内存使用的影响. 后续会补充部分参数对训练效果的影响.
 
 实验环境:
