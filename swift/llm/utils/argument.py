@@ -152,6 +152,8 @@ class SftArguments:
     acc_strategy: str = field(
         default='token', metadata={'choices': ['token', 'sentence']})
     save_on_each_node: bool = True
+    save_strategy: str = field(
+        default='steps', metadata={'choices': ['steps', 'no']})
 
     # generation config
     max_new_tokens: int = 2048

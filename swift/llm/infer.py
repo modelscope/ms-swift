@@ -11,7 +11,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from swift.tuners import Swift
-from swift.utils import (append_to_jsonl, get_logger, print_model_info,
+from swift.utils import (append_to_jsonl, get_logger, get_model_info,
                          read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference, inference_stream,
@@ -124,7 +124,7 @@ def prepare_model_template(
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
 
-    print_model_info(model)
+    logger.info(get_model_info(model))
     show_layers(model)
 
     template: Template = get_template(args.template_type, tokenizer,
