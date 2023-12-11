@@ -8,7 +8,9 @@
 - flash_attn 2.3.4
 
 
-我们使用了1000条训练数据集进行基准测试. 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`. 以下为所有实验的相同命令行设置部分:
+我们使用了1000条训练数据集进行基准测试. 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
+
+以下为所有实验的相同命令行设置部分:
 ```bash
     --dataset_test_ratio 0 \
     --dataset cls-fudan-news-zh \
@@ -21,9 +23,6 @@
 
 
 ## 量化
-
-我们使用LoRA, 使用qwen模型, 但使用不同的量化方法:
-
 测试脚本为:
 ```bash
 swift sft \
@@ -106,9 +105,7 @@ swift sft \
 </table>
 
 ## Max Length
-
-我们使用全参数微调, 使用qwen模型, 但使用不同的max_length:
-
+### Full
 测试脚本为:
 ```bash
 swift sft \
@@ -185,9 +182,7 @@ swift sft \
     </tr>
 </table>
 
-
-我们使用LoRA, 使用qwen模型, 但使用不同的max_length:
-
+### LoRA
 测试脚本为:
 ```bash
 swift sft \
@@ -286,9 +281,6 @@ swift sft \
 
 
 ## Batch Size
-
-我们使用LoRA, 使用qwen-7b-chat, 但使用不同的batch_size:
-
 测试脚本为:
 ```bash
 swift sft \
@@ -329,9 +321,6 @@ swift sft \
 </table>
 
 ## Use Flash Attn & Gradient Checkpointing
-
-我们使用LoRA, 使用qwen-7b-chat, 但是选择是否开启flash attn和gradient_checkpointing:
-
 测试脚本为:
 ```bash
 swift sft \
@@ -378,9 +367,6 @@ swift sft \
 </table>
 
 ## Model Type
-
-我们使用LoRA, 使用不同的model_type:
-
 测试脚本为:
 ```bash
 swift sft \
@@ -443,9 +429,6 @@ swift sft \
 </table>
 
 ## LoRA Rank & LoRA Target Modules
-
-我们使用LoRA, 使用qwen-7b-chat, 但是使用不同的lora_rank和lora_target_modules:
-
 测试脚本为:
 ```bash
 swift sft \
