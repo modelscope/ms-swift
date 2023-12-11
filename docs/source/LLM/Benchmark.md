@@ -5,18 +5,18 @@
 - CUDA 11.8
 - python 3.10
 - torch 2.1.1
-- Flash Attn 2.3.4
+- flash_attn 2.3.4
 
 
 我们使用了1000条训练数据集进行基准测试. 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`. 以下为所有实验的相同命令行设置部分:
 ```bash
-	--dataset_test_ratio 0 \
-	--dataset cls-fudan-news-zh \
-	--train_dataset_sample 1000 \
-	--save_strategy no \
-	--check_dataset_strategy warning \
-	--truncation_strategy truncation_left \
-	--preprocess_num_proc 4 \
+    --dataset_test_ratio 0 \
+    --dataset cls-fudan-news-zh \
+    --train_dataset_sample 1000 \
+    --save_strategy no \
+    --check_dataset_strategy warning \
+    --truncation_strategy truncation_left \
+    --preprocess_num_proc 4 \
 ```
 
 
@@ -27,13 +27,9 @@
 测试脚本为:
 ```bash
 swift sft \
-	--model_type {MODEL_TYPE} \
-	--quantization_bit {QUANTIZATION_BIT} \
-	--sft_type lora \
-	--lora_target_modules DEFAULT \
-	--lora_rank 8 \
-	--use_flash_attn true \
-	--batch_size 1 \
+    --model_type {MODEL_TYPE} \
+    --quantization_bit {QUANTIZATION_BIT} \
+    --sft_type lora \
     ...
 ```
 
@@ -116,11 +112,9 @@ swift sft \
 测试脚本为:
 ```bash
 swift sft \
-	--model_type {MODEL_TYPE} \
-	--max_length {MAX_LENGTH} \
-	--sft_type full \
-	--use_flash_attn true \
-	--batch_size 1 \
+    --model_type {MODEL_TYPE} \
+    --max_length {MAX_LENGTH} \
+    --sft_type full \
     ...
 ```
 
@@ -197,11 +191,9 @@ swift sft \
 测试脚本为:
 ```bash
 swift sft \
-	--model_type {MODEL_TYPE} \
-	--max_length {MAX_LENGTH} \
-	--sft_type lora \
-	--use_flash_attn true \
-	--batch_size 1 \
+    --model_type {MODEL_TYPE} \
+    --max_length {MAX_LENGTH} \
+    --sft_type lora \
     ...
 ```
 
@@ -300,11 +292,9 @@ swift sft \
 测试脚本为:
 ```bash
 swift sft \
-	--model_type qwen-7b-chat \
-	--batch_size {BATCH_SIZE} \
-	--sft_type lora \
-	--use_flash_attn true \
-	--max_length 2048 \
+    --batch_size {BATCH_SIZE} \
+    --model_type qwen-7b-chat \
+    --sft_type lora \
     ...
 ```
 
@@ -347,8 +337,8 @@ swift sft \
 swift sft \
     --use_flash_attn {USE_FLASH_ATTN} \
     --gradient_checkpointing {GRADIENT_CHECKPOINTING} \
-	--model_type qwen-7b-chat \
-	--sft_type lora \
+    --model_type qwen-7b-chat \
+    --sft_type lora \
     ...
 ```
 
@@ -394,8 +384,8 @@ swift sft \
 测试脚本为:
 ```bash
 swift sft \
-	--model_type {MODEL_TYPE} \
-	--sft_type lora \
+    --model_type {MODEL_TYPE} \
+    --sft_type lora \
     ...
 ```
 
@@ -461,8 +451,8 @@ swift sft \
 swift sft \
     --lora_rank {LORA_RANK} \
     --lora_target_modules {LORA_TARGET_MODULES} \
-	--model_type qwen-7b-chat \
-	--sft_type lora \
+    --model_type qwen-7b-chat \
+    --sft_type lora \
     ...
 ```
 
