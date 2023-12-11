@@ -21,6 +21,16 @@
     --preprocess_num_proc 4 \
 ```
 
+如果未指定以下参数, 则使用以下默认值:
+```bash
+    --max_length 2048 \
+    --batch_size 1 \
+    --gradient_checkpinting true \
+    --use_flash_attn true \
+    --lora_rank 8 \
+    --lora_target_modules DEFAULT \
+    --quantization_bit 0 \
+```
 
 ## 量化
 测试脚本为:
