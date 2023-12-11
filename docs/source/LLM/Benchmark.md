@@ -13,10 +13,14 @@
 测试参数对于训练速度和训练内存使用的影响. 后续会补充部分参数对训练效果的影响.
 
 实验环境:
+- A100
 - CUDA 11.8
 - python 3.10
 - torch 2.1.1
 - flash_attn 2.3.4
+- xformers 0.0.23
+- auto_gptq 0.5.1
+- bitsandbytes 0.41.3
 
 
 我们使用了1000条训练数据集进行基准测试. 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
@@ -78,13 +82,13 @@ swift sft \
     </tr>
     <tr>
         <td>int4 (bnb)</td>
-        <td>9.38min</td>
+        <td>9.41min</td>
         <td>13616MiB</td>
     </tr>
     <tr>
         <td rowspan="4">qwen-14b-chat</td>
         <td>bf16</td>
-        <td>11.73</td>
+        <td>11.73min</td>
         <td>32186MiB</td>
     </tr>
     <tr>
@@ -99,7 +103,7 @@ swift sft \
     </tr>
     <tr>
         <td>int4 (bnb)</td>
-        <td>16.35min</td>
+        <td>16.30min</td>
         <td>19278MiB</td>
     </tr>
     <tr>
@@ -426,6 +430,16 @@ swift sft \
         <td>chatglm3-6b</td>
         <td>7.19min</td>
         <td>14612MiB</td>
+    </tr>
+    <tr>
+        <td>baichuan2-7b</td>
+        <td>8.61min</td>
+        <td>19254MiB</td>
+    </tr>
+    <tr>
+        <td>baichuan2-13b</td>
+        <td>16.37min</td>
+        <td>33118MiB</td>
     </tr>
     <tr>
         <td>yi-6b-chat</td>
