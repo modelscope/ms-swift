@@ -1,0 +1,102 @@
+{
+  "components": {
+    "model_code": {
+    "label": {
+      "zh": "选择模型",
+      "en": "Select Model"
+    },
+    "info": {
+      "zh": "已支持的模型名称",
+      "en": "Base model supported"
+    }
+  },
+  "model_id": {
+    "label": {
+      "zh": "模型id或路径",
+      "en": "Model id or path"
+    },
+    "info": {
+      "zh": "待训练的模型id",
+      "en": "The actual model id or model path"
+    }
+  },
+  "dataset_code": {
+    "label": {
+      "zh": "数据集名称",
+      "en": "Dataset Code"
+    },
+    "info": {
+      "zh": "选择训练的数据集，支持复选",
+      "en": "The dataset(s) to train the models"
+    }
+  },
+    "sft_type": {
+      "label": {
+               "zh": "微调方法",
+       "en": "Train type"
+      },
+      "info": {
+      "zh": "选择微调的方法",
+      "en": "Select the training type"
+    }
+    },
+    "custom_dataset": {
+      "label": {
+             "zh": "自定义数据集",
+         "en": "Custom dataset"
+      },
+      "info": {
+                     "zh": "选择额外参与训练的数据集，以英文逗号分隔",
+         "en": "Select extra dataset, split by comma"
+      }
+    },
+        "lora_rank": {
+      "label": {
+             "zh": "LoRA的秩",
+         "en": "The LoRA rank"
+      }
+    },
+        "lora_alpha": {
+      "label": {
+             "zh": "LoRA的alpha",
+         "en": "The LoRA alpha"
+      }
+    },
+        "lora_dropout_p": {
+      "label": {
+             "zh": "LoRA的dropout",
+         "en": "The LoRA dropout"
+      }
+    },
+    "lora_tab": {
+      "label": {
+                           "zh": "LoRA训练配置",
+         "en": "LoRA training config"
+      }
+    },
+    "llm_train": {
+      "label": {
+               "zh": "大模型训练",
+       "en": "LLM Training"
+      }
+    }
+  },
+  "extras": {
+    "title": {
+      "zh": "SWIFT框架",
+      "en": "SWIFT Framework"
+    },
+    "llm_train": {
+       "zh": "大模型训练",
+       "en": "LLM Training"
+    },
+    "full_param": {
+       "zh": "全参数",
+       "en": "Full parameter"
+    },
+    "lora": {
+       "zh": "LoRA",
+       "en": "LoRA"
+    }
+  }
+}
