@@ -1,9 +1,10 @@
 import gradio as gr
-from swift.ui.llm_train import llm_train
+
+from swift.ui.llm.llm_train import llm_train
 
 with gr.Blocks() as app:
     with gr.Tabs():
-        with gr.TabItem(elem_id='llm_train'):
+        with gr.TabItem(elem_id='llm_train', label=''):
             llm_train()
         # with gr.TabItem(page_content['llm_inference']):
         #     llm_inference()
@@ -15,4 +16,3 @@ with gr.Blocks() as app:
         #     llm_deploy()
 
 app.queue().launch(height=800, share=False)
-

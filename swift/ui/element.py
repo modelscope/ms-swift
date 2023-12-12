@@ -1,14 +1,15 @@
-import json
 import os
 
-from gradio import Accordion, TabItem
+import json
 from gradio.components.base import IOComponent
-
+from swift.llm import SftArguments
 
 current_dir = os.path.dirname(__file__)
 lang = os.environ.get('SWIFT_UI_LANG', 'zh')
 components = {}
 extras = {}
+elements = {}
+
 
 with open(os.path.join(current_dir, 'config', 'i18n.json'), 'r') as f:
     i18n = json.load(f)
@@ -16,32 +17,27 @@ with open(os.path.join(current_dir, 'config', 'i18n.json'), 'r') as f:
     extra_json = i18n.get('extras', {})
     for key, value in component_json.items():
         components[key] = {
-            "label": value["label"][lang],
+            'label': value['label'][lang],
         }
-        if "info" in value:
-            components[key]["info"] = value["info"][lang]
+        if 'info' in value:
+            components[key]['info'] = value['info'][lang]
 
     for key, value in extra_json.items():
         extras[key] = value[lang]
 
 
 def __init__(self, *args, **kwargs):
-    self.component_name = kwargs.pop('elem_id', None)
-    if self.component_name in components:
-        values = components[self.component_name]
+    elem_id = kwargs.pop('elem_id', None)
+    if elem_id in components:
+        values = components[elem_id]
         if 'info' in values:
             kwargs['info'] = values['info']
         kwargs['label'] = values['label']
-    self.constructor_args['label'] = kwargs['label']
+    if hasattr(SftArguments, elem_id):
+        kwargs['value'] = getattr(SftArguments, elem_id)
     self.__old_init__(*args, **kwargs)
+    elements[elem_id] = self
 
 
 IOComponent.__old_init__ = IOComponent.__init__
 IOComponent.__init__ = __init__
-
-
-Accordion.__old_init__ = Accordion.__init__
-Accordion.__init__ = __init__
-
-TabItem.__old_init__ = TabItem.__init__
-TabItem.__init__ = __init__
