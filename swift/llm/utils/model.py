@@ -107,6 +107,7 @@ class ModelType:
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
+    mistral_7b_moe = 'mistral-7b-moe'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -151,6 +152,7 @@ class LoRATM(NamedTuple):
     yi = llama2
     bluelm = llama2
     zephyr = llama2
+    mistral_moe = ['q_proj', 'k_proj', 'v_proj', 'experts']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -593,6 +595,13 @@ def get_model_tokenizer_chatglm(model_dir: str,
     LoRATM.mistral,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
+    support_flash_attn=True)
+@register_model(
+    ModelType.mistral_7b_moe,
+    'AI-ModelScope/mixtral-7b-8expert',
+    LoRATM.mistral_moe,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.36'],
     support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
