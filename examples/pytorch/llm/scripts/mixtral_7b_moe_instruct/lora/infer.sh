@@ -1,9 +1,9 @@
-# Experimental environment: A10
-# If you want to merge LoRA weight and save it, you need to set `--merge_lora_and_save true`.
+# Experimental environment: A100
+# 2 * 45GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1 \
 python llm_infer.py \
-    --ckpt_dir "output/mistral-7b-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/mistral-7b-moe-instruct/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
     --max_length 4096 \
