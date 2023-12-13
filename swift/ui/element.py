@@ -1,43 +1,39 @@
 import os
+from functools import wraps
 
-import json
-from gradio.components.base import IOComponent
 from swift.llm import SftArguments
+from swift.ui.llm.utils import get_choices
+from swift.ui.i18n import components
+from gradio import Textbox, Dropdown, Slider, Checkbox, Accordion, TabItem
 
-current_dir = os.path.dirname(__file__)
 lang = os.environ.get('SWIFT_UI_LANG', 'zh')
-components = {}
-extras = {}
 elements = {}
 
 
-with open(os.path.join(current_dir, 'config', 'i18n.json'), 'r') as f:
-    i18n = json.load(f)
-    component_json = i18n.get('components', {})
-    extra_json = i18n.get('extras', {})
-    for key, value in component_json.items():
-        components[key] = {
-            'label': value['label'][lang],
-        }
-        if 'info' in value:
-            components[key]['info'] = value['info'][lang]
+def update_data(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        elem_id = kwargs.pop('elem_id', None)
+        self = args[0]
+        if elem_id in components:
+            values = components[elem_id]
+            if 'info' in values:
+                kwargs['info'] = values['info']
+            kwargs['label'] = values['label']
+        if hasattr(SftArguments, elem_id):
+            kwargs['value'] = getattr(SftArguments, elem_id)
+            choices = get_choices(elem_id)
+            if choices:
+                kwargs['choices'] = choices
+        elements[elem_id] = self
+        return fn(self, **kwargs)
 
-    for key, value in extra_json.items():
-        extras[key] = value[lang]
-
-
-def __init__(self, *args, **kwargs):
-    elem_id = kwargs.pop('elem_id', None)
-    if elem_id in components:
-        values = components[elem_id]
-        if 'info' in values:
-            kwargs['info'] = values['info']
-        kwargs['label'] = values['label']
-    if hasattr(SftArguments, elem_id):
-        kwargs['value'] = getattr(SftArguments, elem_id)
-    self.__old_init__(*args, **kwargs)
-    elements[elem_id] = self
+    return wrapper
 
 
-IOComponent.__old_init__ = IOComponent.__init__
-IOComponent.__init__ = __init__
+Textbox.__init__ = update_data(Textbox.__init__)
+Dropdown.__init__ = update_data(Dropdown.__init__)
+Checkbox.__init__ = update_data(Checkbox.__init__)
+Slider.__init__ = update_data(Slider.__init__)
+TabItem.__init__ = update_data(TabItem.__init__)
+Accordion.__init__ = update_data(Accordion.__init__)

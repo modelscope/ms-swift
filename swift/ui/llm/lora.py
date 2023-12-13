@@ -1,11 +1,13 @@
 import gradio as gr
 
 from swift.llm import MODEL_MAPPING
-from swift.ui.element import elements,extras
+from swift.ui.element import elements
+from swift.ui.i18n import get_i18n_labels
 
 
 def lora():
-    with gr.Accordion(elem_id='lora_tab', label=extras['lora_tab'], open=False):
+    get_i18n_labels(i18n)
+    with gr.Accordion(elem_id='lora_tab', open=False):
         with gr.Blocks() as block:
             with gr.Row():
                 lora_module = gr.Textbox(
@@ -15,12 +17,50 @@ def lora():
                 lora_alpha = gr.Slider(
                     elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8)
                 lora_dropout_p = gr.Textbox(
-                    elem_id='lora_dropout_p', value=1.0, minimum=0.0, maximum=1.0, step=0.05)
+                    elem_id='lora_dropout_p')
 
         def update_lora(choice):
             return MODEL_MAPPING[choice]['lora_target_modules']
 
-        elements['model_code'].change(
+        elements['model_type'].change(
             update_lora,
-            inputs=[elements['model_code']],
+            inputs=[elements['model_type']],
             outputs=[lora_module])
+
+
+i18n = {
+    "lora_tab": {
+        "label": {
+            "zh": "LoRA参数设置",
+            "en": "LoRA params"
+        },
+    },
+    "lora_module": {
+        "label": {
+            "zh": "LoRA目标模块",
+            "en": "LoRA target modules"
+        },
+        "info": {
+            "zh": "设置LoRA目标模块",
+            "en": "Set the LoRA target modules"
+        }
+    },
+    "lora_rank": {
+        "label": {
+            "zh": "LoRA的秩",
+            "en": "The LoRA rank"
+        }
+    },
+    "lora_alpha": {
+        "label": {
+            "zh": "LoRA的alpha",
+            "en": "The LoRA alpha"
+        }
+    },
+    "lora_dropout_p": {
+        "label": {
+            "zh": "LoRA的dropout",
+            "en": "The LoRA dropout"
+        }
+    },
+}
