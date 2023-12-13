@@ -153,7 +153,7 @@ class LoRATM(NamedTuple):
     yi = llama2
     bluelm = llama2
     zephyr = llama2
-    mistral_moe = ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'block_sparse_moe']
+    mistral_moe = ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate', 'w1', 'w2', 'w3']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -629,7 +629,6 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
             model_dir, trust_remote_code=True)
     _flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
     model_config._flash_attn_2_enabled = _flash_attn_2_enabled
-    model_config.use_cache = False
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
 
