@@ -55,6 +55,7 @@ def llm_sft(args: SftArguments) -> str:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
+    kwargs['use_cache'] = False
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
