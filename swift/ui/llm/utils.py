@@ -22,29 +22,29 @@ async def run_and_get_log(*args, timeout=None):
     lines = []
     while True:
         try:
-            line = await asyncio.wait_for(process.stderr.readline(), timeout)
+            line = await asyncio.wait_for(process.stdout.readline(), timeout)
         except asyncio.TimeoutError:
             break
         else:
             if not line:
                 break
             else:
-                lines.append(line)
-        break
+                lines.append(str(line))
     return process, lines
 
 
-def run_command_and_get_log(*args, timeout):
+def run_command_in_subprocess(*args, timeout):
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
         asyncio.set_event_loop(loop)
     else:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     process, lines = loop.run_until_complete(run_and_get_log(*args, timeout=timeout))
     return (loop, process), lines
 
 
-def close_command(handler):
+def close_loop(handler):
     loop, process = handler
     process.kill()
     loop.close()

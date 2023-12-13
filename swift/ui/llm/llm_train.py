@@ -1,11 +1,7 @@
 import os
-import subprocess
-import time
 from dataclasses import fields
 
 import gradio as gr
-import torch
-from transformers import is_tensorboard_available, is_wandb_available
 
 from swift.llm import SftArguments
 from swift.ui.element import elements
@@ -17,7 +13,7 @@ from swift.ui.llm.lora import lora
 from swift.ui.llm.model import model
 from swift.ui.llm.save import save
 from swift.ui.llm.self_cog import self_cognition
-from swift.ui.llm.utils import run_command_and_get_log, close_command
+from swift.ui.llm.runtime import runtime
 
 
 def llm_train():
@@ -44,6 +40,7 @@ def llm_train():
             gr.Textbox(elem_id='gpu_memory_fraction', value='1.0', scale=4)
             gr.Button(elem_id='submit', scale=4)
 
+        runtime()
         save()
         lora()
         hyper()
@@ -53,7 +50,7 @@ def llm_train():
         elements['submit'].click(
             train,
             [],
-            [],
+            [elements['logging_dir'], elements['runtime_tab']],
             show_progress=True
         )
 
@@ -82,19 +79,10 @@ def train():
     run_command = f'CUDA_VISIBLE_DEVICES={gpus} ' \
                   f'{ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
     # os.system(run_command)
-
-    report_to_tensorboard = 'ALL' in sft_args.report_to or 'tensorboard' in sft_args.report_to or 'all' in sft_args.report_to
-    if is_tensorboard_available() and report_to_tensorboard:
-        handler, lines = run_command_and_get_log('tensorboard', '--logdir', sft_args.logging_dir, timeout=2)
-        localhost_addr = ''
-        for line in lines:
-            if 'http://localhost:' in line:
-                line = line[line.index('http://localhost:'):]
-                localhost_addr = line[:line.index(' ')]
-        print(localhost_addr)
-        close_command(handler)
-
-
+    return {
+        elements['logging_dir']: sft_args.logging_dir,
+        elements['runtime_tab']: gr.Accordion(elem_id='runtime_tab', open=True, visible=True),
+    }
 
 
 i18n = {

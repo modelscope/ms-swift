@@ -30,7 +30,7 @@ def update_data(fn):
             choices = get_choices(elem_id)
             if choices:
                 kwargs['choices'] = choices
-        if not isinstance(self, (Tab, TabItem, Accordion)):
+        if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:
             kwargs['interactive'] = True
         elements[elem_id] = self
         ret = fn(self, **kwargs)
