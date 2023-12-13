@@ -154,7 +154,9 @@ class LoRATM(NamedTuple):
     yi = llama2
     bluelm = llama2
     zephyr = llama2
-    mistral_moe = ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate', 'w1', 'w2', 'w3']
+    mistral_moe = [
+        'q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate', 'w1', 'w2', 'w3'
+    ]
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
