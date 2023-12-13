@@ -107,6 +107,7 @@ class ModelType:
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
+    mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
     mistral_7b_moe = 'mistral-7b-moe'
     mistral_7b_moe_instruct = 'mistral-7b-moe-instruct'
     # yi
@@ -591,7 +592,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
-    ModelType.mistral_7b_chat,
+    ModelType.mistral_7b_chat_v2,
     'AI-ModelScope/Mistral-7B-Instruct-v0.2',
     LoRATM.mistral,
     TemplateType.llama,

@@ -3,7 +3,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python llm_infer.py \
-    --ckpt_dir "/mnt/workspace/yzhao/tastelikefeet/swift/examples/pytorch/llm/output/mistral-7b-moe/v8-20231213-123122/checkpoint-1636" \
+    --ckpt_dir "output/mistral-7b-moe/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
     --max_length 4096 \
