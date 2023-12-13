@@ -14,10 +14,12 @@ def runtime():
         with gr.Blocks() as block:
             with gr.Row():
                 gr.Textbox(
+                    elem_id='running_cmd', lines=1, scale=20)
+                gr.Textbox(
                     elem_id='logging_dir', lines=1, scale=20)
                 gr.Textbox(
                     elem_id='tb_url', lines=1, scale=10, interactive=False)
-                gr.Button(elem_id='start_tb', scale=2)
+                gr.Button(elem_id='start_tb', scale=2, variant='primary')
                 gr.Button(elem_id='close_tb', scale=2)
 
             elements['start_tb'].click(
@@ -69,6 +71,16 @@ i18n = {
         "text": {
             "zh": "tensorboard未安装,使用pip install tensorboard进行安装",
             "en": "tensorboard not found, install it by pip install tensorboard",
+        }
+    },
+    "running_cmd": {
+        "label": {
+            "zh": "运行命令",
+            "en": "Command line"
+        },
+        "info": {
+            "zh": "执行的实际命令",
+            "en": "The actual command"
         }
     },
     "logging_dir": {

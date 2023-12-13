@@ -19,8 +19,8 @@ from swift.ui.llm.runtime import runtime
 def llm_train():
     gpu_count = 0
     default_device = 'cpu'
-    if True: # torch.cuda.is_available():
-        gpu_count = 4 # torch.cuda.device_count()
+    if torch.cuda.is_available():
+        gpu_count = torch.cuda.device_count()
         default_device = '0'
     get_i18n_labels(i18n)
     with gr.Blocks():
@@ -38,7 +38,7 @@ def llm_train():
                 value=default_device,
                 scale=8)
             gr.Textbox(elem_id='gpu_memory_fraction', value='1.0', scale=4)
-            gr.Button(elem_id='submit', scale=4)
+            gr.Button(elem_id='submit', scale=4, variant='primary')
 
         runtime()
         save()
@@ -50,7 +50,7 @@ def llm_train():
         elements['submit'].click(
             train,
             [],
-            [elements['logging_dir'], elements['runtime_tab']],
+            [elements['running_cmd'], elements['logging_dir'], elements['runtime_tab']],
             show_progress=True
         )
 
@@ -70,19 +70,19 @@ def train():
             params += f'--{e} {elements[e].last_value} '
     ddp_param = ''
     if elements['use_ddp'] and getattr(elements["gpu_id"], 'last_value', None):
-        ddp_param = f'NPROC_PER_NODE = {len(elements["gpu_id"].last_value)}'
+        ddp_param = f'NPROC_PER_NODE={len(elements["gpu_id"].last_value)}'
     if hasattr(elements["gpu_id"], 'last_value') and isinstance(elements["gpu_id"].last_value, list):
+        assert(len(elements["gpu_id"].last_value) == 1 or 'cpu' not in elements["gpu_id"].last_value)
         gpus = ','.join(elements["gpu_id"].last_value)
     else:
         gpus = '0'
+    cuda_param = ''
+    if gpus != 'cpu':
+        cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
     log_file = os.path.join(sft_args.logging_dir, "run.log")
-    run_command = f'CUDA_VISIBLE_DEVICES={gpus} ' \
-                  f'{ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
-    # os.system(run_command)
-    return {
-        elements['logging_dir']: sft_args.logging_dir,
-        elements['runtime_tab']: gr.Accordion(elem_id='runtime_tab', open=True, visible=True),
-    }
+    run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
+    os.system(run_command)
+    return run_command, sft_args.logging_dir, gr.update(visible=True)
 
 
 i18n = {
