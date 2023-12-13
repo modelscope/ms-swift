@@ -1,9 +1,11 @@
+import asyncio
+import sys
+from asyncio.subprocess import PIPE, STDOUT
 from dataclasses import fields
 from swift.llm import SftArguments
 
 
 all_choices = {}
-all_default_values = {}
 
 
 def get_choices(name):
@@ -13,3 +15,37 @@ def get_choices(name):
             if 'choices' in f.metadata:
                 all_choices[f.name] = f.metadata['choices']
     return all_choices.get(name, [])
+
+
+async def run_and_get_log(*args, timeout=None):
+    process = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=STDOUT)
+    lines = []
+    while True:
+        try:
+            line = await asyncio.wait_for(process.stderr.readline(), timeout)
+        except asyncio.TimeoutError:
+            break
+        else:
+            if not line:
+                break
+            else:
+                lines.append(line)
+        break
+    return process, lines
+
+
+def run_command_and_get_log(*args, timeout):
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+    else:
+        loop = asyncio.get_event_loop()
+    process, lines = loop.run_until_complete(run_and_get_log(*args, timeout=timeout))
+    return (loop, process), lines
+
+
+def close_command(handler):
+    loop, process = handler
+    process.kill()
+    loop.close()
+

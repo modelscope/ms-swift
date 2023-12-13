@@ -1,31 +1,42 @@
 import gradio as gr
+
+from swift.ui.element import elements
 from swift.ui.i18n import get_i18n_labels
 
 
 def hyper():
     get_i18n_labels(i18n)
-    with gr.Accordion(elem_id="hyper_param", open=False):
+    with gr.Accordion(elem_id="hyper_param", open=True):
         with gr.Blocks() as block:
             with gr.Row():
                 batch_size = gr.Slider(elem_id='batch_size', minimum=1, maximum=256, step=2, scale=20)
-                eval_batch_size = gr.Slider(elem_id='eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
-                learning_rate = gr.Textbox(elem_id='learning_rate', lines=1, scale=20)
+                learning_rate = gr.Textbox(elem_id='learning_rate', value='2e-5', lines=1, scale=20)
                 max_length = gr.Slider(elem_id='max_length', minimum=32, maximum=8192, step=32, scale=20)
-                eval_steps = gr.Textbox(elem_id='eval_steps', lines=1, scale=20)
                 num_train_epochs = gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
                 max_steps = gr.Textbox(elem_id='max_steps', lines=1, scale=20)
+                gradient_accumulation_steps = gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256,
+                                                        step=2, scale=20)
             with gr.Row():
-                gradient_accumulation_steps = gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, scale=20)
+                eval_batch_size = gr.Slider(elem_id='eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
+                eval_steps = gr.Textbox(elem_id='eval_steps', lines=1, scale=20)
                 max_grad_norm = gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                 predict_with_generate = gr.Checkbox(elem_id='predict_with_generate', scale=20)
                 use_flash_attn = gr.Checkbox(elem_id='use_flash_attn', scale=20)
+
+        def update_lr(sft_type):
+            if sft_type == 'full':
+                return 2e-5
+            else:
+                return 1e-4
+
+        elements['sft_type'].change(update_lr, inputs=[elements['sft_type']], outputs=[learning_rate])
 
 
 i18n = {
     "hyper_param": {
         "label": {
             "zh": "超参数",
-            "en": "Hyper params",
+            "en": "Hyper settings",
         },
     },
     "batch_size": {
@@ -80,7 +91,7 @@ i18n = {
     },
     "num_train_epochs": {
         "label": {
-            "zh": "数据集迭代次数",
+            "zh": "数据集迭代轮次",
             "en": "Train epoch",
         },
         "info": {
@@ -124,7 +135,7 @@ i18n = {
             "en": "Use generate metric instead of loss",
         },
         "info": {
-            "zh": "验证时使用generate并生成指标代替loss",
+            "zh": "验证时使用generate/Rouge代替loss",
             "en": "Use model.generate/Rouge instead of loss",
         }
     },

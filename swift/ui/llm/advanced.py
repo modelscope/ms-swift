@@ -14,14 +14,14 @@ def advanced():
                 lr_scheduler_type = gr.Textbox(elem_id='lr_scheduler_type', lines=1, scale=20)
                 warmup_ratio = gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
             with gr.Row():
-                more_params = gr.Textbox(elem_id='more_params', lines=1, scale=20)
+                more_params = gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
 
 i18n = {
     "advanced_param": {
         "label": {
             "zh": "高级参数",
-            "en": "Advanced params"
+            "en": "Advanced settings"
         },
     },
     "optim": {

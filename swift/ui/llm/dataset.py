@@ -9,7 +9,7 @@ def dataset():
     with gr.Row():
         dataset = gr.Dropdown(elem_id='dataset',
                               multiselect=True,
-                              choices=list(DATASET_MAPPING.keys()), scale=10)
+                              choices=list(DATASET_MAPPING.keys()), scale=20)
         custom_train_dataset_path = gr.Textbox(elem_id='custom_train_dataset_path', scale=20)
         custom_val_dataset_path = gr.Textbox(elem_id='custom_val_dataset_path', scale=20)
     with gr.Row():
@@ -52,12 +52,12 @@ i18n = {
     },
     "dataset_test_ratio": {
         "label": {
-            "zh": "数据集拆分比例",
-            "en": "The split ratio of datasets"
+            "zh": "验证集拆分比例",
+            "en": "Split ratio of eval dataset"
         },
         "info": {
-            "zh": "将数据集按照比例拆分为训练集和验证集",
-            "en": "Split the datasets by this ratio to train/val"
+            "zh": "表示将总数据的多少拆分到验证集中",
+            "en": "Split the datasets by this ratio for eval"
         }
     },
     "train_dataset_sample": {

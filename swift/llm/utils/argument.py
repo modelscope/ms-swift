@@ -337,6 +337,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora_and_save: bool = False
+    safe_serialization: bool = True
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
     # compatibility

@@ -1,5 +1,14 @@
-import gradio as gr
+import os
+import subprocess
+import time
+from dataclasses import fields
 
+import gradio as gr
+import torch
+from transformers import is_tensorboard_available, is_wandb_available
+
+from swift.llm import SftArguments
+from swift.ui.element import elements
 from swift.ui.i18n import get_i18n_labels
 from swift.ui.llm.advanced import advanced
 from swift.ui.llm.dataset import dataset
@@ -8,9 +17,15 @@ from swift.ui.llm.lora import lora
 from swift.ui.llm.model import model
 from swift.ui.llm.save import save
 from swift.ui.llm.self_cog import self_cognition
+from swift.ui.llm.utils import run_command_and_get_log, close_command
 
 
 def llm_train():
+    gpu_count = 0
+    default_device = 'cpu'
+    if True: # torch.cuda.is_available():
+        gpu_count = 4 # torch.cuda.device_count()
+        default_device = '0'
     get_i18n_labels(i18n)
     with gr.Blocks():
         model()
@@ -21,14 +36,94 @@ def llm_train():
             gr.Dropdown(elem_id='dtype', scale=4)
             gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
             gr.Slider(elem_id='neftune_alpha', minimum=0.0, maximum=1.0, step=0.05, scale=4)
+        with gr.Row():
+            gr.Dropdown(
+                elem_id='gpu_id', multiselect=True, choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                value=default_device,
+                scale=8)
+            gr.Textbox(elem_id='gpu_memory_fraction', value='1.0', scale=4)
+            gr.Button(elem_id='submit', scale=4)
+
         save()
         lora()
         hyper()
         self_cognition()
         advanced()
 
+        elements['submit'].click(
+            train,
+            [],
+            [],
+            show_progress=True
+        )
+
+
+def train():
+    args = fields(SftArguments)
+    args = {arg.name: arg.type for arg in args}
+    kwargs = {}
+    for e in elements:
+        if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
+            kwargs[e] = elements[e].last_value
+    sft_args = SftArguments(**kwargs)
+    params = ''
+
+    for e in elements:
+        if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
+            params += f'--{e} {elements[e].last_value} '
+    ddp_param = ''
+    if elements['use_ddp'] and getattr(elements["gpu_id"], 'last_value', None):
+        ddp_param = f'NPROC_PER_NODE = {len(elements["gpu_id"].last_value)}'
+    if hasattr(elements["gpu_id"], 'last_value') and isinstance(elements["gpu_id"].last_value, list):
+        gpus = ','.join(elements["gpu_id"].last_value)
+    else:
+        gpus = '0'
+    log_file = os.path.join(sft_args.logging_dir, "run.log")
+    run_command = f'CUDA_VISIBLE_DEVICES={gpus} ' \
+                  f'{ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
+    # os.system(run_command)
+
+    report_to_tensorboard = 'ALL' in sft_args.report_to or 'tensorboard' in sft_args.report_to or 'all' in sft_args.report_to
+    if is_tensorboard_available() and report_to_tensorboard:
+        handler, lines = run_command_and_get_log('tensorboard', '--logdir', sft_args.logging_dir, timeout=2)
+        localhost_addr = ''
+        for line in lines:
+            if 'http://localhost:' in line:
+                line = line[line.index('http://localhost:'):]
+                localhost_addr = line[:line.index(' ')]
+        print(localhost_addr)
+        close_command(handler)
+
+
+
 
 i18n = {
+    "submit": {
+        "value": {
+            "zh": "开始训练",
+            "en": "Begin"
+        }
+    },
+    "gpu_id": {
+        "label": {
+            "zh": "选择可用GPU",
+            "en": "Choose GPU"
+        },
+        "info": {
+            "zh": "选择训练使用的GPU号，如CUDA不可用只能选择CPU",
+            "en": "Select GPU to train"
+        }
+    },
+    "gpu_memory_fraction": {
+        "label": {
+            "zh": "GPU显存限制",
+            "en": "GPU memory fraction"
+        },
+        "info": {
+            "zh": "设置使用显存的比例，一般用于显存测试",
+            "en": "Set the memory fraction ratio of GPU, usually used in memory test"
+        }
+    },
     "sft_type": {
         "label": {
             "zh": "训练方式",

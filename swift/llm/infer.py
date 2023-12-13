@@ -22,7 +22,8 @@ logger = get_logger()
 
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'cpu') -> str:
+               device_map: str = 'cpu',
+               **kwargs) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
@@ -52,7 +53,7 @@ def merge_lora(args: InferArguments,
 
     if not os.path.exists(args.ckpt_dir) or replace_if_exists:
         logger.info('Saving merged weights...')
-        model.save_pretrained(args.ckpt_dir)
+        model.save_pretrained(args.ckpt_dir, safe_serialization=args.safe_serialization)
         tokenizer.save_pretrained(args.ckpt_dir)
         for fname in os.listdir(old_ckpt_dir):
             if fname in {'generation_config.json'}:

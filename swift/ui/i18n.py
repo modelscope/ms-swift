@@ -6,9 +6,7 @@ components = {}
 
 def get_i18n_labels(i18n):
     for key, value in i18n.items():
-        if 'label' in value:
-            components[key] = {
-                'label': value['label'][lang],
-            }
-            if 'info' in value:
-                components[key]['info'] = value['info'][lang]
+        if key not in components:
+            components[key] = {}
+        for sub_key in value:
+            components[key][sub_key] = value[sub_key][lang]

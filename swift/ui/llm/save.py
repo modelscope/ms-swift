@@ -10,7 +10,7 @@ def save():
     with gr.Accordion(elem_id="save_param", open=True):
         with gr.Blocks() as block:
             with gr.Row():
-                save_steps = gr.Textbox(elem_id='save_steps', lines=1, scale=20)
+                save_steps = gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=5)
                 gr.Textbox(elem_id='output_dir', scale=20)
             with gr.Row():
                 push_to_hub = gr.Checkbox(elem_id='push_to_hub', scale=20)
@@ -24,7 +24,7 @@ i18n = {
     "save_param": {
         "label": {
             "zh": "存储参数",
-            "en": "Saving params"
+            "en": "Saving settings"
         },
     },
     "save_steps": {

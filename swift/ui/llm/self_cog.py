@@ -16,7 +16,7 @@ i18n = {
     "self_cognition": {
         "label": {
             "zh": "自我认知任务参数",
-            "en": "Self cognition"
+            "en": "Self cognition settings"
         },
     },
     "self_cognition_sample": {
