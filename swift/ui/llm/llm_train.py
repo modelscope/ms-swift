@@ -98,9 +98,9 @@ def train():
         params += f'--{key} "{param}" '
     ddp_param = ''
     devices = getattr(elements['gpu_id'], 'last_value',
-                      elements['gpu_id'].value).split(' ')
+                      ' '.join(elements['gpu_id'].value)).split(' ')
     devices = [d for d in devices if d]
-    if elements['use_ddp'].last_value:
+    if getattr(elements['use_ddp'], 'last_value', elements['use_ddp'].value):
         ddp_param = f'NPROC_PER_NODE={len(devices)}'
     assert (len(devices) == 1 or 'cpu' not in devices)
     gpus = ','.join(devices)
@@ -114,7 +114,7 @@ def train():
         os.makedirs(sft_args.logging_dir, exist_ok=True)
         os.system(run_command)
         time.sleep(1)  # to make sure the log file has been created.
-        gradio.Info(components['submit_alert']['value'])
+        gr.Info(components['submit_alert']['value'])
     return run_command, sft_args.logging_dir, gr.update(visible=True)
 
 
