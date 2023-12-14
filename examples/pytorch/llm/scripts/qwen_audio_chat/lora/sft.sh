@@ -35,3 +35,4 @@ python llm_sft.py \
     --hub_model_id qwen-audio-chat-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --lazy_tokenize true \

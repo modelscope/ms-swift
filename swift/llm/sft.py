@@ -13,9 +13,10 @@ from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, freeze_model_parameters,
-                         get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_master, plot_images, preprocess_logits_for_metrics,
-                         print_model_info, seed_everything, show_layers)
+                         get_dist_setting, get_logger, get_model_info,
+                         is_ddp_plus_mp, is_dist, is_master, plot_images,
+                         preprocess_logits_for_metrics, seed_everything,
+                         show_layers)
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
                     find_all_linear_for_lora, get_additional_saved_files,
@@ -124,7 +125,8 @@ def llm_sft(args: SftArguments) -> str:
         logger.info(f'neftune_config: {neftune_config}')
 
     show_layers(model)
-    print_model_info(model)
+    model_info = get_model_info(model)
+    logger.info(model_info)
     logger.info(model)
 
     # Loading Dataset
@@ -220,7 +222,7 @@ def llm_sft(args: SftArguments) -> str:
         lr_scheduler_type=args.lr_scheduler_type,
         warmup_ratio=args.warmup_ratio,
         logging_steps=args.logging_steps,
-        save_strategy=IntervalStrategy.STEPS,
+        save_strategy=args.save_strategy,
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
         remove_unused_columns=False,
@@ -251,7 +253,8 @@ def llm_sft(args: SftArguments) -> str:
         deepspeed=args.deepspeed,
         additional_saved_files=additional_saved_files,
         disable_tqdm=args.disable_tqdm,
-        save_on_each_node=args.save_on_each_node)
+        save_on_each_node=args.save_on_each_node,
+        acc_strategy=args.acc_strategy)
 
     if args.gradient_checkpointing:
         model.enable_input_require_grads()
@@ -272,7 +275,9 @@ def llm_sft(args: SftArguments) -> str:
         trainer_kwargs['compute_metrics'] = partial(
             compute_nlg_metrics, tokenizer=tokenizer)
     else:
-        trainer_kwargs['compute_metrics'] = compute_acc_metrics
+        compute_metrics = partial(
+            compute_acc_metrics, acc_strategy=args.acc_strategy)
+        trainer_kwargs['compute_metrics'] = compute_metrics
         trainer_kwargs[
             'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
@@ -322,4 +327,5 @@ def llm_sft(args: SftArguments) -> str:
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
+        'model_info': model_info,
     }
