@@ -1,10 +1,12 @@
 import os
+import time
 from dataclasses import fields
 
+import gradio
 import gradio as gr
 import torch
 from swift.llm import SftArguments
-from swift.ui.element import elements
+from swift.ui.element import elements, components
 from swift.ui.i18n import get_i18n_labels
 from swift.ui.llm.advanced import advanced
 from swift.ui.llm.dataset import dataset
@@ -26,6 +28,7 @@ def llm_train():
     with gr.Blocks():
         model()
         dataset()
+        runtime()
         with gr.Row():
             gr.Dropdown(elem_id='sft_type', scale=4)
             gr.Textbox(elem_id='seed', scale=4)
@@ -40,7 +43,6 @@ def llm_train():
             gr.Textbox(elem_id='gpu_memory_fraction', value='1.0', scale=4)
             gr.Button(elem_id='submit', scale=4, variant='primary')
 
-        runtime()
         save()
         lora()
         hyper()
@@ -56,11 +58,13 @@ def llm_train():
 
 
 def train():
+    ignore_elements = ('model_type', 'logging_dir')
     args = fields(SftArguments)
     args = {arg.name: arg.type for arg in args}
     kwargs = {}
     for e in elements:
-        if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
+        if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) \
+            and e not in ignore_elements:
             kwargs[e] = elements[e].last_value
     sft_args = SftArguments(**kwargs)
     params = ''
@@ -82,10 +86,18 @@ def train():
     log_file = os.path.join(sft_args.logging_dir, "run.log")
     run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
     os.system(run_command)
+    time.sleep(1) # to make sure the log file has been created.
+    gradio.Info(components['submit_alert']['value'])
     return run_command, sft_args.logging_dir, gr.update(visible=True)
 
 
 i18n = {
+    "submit_alert": {
+        "value": {
+            "zh": "任务已开始，请查看tensorboard或日志记录",
+            "en": "Task started, please check the tensorboard or log"
+        }
+    },
     "submit": {
         "value": {
             "zh": "开始训练",

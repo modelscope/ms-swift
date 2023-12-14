@@ -1,3 +1,5 @@
+import os.path
+
 import gradio as gr
 from transformers import is_tensorboard_available
 
@@ -14,13 +16,20 @@ def runtime():
         with gr.Blocks() as block:
             with gr.Row():
                 gr.Textbox(
-                    elem_id='running_cmd', lines=1, scale=20)
+                    elem_id='running_cmd', lines=1, scale=20, max_lines=1)
                 gr.Textbox(
-                    elem_id='logging_dir', lines=1, scale=20)
+                    elem_id='logging_dir', lines=1, scale=20, max_lines=1)
+                gr.Button(elem_id='show_log', scale=2, variant='primary')
                 gr.Textbox(
-                    elem_id='tb_url', lines=1, scale=10, interactive=False)
+                    elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
                 gr.Button(elem_id='start_tb', scale=2, variant='primary')
                 gr.Button(elem_id='close_tb', scale=2)
+
+            elements['show_log'].click(
+                show_log,
+                [elements['logging_dir']],
+                [],
+            )
 
             elements['start_tb'].click(
                 start_tb,
@@ -33,6 +42,11 @@ def runtime():
                 [elements['logging_dir']],
                 [],
             )
+
+
+
+def show_log(logging_dir):
+    webbrowser.open('file://' + os.path.join(logging_dir, 'run.log'), new=2)
 
 
 def start_tb(logging_dir):
@@ -82,6 +96,12 @@ i18n = {
             "zh": "执行的实际命令",
             "en": "The actual command"
         }
+    },
+    "show_log": {
+        "value": {
+            "zh": "展示日志内容",
+            "en": "Show log"
+        },
     },
     "logging_dir": {
         "label": {
