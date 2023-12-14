@@ -42,3 +42,4 @@ torchrun \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
     --only_save_model true \
+    --lazy_tokenize true \
