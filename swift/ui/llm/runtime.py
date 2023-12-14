@@ -16,7 +16,7 @@ def runtime():
         with gr.Blocks() as block:
             with gr.Row():
                 gr.Textbox(
-                    elem_id='running_cmd', lines=1, scale=20, max_lines=1)
+                    elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
                 gr.Textbox(
                     elem_id='logging_dir', lines=1, scale=20, max_lines=1)
                 gr.Button(elem_id='show_log', scale=2, variant='primary')
