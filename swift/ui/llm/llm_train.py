@@ -41,6 +41,7 @@ def llm_train():
                 value=default_device,
                 scale=8)
             gr.Textbox(elem_id='gpu_memory_fraction', value='1.0', scale=4)
+            gr.Checkbox(elem_id='dry_run', value=False, scale=4)
             gr.Button(elem_id='submit', scale=4, variant='primary')
 
         save()
@@ -79,29 +80,32 @@ def train():
 
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value',
-                                                                            None) and e != 'model_type':
-            params += f'--{e} {elements[e].last_value} '
+                                                                            None) and e not in ignore_elements:
+            if getattr(elements[e], 'is_list', False):
+                params += f'--{e} {elements[e].last_value} '
+            else:
+                params += f'--{e} "{elements[e].last_value}" '
     params += f'--custom_output_dir_suffix {suffix} '
     for key, param in more_params.items():
         params += f'--{key} "{param}" '
     ddp_param = ''
-    if elements['use_ddp'].value and getattr(elements["gpu_id"], 'last_value', None):
-        ddp_param = f'NPROC_PER_NODE={len(elements["gpu_id"].last_value)}'
-    if hasattr(elements["gpu_id"], 'last_value'):
-        last_value = elements["gpu_id"].last_value.split(' ')
-        assert (len(last_value) == 1 or 'cpu' not in last_value)
-        gpus = ','.join(elements["gpu_id"].last_value)
-    else:
-        gpus = ','.join(elements["gpu_id"].value)
+    devices = getattr(elements["gpu_id"], 'last_value', elements["gpu_id"].value).split(' ')
+    devices = [d for d in devices if d]
+    if elements['use_ddp'].last_value:
+        ddp_param = f'NPROC_PER_NODE={len(devices)}'
+    assert (len(devices) == 1 or 'cpu' not in devices)
+    gpus = ','.join(devices)
     cuda_param = ''
     if gpus != 'cpu':
         cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
-    os.makedirs(sft_args.logging_dir, exist_ok=True)
+    
     log_file = os.path.join(sft_args.logging_dir, "run.log")
     run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
-    os.system(run_command)
-    time.sleep(1)  # to make sure the log file has been created.
-    gradio.Info(components['submit_alert']['value'])
+    if not getattr(elements['dry_run'], 'last_value', False):
+        os.makedirs(sft_args.logging_dir, exist_ok=True)
+        os.system(run_command)
+        time.sleep(1)  # to make sure the log file has been created.
+        gradio.Info(components['submit_alert']['value'])
     return run_command, sft_args.logging_dir, gr.update(visible=True)
 
 
@@ -117,6 +121,16 @@ i18n = {
         "value": {
             "zh": "开始训练",
             "en": "Begin"
+        }
+    },
+    "dry_run": {
+        "label": {
+            "zh": "仅生成运行命令",
+            "en": "Dry-run"
+        },
+        "info": {
+            "zh": "仅生成运行命令，开发者自行运行",
+            "en": "Generate run command only, for manually running"
         }
     },
     "gpu_id": {

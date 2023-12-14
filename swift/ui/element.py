@@ -32,6 +32,8 @@ def update_data(fn):
                 kwargs['choices'] = choices
         if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:
             kwargs['interactive'] = True
+        if 'is_list' in kwargs:
+            self.is_list = kwargs.pop('is_list')
         elements[elem_id] = self
         ret = fn(self, **kwargs)
         if isinstance(self, Changeable):
@@ -39,6 +41,7 @@ def update_data(fn):
                 self.changed = True
                 if isinstance(value, list):
                     value = ' '.join(value)
+                    self.is_list = True
                 self.last_value = value
             self.change(change, [self], [])
         return ret
