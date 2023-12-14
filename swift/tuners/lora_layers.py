@@ -261,7 +261,7 @@ class LoraModel(_LoraModel):
                 f'Target modules {peft_config.target_modules} not found in the base model. '
                 f'Please check the target modules and try again.')
 
-        self._mark_only_adapters_as_trainable()
+        self._mark_only_adapters_as_trainable(self.model)
 
         if self.peft_config[adapter_name].inference_mode:
             for n, p in self.model.named_parameters():
