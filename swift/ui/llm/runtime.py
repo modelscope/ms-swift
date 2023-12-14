@@ -1,27 +1,36 @@
 import os.path
+import webbrowser
 
 import gradio as gr
 from transformers import is_tensorboard_available
 
 from swift.ui.element import elements
-from swift.ui.i18n import get_i18n_labels, components
+from swift.ui.i18n import components, get_i18n_labels
 from swift.ui.llm.utils import close_loop, run_command_in_subprocess
-import webbrowser
+
 _handlers = {}
 
 
 def runtime():
     get_i18n_labels(i18n)
     with gr.Accordion(elem_id='runtime_tab', open=True, visible=False):
-        with gr.Blocks() as block:
+        with gr.Blocks():
             with gr.Row():
                 gr.Textbox(
-                    elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
+                    elem_id='running_cmd',
+                    lines=1,
+                    scale=20,
+                    interactive=False,
+                    max_lines=1)
                 gr.Textbox(
                     elem_id='logging_dir', lines=1, scale=20, max_lines=1)
                 gr.Button(elem_id='show_log', scale=2, variant='primary')
                 gr.Textbox(
-                    elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
+                    elem_id='tb_url',
+                    lines=1,
+                    scale=10,
+                    interactive=False,
+                    max_lines=1)
                 gr.Button(elem_id='start_tb', scale=2, variant='primary')
                 gr.Button(elem_id='close_tb', scale=2)
 
@@ -44,7 +53,6 @@ def runtime():
             )
 
 
-
 def show_log(logging_dir):
     webbrowser.open('file://' + os.path.join(logging_dir, 'run.log'), new=2)
 
@@ -57,7 +65,8 @@ def start_tb(logging_dir):
     if logging_dir in _handlers:
         return _handlers[logging_dir][1]
 
-    handler, lines = run_command_in_subprocess('tensorboard', '--logdir', logging_dir, timeout=2)
+    handler, lines = run_command_in_subprocess(
+        'tensorboard', '--logdir', logging_dir, timeout=2)
     localhost_addr = ''
     for line in lines:
         if 'http://localhost:' in line:
@@ -75,70 +84,71 @@ def close_tb(logging_dir):
 
 
 i18n = {
-    "runtime_tab": {
-        "label": {
-            "zh": "运行时",
-            "en": "Runtime"
+    'runtime_tab': {
+        'label': {
+            'zh': '运行时',
+            'en': 'Runtime'
         },
     },
-    "tb_not_found": {
-        "text": {
-            "zh": "tensorboard未安装,使用pip install tensorboard进行安装",
-            "en": "tensorboard not found, install it by pip install tensorboard",
+    'tb_not_found': {
+        'text': {
+            'zh': 'tensorboard未安装,使用pip install tensorboard进行安装',
+            'en':
+            'tensorboard not found, install it by pip install tensorboard',
         }
     },
-    "running_cmd": {
-        "label": {
-            "zh": "运行命令",
-            "en": "Command line"
+    'running_cmd': {
+        'label': {
+            'zh': '运行命令',
+            'en': 'Command line'
         },
-        "info": {
-            "zh": "执行的实际命令",
-            "en": "The actual command"
+        'info': {
+            'zh': '执行的实际命令',
+            'en': 'The actual command'
         }
     },
-    "show_log": {
-        "value": {
-            "zh": "展示日志内容",
-            "en": "Show log"
+    'show_log': {
+        'value': {
+            'zh': '展示日志内容',
+            'en': 'Show log'
         },
     },
-    "logging_dir": {
-        "label": {
-            "zh": "日志路径",
-            "en": "Logging dir"
+    'logging_dir': {
+        'label': {
+            'zh': '日志路径',
+            'en': 'Logging dir'
         },
-        "info": {
-            "zh": "支持手动传入文件路径",
-            "en": "Support fill custom path in"
+        'info': {
+            'zh': '支持手动传入文件路径',
+            'en': 'Support fill custom path in'
         }
     },
-    "logging_content": {
-        "label": {
-            "zh": "日志输出",
-            "en": "Logging content"
+    'logging_content': {
+        'label': {
+            'zh': '日志输出',
+            'en': 'Logging content'
         }
     },
-    "tb_url": {
-        "label": {
-            "zh": "Tensorboard链接",
-            "en": "Tensorboard URL"
+    'tb_url': {
+        'label': {
+            'zh': 'Tensorboard链接',
+            'en': 'Tensorboard URL'
         },
-        "info": {
-            "zh": "仅展示，不可编辑",
-            "en": "Not editable"
+        'info': {
+            'zh': '仅展示，不可编辑',
+            'en': 'Not editable'
         }
     },
-    "start_tb": {
-        "value": {
-            "zh": "打开TensorBoard",
-            "en": "Start TensorBoard"
+    'start_tb': {
+        'value': {
+            'zh': '打开TensorBoard',
+            'en': 'Start TensorBoard'
         },
     },
-    "close_tb": {
-        "value": {
-            "zh": "关闭TensorBoard",
-            "en": "Close TensorBoard"
+    'close_tb': {
+        'value': {
+            'zh': '关闭TensorBoard',
+            'en': 'Close TensorBoard'
         },
     },
 }

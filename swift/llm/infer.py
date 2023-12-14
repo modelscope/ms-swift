@@ -53,7 +53,8 @@ def merge_lora(args: InferArguments,
 
     if not os.path.exists(args.ckpt_dir) or replace_if_exists:
         logger.info('Saving merged weights...')
-        model.save_pretrained(args.ckpt_dir, safe_serialization=args.safe_serialization)
+        model.save_pretrained(
+            args.ckpt_dir, safe_serialization=args.safe_serialization)
         tokenizer.save_pretrained(args.ckpt_dir)
         for fname in os.listdir(old_ckpt_dir):
             if fname in {'generation_config.json'}:

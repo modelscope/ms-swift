@@ -197,7 +197,8 @@ class SftArguments:
 
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
-            self.output_dir = add_version_to_work_dir(self.output_dir, self.custom_output_dir_suffix)
+            self.output_dir = add_version_to_work_dir(
+                self.output_dir, self.custom_output_dir_suffix)
             logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
@@ -445,7 +446,7 @@ def select_dtype(
             logger.info(f'Setting torch_dtype: {torch_dtype}')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
-        support_bf16 = True # torch.cuda.is_bf16_supported()
+        support_bf16 = True  # torch.cuda.is_bf16_supported()
         if not support_bf16:
             logger.warning(f'support_bf16: {support_bf16}')
         fp16, bf16 = False, True

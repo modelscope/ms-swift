@@ -3,7 +3,6 @@ import gradio as gr
 from swift.ui.i18n import get_i18n_labels
 from swift.ui.llm.llm_train import llm_train
 
-
 i18n = {
     'llm_train': {
         'label': {
@@ -12,7 +11,6 @@ i18n = {
         }
     }
 }
-
 
 with gr.Blocks() as app:
     get_i18n_labels(i18n)

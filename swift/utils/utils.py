@@ -50,7 +50,8 @@ def _get_version(work_dir: str) -> int:
     return max(v_list) + 1
 
 
-def add_version_to_work_dir(work_dir: str, custom_output_dir_suffix: str = None) -> str:
+def add_version_to_work_dir(work_dir: str,
+                            custom_output_dir_suffix: str = None) -> str:
     """add version"""
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
