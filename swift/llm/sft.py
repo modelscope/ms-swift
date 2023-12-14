@@ -258,6 +258,7 @@ def llm_sft(args: SftArguments) -> str:
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
+        logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
     if is_dist():
         # Compatible with https://github.com/huggingface/transformers/pull/25903

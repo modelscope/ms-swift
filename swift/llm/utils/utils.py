@@ -2,18 +2,17 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import heapq
 import logging
-import multiprocessing
 import os
 import shutil
 import time
-from functools import wraps
-from multiprocessing.pool import AsyncResult
+from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
                     TypeVar, Union)
 
 import accelerate
+import multiprocess
 import numpy as np
 import requests
 import torch
@@ -218,10 +217,10 @@ def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue,
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc,
               num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
-    with multiprocessing.Pool(
-            num_proc) as pool, multiprocessing.Manager() as manager:
+    with multiprocess.Pool(
+            num_proc) as pool, multiprocess.Manager() as manager:
         queue = manager.Queue()
-        async_results: List[AsyncResult] = []
+        async_results = []
         split_idx = np.linspace(0, len(dataset), num_proc + 1, dtype=np.int32)
         for i in range(num_proc):
             subset = dataset.select(range(split_idx[i], split_idx[i + 1]))
@@ -251,14 +250,15 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc,
 def dataset_map(dataset: HfDataset,
                 map_func: MapFunc,
                 num_proc: int = 1) -> LLMDataset:
+    single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []
         for d in tqdm(dataset):
-            d = _single_map(d, map_func)
+            d = single_map(d)
             data.append(d)
     else:
         assert num_proc > 1
-        data = _map_mp(dataset, map_func, num_proc)
+        data = _map_mp(dataset, single_map, num_proc)
     data = [d for d in data if d is not None]
     if len(data) == 0:
         logger.info('len(dataset): 0')
