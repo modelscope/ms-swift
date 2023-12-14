@@ -70,25 +70,28 @@ def train():
 
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) \
-            and e not in ignore_elements:
+                and e not in ignore_elements:
             kwargs[e] = elements[e].last_value
     kwargs.update(more_params)
     sft_args = SftArguments(**kwargs)
     params = ''
+    suffix = sft_args.logging_dir.split(os.sep)[-2]
 
     for e in elements:
-        if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
+        if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value',
+                                                                            None) and e != 'model_type':
             params += f'--{e} {elements[e].last_value} '
+    params += f'--custom_output_dir_suffix {suffix} '
     for key, param in more_params.items():
         params += f'--{key} "{param}" '
     ddp_param = ''
     if elements['use_ddp'] and getattr(elements["gpu_id"], 'last_value', None):
         ddp_param = f'NPROC_PER_NODE={len(elements["gpu_id"].last_value)}'
     if hasattr(elements["gpu_id"], 'last_value') and isinstance(elements["gpu_id"].last_value, list):
-        assert(len(elements["gpu_id"].last_value) == 1 or 'cpu' not in elements["gpu_id"].last_value)
+        assert (len(elements["gpu_id"].last_value) == 1 or 'cpu' not in elements["gpu_id"].last_value)
         gpus = ','.join(elements["gpu_id"].last_value)
     else:
-        gpus = '0'
+        gpus = ','.join(elements["gpu_id"].value)
     cuda_param = ''
     if gpus != 'cpu':
         cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
@@ -96,7 +99,7 @@ def train():
     log_file = os.path.join(sft_args.logging_dir, "run.log")
     run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
     os.system(run_command)
-    time.sleep(1) # to make sure the log file has been created.
+    time.sleep(1)  # to make sure the log file has been created.
     gradio.Info(components['submit_alert']['value'])
     return run_command, sft_args.logging_dir, gr.update(visible=True)
 
