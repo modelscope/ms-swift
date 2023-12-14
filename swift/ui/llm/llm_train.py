@@ -87,8 +87,9 @@ def train():
     ddp_param = ''
     if elements['use_ddp'].value and getattr(elements["gpu_id"], 'last_value', None):
         ddp_param = f'NPROC_PER_NODE={len(elements["gpu_id"].last_value)}'
-    if hasattr(elements["gpu_id"], 'last_value') and isinstance(elements["gpu_id"].last_value, list):
-        assert (len(elements["gpu_id"].last_value) == 1 or 'cpu' not in elements["gpu_id"].last_value)
+    if hasattr(elements["gpu_id"], 'last_value'):
+        last_value = elements["gpu_id"].last_value.split(' ')
+        assert (len(last_value) == 1 or 'cpu' not in last_value)
         gpus = ','.join(elements["gpu_id"].last_value)
     else:
         gpus = ','.join(elements["gpu_id"].value)

@@ -37,6 +37,8 @@ def update_data(fn):
         if isinstance(self, Changeable):
             def change(value):
                 self.changed = True
+                if isinstance(value, list):
+                    value = ' '.join(value)
                 self.last_value = value
             self.change(change, [self], [])
         return ret
