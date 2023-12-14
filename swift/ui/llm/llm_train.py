@@ -71,7 +71,7 @@ def train():
 
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
-            params += f'--{e} {elements[e].last_value} '
+            params += f'--{e} "{elements[e].last_value}" '
     ddp_param = ''
     if elements['use_ddp'] and getattr(elements["gpu_id"], 'last_value', None):
         ddp_param = f'NPROC_PER_NODE={len(elements["gpu_id"].last_value)}'
@@ -83,6 +83,7 @@ def train():
     cuda_param = ''
     if gpus != 'cpu':
         cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+    os.makedirs(sft_args.logging_dir, exist_ok=True)
     log_file = os.path.join(sft_args.logging_dir, "run.log")
     run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
     os.system(run_command)
