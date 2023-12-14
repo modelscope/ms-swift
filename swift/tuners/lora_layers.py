@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+import importlib
 import math
 import re
 import warnings
@@ -17,6 +18,7 @@ from peft.tuners.lora import Embedding as _Embedding
 from peft.tuners.lora import Linear as _Linear
 from peft.tuners.lora import LoraLayer
 from peft.tuners.lora import LoraModel as _LoraModel
+from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import (_get_submodules, get_auto_gptq_quant_linear,
                         get_quantization_config)
 from transformers import Conv1D
@@ -362,6 +364,7 @@ class LoraModel(_LoraModel):
 
         loaded_in_8bit = kwargs.pop('loaded_in_8bit', False)
         loaded_in_4bit = kwargs.pop('loaded_in_4bit', False)
+        bias = kwargs.pop('bias', False)
 
         if isinstance(target, BaseTunerLayer):
             target_base_layer = target.get_base_layer()
@@ -428,7 +431,7 @@ class LoraModel(_LoraModel):
                 megatron_core.tensor_parallel.ColumnParallelLinear,  # noqa
                 megatron_core.tensor_parallel.RowParallelLinear),  # noqa
         ):
-            from .tp_layer import LoraParallelLinear
+            from peft.tuners.lora.tp_layer import LoraParallelLinear
 
             megatron_kwargs = kwargs.copy()
             megatron_config = lora_config.megatron_config
