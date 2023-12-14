@@ -1,7 +1,7 @@
 import os
 import time
 from dataclasses import fields
-
+import json
 import gradio
 import gradio as gr
 import torch
@@ -62,16 +62,25 @@ def train():
     args = fields(SftArguments)
     args = {arg.name: arg.type for arg in args}
     kwargs = {}
+    more_params = getattr(elements['more_params'], 'last_value', None)
+    if more_params:
+        more_params = json.loads(more_params)
+    else:
+        more_params = {}
+
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) \
             and e not in ignore_elements:
             kwargs[e] = elements[e].last_value
+    kwargs.update(more_params)
     sft_args = SftArguments(**kwargs)
     params = ''
 
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
             params += f'--{e} "{elements[e].last_value}" '
+    for key, param in more_params.items():
+        params += f'--{key} "{param}" '
     ddp_param = ''
     if elements['use_ddp'] and getattr(elements["gpu_id"], 'last_value', None):
         ddp_param = f'NPROC_PER_NODE={len(elements["gpu_id"].last_value)}'
@@ -95,8 +104,9 @@ def train():
 i18n = {
     "submit_alert": {
         "value": {
-            "zh": "任务已开始，请查看tensorboard或日志记录",
-            "en": "Task started, please check the tensorboard or log"
+            "zh": "任务已开始，请查看tensorboard或日志记录，关闭本页面不影响训练过程",
+            "en": "Task started, please check the tensorboard or log file, "
+                  "closing this page does not affect training"
         }
     },
     "submit": {
