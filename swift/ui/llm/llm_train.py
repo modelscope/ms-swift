@@ -78,7 +78,7 @@ def train():
 
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'last_value', None) and e != 'model_type':
-            params += f'--{e} "{elements[e].last_value}" '
+            params += f'--{e} {elements[e].last_value} '
     for key, param in more_params.items():
         params += f'--{key} "{param}" '
     ddp_param = ''
