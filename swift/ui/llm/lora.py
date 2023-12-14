@@ -11,7 +11,7 @@ def lora():
         with gr.Blocks() as block:
             with gr.Row():
                 lora_target_modules = gr.Textbox(
-                    elem_id='lora_target_modules', lines=1, scale=20)
+                    elem_id='lora_target_modules', lines=1, scale=20, is_list=True)
             with gr.Row():
                 lora_rank = gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8)
                 lora_alpha = gr.Slider(
