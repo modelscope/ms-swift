@@ -422,8 +422,8 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 def select_dtype(
         args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
-    # if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
-    #     args.dtype = 'fp16'
+    if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
+        args.dtype = 'fp16'
     if args.dtype == 'AUTO' and ('int4' in args.model_type
                                  or 'int8' in args.model_type):
         model_torch_dtype = MODEL_MAPPING[args.model_type]['torch_dtype']
@@ -446,7 +446,7 @@ def select_dtype(
             logger.info(f'Setting torch_dtype: {torch_dtype}')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
-        support_bf16 = True  # torch.cuda.is_bf16_supported()
+        support_bf16 = torch.cuda.is_bf16_supported()
         if not support_bf16:
             logger.warning(f'support_bf16: {support_bf16}')
         fp16, bf16 = False, True
