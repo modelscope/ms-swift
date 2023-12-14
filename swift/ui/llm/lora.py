@@ -20,7 +20,7 @@ def lora():
                     elem_id='lora_dropout_p')
 
         def update_lora(choice):
-            return ','.join(MODEL_MAPPING[choice]['lora_target_modules'])
+            return ' '.join(MODEL_MAPPING[choice]['lora_target_modules'])
 
         elements['model_type'].change(
             update_lora,
