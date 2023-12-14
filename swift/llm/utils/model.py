@@ -109,7 +109,7 @@ class ModelType:
     mistral_7b_chat = 'mistral-7b-chat'
     mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
     mixtral_7b_moe = 'mixtral-7b-moe'
-    mixtral_7b_moe_chat = 'mixtral-7b-moe-instruct'
+    mixtral_7b_moe_chat = 'mixtral-7b-moe-chat'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'

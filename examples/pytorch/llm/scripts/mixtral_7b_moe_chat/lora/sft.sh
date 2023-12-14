@@ -7,6 +7,7 @@ python llm_sft.py \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --dataset dureader-robust-zh \
@@ -18,6 +19,7 @@ python llm_sft.py \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
+    --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-4 \
@@ -28,5 +30,5 @@ python llm_sft.py \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
+    --use_flash_attn true \
     --only_save_model true \
-    --gradient_checkpointing true

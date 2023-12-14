@@ -3,10 +3,11 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python llm_infer.py \
-    --ckpt_dir "output/mixtral-7b-moe-instruct/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/mixtral-7b-moe-chat/vx_xxx/checkpoint-xxx" \
     --load_args_from_ckpt_dir true \
     --eval_human false \
-    --max_length 4096 \
+    --max_length 2048 \
+    --use_flash_attn true \
     --max_new_tokens 2048 \
     --temperature 0.5 \
     --top_p 0.7 \
