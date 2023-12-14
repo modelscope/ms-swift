@@ -109,6 +109,7 @@ class ModelType:
     mistral_7b_chat = 'mistral-7b-chat'
     # yi
     yi_6b = 'yi-6b'
+    yi_6b_chat = 'yi-6b-chat'
     yi_34b = 'yi-34b'
     yi_34b_chat = 'yi-34b-chat'
     # ziya
@@ -579,12 +580,22 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
-    _flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
-    model_config._flash_attn_2_enabled = _flash_attn_2_enabled
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if version.parse(transformers.__version__) >= version.parse('4.36'):
+        if use_flash_attn:
+            model_config._attn_implementation = 'flash_attention_2'
+    else:
+        model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
 
 
+@register_model(
+    ModelType.yi_6b_chat,
+    '01ai/Yi-6B-Chat',
+    LoRATM.yi,
+    TemplateType.yi,
+    support_flash_attn=True)
 @register_model(
     ModelType.yi_34b_chat,
     '01ai/Yi-34B-Chat',
