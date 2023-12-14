@@ -31,3 +31,4 @@ python llm_sft.py \
     --hub_model_id qwen-7b-chat-full \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
+    --preprocess_num_proc 4 \

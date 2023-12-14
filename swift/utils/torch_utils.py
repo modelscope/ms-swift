@@ -50,7 +50,7 @@ def seed_everything(seed: Optional[int] = None,
     return seed
 
 
-def print_model_info(model: Module, name: Optional[str] = None) -> None:
+def get_model_info(model: Module, name: Optional[str] = None) -> str:
     if name is None:
         name = model.__class__.__name__
 
@@ -65,7 +65,7 @@ def print_model_info(model: Module, name: Optional[str] = None) -> None:
          f'{n_params:.4f}M Params ({n_grads:.4f}M Trainable '
          f'[{100 * n_grads / n_params:.4f}%]), '
          f'{n_buffers:.4f}M Buffers.')
-    logger.info(s)
+    return s
 
 
 def find_sub_module(module: torch.nn.Module,

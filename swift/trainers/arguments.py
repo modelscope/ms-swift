@@ -19,6 +19,8 @@ class SwiftArgumentsMixin:
             'choices':
             {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}
         })
+    acc_strategy: str = field(
+        default='token', metadata={'choices': ['token', 'sentence']})
     additional_saved_files: Optional[List[str]] = None
 
     def __post_init__(self):

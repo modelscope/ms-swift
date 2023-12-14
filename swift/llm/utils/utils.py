@@ -266,11 +266,16 @@ def dataset_map(dataset: HfDataset,
     return LLMDataset(data)
 
 
-def stat_dataset(llm_dataset: HfDataset) -> None:
+def stat_dataset(llm_dataset: Dataset) -> None:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
-    for d in llm_dataset:
-        _token_len.append(len(d['input_ids']))
+    if isinstance(llm_dataset, HfDataset):
+        input_ids = llm_dataset['input_ids']
+        for ii in input_ids:
+            _token_len.append(len(ii))
+    else:
+        for d in llm_dataset:
+            _token_len.append(len(d['input_ids']))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
 
