@@ -64,6 +64,37 @@ class ModelType:
     chatglm3_6b_base = 'chatglm3-6b-base'
     chatglm3_6b = 'chatglm3-6b'
     chatglm3_6b_32k = 'chatglm3-6b-32k'
+    # llama2
+    llama2_7b = 'llama2-7b'
+    llama2_7b_chat = 'llama2-7b-chat'
+    llama2_13b = 'llama2-13b'
+    llama2_13b_chat = 'llama2-13b-chat'
+    llama2_70b = 'llama2-70b'
+    llama2_70b_chat = 'llama2-70b-chat'
+    # yi
+    yi_6b = 'yi-6b'
+    yi_6b_200k = 'yi-6b-200k'
+    yi_6b_chat = 'yi-6b-chat'
+    yi_34b = 'yi-34b'
+    yi_34b_200k = 'yi-34b-200k'
+    yi_34b_chat = 'yi-34b-chat'
+    # deepseek
+    deepseek_7b = 'deepseek-7b'
+    deepseek_7b_chat = 'deepseek-7b-chat'
+    deepseek_67b = 'deepseek-67b'
+    deepseek_67b_chat = 'deepseek-67b-chat'
+    # openbuddy
+    openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
+    openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
+    openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
+    openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
+    openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
+    # mistral
+    mistral_7b = 'mistral-7b'
+    mistral_7b_chat = 'mistral-7b-chat'
+    mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
+    mixtral_7b_moe = 'mixtral-7b-moe'
+    mixtral_7b_moe_chat = 'mixtral-7b-moe-chat'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -74,19 +105,6 @@ class ModelType:
     baichuan2_13b = 'baichuan2-13b'
     baichuan2_13b_chat = 'baichuan2-13b-chat'
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
-    # llama2
-    llama2_7b = 'llama2-7b'
-    llama2_7b_chat = 'llama2-7b-chat'
-    llama2_13b = 'llama2-13b'
-    llama2_13b_chat = 'llama2-13b-chat'
-    llama2_70b = 'llama2-70b'
-    llama2_70b_chat = 'llama2-70b-chat'
-    # openbuddy
-    openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
-    openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
-    openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
-    openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
-    openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -104,24 +122,6 @@ class ModelType:
     bluelm_7b_32k = 'bluelm-7b-32k'
     bluelm_7b_chat = 'bluelm-7b-chat'
     bluelm_7b_chat_32k = 'bluelm-7b-chat-32k'
-    # mistral
-    mistral_7b = 'mistral-7b'
-    mistral_7b_chat = 'mistral-7b-chat'
-    mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
-    mixtral_7b_moe = 'mixtral-7b-moe'
-    mixtral_7b_moe_chat = 'mixtral-7b-moe-chat'
-    # yi
-    yi_6b = 'yi-6b'
-    yi_6b_200k = 'yi-6b-200k'
-    yi_6b_chat = 'yi-6b-chat'
-    yi_34b = 'yi-34b'
-    yi_34b_200k = 'yi-34b-200k'
-    yi_34b_chat = 'yi-34b-chat'
-    #
-    deepseek_7b = 'deepseek-7b'
-    deepseek_7b_chat = 'deepseek-7b-chat'
-    deepseek_67b = 'deepseek-67b'
-    deepseek_67b_chat = 'deepseek-67b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
