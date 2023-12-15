@@ -293,6 +293,8 @@ class SftArguments:
             logger.info(
                 f'Setting self.preprocess_num_proc: {self.preprocess_num_proc}'
             )
+        if 'moe' in self.model_type:
+            assert self.gradient_checkpointing is False, 'moe not support gradient_checkpointing'
 
 
 @dataclass
