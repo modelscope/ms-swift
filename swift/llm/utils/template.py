@@ -32,6 +32,7 @@ class TemplateType:
     bluelm = 'bluelm'
     zephyr = 'zephyr'
     sus = 'sus'
+    deepseek = 'deepseek'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -379,6 +380,12 @@ register_template(
              [['eos_token_id']], None,
              [[64790, 64792, 64794], '\n {{SYSTEM}}']))
 
+register_template(
+    TemplateType.deepseek,
+    Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant: '],
+             [['eos_token_id']], [['eos_token_id']], None,
+             [['bos_token_id'], '{{SYSTEM}}\n\n']))
+
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest assistant. '
@@ -411,7 +418,7 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant: '], ['\n'],
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 

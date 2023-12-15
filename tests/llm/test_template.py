@@ -541,6 +541,44 @@ Assistant:""")
         print(f'official response: {response}')
         self.assertTrue(input_ids_swift == input_ids_official[0].tolist())
 
+    @unittest.skipIf(
+        SKPT_TEST,
+        'To avoid excessive testing time caused by downloading models and '
+        'to prevent OOM (Out of Memory) errors.')
+    def test_deepseek_template(self):
+        model_type = ModelType.deepseek_7b_chat
+        model, tokenizer = get_model_tokenizer(model_type)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        model.generation_config.max_length = 256
+        system = 'AAAAA'
+        query = 'BBBBB'
+        input_ids_swift = template.encode({
+            'query': query,
+            'system': system,
+        })['input_ids']
+        response, _ = inference(model, template, query)
+        print(f'swift response: {response}')
+        #
+        messages = [
+            {
+                'role': 'system',
+                'content': 'AAAAA'
+            },
+            {
+                'role': 'user',
+                'content': 'CCCCC'
+            },
+        ]
+        input_ids_official = tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True)
+        inputs = torch.tensor(input_ids_official, device='cuda')[None]
+        outputs = model.generate(input_ids=inputs)
+        response = tokenizer.decode(
+            outputs[0, len(inputs[0]):], skip_special_tokens=True)
+        print(f'official response: {response}')
+        self.assertTrue(input_ids_swift[:-1] == input_ids_official)
+
 
 if __name__ == '__main__':
     unittest.main()

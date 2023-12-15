@@ -117,6 +117,11 @@ class ModelType:
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
+    #
+    deepseek_7b = 'deepseek-7b'
+    deepseek_7b_chat = 'deepseek-7b-chat'
+    deepseek_67b = 'deepseek-67b'
+    deepseek_67b_chat = 'deepseek-67b-chat'
     # ziya
     ziya2_13b = 'ziya2-13b'
     ziya2_13b_chat = 'ziya2-13b-chat'
@@ -148,14 +153,6 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
-    internlm = llama2
-    xverse = llama2
-    mistral = llama2
-    ziya = llama2
-    yi = llama2
-    bluelm = llama2
-    zephyr = llama2
-    mixtral_moe = llama2
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -220,28 +217,28 @@ def register_model(
 
 
 @register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
-                LoRATM.internlm, TemplateType.default_generation_bos)
+                LoRATM.llama2, TemplateType.default_generation_bos)
 @register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
-                LoRATM.internlm, TemplateType.default_generation_bos)
+                LoRATM.llama2, TemplateType.default_generation_bos)
 @register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
-                LoRATM.bluelm, TemplateType.bluelm)
+                LoRATM.llama2, TemplateType.bluelm)
 @register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
-                LoRATM.bluelm, TemplateType.bluelm)
+                LoRATM.llama2, TemplateType.bluelm)
 @register_model(ModelType.bluelm_7b_32k, 'vivo-ai/BlueLM-7B-Base-32K',
-                LoRATM.bluelm, TemplateType.default_generation_bos)
-@register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.bluelm,
+                LoRATM.llama2, TemplateType.default_generation_bos)
+@register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.llama2,
                 TemplateType.default_generation_bos)
 @register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
-                LoRATM.xverse, TemplateType.xverse)
-@register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.xverse,
+                LoRATM.llama2, TemplateType.xverse)
+@register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.llama2,
                 TemplateType.default_generation)
-@register_model(ModelType.xverse_65b, 'xverse/XVERSE-65B', LoRATM.xverse,
+@register_model(ModelType.xverse_65b, 'xverse/XVERSE-65B', LoRATM.llama2,
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_7b_chat, 'xverse/XVERSE-7B-Chat',
-                LoRATM.xverse, TemplateType.xverse)
-@register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.xverse,
+                LoRATM.llama2, TemplateType.xverse)
+@register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,
                 TemplateType.default_generation)
 @register_model(
     ModelType.baichuan_13b_chat,
@@ -309,14 +306,14 @@ def get_model_tokenizer_from_sdk(
 
 
 @register_model(ModelType.internlm_20b_chat,
-                'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.internlm,
+                'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.llama2,
                 TemplateType.internlm)
 @register_model(ModelType.internlm_7b_chat_8k,
-                'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.internlm,
+                'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.llama2,
                 TemplateType.internlm)
 @register_model(ModelType.internlm_7b_chat,
-                'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
-                LoRATM.internlm, TemplateType.internlm)
+                'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1', LoRATM.llama2,
+                TemplateType.internlm)
 def get_model_tokenizer_internlm_chat(model_dir: str,
                                       torch_dtype: Dtype,
                                       model_kwargs: Dict[str, Any],
@@ -505,65 +502,89 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.deepseek_67b_chat,
+    'deepseek-ai/deepseek-llm-67b-chat',
+    LoRATM.llama2,
+    TemplateType.deepseek,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_67b,
+    'deepseek-ai/deepseek-llm-67b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_7b_chat,
+    'deepseek-ai/deepseek-llm-7b-chat',
+    LoRATM.llama2,
+    TemplateType.deepseek,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_7b,
+    'deepseek-ai/deepseek-llm-7b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
     ModelType.sus_34b_chat,
     'SUSTC/SUS-Chat-34B',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.sus,
     support_flash_attn=True)
 @register_model(
     ModelType.openbuddy_zephyr_7b_chat,
     'OpenBuddy/openbuddy-zephyr-7b-v14.1',
-    LoRATM.zephyr,
+    LoRATM.llama2,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.zephyr_7b_beta_chat,
     'modelscope/zephyr-7b-beta',
-    LoRATM.zephyr,
+    LoRATM.llama2,
     TemplateType.zephyr,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.yi_34b_200k,
     '01ai/Yi-34B-200K',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
     ModelType.yi_6b_200k,
     '01ai/Yi-6B-200K',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
     ModelType.yi_6b,
     '01ai/Yi-6B',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
-    LoRATM.ziya,
+    LoRATM.llama2,
     TemplateType.ziya,
     support_flash_attn=True)
 @register_model(
     ModelType.ziya2_13b,
     'Fengshenbang/Ziya2-13B-Base',
-    LoRATM.ziya,
+    LoRATM.llama2,
     TemplateType.default_generation_bos,
     support_flash_attn=True)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
     'OpenBuddy/openbuddy-mistral-7b-v13.1',
-    LoRATM.mistral,
+    LoRATM.llama2,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
@@ -588,35 +609,35 @@ def get_model_tokenizer_chatglm(model_dir: str,
 @register_model(
     ModelType.mistral_7b_chat,
     'AI-ModelScope/Mistral-7B-Instruct-v0.1',
-    LoRATM.mistral,
+    LoRATM.llama2,
     TemplateType.llama,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.mistral_7b_chat_v2,
     'AI-ModelScope/Mistral-7B-Instruct-v0.2',
-    LoRATM.mistral,
+    LoRATM.llama2,
     TemplateType.llama,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
-    LoRATM.mistral,
+    LoRATM.llama2,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
     ModelType.mixtral_7b_moe,
     'AI-ModelScope/Mixtral-8x7B-v0.1',
-    LoRATM.mixtral_moe,
+    LoRATM.llama2,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.36'],
     support_flash_attn=True)
 @register_model(
     ModelType.mixtral_7b_moe_chat,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
-    LoRATM.mixtral_moe,
+    LoRATM.llama2,
     TemplateType.llama,
     requires=['transformers>=4.36'],
     support_flash_attn=True)
@@ -642,13 +663,13 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 @register_model(
     ModelType.yi_6b_chat,
     '01ai/Yi-6B-Chat',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.yi,
     support_flash_attn=True)
 @register_model(
     ModelType.yi_34b_chat,
     '01ai/Yi-34B-Chat',
-    LoRATM.yi,
+    LoRATM.llama2,
     TemplateType.yi,
     support_flash_attn=True)
 def get_model_tokenizer_yi_chat(model_dir: str,
