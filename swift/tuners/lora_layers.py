@@ -18,6 +18,7 @@ from peft.tuners.lora import Embedding as _Embedding
 from peft.tuners.lora import Linear as _Linear
 from peft.tuners.lora import LoraLayer
 from peft.tuners.lora import LoraModel as _LoraModel
+from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import (_get_submodules, get_auto_gptq_quant_linear,
                         get_quantization_config)
@@ -87,6 +88,7 @@ if is_bnb_available():
             **kwargs,
         ):
             super(Linear8bitLt, self).__init__()
+            self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
@@ -101,6 +103,7 @@ if is_bnb_4bit_available():
             **kwargs,
         ):
             super(Linear4bit, self).__init__()
+            self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
@@ -117,6 +120,7 @@ if is_auto_gptq_available():
             **kwargs,
         ):
             super(QuantLinear, self).__init__()
+            self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
             self.group_size = group_size
             self.use_qa_lora = use_qa_lora
@@ -165,6 +169,7 @@ class Embedding(LoRAActivationMixin, _Embedding):
         **kwargs,
     ) -> None:
         super(Embedding, self).__init__()
+        self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
@@ -172,6 +177,7 @@ class Linear(LoRAActivationMixin, _Linear):
 
     def __init__(self, *args, **kwargs):
         super(Linear, self).__init__()
+        self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
@@ -179,6 +185,15 @@ class Conv2d(LoRAActivationMixin, _Conv2d):
 
     def __init__(self, *args, **kwargs):
         super(Conv2d, self).__init__()
+        self.set_activation(args[1], True)
+        super(ActivationMixin, self).__init__(*args, **kwargs)
+
+
+class LoraParallelLinear(LoRAActivationMixin, _LoraParallelLinear):
+
+    def __init__(self, *args, **kwargs):
+        super(LoraParallelLinear, self).__init__()
+        self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
@@ -431,7 +446,6 @@ class LoraModel(_LoraModel):
                 megatron_core.tensor_parallel.ColumnParallelLinear,  # noqa
                 megatron_core.tensor_parallel.RowParallelLinear),  # noqa
         ):
-            from peft.tuners.lora.tp_layer import LoraParallelLinear
 
             megatron_kwargs = kwargs.copy()
             megatron_config = lora_config.megatron_config
