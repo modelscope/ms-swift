@@ -54,9 +54,9 @@ def add_version_to_work_dir(work_dir: str) -> str:
     """add version"""
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-    if dist.is_initialized() and is_dist():
-        time = broadcast_string(time)
     work_dir = os.path.join(work_dir, f'v{version}-{time}')
+    if dist.is_initialized() and is_dist():
+        work_dir = broadcast_string(work_dir)
     return work_dir
 
 
