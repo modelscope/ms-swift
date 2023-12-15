@@ -46,6 +46,7 @@ class SftArguments:
         })
     output_dir: str = 'output'
     add_output_dir_suffix: bool = True
+    custom_output_dir_suffix: str = None
     ddp_backend: str = field(
         default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
@@ -204,7 +205,8 @@ class SftArguments:
 
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
-            self.output_dir = add_version_to_work_dir(self.output_dir)
+            self.output_dir = add_version_to_work_dir(
+                self.output_dir, self.custom_output_dir_suffix)
             logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
@@ -362,6 +364,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora_and_save: bool = False
+    safe_serialization: bool = True
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
     # web-ui
