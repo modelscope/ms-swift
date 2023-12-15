@@ -13,4 +13,4 @@ rouge
 safetensors
 tensorboard
 tqdm
-transformers>=4.33
+transformers>=4.33,<4.37

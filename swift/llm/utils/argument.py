@@ -46,6 +46,7 @@ class SftArguments:
         })
     output_dir: str = 'output'
     add_output_dir_suffix: bool = True
+    custom_output_dir_suffix: str = None
     ddp_backend: str = field(
         default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
@@ -149,7 +150,11 @@ class SftArguments:
     logging_dir: Optional[str] = None
     report_to: Optional[List[str]] = None
     check_model_is_latest: bool = True
+    acc_strategy: str = field(
+        default='token', metadata={'choices': ['token', 'sentence']})
     save_on_each_node: bool = True
+    save_strategy: str = field(
+        default='steps', metadata={'choices': ['steps', 'no']})
 
     # generation config
     max_new_tokens: int = 2048
@@ -200,7 +205,11 @@ class SftArguments:
 
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
-            self.output_dir = add_version_to_work_dir(self.output_dir)
+            if self.custom_output_dir_suffix is not None:
+                self.output_dir = os.path.join(self.output_dir,
+                                               self.custom_output_dir_suffix)
+            else:
+                self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
@@ -289,6 +298,8 @@ class SftArguments:
             logger.info(
                 f'Setting self.preprocess_num_proc: {self.preprocess_num_proc}'
             )
+        if 'moe' in self.model_type:
+            assert self.gradient_checkpointing is False, 'moe not support gradient_checkpointing'
 
 
 @dataclass
@@ -356,6 +367,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora_and_save: bool = False
+    safe_serialization: bool = True
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
     # web-ui

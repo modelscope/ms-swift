@@ -15,3 +15,4 @@ swift sft \
     --only_save_model true \
     --dataset codefuse-evol-instruction-zh \
     --freeze_parameters 0.2 \
+    --preprocess_num_proc 4 \

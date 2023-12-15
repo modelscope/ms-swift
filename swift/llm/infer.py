@@ -11,7 +11,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from swift.tuners import Swift
-from swift.utils import (append_to_jsonl, get_logger, print_model_info,
+from swift.utils import (append_to_jsonl, get_logger, get_model_info,
                          read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference, inference_stream,
@@ -22,7 +22,8 @@ logger = get_logger()
 
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'cpu') -> str:
+               device_map: str = 'cpu',
+               **kwargs) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
     assert args.sft_type == 'lora'
@@ -52,7 +53,8 @@ def merge_lora(args: InferArguments,
 
     if not os.path.exists(args.ckpt_dir) or replace_if_exists:
         logger.info('Saving merged weights...')
-        model.save_pretrained(args.ckpt_dir)
+        model.save_pretrained(
+            args.ckpt_dir, safe_serialization=args.safe_serialization)
         tokenizer.save_pretrained(args.ckpt_dir)
         for fname in os.listdir(old_ckpt_dir):
             if fname in {'generation_config.json'}:
@@ -124,7 +126,7 @@ def prepare_model_template(
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
 
-    print_model_info(model)
+    logger.info(get_model_info(model))
     show_layers(model)
 
     template: Template = get_template(args.template_type, tokenizer,

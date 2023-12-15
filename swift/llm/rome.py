@@ -4,7 +4,7 @@ import torch
 from modelscope import GenerationConfig
 
 from swift.tuners import Swift
-from swift.utils import (get_logger, print_model_info, seed_everything,
+from swift.utils import (get_logger, get_model_info, seed_everything,
                          show_layers)
 from ..tuners.rome import RomeConfig
 from .utils import (RomeArguments, Template, get_dataset, get_model_tokenizer,
@@ -53,7 +53,7 @@ def rome_infer(args: RomeArguments) -> None:
     model = Swift.prepare_model(model, config, inference_mode=True)
 
     show_layers(model)
-    print_model_info(model)
+    logger.info(get_model_info(model))
 
     # Inference
     template: Template = get_template(args.template_type, tokenizer,

@@ -108,11 +108,12 @@ class ModelType:
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
     mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
-    mistral_7b_moe = 'mistral-7b-moe'
-    mistral_7b_moe_instruct = 'mistral-7b-moe-instruct'
+    mixtral_7b_moe = 'mixtral-7b-moe'
+    mixtral_7b_moe_chat = 'mixtral-7b-moe-chat'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
+    yi_6b_chat = 'yi-6b-chat'
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
@@ -154,9 +155,7 @@ class LoRATM(NamedTuple):
     yi = llama2
     bluelm = llama2
     zephyr = llama2
-    mistral_moe = [
-        'q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate', 'w1', 'w2', 'w3'
-    ]
+    mixtral_moe = llama2
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -608,16 +607,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
 @register_model(
-    ModelType.mistral_7b_moe,
+    ModelType.mixtral_7b_moe,
     'AI-ModelScope/Mixtral-8x7B-v0.1',
-    LoRATM.mistral_moe,
+    LoRATM.mixtral_moe,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.36'],
     support_flash_attn=True)
 @register_model(
-    ModelType.mistral_7b_moe_instruct,
+    ModelType.mixtral_7b_moe_chat,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
-    LoRATM.mistral_moe,
+    LoRATM.mixtral_moe,
     TemplateType.llama,
     requires=['transformers>=4.36'],
     support_flash_attn=True)
@@ -630,12 +629,22 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
-    _flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
-    model_config._flash_attn_2_enabled = _flash_attn_2_enabled
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if version.parse(transformers.__version__) >= version.parse('4.36'):
+        if use_flash_attn:
+            model_config._attn_implementation = 'flash_attention_2'
+    else:
+        model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
 
 
+@register_model(
+    ModelType.yi_6b_chat,
+    '01ai/Yi-6B-Chat',
+    LoRATM.yi,
+    TemplateType.yi,
+    support_flash_attn=True)
 @register_model(
     ModelType.yi_34b_chat,
     '01ai/Yi-34B-Chat',

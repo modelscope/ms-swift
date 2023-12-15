@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Dict
+from typing import Dict, Literal
 
 import jieba
 import numpy as np
@@ -58,13 +58,20 @@ def compute_nlg_metrics(prediction, tokenizer):
     return score_dict
 
 
-def compute_acc_metrics(eval_prediction: EvalPrediction) -> Dict[str, Tensor]:
+def compute_acc_metrics(
+        eval_prediction: EvalPrediction,
+        acc_strategy: Literal['token',
+                              'sentence'] = 'token') -> Dict[str, Tensor]:
     labels = eval_prediction.label_ids[..., 1:]
     predictions = eval_prediction.predictions[..., :-1]
     masks = labels != -100
-    predictions = predictions[masks]
-    labels = labels[masks]
-    acc = np.mean((predictions == labels).astype(np.float64))
+    if acc_strategy == 'sentence':
+        acc_list = []
+        for i, m in enumerate(masks):
+            acc_list.append(np.all(predictions[i, m] == labels[i, m]))
+        acc = np.mean(np.array(acc_list))
+    else:
+        acc = np.mean((predictions[masks] == labels[masks]).astype(np.float64))
     return {'acc': acc}
 
 
