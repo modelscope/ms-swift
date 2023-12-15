@@ -89,6 +89,7 @@ class ModelType:
     openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
+    openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
@@ -501,6 +502,12 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.openbuddy_deepseek_67b_chat,
+    'OpenBuddy/openbuddy-deepseek-67b-v15.2',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    support_flash_attn=True)
 @register_model(
     ModelType.deepseek_67b_chat,
     'deepseek-ai/deepseek-llm-67b-chat',
