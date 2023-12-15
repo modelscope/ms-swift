@@ -50,15 +50,13 @@ def _get_version(work_dir: str) -> int:
     return max(v_list) + 1
 
 
-def add_version_to_work_dir(work_dir: str,
-                            custom_output_dir_suffix: str = None) -> str:
+def add_version_to_work_dir(work_dir: str) -> str:
     """add version"""
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-    output_dir_suffix = f'v{version}-{time}' if custom_output_dir_suffix is None else custom_output_dir_suffix
     if dist.is_initialized() and is_dist():
-        output_dir_suffix = broadcast_string(output_dir_suffix)
-    work_dir = os.path.join(work_dir, output_dir_suffix)
+        time = broadcast_string(time)
+    work_dir = os.path.join(work_dir, f'v{version}-{time}')
     return work_dir
 
 

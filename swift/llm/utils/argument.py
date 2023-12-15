@@ -205,8 +205,11 @@ class SftArguments:
 
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
-            self.output_dir = add_version_to_work_dir(
-                self.output_dir, self.custom_output_dir_suffix)
+            if self.custom_output_dir_suffix is not None:
+                self.output_dir = os.path.join(self.output_dir,
+                                               self.custom_output_dir_suffix)
+            else:
+                self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
