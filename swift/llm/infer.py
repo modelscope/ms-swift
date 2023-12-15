@@ -120,7 +120,17 @@ def prepare_model_template(
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
-
+    generation_config = GenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        do_sample=args.do_sample,
+        repetition_penalty=args.repetition_penalty,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
+    logger.info(f'generation_config: {generation_config}')
+    set_generation_config(model, generation_config)
     # Preparing LoRA
     if args.sft_type == 'lora' and args.ckpt_dir is not None:
         model = Swift.from_pretrained(
@@ -134,17 +144,6 @@ def prepare_model_template(
                                       args.truncation_strategy)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
-    set_generation_config(model, generation_config)
     return model, template
 
 

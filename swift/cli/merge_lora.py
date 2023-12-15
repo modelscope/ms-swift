@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm.run import merge_lora_main
 
 if __name__ == '__main__':
