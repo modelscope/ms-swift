@@ -33,6 +33,8 @@ class TemplateType:
     zephyr = 'zephyr'
     sus = 'sus'
     deepseek = 'deepseek'
+    codefuse_codellama = 'codefuse-codellama'
+    deepseek_coder = 'deepseek-coder'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -446,10 +448,22 @@ register_template(
              [], [['eos_token_id']], ''))
 
 register_template(
-    'codefuse-codellama',
+    TemplateType.codefuse_codellama,
     Template(['{{SYSTEM}}'], [
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
     ], [], [['eos_token_id']], ''))
+
+register_template(
+    TemplateType.deepseek_coder,
+    Template([
+        '{{SYSTEM}}'
+    ], ['### Instruction:\n{{QUERY}}\n### Response:\n'], ['\n<|EOT|>\n'], [
+        '\n<|EOT|>'
+    ], ('You are an AI programming assistant, utilizing the Deepseek Coder model, '
+        'developed by Deepseek Company, and you only answer questions related to computer science. '
+        'For politically sensitive questions, security and privacy issues, '
+        'and other non-computer science questions, you will refuse to answer\n'
+        )))
 
 register_template(
     TemplateType.zephyr,

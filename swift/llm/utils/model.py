@@ -142,8 +142,16 @@ class ModelType:
     tongyi_finance_14b = 'tongyi-finance-14b'
     tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
     tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
+    # coding
     # codefuse
     codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
+    # deepseek-coder
+    deepseek_coder_1_3b = 'deepseek-coder-1_3b'
+    deepseek_coder_1_3b_chat = 'deepseek-coder-1_3b-chat'
+    deepseek_coder_6_7b = 'deepseek-coder-6_7b'
+    deepseek_coder_6_7b_chat = 'deepseek-coder-6_7b-chat'
+    deepseek_coder_33b = 'deepseek-coder-33b'
+    deepseek_coder_33b_chat = 'deepseek-coder-33b-chat'
 
 
 class LoRATM(NamedTuple):
@@ -174,6 +182,7 @@ def register_model(
     ignore_file_pattern: Optional[List[str]] = None,
     function_kwargs: Optional[Dict[str, Any]] = None,
     exists_ok: bool = False,
+    eos_token: Optional[str] = None,
     **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
                        GetModelTokenizerFunction]]:
@@ -194,6 +203,7 @@ def register_model(
         'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
         'revision': revision,
+        'eos_token': eos_token,
         **kwargs
     }
 
@@ -269,6 +279,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
             model_dir, trust_remote_code=True)
+    eos_token = kwargs.get('eos_token')
+    if eos_token is not None:
+        tokenizer.eos_token = eos_token
     model = None
     if load_model:
         model = automodel_class.from_pretrained(
@@ -276,32 +289,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
             config=model_config,
             torch_dtype=torch_dtype,
             trust_remote_code=True,
-            **model_kwargs)
-    return model, tokenizer
-
-
-def get_model_tokenizer_from_sdk(
-        config_class: Type[PretrainedConfig],
-        tokenizer_class: Type[PreTrainedTokenizerBase],
-        model_dir: str,
-        torch_dtype: Dtype,
-        model_kwargs: Dict[str, Any],
-        load_model: bool = True,
-        model_config=None,
-        **kwargs):
-    """load from ms library"""
-    config = read_config(model_dir)
-    if model_config is None:
-        model_config = config_class.from_pretrained(model_dir)
-    model_config.torch_dtype = torch_dtype
-    tokenizer = tokenizer_class.from_pretrained(model_dir)
-    model = None
-    if load_model:
-        model = Model.from_pretrained(
-            model_dir,
-            cfg_dict=config,
-            config=model_config,
-            torch_dtype=torch_dtype,
             **model_kwargs)
     return model, tokenizer
 
@@ -503,6 +490,45 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.deepseek_coder_1_3b,
+    'deepseek-ai/deepseek-coder-1.3b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_coder_6_7b,
+    'deepseek-ai/deepseek-coder-6.7b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_coder_33b,
+    'deepseek-ai/deepseek-coder-33b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_coder_1_3b_chat,
+    'deepseek-ai/deepseek-coder-1.3b-instruct',
+    LoRATM.llama2,
+    TemplateType.deepseek_coder,
+    support_flash_attn=True,
+    eos_token='<|EOT|>')
+@register_model(
+    ModelType.deepseek_coder_6_7b_chat,
+    'deepseek-ai/deepseek-coder-6.7b-instruct',
+    LoRATM.llama2,
+    TemplateType.deepseek_coder,
+    support_flash_attn=True,
+    eos_token='<|EOT|>')
+@register_model(
+    ModelType.deepseek_coder_33b_chat,
+    'deepseek-ai/deepseek-coder-33b-instruct',
+    LoRATM.llama2,
+    TemplateType.deepseek_coder,
+    support_flash_attn=True,
+    eos_token='<|EOT|>')
+@register_model(
     ModelType.openbuddy_deepseek_67b_chat,
     'OpenBuddy/openbuddy-deepseek-67b-v15.2',
     LoRATM.llama2,
@@ -552,6 +578,20 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.zephyr,
     requires=['transformers>=4.34'],
     support_flash_attn=True)
+@register_model(
+    ModelType.yi_6b_chat,
+    '01ai/Yi-6B-Chat',
+    LoRATM.llama2,
+    TemplateType.yi,
+    support_flash_attn=True,
+    eos_token='<|im_end|>')
+@register_model(
+    ModelType.yi_34b_chat,
+    '01ai/Yi-34B-Chat',
+    LoRATM.llama2,
+    TemplateType.yi,
+    support_flash_attn=True,
+    eos_token='<|im_end|>')
 @register_model(
     ModelType.yi_34b_200k,
     '01ai/Yi-34B-200K',
@@ -665,29 +705,6 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
-
-
-@register_model(
-    ModelType.yi_6b_chat,
-    '01ai/Yi-6B-Chat',
-    LoRATM.llama2,
-    TemplateType.yi,
-    support_flash_attn=True)
-@register_model(
-    ModelType.yi_34b_chat,
-    '01ai/Yi-34B-Chat',
-    LoRATM.llama2,
-    TemplateType.yi,
-    support_flash_attn=True)
-def get_model_tokenizer_yi_chat(model_dir: str,
-                                torch_dtype: Dtype,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-    tokenizer.eos_token = '<|im_end|>'
-    return model, tokenizer
 
 
 @register_model(
@@ -1140,7 +1157,7 @@ def get_skywork_model_tokenizer(model_dir: str,
     ModelType.codefuse_codellama_34b_chat,
     'codefuse-ai/CodeFuse-CodeLlama-34B',
     LoRATM.llama2,
-    'codefuse-codellama',
+    TemplateType.codefuse_codellama,
     support_flash_attn=True)
 def get_model_tokenizer_codellama(model_dir: str,
                                   torch_dtype: Dtype,
@@ -1234,6 +1251,7 @@ def get_model_tokenizer(
         model_dir = os.path.expanduser(model_dir)
         assert os.path.isdir(model_dir)
     kwargs['automodel_class'] = model_info['automodel_class']
+    kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
