@@ -1,10 +1,10 @@
 import gradio as gr
 
-from swift.ui.i18n import get_i18n_labels
+from swift.ui.i18n import add_locale_labels
 
 
 def advanced():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Accordion(elem_id='advanced_param', open=False):
         with gr.Blocks():
             with gr.Row():
@@ -22,7 +22,7 @@ def advanced():
                 gr.Textbox(elem_id='more_params', lines=4, scale=20)
 
 
-i18n = {
+locale_dict = {
     'advanced_param': {
         'label': {
             'zh': '高级参数',

@@ -7,16 +7,19 @@ import json
 import torch
 
 from swift.llm import SftArguments
-from swift.ui.element import components, elements
-from swift.ui.i18n import get_i18n_labels
-from swift.ui.llm.advanced import advanced
-from swift.ui.llm.dataset import dataset
-from swift.ui.llm.hyper import hyper
-from swift.ui.llm.lora import lora
-from swift.ui.llm.model import model
-from swift.ui.llm.runtime import runtime
-from swift.ui.llm.save import save
-from swift.ui.llm.self_cog import self_cognition
+from swift.ui.element import get_elements_by_group
+from swift.ui.i18n import add_locale_labels, get_locale_by_group
+from swift.ui.llm_train.advanced import advanced
+from swift.ui.llm_train.dataset import dataset
+from swift.ui.llm_train.hyper import hyper
+from swift.ui.llm_train.lora import lora
+from swift.ui.llm_train.model import model
+from swift.ui.llm_train.runtime import runtime
+from swift.ui.llm_train.save import save
+from swift.ui.llm_train.self_cog import self_cognition
+
+elements = get_elements_by_group('llm_train')
+locales = get_locale_by_group('llm_train')
 
 
 def llm_train():
@@ -25,7 +28,7 @@ def llm_train():
     if torch.cuda.is_available():
         gpu_count = torch.cuda.device_count()
         default_device = '0'
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Blocks():
         model()
         dataset()
@@ -116,11 +119,11 @@ def train():
         os.makedirs(sft_args.logging_dir, exist_ok=True)
         os.system(run_command)
         time.sleep(1)  # to make sure the log file has been created.
-        gr.Info(components['submit_alert']['value'])
+        gr.Info(locales['submit_alert']['value'])
     return run_command, sft_args.logging_dir, gr.update(visible=True)
 
 
-i18n = {
+locale_dict = {
     'submit_alert': {
         'value': {
             'zh':
@@ -132,8 +135,8 @@ i18n = {
     },
     'submit': {
         'value': {
-            'zh': '开始训练',
-            'en': 'Begin'
+            'zh': '🚀 开始训练',
+            'en': '🚀 Begin'
         }
     },
     'dry_run': {

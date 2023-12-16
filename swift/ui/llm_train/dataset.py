@@ -1,11 +1,11 @@
 import gradio as gr
 
 from swift.llm import DATASET_MAPPING
-from swift.ui.i18n import get_i18n_labels
+from swift.ui.i18n import add_locale_labels
 
 
 def dataset():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Row():
         gr.Dropdown(
             elem_id='dataset',
@@ -26,7 +26,7 @@ def dataset():
         gr.Dropdown(elem_id='truncation_strategy', scale=10)
 
 
-i18n = {
+locale_dict = {
     'dataset': {
         'label': {
             'zh': '数据集名称',

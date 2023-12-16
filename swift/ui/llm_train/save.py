@@ -1,12 +1,10 @@
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING
-from swift.ui.element import elements
-from swift.ui.i18n import get_i18n_labels
+from swift.ui.i18n import add_locale_labels
 
 
 def save():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Accordion(elem_id='save_param', open=True):
         with gr.Blocks():
             with gr.Row():
@@ -20,7 +18,7 @@ def save():
                 gr.Textbox(elem_id='hub_token', lines=1, scale=20)
 
 
-i18n = {
+locale_dict = {
     'save_param': {
         'label': {
             'zh': '存储参数',

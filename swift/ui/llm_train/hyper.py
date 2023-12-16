@@ -1,11 +1,13 @@
 import gradio as gr
 
-from swift.ui.element import elements
-from swift.ui.i18n import get_i18n_labels
+from swift.ui.element import get_elements_by_group
+from swift.ui.i18n import add_locale_labels
+
+elements = get_elements_by_group('llm_train')
 
 
 def hyper():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Accordion(elem_id='hyper_param', open=True):
         with gr.Blocks():
             with gr.Row():
@@ -53,7 +55,7 @@ def hyper():
             update_lr, inputs=[elements['sft_type']], outputs=[learning_rate])
 
 
-i18n = {
+locale_dict = {
     'hyper_param': {
         'label': {
             'zh': '超参数',

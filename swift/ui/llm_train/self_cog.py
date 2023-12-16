@@ -1,10 +1,10 @@
 import gradio as gr
 
-from swift.ui.i18n import get_i18n_labels
+from swift.ui.i18n import add_locale_labels
 
 
 def self_cognition():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Accordion(elem_id='self_cognition', open=False):
         with gr.Row():
             gr.Textbox(elem_id='self_cognition_sample', scale=20)
@@ -12,7 +12,7 @@ def self_cognition():
             gr.Textbox(elem_id='model_author', scale=20)
 
 
-i18n = {
+locale_dict = {
     'self_cognition': {
         'label': {
             'zh': '自我认知任务参数',

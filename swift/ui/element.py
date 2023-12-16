@@ -7,7 +7,7 @@ from gradio.events import Changeable
 
 from swift.llm import SftArguments
 from swift.ui.i18n import components
-from swift.ui.llm.utils import get_choices
+from swift.ui.llm_train.utils import get_choices
 
 lang = os.environ.get('SWIFT_UI_LANG', 'zh')
 elements = {}
@@ -19,6 +19,7 @@ def update_data(fn):
     def wrapper(*args, **kwargs):
         elem_id = kwargs.get('elem_id', None)
         self = args[0]
+        group = kwargs.pop('group', None)
         if elem_id in components:
             values = components[elem_id]
             if 'info' in values:
@@ -38,8 +39,9 @@ def update_data(fn):
             kwargs['interactive'] = True
         if 'is_list' in kwargs:
             self.is_list = kwargs.pop('is_list')
-        elements[elem_id] = self
         ret = fn(self, **kwargs)
+        if group is not None:
+            self.group = group
         if isinstance(self, Changeable):
 
             def change(value):
@@ -50,9 +52,24 @@ def update_data(fn):
                 self.last_value = value
 
             self.change(change, [self], [])
+
+        parent_group = None
+        parent = self.parent
+        while parent_group is None:
+            if parent is not None and hasattr(parent, 'group'):
+                parent_group = parent.group
+            parent = parent.parent
+        assert(parent_group is not None)
+        if parent_group not in elements:
+            elements[parent_group] = {}
+        elements[parent_group][elem_id] = self
         return ret
 
     return wrapper
+
+
+def get_elements_by_group(group):
+    return elements[group]
 
 
 Textbox.__init__ = update_data(Textbox.__init__)

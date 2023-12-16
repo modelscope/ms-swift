@@ -1,16 +1,16 @@
 import gradio as gr
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
-from swift.ui.i18n import get_i18n_labels
+from swift.ui.i18n import add_locale_labels
 
 
 def model():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Row():
         model_type = gr.Dropdown(
             elem_id='model_type', choices=list(MODEL_MAPPING.keys()), scale=20)
         model_id_or_path = gr.Textbox(
-            elem_id='model_id_or_path', lines=1, scale=20)
+            elem_id='model_id_or_path', lines=1, scale=20, interactive=False)
         template_type = gr.Dropdown(
             elem_id='template_type',
             choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
@@ -32,7 +32,7 @@ def model():
         outputs=[model_id_or_path, system, template_type])
 
 
-i18n = {
+locale_dict = {
     'model_type': {
         'label': {
             'zh': '选择模型',

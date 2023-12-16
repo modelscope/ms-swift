@@ -4,15 +4,19 @@ import webbrowser
 import gradio as gr
 from transformers import is_tensorboard_available
 
-from swift.ui.element import elements
-from swift.ui.i18n import components, get_i18n_labels
-from swift.ui.llm.utils import close_loop, run_command_in_subprocess
+from swift.ui.element import get_elements_by_group
+from swift.ui.i18n import get_locale_by_group, add_locale_labels
+from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
 
 _handlers = {}
 
+elements = get_elements_by_group('llm_train')
+
+locales = get_locale_by_group('llm_train')
+
 
 def runtime():
-    get_i18n_labels(i18n)
+    add_locale_labels(locale_dict, 'llm_train')
     with gr.Accordion(elem_id='runtime_tab', open=True, visible=False):
         with gr.Blocks():
             with gr.Row():
@@ -59,7 +63,7 @@ def show_log(logging_dir):
 
 def start_tb(logging_dir):
     if not is_tensorboard_available():
-        gr.Error(components['tb_not_found'])
+        gr.Error(locales['tb_not_found'])
         return ''
 
     if logging_dir in _handlers:
@@ -83,7 +87,7 @@ def close_tb(logging_dir):
         _handlers.pop(logging_dir)
 
 
-i18n = {
+locale_dict = {
     'runtime_tab': {
         'label': {
             'zh': '运行时',
