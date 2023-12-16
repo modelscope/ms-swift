@@ -86,17 +86,17 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.10.12: 支持**mistral-7b**系列模型: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-chat.
 - 🔥 2023.10.7: 支持**DeepSpeed ZeRO-2**, 使得lora(不仅仅是qlora)可以在双卡A10上运行DDP.
 - 2023.10.4: 支持更多数学, 法律, SQL, 代码领域的数据集: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.9.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat.
-- 2023.9.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat.
-- 2023.9.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed.
-- 2023.9.5: Supported **openbuddy-llama2-70b-chat** model.
-- 2023.9.3: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
+- 🔥 2023.9.25: 支持**qwen-14b**系列: qwen-14b, qwen-14b-chat.
+- 2023.9.18: 支持**internlm-20b**系列: internlm-20b, internlm-20b-chat.
+- 2023.9.12: 支持**MP+DDP**对全参数训练进行加速.
+- 2023.9.5: 支持**openbuddy-llama2-70b-chat**.
+- 2023.9.3: 支持**baichuan2**系列: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 </details>
 
 
 ## ✨ 大模型训练推理
 ### 简单使用
-- 【必读】**10分钟**对大模型进行**自我认知微调**, 创建专属于自己的大模型, 可以查看[自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
+- **10分钟**对大模型进行**自我认知微调**, 创建专属于自己的大模型, 可以查看[自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
 - 快速对LLM进行**推理**, 搭建**Web-UI**, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - 快速对LLM进行**微调**, 推理并搭建Web-UI. 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
 - 查看swift支持的模型和数据集. 可以查看[支持的模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
@@ -108,7 +108,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), 全参数微调
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, ...
-- 支持的模型
+- 支持的模型: [[详细]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B)
   - 多模态:
     - qwen-vl 系列: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary), [qwen-vl-chat-int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)
     - qwen-audio 系列: [qwen-audio](https://modelscope.cn/models/qwen/Qwen-Audio/summary), [qwen-audio-chat](https://modelscope.cn/models/qwen/Qwen-Audio-Chat/summary)
@@ -131,8 +131,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 金融:
     - tongyi-finance 系列: [tongyi-finance-14b](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary), [tongyi-finance-14b-chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary), [tongyi-finance-14b-chat-int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)
   - 代码:
-    - codefuse series: [codefuse-codellama-34b-chat](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeLlama-34B/summary)
-- 支持的数据集:
+    - codefuse 系列: [codefuse-codellama-34b-chat](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeLlama-34B/summary)
+- 支持的数据集: [[详细]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
   - NLP:
     - 通用: 🔥[alpaca-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)(gpt4), 🔥[alpaca-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)(gpt4), [multi-alpaca-all](https://www.modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary), [instinwild-en](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [instinwild-zh](https://www.modelscope.cn/datasets/wyj123456/instinwild/summary), [cot-en](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [cot-zh](https://www.modelscope.cn/datasets/YorickHe/CoT/summary), [firefly-all-zh](https://www.modelscope.cn/datasets/wyj123456/firefly/summary), [instruct-en](https://www.modelscope.cn/datasets/wyj123456/instruct/summary), [gpt4all-en](https://www.modelscope.cn/datasets/wyj123456/GPT4all/summary), [sharegpt-en](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [sharegpt-zh](https://www.modelscope.cn/datasets/huangjintao/sharegpt/summary), [tutu-v2-sft-mixture](https://modelscope.cn/datasets/AI-ModelScope/tulu-v2-sft-mixture/summary), [wikipedia-zh](https://modelscope.cn/datasets/AI-ModelScope/wikipedia-cn-20230720-filtered/summary), [open-orca](https://modelscope.cn/datasets/AI-ModelScope/OpenOrca/summary), [open-orca-gpt4](https://modelscope.cn/datasets/AI-ModelScope/OpenOrca/summary), [sharegpt-gpt4](https://modelscope.cn/datasets/AI-ModelScope/sharegpt_gpt4/summary)
     - Agent: [damo-agent-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[damo-agent-mini-zh](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary), 🔥[agent-instruct-all-en](https://modelscope.cn/datasets/ZhipuAI/AgentInstruct/summary)
@@ -150,7 +150,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation
-  - 对话: default, chatml(qwen), baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, xverse, ziya, skywork, bluelm, yi, zephyr
+  - 对话: default, chatml, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, ziya, skywork, bluelm, zephyr, sus
 
 
 ## 🛠️ 安装

@@ -27,6 +27,18 @@ def rome_infer(args: RomeArguments) -> None:
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
+    generation_config = GenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        do_sample=args.do_sample,
+        repetition_penalty=args.repetition_penalty,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
+    logger.info(f'generation_config: {generation_config}')
+    set_generation_config(model, generation_config)
+    if args.overwrite_generation_config:
+        generation_config.save_pretrained(args.ckpt_dir)
 
     with open(args.rome_request_file, 'r', encoding='utf-8') as f:
         request = json.load(f)
@@ -61,18 +73,6 @@ def rome_infer(args: RomeArguments) -> None:
                                       args.truncation_strategy)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
-    if args.overwrite_generation_config:
-        generation_config.save_pretrained(args.ckpt_dir)
-    set_generation_config(model, generation_config)
 
     # Inference
     if args.eval_human:

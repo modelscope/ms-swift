@@ -1112,7 +1112,7 @@ def get_skywork_model_tokenizer(model_dir: str,
     ModelType.codefuse_codellama_34b_chat,
     'codefuse-ai/CodeFuse-CodeLlama-34B',
     LoRATM.llama2,
-    'codefuse-codellama',
+    TemplateType.codefuse_codellama,
     support_flash_attn=True)
 def get_model_tokenizer_codellama(model_dir: str,
                                   torch_dtype: Dtype,
