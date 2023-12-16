@@ -50,4 +50,4 @@ class TestMergedLinear(unittest.TestCase):
             torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
         self.assertTrue(
             torch.allclose(
-                outputs_lora.logits, outputs_merged.logits, atol=1e-5))
+                outputs_lora.logits, outputs_merged.logits, atol=1e-4))

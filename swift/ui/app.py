@@ -12,10 +12,12 @@ i18n = {
     }
 }
 
-with gr.Blocks() as app:
-    get_i18n_labels(i18n)
-    with gr.Tabs():
-        with gr.TabItem(elem_id='llm_train', label=''):
-            llm_train()
 
-app.queue().launch(height=800, share=False)
+def run_ui():
+    with gr.Blocks() as app:
+        get_i18n_labels(i18n)
+        with gr.Tabs():
+            with gr.TabItem(elem_id='llm_train', label=''):
+                llm_train()
+
+    app.queue().launch(height=800, share=False)

@@ -19,9 +19,12 @@ def model():
         system = gr.Textbox(elem_id='system', lines=1, scale=20)
 
     def update_input_model(choice):
-        return MODEL_MAPPING[choice]['model_id_or_path'], \
-            TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']].default_system, \
-            MODEL_MAPPING[choice]['template']
+        model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
+        default_system = getattr(
+            TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']],
+            'default_system', None)
+        template = MODEL_MAPPING[choice]['template']
+        return model_id_or_path, default_system, template
 
     model_type.change(
         update_input_model,
