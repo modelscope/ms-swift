@@ -84,7 +84,9 @@ def train():
     kwargs.update(more_params)
     sft_args = SftArguments(**kwargs)
     params = ''
-    suffix = sft_args.logging_dir.split(os.sep)[-2]
+    output_dir = sft_args.logging_dir.split('runs')[0]
+    elements['output_dir'].changed = True
+    elements['output_dir'].last_value = output_dir
 
     for e in elements:
         if e in args and getattr(elements[e], 'changed', False) and getattr(
@@ -93,7 +95,7 @@ def train():
                 params += f'--{e} {elements[e].last_value} '
             else:
                 params += f'--{e} "{elements[e].last_value}" '
-    params += f'--custom_output_dir_suffix {suffix} '
+    params += '--add_output_dir_suffix False '
     for key, param in more_params.items():
         params += f'--{key} "{param}" '
     ddp_param = ''

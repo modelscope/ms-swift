@@ -30,7 +30,7 @@ class TestPeft(unittest.TestCase):
         model2 = copy.deepcopy(model)
         lora_config = LoraConfig(target_modules=['query', 'key', 'value'])
         model = Swift.prepare_model(model, lora_config)
-        model.save_pretrained(self.tmp_dir)
+        model.save_pretrained(self.tmp_dir, safe_serialization=False)
         with open(os.path.join(self.tmp_dir, 'configuration.json'), 'w') as f:
             f.write('{}')
         self.assertTrue(
