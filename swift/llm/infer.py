@@ -33,8 +33,12 @@ def merge_lora(args: InferArguments,
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
     # Loading Model and Tokenizer
-    model, tokenizer = get_model_tokenizer(
-        args.model_type, torch_dtype=args.torch_dtype, device_map=device_map)
+    kwargs = {}
+    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
+    if args.model_cache_dir is not None:
+        kwargs['model_dir'] = args.model_cache_dir
+    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
+                                           model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
