@@ -2,7 +2,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
 from swift.ui.base import BaseUI
 
 
@@ -58,7 +58,7 @@ class Model(BaseUI):
         with gr.Row():
             model_type = gr.Dropdown(
                 elem_id='model_type',
-                choices=list(MODEL_MAPPING.keys()),
+                choices=ModelType.get_model_name_list(),
                 scale=20)
             model_id_or_path = gr.Textbox(
                 elem_id='model_id_or_path',

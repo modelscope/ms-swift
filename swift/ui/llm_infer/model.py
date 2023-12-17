@@ -4,7 +4,7 @@ from typing import Type
 import gradio as gr
 import json
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.generate import Generate
 
@@ -86,7 +86,7 @@ class Model(BaseUI):
             model_type = gr.Dropdown(
                 elem_id='model_type',
                 choices=[base_tab.locale('checkpoint', cls.lang)['value']]
-                + list(MODEL_MAPPING.keys()),
+                + ModelType.get_model_name_list(),
                 value=base_tab.locale('checkpoint', cls.lang)['value'],
                 scale=20)
             model_id_or_path = gr.Textbox(
