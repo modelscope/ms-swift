@@ -297,10 +297,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 
 ### 微调后模型
 ```bash
-# 直接使用web-ui
+# 直接使用app-ui
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
-# merge LoRA增量权重并使用web-ui
+# merge LoRA增量权重并使用app-ui
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
