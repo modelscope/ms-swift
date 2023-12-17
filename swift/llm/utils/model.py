@@ -12,12 +12,11 @@ import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
-                        Model, read_config, snapshot_download)
+                        snapshot_download)
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
-from transformers import (PretrainedConfig, PreTrainedModel,
-                          PreTrainedTokenizerBase)
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.auto_factory import _BaseAutoModelClass
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
@@ -803,12 +802,13 @@ def get_model_tokenizer_qwen(model_dir: str,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
-    k_true = dtype_mapping[torch_dtype]
-    for k in dtype_mapping.values():
-        v = False
-        if k == k_true:
-            v = True
-        setattr(model_config, k, v)
+    if torch_dtype is not None:
+        k_true = dtype_mapping[torch_dtype]
+        for k in dtype_mapping.values():
+            v = False
+            if k == k_true:
+                v = True
+            setattr(model_config, k, v)
 
     use_flash_attn = kwargs.pop('use_flash_attn', None)
     if use_flash_attn is None:
@@ -1221,6 +1221,10 @@ def get_model_tokenizer(
         model_kwargs: Optional[Dict[str, Any]] = None,
         load_model: bool = True,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
+    """
+    torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
+        However, if torch.float32 is retrieved, torch.float16 will be used.
+    """
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']
     for require in requires:
@@ -1229,14 +1233,6 @@ def get_model_tokenizer(
     model_id_or_path = model_info['model_id_or_path']
     get_function = model_info['get_function']
     ignore_file_pattern = model_info['ignore_file_pattern']
-    if model_info.get('torch_dtype') is not None:
-        model_torch_dtype = model_info['torch_dtype']
-        if torch_dtype is None:
-            torch_dtype = model_torch_dtype
-        else:
-            assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
-    elif torch_dtype is None:
-        torch_dtype = torch.float16
     if model_kwargs is None:
         model_kwargs = {}
     if 'device_map' not in model_kwargs:
@@ -1259,6 +1255,19 @@ def get_model_tokenizer(
     else:
         model_dir = os.path.expanduser(model_dir)
         assert os.path.isdir(model_dir)
+    if model_info.get('torch_dtype') is not None:
+        model_torch_dtype = model_info['torch_dtype']
+        if torch_dtype is None:
+            torch_dtype = model_torch_dtype
+        else:
+            assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
+    else:
+        if torch_dtype is None:
+            model_config = AutoConfig.from_pretrained(
+                model_dir, trust_remote_code=True)
+            torch_dtype = getattr(model_config, 'torch_dtype', None)
+            if torch_dtype == torch.float32:
+                torch_dtype = torch.float16
     kwargs['automodel_class'] = model_info['automodel_class']
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
