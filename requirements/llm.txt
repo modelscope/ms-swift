@@ -1,6 +1,6 @@
 charset_normalizer
 cpm_kernels
-gradio
+gradio>=3.40.0,<=3.50.2
 sentencepiece
 tiktoken
 transformers_stream_generator
