@@ -33,6 +33,7 @@ class TemplateType:
     bluelm = 'bluelm'
     zephyr = 'zephyr'
     sus = 'sus'
+    codefuse_codellama = 'codefuse-codellama'
 
 
 Prompt = List[Union[str, List[Union[str, int]]]]
@@ -412,7 +413,7 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant: '], ['\n'],
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
@@ -440,7 +441,7 @@ register_template(
              [], [['eos_token_id']], ''))
 
 register_template(
-    'codefuse-codellama',
+    TemplateType.codefuse_codellama,
     Template(['{{SYSTEM}}'], [
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
     ], [], [['eos_token_id']], ''))

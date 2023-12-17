@@ -183,13 +183,29 @@ class LLMDataset(Dataset):
 
 class LazyLLMDataset(Dataset):
 
-    def __init__(self, dataset: HfDataset, template: Template) -> None:
+    def __init__(self,
+                 dataset: HfDataset,
+                 template: Template,
+                 *,
+                 try_fetch_time: int = 20) -> None:
         self.dataset = dataset
         self.template = template
+        self.try_fetch_time = min(try_fetch_time, len(self.dataset))
+        assert self.try_fetch_time >= 1
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        data = self.dataset[idx]
-        return self.template.encode(data)
+        res = self._try_fetch(idx)
+        if res is not None:
+            return res
+        raise ValueError('Please check if the max_length is appropriate.')
+
+    def _try_fetch(self, first_idx: int) -> Optional[Dict[str, Any]]:
+        idx = np.random.permutation(len(self))[:self.try_fetch_time - 1]
+        for i in [first_idx] + idx.tolist():
+            data = self.dataset[i]
+            res = self.template.encode(data)
+            if res is not None:
+                return res
 
     def __len__(self) -> int:
         return len(self.dataset)
@@ -617,6 +633,17 @@ def set_generation_config(model: Module,
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)
     model.generation_config = generation_config
+
+
+def fix_fp16_trainable_bug(model: Module) -> None:
+    # fix peft==0.7 bug
+    is_logging = False
+    for p in model.parameters():
+        if p.requires_grad and p.dtype == torch.float16:
+            if not is_logging:
+                logger.info('Convert trainable parameters from fp16 to fp32.')
+                is_logging = True
+            p.data = p.data.to(dtype=torch.float32)
 
 
 # monkey patching

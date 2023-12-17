@@ -19,10 +19,10 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          show_layers)
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
-                    find_all_linear_for_lora, get_additional_saved_files,
-                    get_dataset, get_model_tokenizer, get_template,
-                    print_example, set_generation_config, sort_by_max_length,
-                    stat_dataset)
+                    find_all_linear_for_lora, fix_fp16_trainable_bug,
+                    get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, print_example,
+                    set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -59,6 +59,17 @@ def llm_sft(args: SftArguments) -> str:
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
+    generation_config = GenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        do_sample=args.do_sample,
+        repetition_penalty=args.repetition_penalty,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
+    logger.info(f'generation_config: {generation_config}')
+    set_generation_config(model, generation_config)
 
     # Preparing LoRA
     if args.sft_type in ('lora', 'qalora', 'longlora'):
@@ -113,6 +124,7 @@ def llm_sft(args: SftArguments) -> str:
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
+        fix_fp16_trainable_bug(model)
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)
@@ -188,17 +200,6 @@ def llm_sft(args: SftArguments) -> str:
         tokenizer=tokenizer,
         padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
-    set_generation_config(model, generation_config)
     evaluation_strategy = IntervalStrategy.STEPS
     load_best_model_at_end = True
     if val_dataset is None:
