@@ -439,11 +439,17 @@ def _is_chinese_char(cp):
 
 
 def inference_stream(
-        model: PreTrainedModel,
-        template: Template,
-        query: str,
-        history: Optional[History] = None,
-        system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
+    model: PreTrainedModel,
+    template: Template,
+    query: str,
+    history: Optional[History] = None,
+    system: Optional[str] = None,
+    *,
+    generation_config: Optional[GenerationConfig] = None
+) -> Iterator[Tuple[str, History]]:
+    """
+    generation_config: Priority: generation_config > model.generation_config.
+    """
     if history is None:
         history = []
     else:
@@ -457,7 +463,8 @@ def inference_stream(
     input_ids = torch.tensor(input_ids)[None].to(device)
     attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
-    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config', None)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
     model.__class__.generate_stream = NewGenerationMixin.generate
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
@@ -509,10 +516,14 @@ def inference(model: PreTrainedModel,
               history: Optional[History] = None,
               system: Optional[str] = None,
               *,
+              generation_config: Optional[GenerationConfig] = None,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+    """
+    generation_config: Priority: generation_config > model.generation_config.
+    """
     if history is None:
         history = []
     else:
@@ -526,7 +537,8 @@ def inference(model: PreTrainedModel,
     input_ids = torch.tensor(input_ids)[None].to(device)
     attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
-    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config', None)
     if stream is True and verbose is False:
         logger.warning(
             'Please set verbose to True to support TextStreamer, or use `inference_stream.`'
