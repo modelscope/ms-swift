@@ -31,14 +31,8 @@ class LLMInfer(BaseUI):
                 'en': 'Start to load model, please wait'
             }
         },
-        'load_checkpoint': {
-            'value': {
-                'zh': '加载模型',
-                'en': 'Load model'
-            }
-        },
         'chatbot': {
-            'label': {
+            'value': {
                 'zh': '对话框',
                 'en': 'Chat bot'
             },
@@ -50,13 +44,13 @@ class LLMInfer(BaseUI):
             },
         },
         'clear_history': {
-            'label': {
+            'value': {
                 'zh': '清除对话信息',
                 'en': 'Clear history'
             },
         },
         'submit': {
-            'label': {
+            'value': {
                 'zh': '🚀 发送',
                 'en': '🚀 Send'
             },
@@ -97,8 +91,8 @@ class LLMInfer(BaseUI):
                     value=default_device,
                     scale=8)
                 chatbot = gr.Chatbot(
-                    elem_id='chatbot', lines=10, elem_classes='control-height')
-                prompt = gr.Textbox(elem_id='prompt', lines=2)
+                    elem_id='chatbot', lines=8, elem_classes='control-height')
+                prompt = gr.Textbox(elem_id='prompt', lines=1)
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -164,7 +158,7 @@ class LLMInfer(BaseUI):
         model, template = model_and_template
         if not cls.element('template_type').arg_value.endswith('generation'):
             old_history, history = limit_history_length(
-                template, prompt, history, max_new_tokens)
+                template, prompt, history, int(max_new_tokens))
         else:
             old_history = []
             history = []

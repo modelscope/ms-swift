@@ -28,6 +28,12 @@ class Model(BaseUI):
                 'en': 'Base model supported by SWIFT'
             }
         },
+        'load_checkpoint': {
+            'value': {
+                'zh': '加载模型',
+                'en': 'Load model'
+            }
+        },
         'model_id_or_path': {
             'label': {
                 'zh': '模型id或路径',
