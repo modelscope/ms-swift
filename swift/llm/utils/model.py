@@ -3,8 +3,7 @@ import inspect
 import os
 from functools import partial, update_wrapper
 from types import MethodType
-from typing import (Any, Callable, Dict, List, NamedTuple, Optional,
-                    OrderedDict, Tuple, Type)
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import torch
 import torch.distributed as dist
@@ -31,7 +30,7 @@ from .template import TemplateType
 logger = get_logger()
 
 # Model Home: 'https://modelscope.cn/models/{model_id_or_path}/summary'
-MODEL_MAPPING: Dict[str, Dict[str, Any]] = OrderedDict()
+MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
 class ModelType:
@@ -218,320 +217,6 @@ def register_model(
         return _old_get_function
 
     return _register_model
-
-
-@register_model(
-    ModelType.qwen_1_8b,
-    'qwen/Qwen-1_8B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_72b,
-    'qwen/Qwen-72B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.tongyi_finance_14b,
-    'TongyiFinance/Tongyi-Finance-14B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_14b,
-    'qwen/Qwen-14B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_7b,
-    'qwen/Qwen-7B',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True)
-def get_model_tokenizer_qwen_base(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
-    tokenizer.eos_token_id = tokenizer.eod_id
-    return model, tokenizer
-
-
-@register_model(
-    ModelType.qwen_1_8b_chat,
-    'qwen/Qwen-1_8B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_72b_chat,
-    'qwen/Qwen-72B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.tongyi_finance_14b_chat,
-    'TongyiFinance/Tongyi-Finance-14B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_14b_chat,
-    'qwen/Qwen-14B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_7b_chat,
-    'qwen/Qwen-7B-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-def get_model_tokenizer_qwen_chat(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
-    tokenizer.eos_token_id = tokenizer.im_end_id
-    return model, tokenizer
-
-
-def fix_qwen_inplace_bug(model) -> None:
-    first_drop = model.transformer.drop
-    if first_drop.p == 0.:
-        # fix in-place operation bug
-        if not hasattr(first_drop, '__old_forward'):  # Avoid double patching
-            if hasattr(first_drop, '_old_forward'):  # device_map
-                __old_forward = first_drop._old_forward
-                first_drop._old_forward = lambda *args, **kwargs: __old_forward(
-                    *args, **kwargs).clone()
-            else:
-                __old_forward = first_drop.forward
-                first_drop.forward = lambda *args, **kwargs: __old_forward(
-                    *args, **kwargs).clone()
-            first_drop.__old_forward = __old_forward
-
-
-def _qwen_vl_audio_decode(self,
-                          *args,
-                          skip_special_tokens=False,
-                          **kwargs) -> str:
-    if skip_special_tokens:
-        token_ids = kwargs['token_ids']
-        while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
-            token_ids.pop()
-        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
-    else:
-        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
-
-
-@register_model(
-    ModelType.qwen_vl_chat,
-    'qwen/Qwen-VL-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_vl,
-    'qwen/Qwen-VL',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
-def get_model_tokenizer_qwen_vl(model_dir: str,
-                                torch_dtype: Dtype,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    if (model_kwargs.get('quantization_config') is not None and isinstance(
-            model_kwargs['quantization_config'], BitsAndBytesConfig)):
-        # https://github.com/pytorch/pytorch/issues/58969
-        model_kwargs['quantization_config'].llm_int8_skip_modules = [
-            'lm_head', 'attn_pool.attn'
-        ]
-    get_qwen_function = kwargs.pop('get_qwen_function',
-                                   get_model_tokenizer_qwen_chat)
-    tokenizer_config = get_tokenizer_config(model_dir)
-    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
-    tokenizer_cls._auto_class = 'AutoTokenizer'
-    tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
-    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
-        tokenizer_cls._old_decode = tokenizer_cls._decode
-        tokenizer_cls._decode = _qwen_vl_audio_decode
-    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
-        model_dir, trust_remote_code=True)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
-    if model is not None:
-        fix_qwen_inplace_bug(model)
-
-    return model, tokenizer
-
-
-@register_model(
-    ModelType.qwen_audio_chat,
-    'qwen/Qwen-Audio-Chat',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
-@register_model(
-    ModelType.qwen_audio,
-    'qwen/Qwen-Audio',
-    LoRATM.qwen,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
-def get_model_tokenizer_qwen_audio(model_dir: str,
-                                   torch_dtype: Dtype,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    get_qwen_function = kwargs.pop('get_qwen_function')
-    tokenizer_config = get_tokenizer_config(model_dir)
-    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
-    tokenizer_cls._auto_class = 'AutoTokenizer'
-    tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
-    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
-        tokenizer_cls._old_decode = tokenizer_cls._decode
-        tokenizer_cls._decode = _qwen_vl_audio_decode
-    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
-        model_dir, trust_remote_code=True)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
-    if model is not None:
-        fix_qwen_inplace_bug(model)
-
-    return model, tokenizer
-
-
-@register_model(
-    ModelType.qwen_1_8b_chat_int8,
-    'qwen/Qwen-1_8B-Chat-Int8',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_1_8b_chat_int4,
-    'qwen/Qwen-1_8B-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_72b_chat_int8,
-    'qwen/Qwen-72B-Chat-Int8',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_72b_chat_int4,
-    'qwen/Qwen-72B-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-@register_model(
-    ModelType.tongyi_finance_14b_chat_int4,
-    'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_vl_chat_int4,
-    'qwen/Qwen-VL-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    function_kwargs={
-        'get_qwen_function': get_model_tokenizer_qwen_vl,
-        'bits': 4
-    })
-@register_model(
-    ModelType.qwen_14b_chat_int8,
-    'qwen/Qwen-14B-Chat-Int8',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_7b_chat_int8,
-    'qwen/Qwen-7B-Chat-Int8',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_14b_chat_int4,
-    'qwen/Qwen-14B-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-@register_model(
-    ModelType.qwen_7b_chat_int4,
-    'qwen/Qwen-7B-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.chatml,
-    requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-def get_model_tokenizer_qwen_intx(model_dir: str,
-                                  torch_dtype: Dtype,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-
-    logger.info('use gptq, ignore bnb arguments')
-    bits = kwargs.pop('bits')
-    if version.parse(transformers.__version__) >= version.parse('4.35'):
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, use_exllama=False)
-    else:
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, disable_exllama=True)
-
-    # fix quantlinear bug
-    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
-    __old_forward = QuantLinear.forward
-
-    def _new_forward(self, x):
-        if not self.training or not self.autogptq_cuda_available:
-            return self.__old_forward(x)
-        # fix sft no grad
-        self.autogptq_cuda_available = False
-        res = self.__old_forward(x)
-        self.autogptq_cuda_available = True
-        return res
-
-    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
-        QuantLinear.__old_forward = __old_forward
-        QuantLinear.forward = _new_forward
-    get_qwen_function = kwargs.pop('get_qwen_function',
-                                   get_model_tokenizer_qwen_chat)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
-                                         load_model, **kwargs)
-    return model, tokenizer
 
 
 @register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
@@ -1085,6 +770,320 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_1_8b,
+    'qwen/Qwen-1_8B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b,
+    'qwen/Qwen-72B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.tongyi_finance_14b,
+    'TongyiFinance/Tongyi-Finance-14B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_14b,
+    'qwen/Qwen-14B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b,
+    'qwen/Qwen-7B',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+def get_model_tokenizer_qwen_base(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
+    tokenizer.eos_token_id = tokenizer.eod_id
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_1_8b_chat,
+    'qwen/Qwen-1_8B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b_chat,
+    'qwen/Qwen-72B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.tongyi_finance_14b_chat,
+    'TongyiFinance/Tongyi-Finance-14B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_14b_chat,
+    'qwen/Qwen-14B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b_chat,
+    'qwen/Qwen-7B-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+def get_model_tokenizer_qwen_chat(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
+    tokenizer.eos_token_id = tokenizer.im_end_id
+    return model, tokenizer
+
+
+def fix_qwen_inplace_bug(model) -> None:
+    first_drop = model.transformer.drop
+    if first_drop.p == 0.:
+        # fix in-place operation bug
+        if not hasattr(first_drop, '__old_forward'):  # Avoid double patching
+            if hasattr(first_drop, '_old_forward'):  # device_map
+                __old_forward = first_drop._old_forward
+                first_drop._old_forward = lambda *args, **kwargs: __old_forward(
+                    *args, **kwargs).clone()
+            else:
+                __old_forward = first_drop.forward
+                first_drop.forward = lambda *args, **kwargs: __old_forward(
+                    *args, **kwargs).clone()
+            first_drop.__old_forward = __old_forward
+
+
+def _qwen_vl_audio_decode(self,
+                          *args,
+                          skip_special_tokens=False,
+                          **kwargs) -> str:
+    if skip_special_tokens:
+        token_ids = kwargs['token_ids']
+        while len(token_ids) > 0 and token_ids[-1] in {151645, 151643}:
+            token_ids.pop()
+        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
+    else:
+        return self._old_decode(*args, skip_special_tokens=False, **kwargs)
+
+
+@register_model(
+    ModelType.qwen_vl_chat,
+    'qwen/Qwen-VL-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_vl,
+    'qwen/Qwen-VL',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
+def get_model_tokenizer_qwen_vl(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
+    if (model_kwargs.get('quantization_config') is not None and isinstance(
+            model_kwargs['quantization_config'], BitsAndBytesConfig)):
+        # https://github.com/pytorch/pytorch/issues/58969
+        model_kwargs['quantization_config'].llm_int8_skip_modules = [
+            'lm_head', 'attn_pool.attn'
+        ]
+    get_qwen_function = kwargs.pop('get_qwen_function',
+                                   get_model_tokenizer_qwen_chat)
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
+    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+    if model is not None:
+        fix_qwen_inplace_bug(model)
+
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_audio_chat,
+    'qwen/Qwen-Audio-Chat',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
+@register_model(
+    ModelType.qwen_audio,
+    'qwen/Qwen-Audio',
+    LoRATM.qwen,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
+def get_model_tokenizer_qwen_audio(model_dir: str,
+                                   torch_dtype: Dtype,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
+    get_qwen_function = kwargs.pop('get_qwen_function')
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
+    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+    if model is not None:
+        fix_qwen_inplace_bug(model)
+
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen_1_8b_chat_int8,
+    'qwen/Qwen-1_8B-Chat-Int8',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_1_8b_chat_int4,
+    'qwen/Qwen-1_8B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b_chat_int8,
+    'qwen/Qwen-72B-Chat-Int8',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_72b_chat_int4,
+    'qwen/Qwen-72B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
+    ModelType.tongyi_finance_14b_chat_int4,
+    'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_vl_chat_int4,
+    'qwen/Qwen-VL-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    function_kwargs={
+        'get_qwen_function': get_model_tokenizer_qwen_vl,
+        'bits': 4
+    })
+@register_model(
+    ModelType.qwen_14b_chat_int8,
+    'qwen/Qwen-14B-Chat-Int8',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b_chat_int8,
+    'qwen/Qwen-7B-Chat-Int8',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_14b_chat_int4,
+    'qwen/Qwen-14B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+@register_model(
+    ModelType.qwen_7b_chat_int4,
+    'qwen/Qwen-7B-Chat-Int4',
+    LoRATM.qwen,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True)
+def get_model_tokenizer_qwen_intx(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+
+    logger.info('use gptq, ignore bnb arguments')
+    bits = kwargs.pop('bits')
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=bits, use_exllama=False)
+    else:
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=bits, disable_exllama=True)
+
+    # fix quantlinear bug
+    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
+    __old_forward = QuantLinear.forward
+
+    def _new_forward(self, x):
+        if not self.training or not self.autogptq_cuda_available:
+            return self.__old_forward(x)
+        # fix sft no grad
+        self.autogptq_cuda_available = False
+        res = self.__old_forward(x)
+        self.autogptq_cuda_available = True
+        return res
+
+    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
+        QuantLinear.__old_forward = __old_forward
+        QuantLinear.forward = _new_forward
+    get_qwen_function = kwargs.pop('get_qwen_function',
+                                   get_model_tokenizer_qwen_chat)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
     return model, tokenizer
 
 
