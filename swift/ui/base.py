@@ -45,14 +45,15 @@ def update_data(fn):
         if hasattr(self, 'change'):
 
             def change(value):
-                print(value)
                 self.changed = True
+                arg_value = value
                 if isinstance(value, list):
-                    value = ' '.join(value)
+                    arg_value = ' '.join(value)
                     self.is_list = True
-                self.arg_value = value
+                self.arg_value = arg_value
+                return value
 
-            self.change(change, [self], [])
+            self.change(change, [self], [self], queue=False)
 
             value = getattr(self, 'value', None)
             self.arg_value = ' '.join(value) if isinstance(value,

@@ -89,7 +89,7 @@ class LLMInfer(BaseUI):
                     value=default_device,
                     scale=8)
                 chatbot = gr.Chatbot(
-                    elem_id='chatbot', lines=8, elem_classes='control-height')
+                    elem_id='chatbot', elem_classes='control-height')
                 prompt = gr.Textbox(elem_id='prompt', lines=1)
 
                 with gr.Row():
