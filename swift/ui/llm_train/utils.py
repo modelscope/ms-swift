@@ -5,17 +5,6 @@ from dataclasses import fields
 
 from swift.llm import SftArguments
 
-all_choices = {}
-
-
-def get_choices(name):
-    global all_choices
-    if not all_choices:
-        for f in fields(SftArguments):
-            if 'choices' in f.metadata:
-                all_choices[f.name] = f.metadata['choices']
-    return all_choices.get(name, [])
-
 
 async def run_and_get_log(*args, timeout=None):
     process = await asyncio.create_subprocess_exec(

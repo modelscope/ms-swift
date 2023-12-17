@@ -1,32 +1,43 @@
+from functools import partial
+
 import gradio as gr
 
-from swift.ui.i18n import get_i18n_labels
-from swift.ui.llm_infer.llm_infer import llm_infer
-from swift.ui.llm_train.llm_train import llm_train
+from swift.ui.base import BaseUI
+from swift.ui.llm_infer.llm_infer import LLMInfer
+from swift.ui.llm_train.llm_train import LLMTrain
 
-i18n = {
-    'llm_train': {
+all_langs = ['中文', 'en']
+
+locale_dict = {
+    'locale': {
         'label': {
-            'zh': 'LLM训练',
-            'en': 'LLM Training',
-        }
-    },
-    'llm_infer': {
-        'label': {
-            'zh': 'LLM推理',
-            'en': 'LLM Inference',
+            'zh': '选择语言',
+            'en': 'Select Language',
         }
     }
 }
 
 
+def reload_locale(lang, base_tab: BaseUI):
+    """Reload labels"""
+    updates = []
+    for element in base_tab.elements():
+        elem_id = element.elem_id
+        locale = base_tab.locale(elem_id, lang)
+        updates.append(gr.update(**locale))
+    LLMTrain.set_lang(lang)
+    LLMInfer.set_lang(lang)
+    return updates
+
+
 def run_ui():
     with gr.Blocks() as app:
-        get_i18n_labels(i18n)
+        locale = gr.Dropdown(elem_id='locale', choices=all_langs)
         with gr.Tabs():
-            with gr.TabItem(elem_id='llm_train', group='llm_train', label=''):
-                llm_train()
-            with gr.TabItem(elem_id='llm_infer', group='llm_infer', label=''):
-                llm_infer()
+            LLMTrain.build_ui(LLMTrain)
+            LLMInfer.build_ui(LLMInfer)
+
+        locale.change(partial(reload_locale, base_tab=LLMTrain), [locale], list(LLMTrain.elements().values()))
+        locale.change(partial(reload_locale, base_tab=LLMInfer), [locale], list(LLMInfer.elements().values()))
 
     app.queue().launch(height=800, share=False)
