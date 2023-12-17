@@ -1,10 +1,10 @@
-import json
 import os
 import time
 from dataclasses import fields
 from typing import Dict
 
 import gradio as gr
+import json
 import torch
 
 from swift.llm import SftArguments
@@ -14,10 +14,10 @@ from swift.ui.llm_train.dataset import Dataset
 from swift.ui.llm_train.hyper import Hyper
 from swift.ui.llm_train.lora import LoRA
 from swift.ui.llm_train.model import Model
+from swift.ui.llm_train.quantization import Quantization
 from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
-from swift.ui.llm_train.quantization import Quantization
 
 
 class LLMTrain(BaseUI):
@@ -37,110 +37,110 @@ class LLMTrain(BaseUI):
     ]
 
     locale_dict: Dict[str, Dict] = {
-                'llm_train': {
-                    'label': {
-                        'zh': 'LLM训练',
-                        'en': 'LLM Training',
-                    }
-                },
-                'submit_alert': {
-                    'value': {
-                        'zh':
-                        '任务已开始，请查看tensorboard或日志记录，关闭本页面不影响训练过程',
-                        'en':
-                        'Task started, please check the tensorboard or log file, '
-                        'closing this page does not affect training'
-                    }
-                },
-                'submit': {
-                    'value': {
-                        'zh': '🚀 开始训练',
-                        'en': '🚀 Begin'
-                    }
-                },
-                'dry_run': {
-                    'label': {
-                        'zh': '仅生成运行命令',
-                        'en': 'Dry-run'
-                    },
-                    'info': {
-                        'zh': '仅生成运行命令，开发者自行运行',
-                        'en': 'Generate run command only, for manually running'
-                    }
-                },
-                'gpu_id': {
-                    'label': {
-                        'zh': '选择可用GPU',
-                        'en': 'Choose GPU'
-                    },
-                    'info': {
-                        'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
-                        'en': 'Select GPU to train'
-                    }
-                },
-                'gpu_memory_fraction': {
-                    'label': {
-                        'zh': 'GPU显存限制',
-                        'en': 'GPU memory fraction'
-                    },
-                    'info': {
-                        'zh':
-                        '设置使用显存的比例，一般用于显存测试',
-                        'en':
-                        'Set the memory fraction ratio of GPU, usually used in memory test'
-                    }
-                },
-                'sft_type': {
-                    'label': {
-                        'zh': '训练方式',
-                        'en': 'Train type'
-                    },
-                    'info': {
-                        'zh': '选择训练的方式',
-                        'en': 'Select the training type'
-                    }
-                },
-                'seed': {
-                    'label': {
-                        'zh': '随机数种子',
-                        'en': 'Seed'
-                    },
-                    'info': {
-                        'zh': '选择随机数种子',
-                        'en': 'Select a random seed'
-                    }
-                },
-                'dtype': {
-                    'label': {
-                        'zh': '训练精度',
-                        'en': 'Training Precision'
-                    },
-                    'info': {
-                        'zh': '选择训练精度',
-                        'en': 'Select the training precision'
-                    }
-                },
-                'use_ddp': {
-                    'label': {
-                        'zh': '使用DDP',
-                        'en': 'Use DDP'
-                    },
-                    'info': {
-                        'zh': '是否使用数据并行训练',
-                        'en': 'Use Distributed Data Parallel to train'
-                    }
-                },
-                'neftune_alpha': {
-                    'label': {
-                        'zh': 'neftune_alpha',
-                        'en': 'neftune_alpha'
-                    },
-                    'info': {
-                        'zh': '使用neftune提升训练效果',
-                        'en': 'Use neftune to improve performance'
-                    }
-                }
+        'llm_train': {
+            'label': {
+                'zh': 'LLM训练',
+                'en': 'LLM Training',
             }
+        },
+        'submit_alert': {
+            'value': {
+                'zh':
+                '任务已开始，请查看tensorboard或日志记录，关闭本页面不影响训练过程',
+                'en':
+                'Task started, please check the tensorboard or log file, '
+                'closing this page does not affect training'
+            }
+        },
+        'submit': {
+            'value': {
+                'zh': '🚀 开始训练',
+                'en': '🚀 Begin'
+            }
+        },
+        'dry_run': {
+            'label': {
+                'zh': '仅生成运行命令',
+                'en': 'Dry-run'
+            },
+            'info': {
+                'zh': '仅生成运行命令，开发者自行运行',
+                'en': 'Generate run command only, for manually running'
+            }
+        },
+        'gpu_id': {
+            'label': {
+                'zh': '选择可用GPU',
+                'en': 'Choose GPU'
+            },
+            'info': {
+                'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
+                'en': 'Select GPU to train'
+            }
+        },
+        'gpu_memory_fraction': {
+            'label': {
+                'zh': 'GPU显存限制',
+                'en': 'GPU memory fraction'
+            },
+            'info': {
+                'zh':
+                '设置使用显存的比例，一般用于显存测试',
+                'en':
+                'Set the memory fraction ratio of GPU, usually used in memory test'
+            }
+        },
+        'sft_type': {
+            'label': {
+                'zh': '训练方式',
+                'en': 'Train type'
+            },
+            'info': {
+                'zh': '选择训练的方式',
+                'en': 'Select the training type'
+            }
+        },
+        'seed': {
+            'label': {
+                'zh': '随机数种子',
+                'en': 'Seed'
+            },
+            'info': {
+                'zh': '选择随机数种子',
+                'en': 'Select a random seed'
+            }
+        },
+        'dtype': {
+            'label': {
+                'zh': '训练精度',
+                'en': 'Training Precision'
+            },
+            'info': {
+                'zh': '选择训练精度',
+                'en': 'Select the training precision'
+            }
+        },
+        'use_ddp': {
+            'label': {
+                'zh': '使用DDP',
+                'en': 'Use DDP'
+            },
+            'info': {
+                'zh': '是否使用数据并行训练',
+                'en': 'Use Distributed Data Parallel to train'
+            }
+        },
+        'neftune_alpha': {
+            'label': {
+                'zh': 'neftune_alpha',
+                'en': 'neftune_alpha'
+            },
+            'info': {
+                'zh': '使用neftune提升训练效果',
+                'en': 'Use neftune to improve performance'
+            }
+        }
+    }
 
     choice_dict = {}
     for f in fields(SftArguments):
@@ -177,9 +177,11 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(gpu_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    gr.Textbox(elem_id='gpu_memory_fraction', value='1.0', scale=4)
+                    gr.Textbox(
+                        elem_id='gpu_memory_fraction', value='1.0', scale=4)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
-                    submit = gr.Button(elem_id='submit', scale=4, variant='primary')
+                    submit = gr.Button(
+                        elem_id='submit', scale=4, variant='primary')
 
                 Save.build_ui(base_tab)
                 LoRA.build_ui(base_tab)
@@ -189,7 +191,8 @@ class LLMTrain(BaseUI):
                 Advanced.build_ui(base_tab)
                 submit.click(
                     cls.train, [], [
-                        cls.element('running_cmd'), cls.element('logging_dir'),
+                        cls.element('running_cmd'),
+                        cls.element('logging_dir'),
                         cls.element('runtime_tab')
                     ],
                     show_progress=True)
@@ -220,8 +223,10 @@ class LLMTrain(BaseUI):
         elements['output_dir'].arg_value = output_dir
 
         for e in elements:
-            if e in args and getattr(elements[e], 'changed', False) and getattr(
-                    elements[e], 'arg_value', None) and e not in ignore_elements:
+            if e in args and getattr(elements[e], 'changed',
+                                     False) and getattr(
+                                         elements[e], 'arg_value',
+                                         None) and e not in ignore_elements:
                 if getattr(elements[e], 'is_list', False):
                     params += f'--{e} {elements[e].arg_value} '
                 else:
@@ -233,7 +238,8 @@ class LLMTrain(BaseUI):
         devices = getattr(elements['gpu_id'], 'arg_value',
                           ' '.join(elements['gpu_id'].value)).split(' ')
         devices = [d for d in devices if d]
-        if getattr(elements['use_ddp'], 'arg_value', elements['use_ddp'].value):
+        if getattr(elements['use_ddp'], 'arg_value',
+                   elements['use_ddp'].value):
             ddp_param = f'NPROC_PER_NODE={len(devices)}'
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)

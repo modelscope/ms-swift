@@ -1,11 +1,10 @@
 import os
-from typing import Dict, List, OrderedDict
 from functools import wraps
+from typing import Dict, List, OrderedDict
 
 from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
                     TabItem, Textbox)
 from gradio.events import Changeable
-
 
 all_langs = ['zh', 'en']
 builder: 'BaseUI' = None
@@ -24,7 +23,9 @@ def update_data(fn):
             if choices:
                 kwargs['choices'] = choices
 
-        if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
+        if not isinstance(
+                self,
+            (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
             kwargs['interactive'] = True
 
         if 'is_list' in kwargs:
@@ -57,7 +58,8 @@ def update_data(fn):
             self.change(change, [self], [])
 
             value = getattr(self, 'value', None)
-            self.arg_value = ' '.join(value) if isinstance(value, list) else value
+            self.arg_value = ' '.join(value) if isinstance(value,
+                                                           list) else value
 
         if builder is not None:
             builder.element_dict[elem_id] = self
@@ -111,10 +113,7 @@ class BaseUI:
     @classmethod
     def locale(cls, elem_id, lang):
         """Get locale by elem_id"""
-        try:
-            return cls.locales(lang)[elem_id]
-        except:
-            print()
+        return cls.locales(lang)[elem_id]
 
     @classmethod
     def locales(cls, lang):
@@ -148,6 +147,3 @@ class BaseUI:
         cls.lang = lang
         for sub_ui in cls.sub_ui:
             sub_ui.lang = lang
-
-
-

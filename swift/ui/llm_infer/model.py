@@ -1,7 +1,7 @@
-import json
 import os.path
 
 import gradio as gr
+import json
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
 from swift.ui.base import BaseUI
@@ -74,11 +74,16 @@ class Model(BaseUI):
     def do_build_ui(cls, base_tab: 'BaseUI'):
         with gr.Row():
             model_type = gr.Dropdown(
-                elem_id='model_type', choices=list(MODEL_MAPPING.keys()) + [base_tab.locale('checkpoint', cls.lang)],
+                elem_id='model_type',
+                choices=list(MODEL_MAPPING.keys())
+                + [base_tab.locale('checkpoint', cls.lang)],
                 value=base_tab.locale('checkpoint', cls.lang),
                 scale=20)
             model_id_or_path = gr.Textbox(
-                elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
+                elem_id='model_id_or_path',
+                lines=1,
+                scale=20,
+                interactive=True)
             template_type = gr.Dropdown(
                 elem_id='template_type',
                 choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
@@ -104,7 +109,8 @@ class Model(BaseUI):
                 gr.update(interactive=choice == base_tab.locale('checkpoint', cls.lang))
 
         def update_interactive(choice):
-            return gr.update(interactive=choice == base_tab.locale('checkpoint', cls.lang))
+            return gr.update(
+                interactive=choice == base_tab.locale('checkpoint', cls.lang))
 
         def update_model_id_or_path(path):
             with open(os.path.join(path, 'sft_args.json'), 'r') as f:
@@ -125,8 +131,7 @@ class Model(BaseUI):
             inputs=[model_type],
             outputs=[model_id_or_path])
 
-        model_id_or_path.change(update_model_id_or_path, inputs=[model_id_or_path],
-                                outputs=[system, template_type])
-
-
-
+        model_id_or_path.change(
+            update_model_id_or_path,
+            inputs=[model_id_or_path],
+            outputs=[system, template_type])

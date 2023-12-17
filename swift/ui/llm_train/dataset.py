@@ -101,6 +101,3 @@ class Dataset(BaseUI):
             gr.Textbox(elem_id='train_dataset_sample', scale=20)
             gr.Textbox(elem_id='val_dataset_sample', scale=20)
             gr.Dropdown(elem_id='truncation_strategy', scale=10)
-
-
-

@@ -1,11 +1,12 @@
-import json
 import os
 from dataclasses import fields
 
 import gradio as gr
+import json
 import torch
 
-from swift.llm import InferArguments, prepare_model_template, limit_history_length, inference_stream
+from swift.llm import (InferArguments, inference_stream, limit_history_length,
+                       prepare_model_template)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.generate import Generate
 from swift.ui.llm_infer.model import Model
@@ -15,10 +16,7 @@ class LLMInfer(BaseUI):
 
     group = 'llm_infer'
 
-    sub_ui = [
-        Model,
-        Generate
-    ]
+    sub_ui = [Model, Generate]
 
     locale_dict = {
         'llm_infer': {
@@ -29,18 +27,14 @@ class LLMInfer(BaseUI):
         },
         'load_alert': {
             'value': {
-                'zh':
-                    '加载模型中，请等待',
-                'en':
-                    'Start to load model, please wait'
+                'zh': '加载模型中，请等待',
+                'en': 'Start to load model, please wait'
             }
         },
         'load_checkpoint': {
             'value': {
-                'zh':
-                    '加载模型',
-                'en':
-                    'Load model'
+                'zh': '加载模型',
+                'en': 'Load model'
             }
         },
         'chatbot': {
@@ -102,27 +96,32 @@ class LLMInfer(BaseUI):
                     choices=[str(i) for i in range(gpu_count)] + ['cpu'],
                     value=default_device,
                     scale=8)
-                chatbot = gr.Chatbot(elem_id='chatbot', lines=10, elem_classes="control-height")
+                chatbot = gr.Chatbot(
+                    elem_id='chatbot', lines=10, elem_classes='control-height')
                 prompt = gr.Textbox(elem_id='prompt', lines=2)
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
                     submit = gr.Button(elem_id='submit')
 
-                submit.click(cls.generate_chat,
-                             inputs=[model_and_template, prompt, chatbot, cls.element('max_new_tokens')],
-                             outputs=[prompt, chatbot])
-                clear_history.click(fn=cls.clear_session,
-                                    inputs=[],
-                                    outputs=[prompt, chatbot],
-                                    queue=False)
+                submit.click(
+                    cls.generate_chat,
+                    inputs=[
+                        model_and_template, prompt, chatbot,
+                        cls.element('max_new_tokens')
+                    ],
+                    outputs=[prompt, chatbot])
+                clear_history.click(
+                    fn=cls.clear_session,
+                    inputs=[],
+                    outputs=[prompt, chatbot],
+                    queue=False)
                 cls.element('load_checkpoint')
                 cls.element('load_checkpoint').click(
                     cls.prepare_checkpoint, [], [model_and_template, prompt],
                     show_progress=True)
-                cls.element('load_checkpoint').click(cls.clear_session,
-                                                  inputs=[],
-                                                  outputs=[prompt, chatbot])
+                cls.element('load_checkpoint').click(
+                    cls.clear_session, inputs=[], outputs=[prompt, chatbot])
 
     @classmethod
     def prepare_checkpoint(cls):
@@ -138,7 +137,9 @@ class LLMInfer(BaseUI):
 
         elements = cls.elements()
         for e in elements:
-            if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'arg_value', None):
+            if e in args and getattr(elements[e], 'changed',
+                                     False) and getattr(
+                                         elements[e], 'arg_value', None):
                 kwargs[e] = elements[e].arg_value
         kwargs.update(more_params)
 
@@ -157,11 +158,12 @@ class LLMInfer(BaseUI):
         return '', None
 
     @classmethod
-    def generate_chat(cls, model_and_template, prompt: str, history, max_new_tokens):
+    def generate_chat(cls, model_and_template, prompt: str, history,
+                      max_new_tokens):
         model, template = model_and_template
         if not cls.element('template_type').last_value.endswith('generation'):
-            old_history, history = limit_history_length(template, prompt, history,
-                                                        max_new_tokens)
+            old_history, history = limit_history_length(
+                template, prompt, history, max_new_tokens)
         else:
             old_history = []
             history = []

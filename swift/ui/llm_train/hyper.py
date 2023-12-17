@@ -81,9 +81,9 @@ class Hyper(BaseUI):
             },
             'info': {
                 'zh':
-                    '设置最大迭代步数，该值如果大于零则数据集迭代次数不生效',
+                '设置最大迭代步数，该值如果大于零则数据集迭代次数不生效',
                 'en':
-                    'Set the max steps, if the value > 0 then num_train_epochs has no effects',
+                'Set the max steps, if the value > 0 then num_train_epochs has no effects',
             }
         },
         'gradient_accumulation_steps': {
@@ -140,7 +140,10 @@ class Hyper(BaseUI):
                         step=2,
                         scale=20)
                     learning_rate = gr.Textbox(
-                        elem_id='learning_rate', value='2e-5', lines=1, scale=20)
+                        elem_id='learning_rate',
+                        value='2e-5',
+                        lines=1,
+                        scale=20)
                     gr.Slider(
                         elem_id='max_length',
                         minimum=32,
@@ -174,5 +177,6 @@ class Hyper(BaseUI):
                     return 1e-4
 
             base_tab.element('sft_type').change(
-                update_lr, inputs=[base_tab.element('sft_type')], outputs=[learning_rate])
-
+                update_lr,
+                inputs=[base_tab.element('sft_type')],
+                outputs=[learning_rate])

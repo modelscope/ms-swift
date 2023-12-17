@@ -91,7 +91,8 @@ class Save(BaseUI):
         with gr.Accordion(elem_id='save_param', open=True):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=5)
+                    gr.Textbox(
+                        elem_id='save_steps', value='500', lines=1, scale=5)
                     gr.Textbox(elem_id='output_dir', scale=20)
                 with gr.Row():
                     gr.Checkbox(elem_id='push_to_hub', scale=20)
@@ -99,6 +100,3 @@ class Save(BaseUI):
                     gr.Checkbox(elem_id='hub_private_repo', scale=20)
                     gr.Dropdown(elem_id='push_hub_strategy', scale=20)
                     gr.Textbox(elem_id='hub_token', lines=1, scale=20)
-
-
-

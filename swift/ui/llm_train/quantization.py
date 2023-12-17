@@ -48,10 +48,8 @@ class Quantization(BaseUI):
     def do_build_ui(cls, base_tab: 'BaseUI'):
         with gr.Accordion(elem_id='quantization_tab', open=False):
             with gr.Row():
-                gr.Slider(elem_id='quantization_bit', minimum=0, maximum=8, step=4)
-                gr.Dropdown(
-                    elem_id='bnb_4bit_comp_dtype')
-                gr.Dropdown(
-                    elem_id='bnb_4bit_quant_type')
+                gr.Slider(
+                    elem_id='quantization_bit', minimum=0, maximum=8, step=4)
+                gr.Dropdown(elem_id='bnb_4bit_comp_dtype')
+                gr.Dropdown(elem_id='bnb_4bit_quant_type')
                 gr.Checkbox(elem_id='bnb_4bit_use_double_quant')
-

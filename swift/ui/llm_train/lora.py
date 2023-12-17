@@ -21,9 +21,10 @@ class LoRA(BaseUI):
                 'en': 'LoRA target modules'
             },
             'info': {
-                'zh': '设置LoRA目标模块，如训练所有Linear请改为ALL',
+                'zh':
+                '设置LoRA目标模块，如训练所有Linear请改为ALL',
                 'en':
-                    'Set the LoRA target modules, fill in ALL if train all Linears'
+                'Set the LoRA target modules, fill in ALL if train all Linears'
             }
         },
         'lora_rank': {

@@ -93,6 +93,3 @@ class Advanced(BaseUI):
                         scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
-
-
-

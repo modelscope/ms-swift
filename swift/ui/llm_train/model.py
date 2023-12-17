@@ -55,9 +55,14 @@ class Model(BaseUI):
     def do_build_ui(cls, base_tab: 'BaseUI'):
         with gr.Row():
             model_type = gr.Dropdown(
-                elem_id='model_type', choices=list(MODEL_MAPPING.keys()), scale=20)
+                elem_id='model_type',
+                choices=list(MODEL_MAPPING.keys()),
+                scale=20)
             model_id_or_path = gr.Textbox(
-                elem_id='model_id_or_path', lines=1, scale=20, interactive=False)
+                elem_id='model_id_or_path',
+                lines=1,
+                scale=20,
+                interactive=False)
             template_type = gr.Dropdown(
                 elem_id='template_type',
                 choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
@@ -77,6 +82,3 @@ class Model(BaseUI):
             update_input_model,
             inputs=[model_type],
             outputs=[model_id_or_path, system, template_type])
-
-
-

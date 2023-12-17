@@ -1,6 +1,6 @@
 import os.path
 import webbrowser
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple
 
 import gradio as gr
 from transformers import is_tensorboard_available
@@ -24,9 +24,10 @@ class Runtime(BaseUI):
         },
         'tb_not_found': {
             'value': {
-                'zh': 'tensorboard未安装,使用pip install tensorboard进行安装',
+                'zh':
+                'tensorboard未安装,使用pip install tensorboard进行安装',
                 'en':
-                    'tensorboard not found, install it by pip install tensorboard',
+                'tensorboard not found, install it by pip install tensorboard',
             }
         },
         'running_cmd': {
@@ -128,7 +129,8 @@ class Runtime(BaseUI):
 
     @classmethod
     def show_log(cls, logging_dir):
-        webbrowser.open('file://' + os.path.join(logging_dir, 'run.log'), new=2)
+        webbrowser.open(
+            'file://' + os.path.join(logging_dir, 'run.log'), new=2)
 
     @classmethod
     def start_tb(cls, logging_dir):
