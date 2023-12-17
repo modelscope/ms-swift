@@ -110,8 +110,7 @@ class LLMInfer(BaseUI):
                     queue=False)
                 cls.element('load_checkpoint').click(
                     cls.reset_memory, [], [model_and_template],
-                    show_progress=False)
-                cls.element('load_checkpoint').click(
+                    show_progress=False).then(
                     cls.prepare_checkpoint, [], [model_and_template],
                     show_progress=True)
                 cls.element('load_checkpoint').click(
@@ -144,6 +143,8 @@ class LLMInfer(BaseUI):
         if elements['model_type'].arg_value == cls.locale(
                 'checkpoint', cls.lang)['value']:
             kwargs['ckpt_dir'] = kwargs.pop('model_id_or_path')
+        if 'ckpt_dir' in kwargs or 'model_id_or_path' in kwargs:
+            kwargs.pop('model_type', None)
 
         devices = getattr(elements['gpu_id'], 'arg_value',
                           ' '.join(elements['gpu_id'].value)).split(' ')
