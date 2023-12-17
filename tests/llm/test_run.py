@@ -164,6 +164,7 @@ class TestRun(unittest.TestCase):
                 model_type=ModelType.qwen_7b_chat,
                 dataset=dataset,  # no dataset
                 train_dataset_sample=100,
+                dtype='fp16',
                 eval_steps=5,
                 output_dir='output',
                 lora_target_modules='ALL',
