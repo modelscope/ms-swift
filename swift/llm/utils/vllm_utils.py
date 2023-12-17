@@ -1,3 +1,4 @@
+import inspect
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
@@ -6,9 +7,12 @@ from modelscope import snapshot_download
 from torch import dtype as Dtype
 from vllm import EngineArgs, LLMEngine, SamplingParams
 
+from swift.utils import get_logger
 from .model import MODEL_MAPPING, get_model_tokenizer
 from .template import Template
 from .utils import _is_chinese_char
+
+logger = get_logger()
 
 
 def get_vllm_engine(
@@ -62,21 +66,25 @@ class VllmGenerationConfig(SamplingParams):
         repetition_penalty: float = 1.,
         length_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
-        skip_special_tokens: bool = True,
         **kwargs,
     ):
         # The parameter design is similar to transformers.GenerationConfig.
         self.max_new_tokens = max_new_tokens
-        super().__init__(
-            max_tokens=max_length,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            stop=stop,
-            skip_special_tokens=skip_special_tokens,
-            **kwargs)
+        kwargs['max_tokens'] = max_length
+        kwargs['temperature'] = temperature
+        kwargs['top_k'] = top_k
+        kwargs['top_p'] = top_p
+        kwargs['repetition_penalty'] = repetition_penalty
+        kwargs['length_penalty'] = length_penalty
+        kwargs['stop'] = stop
+        parameters = inspect.signature(SamplingParams.__init__).parameters
+        for k in kwargs.copy().keys():
+            if k not in parameters:
+                logger.info(
+                    f'The VLLM version is too old and does not support the parameter: {k}.'
+                )
+                kwargs.pop(k)
+        super().__init__(**kwargs)
 
     @property
     def max_length(self) -> int:
@@ -128,7 +136,7 @@ def inference_stream_vllm(
         for output in step_outputs:
             i = int(output.request_id)
             request = request_list[i]
-            response = output.outputs[0].text
+            response = tokenizer.decode(output.outputs[0].token_ids, True)
             if output.finished or response.endswith(
                     '\n') or len(response) > 0 and _is_chinese_char(
                         ord(response[-1])):
@@ -190,7 +198,7 @@ def inference_vllm(llm_engine: LLMEngine,
 
     response_list = []
     for output, request in zip(outputs, request_list):
-        response = output.outputs[0].text
+        response = tokenizer.decode(output.outputs[0].token_ids, True)
         query = request['query']
         history = request['history']
         history.append((query, response))

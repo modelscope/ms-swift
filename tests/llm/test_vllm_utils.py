@@ -26,8 +26,8 @@ class TestVllmUtils(unittest.TestCase):
         # test inference_stream_vllm
         gen = inference_stream_vllm(llm_engine, template, request_list)
         for response_list in gen:
-            print(response_list[0]['history'])
-            print(response_list[1]['history'])
+            print(response_list[0]['response'], response_list[0]['history'])
+            print(response_list[1]['response'], response_list[1]['history'])
 
 
 if __name__ == '__main__':
