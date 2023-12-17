@@ -84,7 +84,8 @@ class Model(BaseUI):
         with gr.Row():
             model_type = gr.Dropdown(
                 elem_id='model_type',
-                choices=[base_tab.locale('checkpoint', cls.lang)['value']] + list(MODEL_MAPPING.keys()),
+                choices=[base_tab.locale('checkpoint', cls.lang)['value']]
+                + list(MODEL_MAPPING.keys()),
                 value=base_tab.locale('checkpoint', cls.lang)['value'],
                 scale=20)
             model_id_or_path = gr.Textbox(
@@ -111,33 +112,35 @@ class Model(BaseUI):
             else:
                 model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
                 default_system = getattr(
-                    TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']],
-                    'default_system', None)
+                    TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
+                    ['template'], 'default_system', None)
                 template = MODEL_MAPPING[choice]['template']
             return model_id_or_path, default_system, template
 
-        def update_interactive(choice):
-            return gr.update(
-                interactive=choice == base_tab.locale('checkpoint', cls.lang)['value'])
-
         def update_model_id_or_path(path):
-            with open(os.path.join(path, 'sft_args.json'), 'r') as f:
+            if not path:
+                return None, None, None
+            local_path = os.path.join(path, 'sft_args.json')
+            if not os.path.exists(local_path):
+                model_type = cls.element('model_type').arg_value
+                default_system = getattr(
+                    TEMPLATE_MAPPING[MODEL_MAPPING[model_type]['template']]
+                    ['template'], 'default_system', None)
+                template = MODEL_MAPPING[model_type]['template']
+                return default_system, template
+
+            with open(local_path, 'r') as f:
                 sft_args = json.load(f)
             base_model_type = sft_args['model_type']
             system = getattr(
-                TEMPLATE_MAPPING[MODEL_MAPPING[base_model_type]['template']],
-                'default_system', None)
+                TEMPLATE_MAPPING[MODEL_MAPPING[base_model_type]['template']]
+                ['template'], 'default_system', None)
             return sft_args['system'] or system, sft_args['template_type']
 
         model_type.change(
             update_input_model,
             inputs=[model_type],
             outputs=[model_id_or_path, system, template_type])
-
-        model_type.change(
-            update_interactive,
-            inputs=[model_type],
-            outputs=[model_id_or_path])
 
         model_id_or_path.change(
             update_model_id_or_path,

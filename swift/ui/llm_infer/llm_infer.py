@@ -141,7 +141,8 @@ class LLMInfer(BaseUI):
                                          elements[e], 'arg_value', None):
                 kwargs[e] = elements[e].arg_value
         kwargs.update(more_params)
-        if elements['model_type'].arg_value == cls.locale('checkpoint', cls.lang)['value']:
+        if elements['model_type'].arg_value == cls.locale(
+                'checkpoint', cls.lang)['value']:
             kwargs['ckpt_dir'] = kwargs.pop('model_id_or_path')
 
         devices = getattr(elements['gpu_id'], 'arg_value',

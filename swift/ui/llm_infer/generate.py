@@ -49,8 +49,7 @@ class Generate(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: 'BaseUI'):
         with gr.Row():
-            gr.Textbox(
-                elem_id='max_new_tokens', lines=1, value='2048')
+            gr.Textbox(elem_id='max_new_tokens', lines=1, value='2048')
             gr.Checkbox(elem_id='do_sample', value=True)
             gr.Slider(
                 elem_id='temperature',

@@ -71,10 +71,12 @@ class Model(BaseUI):
             system = gr.Textbox(elem_id='system', lines=1, scale=20)
 
         def update_input_model(choice):
+            if choice is None:
+                return None, None, None
             model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
             default_system = getattr(
-                TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']],
-                'default_system', None)
+                TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
+                ['template'], 'default_system', None)
             template = MODEL_MAPPING[choice]['template']
             return model_id_or_path, default_system, template
 

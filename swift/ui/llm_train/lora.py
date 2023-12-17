@@ -74,7 +74,8 @@ class LoRA(BaseUI):
 
             def update_lora(choice):
                 if choice is not None:
-                    return ' '.join(MODEL_MAPPING[choice]['lora_target_modules'])
+                    return ' '.join(
+                        MODEL_MAPPING[choice]['lora_target_modules'])
                 return None
 
             base_tab.element('model_type').change(
