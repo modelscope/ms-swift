@@ -34,7 +34,7 @@ def merge_lora(args: InferArguments,
                        'as this can result in performance degradation')
     # Loading Model and Tokenizer
     kwargs = {}
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
+    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     if args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
