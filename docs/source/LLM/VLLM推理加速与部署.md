@@ -1,0 +1,178 @@
+
+# VLLM推理加速与部署
+
+## 目录
+- [环境准备](#环境准备)
+- [推理加速](#推理加速)
+- [部署](#部署)
+
+## 环境准备
+GPU设备: A10, 3090, V100, A100均可.
+```bash
+# 设置pip全局镜像
+pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+# 安装ms-swift
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .[llm]
+
+# vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
+pip install vllm -U
+
+# 如果你想要使用基于auto_gptq的模型进行推理.
+# 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
+# auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
+pip install auto_gptq -U
+
+# 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+pip install -r requirements/framework.txt  -U
+pip install -r requirements/llm.txt  -U
+```
+
+## 推理加速
+
+### qwen-7b-chat
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+from swift.llm import (
+    ModelType, get_vllm_engine, get_default_template_type,
+    get_template, inference_vllm
+)
+
+model_type = ModelType.qwen_7b_chat
+llm_engine = get_vllm_engine(model_type, torch.float16)
+template_type = get_default_template_type(model_type)
+template = get_template(template_type, llm_engine.tokenizer)
+# 与`transformers.GenerationConfig`类似的接口
+llm_engine.generation_config.max_new_tokens = 256
+
+request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
+response_list = inference_vllm(llm_engine, template, request_list)
+for request, response in zip(request_list, response_list):
+    print(f"query: {request['query']}")
+    print(f"response: {response['response']}")
+
+history1 = response_list[1]['history']
+request_list = [{'query': '这有什么好吃的', 'history': history1}]
+response_list = inference_vllm(llm_engine, template, request_list)
+for request, response in zip(request_list, response_list):
+    print(f"query: {request['query']}")
+    print(f"response: {response['response']}")
+    print(f"history: {response['history']}")
+
+"""Out[0]
+query: 你好!
+response: 你好！很高兴为你服务。有什么我可以帮助你的吗？
+query: 浙江的省会在哪？
+response: 浙江省会是杭州市。
+query: 这有什么好吃的
+response: 杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。
+history: [('浙江的省会在哪？', '浙江省会是杭州市。'), ('这有什么好吃的', '杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。')]
+"""
+```
+
+### 流式输出
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+from swift.llm import (
+    ModelType, get_vllm_engine, get_default_template_type,
+    get_template, inference_stream_vllm
+)
+
+model_type = ModelType.qwen_7b_chat
+llm_engine = get_vllm_engine(model_type, torch.float16)
+template_type = get_default_template_type(model_type)
+template = get_template(template_type, llm_engine.tokenizer)
+# 与`transformers.GenerationConfig`类似的接口
+llm_engine.generation_config.max_new_tokens = 256
+
+request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
+gen = inference_stream_vllm(llm_engine, template, request_list)
+query_list = [request['query'] for request in request_list]
+print(f"query_list: {query_list}")
+for response_list in gen:
+    resp_list = [response['response'] for response in response_list]
+    print(f'response_list: {resp_list}')
+
+history1 = response_list[1]['history']
+request_list = [{'query': '这有什么好吃的', 'history': history1}]
+gen = inference_stream_vllm(llm_engine, template, request_list)
+query = request_list[0]['query']
+print(f"query: {query}")
+for response_list in gen:
+    resp = response_list[0]['response']
+    print(f'response: {resp}')
+
+history = response_list[0]['history']
+print(f'history: {history}')
+
+"""Out[0]
+query_list: ['你好!', '浙江的省会在哪？']
+...
+response_list: ['你好！很高兴为你服务。有什么我可以帮助你的吗？', '浙江省会是杭州市。']
+query: 这有什么好吃的
+...
+response: 杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。
+history: [('浙江的省会在哪？', '浙江省会是杭州市。'), ('这有什么好吃的', '杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。')]
+"""
+```
+
+### chatglm3
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+from swift.llm import (
+    ModelType, get_vllm_engine, get_default_template_type,
+    get_template, inference_vllm
+)
+
+model_type = ModelType.chatglm3_6b
+llm_engine = get_vllm_engine(model_type, torch.float16)
+template_type = get_default_template_type(model_type)
+template = get_template(template_type, llm_engine.tokenizer)
+# 与`transformers.GenerationConfig`类似的接口
+llm_engine.generation_config.max_new_tokens = 256
+
+request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
+response_list = inference_vllm(llm_engine, template, request_list)
+for request, response in zip(request_list, response_list):
+    print(f"query: {request['query']}")
+    print(f"response: {response['response']}")
+
+history1 = response_list[1]['history']
+request_list = [{'query': '这有什么好吃的', 'history': history1}]
+response_list = inference_vllm(llm_engine, template, request_list)
+for request, response in zip(request_list, response_list):
+    print(f"query: {request['query']}")
+    print(f"response: {response['response']}")
+    print(f"history: {response['history']}")
+
+"""Out[0]
+query: 你好!
+response: 您好，我是人工智能助手。很高兴为您服务！请问有什么问题我可以帮您解答？
+query: 浙江的省会在哪？
+response: 浙江的省会是杭州。
+query: 这有什么好吃的
+response: 浙江有很多美食,其中一些非常有名的包括杭州的龙井虾仁、东坡肉、西湖醋鱼、叫化童子鸡等。另外,浙江还有很多特色小吃和糕点,比如宁波的汤团、年糕,温州的炒螃蟹、温州肉圆等。
+history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有什么好吃的', '浙江有很多美食,其中一些非常有名的包括杭州的龙井虾仁、东坡肉、西湖醋鱼、叫化童子鸡等。另外,浙江还有很多特色小吃和糕点,比如宁波的汤团、年糕,温州的炒螃蟹、温州肉圆等。')]
+"""
+```
+
+### 微调后的模型
+
+使用LoRA进行微调:
+
+
+
+使用全参数微调:
+
+
+## 部署

@@ -1,4 +1,6 @@
 # LLM推理文档
+如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#推理加速)
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)

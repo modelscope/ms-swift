@@ -222,6 +222,8 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 ## 推理
+如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#推理加速)
+
 ### 原始模型
 **单样本推理**可以查看[LLM推理文档](./LLM推理文档.md#-推理)
 
@@ -292,6 +294,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
+如果你要使用vllm进行部署并提供api接口, 可以查看[VLLM推理加速与部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#部署)
+
 ### 原始模型
 使用原始模型的web-ui可以查看[LLM推理文档](./LLM推理文档.md#-Web-UI)
 

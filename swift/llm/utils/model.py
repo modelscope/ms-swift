@@ -1252,9 +1252,8 @@ def get_model_tokenizer(
                 ignore_file_pattern=ignore_file_pattern)
         if is_dist() and is_local_master():
             dist.barrier()
-    else:
-        model_dir = os.path.expanduser(model_dir)
-        assert os.path.isdir(model_dir)
+    model_dir = os.path.expanduser(model_dir)
+    assert os.path.isdir(model_dir)
     if model_info.get('torch_dtype') is not None:
         model_torch_dtype = model_info['torch_dtype']
         if torch_dtype is None:

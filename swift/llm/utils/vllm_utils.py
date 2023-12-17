@@ -1,9 +1,10 @@
 import inspect
+import os
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 import torch
-from modelscope import snapshot_download
+from modelscope import GenerationConfig, snapshot_download
 from torch import dtype as Dtype
 from vllm import EngineArgs, LLMEngine, SamplingParams
 
@@ -15,22 +16,31 @@ from .utils import _is_chinese_char
 logger = get_logger()
 
 
-def get_vllm_engine(
-    model_type: str,
-    torch_dtype: Optional[Dtype] = None,
-    gpu_memory_utilization: float = 0.9,
-    tensor_parallel_size: int = 1,
-    pipeline_parallel_size: int = 1,
-    engine_kwargs: Optional[Dict[str, Any]] = None,
-) -> LLMEngine:
+def get_vllm_engine(model_type: str,
+                    torch_dtype: Optional[Dtype] = None,
+                    gpu_memory_utilization: float = 0.9,
+                    tensor_parallel_size: int = 1,
+                    pipeline_parallel_size: int = 1,
+                    engine_kwargs: Optional[Dict[str, Any]] = None,
+                    **kwargs) -> LLMEngine:
     if engine_kwargs is None:
         engine_kwargs = {}
     model_info = MODEL_MAPPING[model_type]
     model_id_or_path = model_info['model_id_or_path']
-    revision = model_info['revision']
     ignore_file_pattern = model_info['ignore_file_pattern']
-    model_dir = snapshot_download(
-        model_id_or_path, revision, ignore_file_pattern=ignore_file_pattern)
+    model_dir = kwargs.get('model_dir', None)
+    if model_dir is None:
+        model_dir = model_id_or_path
+        if model_id_or_path is not None and not os.path.exists(
+                model_id_or_path):
+            revision = model_info['revision']
+            model_dir = snapshot_download(
+                model_id_or_path,
+                revision,
+                ignore_file_pattern=ignore_file_pattern)
+    model_dir = os.path.expanduser(model_dir)
+    assert os.path.isdir(model_dir)
+
     dtype_mapping = {
         torch.float16: 'float16',
         torch.bfloat16: 'bfloat16',
@@ -51,6 +61,18 @@ def get_vllm_engine(
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     llm_engine.tokenizer = get_model_tokenizer(model_type, load_model=False)[1]
+    generation_config_path = os.path.join(model_dir, 'generation_config.json')
+    if os.path.isfile(generation_config_path):
+        generation_config = GenerationConfig.from_pretrained(model_dir)
+        kwargs = generation_config.to_dict()
+        parameters = inspect.signature(
+            VllmGenerationConfig.__init__).parameters
+        for k in kwargs.copy().keys():
+            if k not in parameters:
+                kwargs.pop(k)
+        llm_engine.generation_config = VllmGenerationConfig(**kwargs)
+    else:
+        llm_engine.generation_config = VllmGenerationConfig()
     return llm_engine
 
 
@@ -69,6 +91,8 @@ class VllmGenerationConfig(SamplingParams):
         **kwargs,
     ):
         # The parameter design is similar to transformers.GenerationConfig.
+        if top_k == 0:
+            top_k = -1
         self.max_new_tokens = max_new_tokens
         kwargs['max_tokens'] = max_length
         kwargs['temperature'] = temperature
@@ -129,6 +153,7 @@ def inference_stream_vllm(
             generation_config.max_length = generation_config.max_new_tokens + len(
                 input_ids)
         llm_engine.add_request(str(i), None, generation_config, input_ids)
+
     batch_size = len(request_list)
     response_list = [None] * batch_size
     while llm_engine.has_unfinished_requests():
@@ -196,13 +221,16 @@ def inference_vllm(llm_engine: LLMEngine,
             if output.finished:
                 outputs.append(output)
 
-    response_list = []
-    for output, request in zip(outputs, request_list):
+    batch_size = len(request_list)
+    response_list = [None] * batch_size
+    for output in outputs:
+        i = int(output.request_id)
+        request = request_list[i]
         response = tokenizer.decode(output.outputs[0].token_ids, True)
         query = request['query']
         history = request['history']
         history.append((query, response))
-        response_list.append({'response': response, 'history': history})
+        response_list[i] = {'response': response, 'history': history}
         if verbose:
             print(
                 f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}',
