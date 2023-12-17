@@ -73,7 +73,9 @@ class LoRA(BaseUI):
                     gr.Textbox(elem_id='lora_dropout_p')
 
             def update_lora(choice):
-                return ' '.join(MODEL_MAPPING[choice]['lora_target_modules'])
+                if choice is not None:
+                    return ' '.join(MODEL_MAPPING[choice]['lora_target_modules'])
+                return None
 
             base_tab.element('model_type').change(
                 update_lora,

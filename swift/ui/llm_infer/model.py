@@ -75,9 +75,8 @@ class Model(BaseUI):
         with gr.Row():
             model_type = gr.Dropdown(
                 elem_id='model_type',
-                choices=list(MODEL_MAPPING.keys())
-                + [base_tab.locale('checkpoint', cls.lang)],
-                value=base_tab.locale('checkpoint', cls.lang),
+                choices=[base_tab.locale('checkpoint', cls.lang)['value']] + list(MODEL_MAPPING.keys()),
+                value=base_tab.locale('checkpoint', cls.lang)['value'],
                 scale=20)
             model_id_or_path = gr.Textbox(
                 elem_id='model_id_or_path',
@@ -95,7 +94,7 @@ class Model(BaseUI):
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 
         def update_input_model(choice):
-            if choice == base_tab.locale('checkpoint', cls.lang):
+            if choice == base_tab.locale('checkpoint', cls.lang)['value']:
                 model_id_or_path = None
                 default_system = None
                 template = None
@@ -105,12 +104,11 @@ class Model(BaseUI):
                     TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']],
                     'default_system', None)
                 template = MODEL_MAPPING[choice]['template']
-            return model_id_or_path, default_system, template, \
-                gr.update(interactive=choice == base_tab.locale('checkpoint', cls.lang))
+            return model_id_or_path, default_system, template
 
         def update_interactive(choice):
             return gr.update(
-                interactive=choice == base_tab.locale('checkpoint', cls.lang))
+                interactive=choice == base_tab.locale('checkpoint', cls.lang)['value'])
 
         def update_model_id_or_path(path):
             with open(os.path.join(path, 'sft_args.json'), 'r') as f:

@@ -116,9 +116,8 @@ class LLMInfer(BaseUI):
                     inputs=[],
                     outputs=[prompt, chatbot],
                     queue=False)
-                cls.element('load_checkpoint')
                 cls.element('load_checkpoint').click(
-                    cls.prepare_checkpoint, [], [model_and_template, prompt],
+                    cls.prepare_checkpoint, [], [model_and_template],
                     show_progress=True)
                 cls.element('load_checkpoint').click(
                     cls.clear_session, inputs=[], outputs=[prompt, chatbot])
@@ -142,6 +141,8 @@ class LLMInfer(BaseUI):
                                          elements[e], 'arg_value', None):
                 kwargs[e] = elements[e].arg_value
         kwargs.update(more_params)
+        if elements['model_type'].arg_value == cls.locale('checkpoint', cls.lang)['value']:
+            kwargs['ckpt_dir'] = kwargs.pop('model_id_or_path')
 
         devices = getattr(elements['gpu_id'], 'arg_value',
                           ' '.join(elements['gpu_id'].value)).split(' ')
@@ -151,7 +152,7 @@ class LLMInfer(BaseUI):
         os.environ['CUDA_VISIBLE_DEVICES'] = gpus
         args = InferArguments(**kwargs)
         model, template = prepare_model_template(args)
-        return [model, template], gr.update(interactive=True)
+        return [model, template]
 
     @classmethod
     def clear_session(cls):
@@ -161,7 +162,7 @@ class LLMInfer(BaseUI):
     def generate_chat(cls, model_and_template, prompt: str, history,
                       max_new_tokens):
         model, template = model_and_template
-        if not cls.element('template_type').last_value.endswith('generation'):
+        if not cls.element('template_type').arg_value.endswith('generation'):
             old_history, history = limit_history_length(
                 template, prompt, history, max_new_tokens)
         else:
