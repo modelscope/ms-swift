@@ -109,14 +109,22 @@ class LLMInfer(BaseUI):
                     outputs=[prompt, chatbot],
                     queue=False)
                 cls.element('load_checkpoint').click(
+                    cls.reset_memory, [], [model_and_template],
+                    show_progress=False)
+                cls.element('load_checkpoint').click(
                     cls.prepare_checkpoint, [], [model_and_template],
                     show_progress=True)
                 cls.element('load_checkpoint').click(
                     cls.clear_session, inputs=[], outputs=[prompt, chatbot])
 
     @classmethod
+    def reset_memory(cls):
+        return []
+
+    @classmethod
     def prepare_checkpoint(cls):
         global model, tokenizer, template
+        torch.cuda.empty_cache()
         args = fields(InferArguments)
         args = {arg.name: arg.type for arg in args}
         kwargs = {}
