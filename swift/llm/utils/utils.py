@@ -183,13 +183,29 @@ class LLMDataset(Dataset):
 
 class LazyLLMDataset(Dataset):
 
-    def __init__(self, dataset: HfDataset, template: Template) -> None:
+    def __init__(self,
+                 dataset: HfDataset,
+                 template: Template,
+                 *,
+                 try_fetch_time: int = 20) -> None:
         self.dataset = dataset
         self.template = template
+        self.try_fetch_time = min(try_fetch_time, len(self.dataset))
+        assert self.try_fetch_time >= 1
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        data = self.dataset[idx]
-        return self.template.encode(data)
+        res = self._try_fetch(idx)
+        if res is not None:
+            return res
+        raise ValueError('Please check if the max_length is appropriate.')
+
+    def _try_fetch(self, first_idx: int) -> Optional[Dict[str, Any]]:
+        idx = np.random.permutation(len(self))[:self.try_fetch_time - 1]
+        for i in [first_idx] + idx.tolist():
+            data = self.dataset[i]
+            res = self.template.encode(data)
+            if res is not None:
+                return res
 
     def __len__(self) -> int:
         return len(self.dataset)
