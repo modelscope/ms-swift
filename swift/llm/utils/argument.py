@@ -370,7 +370,7 @@ class InferArguments:
     safe_serialization: bool = True
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
-    # web-ui
+    # app-ui
     share: bool = False
     # compatibility
     show_dataset_sample: int = 10

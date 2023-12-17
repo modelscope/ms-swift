@@ -56,7 +56,7 @@ class TestRun(unittest.TestCase):
             print(result)
             torch.cuda.empty_cache()
         # if __name__ == '__main__':
-        #     web_ui_main(infer_args)
+        #     app_ui_main(infer_args)
 
     def test_loss_matching(self):
         output_dir = 'output'

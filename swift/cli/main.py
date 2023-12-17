@@ -4,11 +4,12 @@ import subprocess
 import sys
 from typing import Dict, List, Optional
 
-from swift.cli import infer, merge_lora, sft, ui
+from swift.cli import app_ui, infer, merge_lora, sft, ui
 
 ROUTE_MAPPING: Dict[str, str] = {
     'sft': sft.__file__,
     'infer': infer.__file__,
+    'app-ui': app_ui.__file__,
     'merge-lora': merge_lora.__file__,
     'web-ui': ui.__file__
 }
