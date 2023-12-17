@@ -619,6 +619,17 @@ def set_generation_config(model: Module,
     model.generation_config = generation_config
 
 
+def fix_fp16_trainable_bug(model: Module) -> None:
+    # fix peft==0.7 bug
+    is_logging = False
+    for p in model.parameters():
+        if p.requires_grad and p.dtype == torch.float16:
+            if not is_logging:
+                logger.info('Convert trainable parameters from fp16 to fp32.')
+                is_logging = True
+            p.data = p.data.to(dtype=torch.float32)
+
+
 # monkey patching
 MsDataset.load = _msdataset_ddp_load
 if is_ddp_plus_mp():
