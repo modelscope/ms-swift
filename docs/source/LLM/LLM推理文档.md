@@ -397,7 +397,7 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 ### qwen-7b-chat
 使用CLI:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B-Chat
 ```
 
 使用python:
@@ -405,10 +405,10 @@ CUDA_VISIBLE_DEVICES=0 swift web-ui --model_id_or_path qwen/Qwen-7B-Chat
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import InferArguments, ModelType, web_ui_main
+from swift.llm import InferArguments, ModelType, app_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b_chat)
-web_ui_main(infer_args)
+app_ui_main(infer_args)
 ```
 
 使用bnb量化:
@@ -416,16 +416,16 @@ web_ui_main(infer_args)
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import InferArguments, ModelType, web_ui_main
+from swift.llm import InferArguments, ModelType, app_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b_chat, quantization_bit=4)
-web_ui_main(infer_args)
+app_ui_main(infer_args)
 ```
 
 ### qwen-7b
 使用CLI:
 ```bash
-swift web-ui --model_id_or_path qwen/Qwen-7B
+swift app-ui --model_id_or_path qwen/Qwen-7B
 ```
 
 使用python:
@@ -433,8 +433,8 @@ swift web-ui --model_id_or_path qwen/Qwen-7B
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import InferArguments, ModelType, web_ui_main
+from swift.llm import InferArguments, ModelType, app_ui_main
 
 infer_args = InferArguments(model_type=ModelType.qwen_7b)
-web_ui_main(infer_args)
+app_ui_main(infer_args)
 ```

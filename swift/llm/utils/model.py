@@ -139,6 +139,15 @@ class ModelType:
     # codefuse
     codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
 
+    @staticmethod
+    def get_model_name_list() -> List[str]:
+        res = []
+        for k in ModelType.__dict__.keys():
+            if k.startswith('__') or k == 'get_model_name_list':
+                continue
+            res.append(ModelType.__dict__[k])
+        return res
+
 
 class LoRATM(NamedTuple):
     # default lora target modules. qkv

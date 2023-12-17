@@ -44,7 +44,7 @@ import torch
 
 from swift.llm import (
     DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, web_ui_main, merge_lora_main
+    infer_main, sft_main, app_ui_main, merge_lora_main
 )
 
 model_type = ModelType.qwen_7b_chat
@@ -65,7 +65,7 @@ infer_args = InferArguments(
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
 
-web_ui_main(infer_args)
+app_ui_main(infer_args)
 ```
 
 ### 使用CLI
@@ -297,10 +297,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 
 ### 微调后模型
 ```bash
-# 直接使用web-ui
-CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 直接使用app-ui
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
-# merge LoRA增量权重并使用web-ui
+# merge LoRA增量权重并使用app-ui
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift web-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```

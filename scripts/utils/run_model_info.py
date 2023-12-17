@@ -3,17 +3,8 @@ from typing import Dict, List, Tuple
 from swift.llm import MODEL_MAPPING, ModelType
 
 
-def get_model_name_list() -> List[str]:
-    res = []
-    for k in ModelType.__dict__.keys():
-        if k.startswith('__'):
-            continue
-        res.append(ModelType.__dict__[k])
-    return res
-
-
 def write_model_info_table2(fpath: str) -> None:
-    model_name_list = get_model_name_list()
+    model_name_list = ModelType.get_model_name_list()
     with open(fpath, 'w', encoding='utf-8') as f:
         f.write(
             '| Model Type | Model ID | Default Lora Target Modules | Default Template |'

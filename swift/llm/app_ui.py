@@ -61,7 +61,7 @@ def gradio_chat_demo(args: InferArguments) -> None:
     demo.queue().launch(height=1000, share=args.share)
 
 
-def llm_web_ui(args: InferArguments) -> None:
+def llm_app_ui(args: InferArguments) -> None:
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:
