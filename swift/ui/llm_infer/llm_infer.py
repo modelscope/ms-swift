@@ -8,7 +8,6 @@ import torch
 from swift.llm import (InferArguments, inference_stream, limit_history_length,
                        prepare_model_template)
 from swift.ui.base import BaseUI
-from swift.ui.llm_infer.generate import Generate
 from swift.ui.llm_infer.model import Model
 
 
@@ -16,7 +15,7 @@ class LLMInfer(BaseUI):
 
     group = 'llm_infer'
 
-    sub_ui = [Model, Generate]
+    sub_ui = [Model]
 
     locale_dict = {
         'llm_infer': {
@@ -74,7 +73,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: 'BaseUI'):
-        with gr.TabItem(elem_id='llm_infer', group='llm_infer', label=''):
+        with gr.TabItem(elem_id='llm_infer', label=''):
             gpu_count = 0
             default_device = 'cpu'
             if torch.cuda.is_available():
@@ -83,7 +82,6 @@ class LLMInfer(BaseUI):
             with gr.Blocks():
                 model_and_template = gr.State([])
                 Model.build_ui(base_tab)
-                Generate.build_ui(base_tab)
                 gr.Dropdown(
                     elem_id='gpu_id',
                     multiselect=True,

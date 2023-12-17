@@ -5,11 +5,14 @@ import json
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
 from swift.ui.base import BaseUI
+from swift.ui.llm_infer.generate import Generate
 
 
 class Model(BaseUI):
 
     llm_train = 'llm_infer'
+
+    sub_ui = [Generate]
 
     locale_dict = {
         'checkpoint': {
@@ -95,8 +98,9 @@ class Model(BaseUI):
                 scale=20)
         with gr.Row():
             system = gr.Textbox(elem_id='system', lines=1, scale=20)
+        Generate.build_ui(base_tab)
         with gr.Row():
-            gr.Textbox(elem_id='more_params', lines=4, scale=20)
+            gr.Textbox(elem_id='more_params', lines=1, scale=20)
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 
         def update_input_model(choice):

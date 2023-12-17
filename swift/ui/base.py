@@ -4,7 +4,6 @@ from typing import Dict, List, OrderedDict
 
 from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
                     TabItem, Textbox)
-from gradio.events import Changeable
 
 all_langs = ['zh', 'en']
 builder: 'BaseUI' = None
@@ -31,9 +30,6 @@ def update_data(fn):
         if 'is_list' in kwargs:
             self.is_list = kwargs.pop('is_list')
 
-        if 'label' not in kwargs:
-            kwargs['label'] = ''
-
         if builder is not None:
             if elem_id in builder.locales(lang):
                 values = builder.locale(elem_id, lang)
@@ -46,9 +42,10 @@ def update_data(fn):
 
         ret = fn(self, **kwargs)
 
-        if isinstance(self, Changeable):
+        if hasattr(self, 'change'):
 
             def change(value):
+                print(value)
                 self.changed = True
                 if isinstance(value, list):
                     value = ' '.join(value)
