@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, OrderedDict
 from functools import wraps
 
@@ -6,7 +7,9 @@ from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
 from gradio.events import Changeable
 
 
+all_langs = ['zh', 'en']
 builder: 'BaseUI' = None
+lang = os.environ.get('SWIFT_UI_LANG', all_langs[0])
 
 
 def update_data(fn):
@@ -29,6 +32,17 @@ def update_data(fn):
 
         if 'label' not in kwargs:
             kwargs['label'] = ''
+
+        if builder is not None:
+            if elem_id in builder.locales(lang):
+                values = builder.locale(elem_id, lang)
+                if 'info' in values:
+                    kwargs['info'] = values['info']
+                if 'value' in values:
+                    kwargs['value'] = values['value']
+                if 'label' in values:
+                    kwargs['label'] = values['label']
+
         ret = fn(self, **kwargs)
 
         if isinstance(self, Changeable):
@@ -41,7 +55,9 @@ def update_data(fn):
                 self.arg_value = value
 
             self.change(change, [self], [])
-            self.arg_value = getattr(self, 'value', None)
+
+            value = getattr(self, 'value', None)
+            self.arg_value = ' '.join(value) if isinstance(value, list) else value
 
         if builder is not None:
             builder.element_dict[elem_id] = self
@@ -57,9 +73,6 @@ Slider.__init__ = update_data(Slider.__init__)
 TabItem.__init__ = update_data(TabItem.__init__)
 Accordion.__init__ = update_data(Accordion.__init__)
 Button.__init__ = update_data(Button.__init__)
-
-
-all_langs = ['zh', 'en']
 
 
 class BaseUI:
