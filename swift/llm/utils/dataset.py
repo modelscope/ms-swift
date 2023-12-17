@@ -3,7 +3,8 @@ import ast
 import os
 import re
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import (Any, Callable, Dict, List, Literal, Optional, OrderedDict,
+                    Tuple, Union)
 
 import json
 import numpy as np
@@ -37,7 +38,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
 GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
                                                          Optional[HfDataset]]]]
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
-DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
+DATASET_MAPPING: Dict[str, Dict[str, Any]] = OrderedDict()
 
 logger = get_logger()
 

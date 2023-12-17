@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import (Any, Dict, List, Literal, Optional, OrderedDict, Tuple,
+                    Union)
 
 import torch
 from torch import Tensor
@@ -318,7 +319,7 @@ class Template:
                        self.truncation_strategy)
 
 
-TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
+TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = OrderedDict()
 
 
 def register_template(template_type: str,
