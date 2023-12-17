@@ -1,11 +1,6 @@
-import json
-import os.path
-
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
 from swift.ui.base import BaseUI
-from swift.ui.i18n import add_locale_labels, get_locale_by_group
 
 
 class Generate(BaseUI):

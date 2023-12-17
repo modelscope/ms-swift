@@ -79,6 +79,11 @@ class LLMInfer(BaseUI):
         },
     }
 
+    choice_dict = {}
+    for f in fields(InferArguments):
+        if 'choices' in f.metadata:
+            choice_dict[f.name] = f.metadata['choices']
+
     @classmethod
     def do_build_ui(cls, base_tab: 'BaseUI'):
         with gr.TabItem(elem_id='llm_infer', group='llm_infer', label=''):

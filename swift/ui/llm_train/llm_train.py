@@ -142,9 +142,10 @@ class LLMTrain(BaseUI):
                 }
             }
 
+    choice_dict = {}
     for f in fields(SftArguments):
         if 'choices' in f.metadata:
-            BaseUI.choice_dict[f.name] = f.metadata['choices']
+            choice_dict[f.name] = f.metadata['choices']
 
     @classmethod
     def do_build_ui(cls, base_tab: 'BaseUI'):

@@ -58,6 +58,16 @@ class Model(BaseUI):
                 'en': 'Choose the content of the system field'
             }
         },
+        'more_params': {
+            'label': {
+                'zh': '更多参数',
+                'en': 'More params'
+            },
+            'info': {
+                'zh': '以json格式填入',
+                'en': 'Fill in with json format'
+            }
+        }
     }
 
     @classmethod
