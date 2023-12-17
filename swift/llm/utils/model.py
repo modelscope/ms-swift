@@ -153,13 +153,13 @@ class ModelType:
     deepseek_coder_33b = 'deepseek-coder-33b'
     deepseek_coder_33b_chat = 'deepseek-coder-33b-chat'
 
-    @staticmethod
-    def get_model_name_list() -> List[str]:
+    @classmethod
+    def get_model_name_list(cls) -> List[str]:
         res = []
-        for k in ModelType.__dict__.keys():
+        for k in cls.__dict__.keys():
             if k.startswith('__') or k == 'get_model_name_list':
                 continue
-            res.append(ModelType.__dict__[k])
+            res.append(cls.__dict__[k])
         return res
 
 
