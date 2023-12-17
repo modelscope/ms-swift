@@ -1,7 +1,7 @@
 import os
 import time
 from dataclasses import fields
-from typing import Dict
+from typing import Dict, Type
 
 import gradio as gr
 import json
@@ -148,7 +148,7 @@ class LLMTrain(BaseUI):
             choice_dict[f.name] = f.metadata['choices']
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_train', label=''):
             gpu_count = 0
             default_device = 'cpu'

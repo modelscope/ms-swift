@@ -1,12 +1,12 @@
 import os
 from functools import wraps
-from typing import Dict, List, OrderedDict
+from typing import Dict, List, OrderedDict, Type
 
 from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
                     TabItem, Textbox)
 
 all_langs = ['zh', 'en']
-builder: 'BaseUI' = None
+builder: Type['BaseUI'] = None
 lang = os.environ.get('SWIFT_UI_LANG', all_langs[0])
 
 
@@ -80,12 +80,12 @@ class BaseUI:
     choice_dict: Dict[str, List] = {}
     locale_dict: Dict[str, Dict] = {}
     element_dict: Dict[str, Dict] = {}
-    sub_ui: List['BaseUI'] = []
+    sub_ui: List[Type['BaseUI']] = []
     group: str = None
     lang: str = all_langs[0]
 
     @classmethod
-    def build_ui(cls, base_tab: 'BaseUI'):
+    def build_ui(cls, base_tab: Type['BaseUI']):
         """Build UI"""
         global builder
         cls.element_dict = {}
@@ -95,7 +95,7 @@ class BaseUI:
         builder = old_builder
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         """Build UI"""
         pass
 

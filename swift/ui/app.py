@@ -1,9 +1,8 @@
 import os
-from functools import partial
 
 import gradio as gr
 
-from swift.ui.base import BaseUI, all_langs
+from swift.ui.base import all_langs
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_train.llm_train import LLMTrain
 

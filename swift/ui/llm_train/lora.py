@@ -1,3 +1,5 @@
+from typing import Type
+
 import gradio as gr
 
 from swift.llm import MODEL_MAPPING
@@ -48,7 +50,7 @@ class LoRA(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='lora_tab', open=True):
             with gr.Blocks():
                 with gr.Row():

@@ -1,3 +1,5 @@
+from typing import Type
+
 import gradio as gr
 
 from swift.ui.base import BaseUI
@@ -77,7 +79,7 @@ class Advanced(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='advanced_param', open=False):
             with gr.Blocks():
                 with gr.Row():

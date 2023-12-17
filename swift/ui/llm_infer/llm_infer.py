@@ -1,5 +1,6 @@
 import os
 from dataclasses import fields
+from typing import Type
 
 import gradio as gr
 import json
@@ -72,7 +73,7 @@ class LLMInfer(BaseUI):
             choice_dict[f.name] = f.metadata['choices']
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_infer', label=''):
             gpu_count = 0
             default_device = 'cpu'
@@ -111,8 +112,8 @@ class LLMInfer(BaseUI):
                 cls.element('load_checkpoint').click(
                     cls.reset_memory, [], [model_and_template],
                     show_progress=False).then(
-                    cls.prepare_checkpoint, [], [model_and_template],
-                    show_progress=True)
+                        cls.prepare_checkpoint, [], [model_and_template],
+                        show_progress=True)
                 cls.element('load_checkpoint').click(
                     cls.clear_session, inputs=[], outputs=[prompt, chatbot])
 

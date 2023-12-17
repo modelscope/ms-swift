@@ -1,3 +1,5 @@
+from typing import Type
+
 import gradio as gr
 
 from swift.ui.base import BaseUI
@@ -47,7 +49,7 @@ class SelfCog(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='self_cognition', open=False):
             with gr.Row():
                 gr.Textbox(elem_id='self_cognition_sample', scale=20)

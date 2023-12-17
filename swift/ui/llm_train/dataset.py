@@ -1,3 +1,5 @@
+from typing import Type
+
 import gradio as gr
 
 from swift.llm import DATASET_MAPPING
@@ -82,7 +84,7 @@ class Dataset(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             gr.Dropdown(
                 elem_id='dataset',

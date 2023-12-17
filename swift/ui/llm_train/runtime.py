@@ -1,6 +1,6 @@
 import os.path
 import webbrowser
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Type
 
 import gradio as gr
 from transformers import is_tensorboard_available
@@ -87,7 +87,7 @@ class Runtime(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='runtime_tab', open=True, visible=False):
             with gr.Blocks():
                 with gr.Row():

@@ -1,3 +1,5 @@
+from typing import Type
+
 import gradio as gr
 
 from swift.ui.base import BaseUI
@@ -45,7 +47,7 @@ class Quantization(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='quantization_tab', open=False):
             with gr.Row():
                 gr.Slider(

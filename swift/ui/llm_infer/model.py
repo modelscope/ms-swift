@@ -1,4 +1,5 @@
 import os.path
+from typing import Type
 
 import gradio as gr
 import json
@@ -80,7 +81,7 @@ class Model(BaseUI):
     }
 
     @classmethod
-    def do_build_ui(cls, base_tab: 'BaseUI'):
+    def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             model_type = gr.Dropdown(
                 elem_id='model_type',
