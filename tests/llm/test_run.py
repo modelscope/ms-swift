@@ -204,5 +204,4 @@ class TestRun(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    TestRun().test_loss_matching()
     unittest.main()
