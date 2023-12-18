@@ -1,5 +1,7 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 # import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import custom
 
 from swift.llm import InferArguments, ModelType
 from swift.llm.run import app_ui_main
