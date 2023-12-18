@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import custom
 
-from swift.llm.run import infer_main
+from swift.llm import infer_main
 
 if __name__ == '__main__':
     result = infer_main()

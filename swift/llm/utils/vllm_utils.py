@@ -20,9 +20,9 @@ logger = get_logger()
 
 def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
+                    *,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
-                    pipeline_parallel_size: int = 1,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     **kwargs) -> LLMEngine:
     if engine_kwargs is None:
@@ -56,7 +56,6 @@ def get_vllm_engine(model_type: str,
         dtype=dtype_mapping[torch_dtype],
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
-        pipeline_parallel_size=pipeline_parallel_size,
         disable_log_stats=disable_log_stats,
         **engine_kwargs)
     llm_engine = LLMEngine.from_engine_args(engine_args)
@@ -266,10 +265,12 @@ def prepare_vllm_engine_template(
         kwargs['model_dir'] = args.ckpt_dir
     elif args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
-    llm_engine = get_vllm_engine(args.model_type, args.torch_dtype,
-                                 args.gpu_memory_utilization,
-                                 args.tensor_parallel_size,
-                                 args.pipeline_parallel_size, **kwargs)
+    llm_engine = get_vllm_engine(
+        args.model_type,
+        args.torch_dtype,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        tensor_parallel_size=args.tensor_parallel_size,
+        **kwargs)
     tokenizer = llm_engine.tokenizer
     logger.info(f'model_config: {llm_engine.model_config.hf_config}')
     if not args.do_sample:

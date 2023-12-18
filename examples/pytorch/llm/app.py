@@ -3,8 +3,7 @@
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import custom
 
-from swift.llm import InferArguments, ModelType
-from swift.llm.run import app_ui_main
+from swift.llm import InferArguments, ModelType, app_ui_main
 
 if __name__ == '__main__':
     # Please refer to the `infer.sh` for setting the parameters.

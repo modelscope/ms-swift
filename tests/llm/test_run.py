@@ -25,10 +25,12 @@ class TestRun(unittest.TestCase):
 
     def test_basic(self):
         output_dir = 'output'
+        quantization_bit_list = [0, 4]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
+            quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
-        for quantization_bit in [0, 4]:
+        for quantization_bit in quantization_bit_list:
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False

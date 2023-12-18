@@ -376,7 +376,6 @@ class InferArguments:
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
-    pipeline_parallel_size: int = 1
     # compatibility
     show_dataset_sample: int = 10
 
