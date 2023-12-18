@@ -157,7 +157,7 @@ def inference_stream_vllm(
         llm_engine.add_request(str(i), None, generation_config, input_ids)
 
     batch_size = len(request_list)
-    response_list = [None] * batch_size
+    resp_list = [None] * batch_size
     print_idx_list = [0] * batch_size
     prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
@@ -177,13 +177,13 @@ def inference_stream_vllm(
             safe_response = response[:print_idx_list[i]]
             query = request['query']
             history = request['history']
-            if response_list[i] is None:
+            if resp_list[i] is None:
                 history.append(None)
             history[-1] = (query, safe_response)
-            response_list[i] = {'response': safe_response, 'history': history}
+            resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
-        yield response_list
+        yield resp_list
 
 
 def inference_vllm(llm_engine: LLMEngine,
@@ -235,7 +235,7 @@ def inference_vllm(llm_engine: LLMEngine,
                 outputs.append(output)
                 prog_bar.update()
 
-    response_list = [None] * batch_size
+    resp_list = [None] * batch_size
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]
@@ -243,13 +243,13 @@ def inference_vllm(llm_engine: LLMEngine,
         query = request['query']
         history = request['history']
         history.append((query, response))
-        response_list[i] = {'response': response, 'history': history}
+        resp_list[i] = {'response': response, 'history': history}
         if verbose:
             print(
                 f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}',
                 end='')
             print(tokenizer.decode(output.outputs[0].token_ids, False))
-    return response_list
+    return resp_list
 
 
 def prepare_vllm_engine_template(

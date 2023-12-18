@@ -50,18 +50,18 @@ template = get_template(template_type, llm_engine.tokenizer)
 llm_engine.generation_config.max_new_tokens = 256
 
 request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
-response_list = inference_vllm(llm_engine, template, request_list)
-for request, response in zip(request_list, response_list):
+resp_list = inference_vllm(llm_engine, template, request_list)
+for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
-    print(f"response: {response['response']}")
+    print(f"response: {resp['response']}")
 
-history1 = response_list[1]['history']
+history1 = resp_list[1]['history']
 request_list = [{'query': '这有什么好吃的', 'history': history1}]
-response_list = inference_vllm(llm_engine, template, request_list)
-for request, response in zip(request_list, response_list):
+resp_list = inference_vllm(llm_engine, template, request_list)
+for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
-    print(f"response: {response['response']}")
-    print(f"history: {response['history']}")
+    print(f"response: {resp['response']}")
+    print(f"history: {resp['history']}")
 
 """Out[0]
 query: 你好!
@@ -96,20 +96,20 @@ request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
 gen = inference_stream_vllm(llm_engine, template, request_list)
 query_list = [request['query'] for request in request_list]
 print(f"query_list: {query_list}")
-for response_list in gen:
-    resp_list = [response['response'] for response in response_list]
-    print(f'response_list: {resp_list}')
+for resp_list in gen:
+    response_list = [resp['response'] for resp in resp_list]
+    print(f'response_list: {response_list}')
 
-history1 = response_list[1]['history']
+history1 = resp_list[1]['history']
 request_list = [{'query': '这有什么好吃的', 'history': history1}]
 gen = inference_stream_vllm(llm_engine, template, request_list)
 query = request_list[0]['query']
 print(f"query: {query}")
-for response_list in gen:
-    resp = response_list[0]['response']
-    print(f'response: {resp}')
+for resp_list in gen:
+    response = resp_list[0]['response']
+    print(f'response: {response}')
 
-history = response_list[0]['history']
+history = resp_list[0]['history']
 print(f'history: {history}')
 
 """Out[0]
@@ -142,18 +142,18 @@ template = get_template(template_type, llm_engine.tokenizer)
 llm_engine.generation_config.max_new_tokens = 256
 
 request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
-response_list = inference_vllm(llm_engine, template, request_list)
-for request, response in zip(request_list, response_list):
+resp_list = inference_vllm(llm_engine, template, request_list)
+for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
-    print(f"response: {response['response']}")
+    print(f"response: {resp['response']}")
 
-history1 = response_list[1]['history']
+history1 = resp_list[1]['history']
 request_list = [{'query': '这有什么好吃的', 'history': history1}]
-response_list = inference_vllm(llm_engine, template, request_list)
-for request, response in zip(request_list, response_list):
+resp_list = inference_vllm(llm_engine, template, request_list)
+for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
-    print(f"response: {response['response']}")
-    print(f"history: {response['history']}")
+    print(f"response: {resp['response']}")
+    print(f"history: {resp['history']}")
 
 """Out[0]
 query: 你好!
@@ -167,9 +167,31 @@ history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有�
 ```
 
 ### 微调后的模型
+使用LoRA进行微调的模型你需要先merge-lora, 产生完整的checkpoint目录. 具体可以查看[]()
 
-使用LoRA进行微调:
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
+import torch
+from swift.llm import (
+    ModelType, get_vllm_engine, get_default_template_type,
+    get_template, inference_vllm
+)
+from swift.tuners import Swift
+
+model_dir = 'vx_xxx/checkpoint-100-merged'
+model_type = ModelType.qwen_7b_chat
+template_type = get_default_template_type(model_type)
+
+llm_engine = get_vllm_engine(model_type, torch.bfloat16, model_dir=model_dir)
+tokenizer = llm_engine.tokenizer
+template = get_template(template_type, tokenizer)
+query = '你好'
+resp = inference_vllm(llm_engine, template, [{'query': query}])[0]
+print(f"response: {resp['response']}")
+print(f"history: {resp['history']}")
+```
 
 
 使用全参数微调:

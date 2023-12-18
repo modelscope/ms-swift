@@ -203,9 +203,9 @@ def llm_infer(args: InferArguments) -> None:
                                                 'query': query,
                                                 'history': history
                                             }])
-                for response_list in gen:
-                    response = response_list[0]['response']
-                    new_history = response_list[0]['history']
+                for resp_list in gen:
+                    response = resp_list[0]['response']
+                    new_history = resp_list[0]['history']
                     if len(response) > print_idx:
                         print(response[print_idx:], end='', flush=True)
                         print_idx = len(response)
@@ -242,7 +242,7 @@ def llm_infer(args: InferArguments) -> None:
                 label_list = val_dataset['response']
             val_dataset = val_dataset.remove_columns('response')
             request_list = val_dataset.to_list()
-            response_list = inference_vllm(
+            resp_list = inference_vllm(
                 llm_engine,
                 template,
                 request_list,
@@ -252,8 +252,8 @@ def llm_infer(args: InferArguments) -> None:
             if label_list is not None:
                 for request, label in zip(request_list, label_list):
                     request['label'] = label
-            for request, response in zip(request_list, response_list):
-                obj = {'response': response['response'], **request}
+            for request, resp in zip(request_list, resp_list):
+                obj = {'response': resp['response'], **request}
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
@@ -278,8 +278,8 @@ def llm_infer(args: InferArguments) -> None:
                     assert args.stream is True
                     gen = inference_stream_vllm(llm_engine, template, [kwargs])
                     print_idx = 0
-                    for response_list in gen:
-                        response = response_list[0]['response']
+                    for resp_list in gen:
+                        response = resp_list[0]['response']
                         if len(response) > print_idx:
                             print(response[print_idx:], end='', flush=True)
                             print_idx = len(response)
