@@ -216,7 +216,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 ## Merge LoRA
-提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora.
+提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
 ```bash
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```

@@ -167,7 +167,9 @@ history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有�
 ```
 
 ### 微调后的模型
-使用LoRA进行微调的模型你需要先merge-lora, 产生完整的checkpoint目录. 具体可以查看[]()
+使用LoRA进行微调的模型你需要先[merge-lora](./LLM微调文档.md#merge-lora), 产生完整的checkpoint目录.
+
+使用全参数微调的模型可以无缝使用VLLM进行推理加速.
 
 ```python
 import os
@@ -194,7 +196,5 @@ print(f"history: {resp['history']}")
 ```
 
 
-使用全参数微调:
-
-
 ## 部署
+TODO
