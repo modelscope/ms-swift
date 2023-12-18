@@ -18,6 +18,7 @@ from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset
 from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
+from .utils import is_vllm_available
 
 logger = get_logger()
 
@@ -321,7 +322,7 @@ class InferArguments:
             'help':
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
-    use_vllm: bool = False
+    use_vllm: Optional[bool] = None
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
@@ -424,9 +425,18 @@ class InferArguments:
         if self.ckpt_dir is None and self.overwrite_generation_config:
             self.overwrite_generation_config = False
             logger.warning('Setting overwrite_generation_config: False')
+        if self.ckpt_dir is None:
+            self.sft_type = 'full'
+        if self.use_vllm is None:
+            if self.sft_type == 'full':
+                self.use_vllm = is_vllm_available() and MODEL_MAPPING[
+                    self.model_type].get('support_vllm', False)
+            else:
+                self.use_vllm = False
         if self.use_vllm:
             assert self.quantization_bit == 0, 'not support bnb'
-            assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
+            if self.sft_type == 'lora':
+                assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
 
 
 @dataclass

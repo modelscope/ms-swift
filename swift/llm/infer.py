@@ -233,21 +233,27 @@ def llm_infer(args: InferArguments) -> None:
             val_dataset = val_dataset.select(
                 range(min(args.val_dataset_sample, val_dataset.shape[0])))
         logger.info(f'val_dataset: {val_dataset}')
+        if args.verbose is None:
+            if len(val_dataset) >= 100:
+                args.verbose = False
+            else:
+                args.verbose = True
+            logger.info(f'Setting args.verbose: {args.verbose}')
+        if not args.verbose and args.stream:
+            args.stream = False
+            logger.info(f'Setting args.stream: {args.stream}')
 
         if args.use_vllm and not args.stream:
-            args.verbose = False
-            logger.info(f'Setting args.verbose: {args.verbose}')
+            if args.verbose:
+                args.verbose = False
+                logger.info('Setting args.verbose: False')
             label_list = None
             if 'response' in val_dataset.features:
                 label_list = val_dataset['response']
             val_dataset = val_dataset.remove_columns('response')
             request_list = val_dataset.to_list()
             resp_list = inference_vllm(
-                llm_engine,
-                template,
-                request_list,
-                use_tqdm=not args.verbose,
-                verbose=args.verbose)
+                llm_engine, template, request_list, use_tqdm=True)
             result = []
             if label_list is not None:
                 for request, label in zip(request_list, label_list):
@@ -258,12 +264,6 @@ def llm_infer(args: InferArguments) -> None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
         else:
-            if args.verbose is None:
-                if len(val_dataset) >= 100:
-                    args.verbose = False
-                else:
-                    args.verbose = True
-                logger.info(f'Setting args.verbose: {args.verbose}')
             if not args.verbose:
                 val_dataset = tqdm(val_dataset)
             for data in val_dataset:
@@ -280,7 +280,7 @@ def llm_infer(args: InferArguments) -> None:
                     print_idx = 0
                     for resp_list in gen:
                         response = resp_list[0]['response']
-                        if len(response) > print_idx:
+                        if args.verbose and len(response) > print_idx:
                             print(response[print_idx:], end='', flush=True)
                             print_idx = len(response)
                 else:

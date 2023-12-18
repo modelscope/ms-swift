@@ -425,7 +425,7 @@ app_ui_main(infer_args)
 ### qwen-7b
 使用CLI:
 ```bash
-swift app-ui --model_id_or_path qwen/Qwen-7B
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B
 ```
 
 使用python:
