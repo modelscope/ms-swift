@@ -4,7 +4,7 @@ import heapq
 import logging
 import os
 import shutil
-import time
+from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
@@ -439,15 +439,21 @@ def _is_chinese_char(cp):
 
 
 def inference_stream(
-        model: PreTrainedModel,
-        template: Template,
-        query: str,
-        history: Optional[History] = None,
-        system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
+    model: PreTrainedModel,
+    template: Template,
+    query: str,
+    history: Optional[History] = None,
+    system: Optional[str] = None,
+    *,
+    generation_config: Optional[GenerationConfig] = None
+) -> Iterator[Tuple[str, History]]:
+    """
+    generation_config: Priority: generation_config > model.generation_config.
+    """
     if history is None:
         history = []
     else:
-        history = history.copy()
+        history = deepcopy(history)
     example = {'query': query, 'history': history, 'system': system}
     inputs = template.encode(example)
     audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
@@ -457,7 +463,9 @@ def inference_stream(
     input_ids = torch.tensor(input_ids)[None].to(device)
     attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
-    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config', None)
+    generation_config = deepcopy(generation_config)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
     model.__class__.generate_stream = NewGenerationMixin.generate
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
@@ -487,16 +495,19 @@ def inference_stream(
         **model_kwargs,
         seed=-1)
     generate_ids = []
+    response = ''
+    print_idx = 0
     history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
         response = tokenizer.decode(generate_ids, True, **decode_kwargs)
         if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
                 ord(response[-1])):
-            safe_response = response
+            print_idx = len(response)
         else:
-            safe_response = response[:response.rfind(' ')
-                                     + 1]  # avoid printing incomplete words
+            print_idx = max(response.rfind(' ') + 1, print_idx)
+        # avoid printing incomplete words
+        safe_response = response[:print_idx]
         history[-1] = (query, safe_response)
         yield safe_response, history
     history[-1] = (query, response)
@@ -509,14 +520,18 @@ def inference(model: PreTrainedModel,
               history: Optional[History] = None,
               system: Optional[str] = None,
               *,
+              generation_config: Optional[GenerationConfig] = None,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+    """
+    generation_config: Priority: generation_config > model.generation_config.
+    """
     if history is None:
         history = []
     else:
-        history = history.copy()
+        history = deepcopy(history)
     example = {'query': query, 'history': history, 'system': system}
     inputs = template.encode(example)
     audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
@@ -526,7 +541,9 @@ def inference(model: PreTrainedModel,
     input_ids = torch.tensor(input_ids)[None].to(device)
     attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
-    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config', None)
+    generation_config = deepcopy(generation_config)
     if stream is True and verbose is False:
         logger.warning(
             'Please set verbose to True to support TextStreamer, or use `inference_stream.`'

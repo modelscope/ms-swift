@@ -28,33 +28,36 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
         model_type = ModelType.chatglm3_6b
-        sft_args = SftArguments(
-            model_type=model_type,
-            template_type='AUTO',
-            quantization_bit=4,
-            batch_size=2,
-            eval_steps=5,
-            check_dataset_strategy='warning',
-            train_dataset_sample=200,
-            predict_with_generate=False,
-            dataset=[DatasetName.jd_sentiment_zh],
-            output_dir=output_dir,
-            gradient_checkpointing=True)
-        self.assertTrue(sft_args.gradient_accumulation_steps == 8)
-        output = sft_main(sft_args)
-        print(output)
-        best_model_checkpoint = output['best_model_checkpoint']
-        print(f'best_model_checkpoint: {best_model_checkpoint}')
-        torch.cuda.empty_cache()
-        if __name__ == '__main__':
-            infer_args = InferArguments(
-                ckpt_dir=best_model_checkpoint,
-                stream=False,
-                show_dataset_sample=5)
-            merge_lora_main(infer_args)
-            result = infer_main(infer_args)
-            print(result)
+        for quantization_bit in [0, 4]:
+            predict_with_generate = True
+            if quantization_bit == 0:
+                predict_with_generate = False
+            sft_args = SftArguments(
+                model_type=model_type,
+                template_type='AUTO',
+                quantization_bit=quantization_bit,
+                batch_size=2,
+                eval_steps=5,
+                check_dataset_strategy='warning',
+                train_dataset_sample=200,
+                predict_with_generate=predict_with_generate,
+                dataset=[DatasetName.jd_sentiment_zh],
+                output_dir=output_dir,
+                gradient_checkpointing=True)
+            self.assertTrue(sft_args.gradient_accumulation_steps == 8)
+            output = sft_main(sft_args)
+            print(output)
+            best_model_checkpoint = output['best_model_checkpoint']
+            print(f'best_model_checkpoint: {best_model_checkpoint}')
             torch.cuda.empty_cache()
+            if __name__ == '__main__':
+                infer_args = InferArguments(
+                    ckpt_dir=best_model_checkpoint,
+                    stream=False,
+                    show_dataset_sample=5)
+                result = infer_main(infer_args)
+                print(result)
+                torch.cuda.empty_cache()
         # if __name__ == '__main__':
         #     app_ui_main(infer_args)
 
@@ -66,13 +69,12 @@ class TestRun(unittest.TestCase):
         losses = []
         for tuner_backend in ['swift', 'peft']:
             output = sft_main([
-                '--model_type', ModelType.qwen_7b_chat_int4, '--eval_steps',
-                '5', '--tuner_backend', tuner_backend,
-                '--train_dataset_sample', '200', '--predict_with_generate',
-                'true', '--dataset', DatasetName.leetcode_python_en,
+                '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
+                '--tuner_backend', tuner_backend, '--train_dataset_sample',
+                '200', '--dataset', DatasetName.leetcode_python_en,
                 '--output_dir', output_dir, '--gradient_checkpointing', 'true',
                 '--max_new_tokens', '100', '--use_flash_attn', 'true',
-                '--lora_target_modules', 'ALL'
+                '--lora_target_modules', 'ALL', '--seed', '0'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -182,7 +184,7 @@ class TestRun(unittest.TestCase):
             if dataset is None:
                 continue
             infer_args = InferArguments(
-                ckpt_dir=ckpt_dir, show_dataset_sample=2)
+                ckpt_dir=ckpt_dir, show_dataset_sample=2, verbose=False)
             # merge_lora_main(infer_args)
             result = infer_main(infer_args)
             print(result)
