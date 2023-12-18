@@ -138,6 +138,9 @@ class Runtime(BaseUI):
             gr.Error(cls.locale('tb_not_found', cls.lang)['value'])
             return ''
 
+        logging_dir = logging_dir.strip()
+        logging_dir = logging_dir if not logging_dir.endswith(
+            os.sep) else logging_dir[:-1]
         if logging_dir in cls.handlers:
             return cls.handlers[logging_dir][1]
 
