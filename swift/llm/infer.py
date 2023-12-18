@@ -205,12 +205,13 @@ def llm_infer(args: InferArguments) -> None:
                                             }])
                 for response_list in gen:
                     response = response_list[0]['response']
+                    new_history = response_list[0]['history']
                     if len(response) > print_idx:
                         print(response[print_idx:], end='', flush=True)
                         print_idx = len(response)
             else:
                 gen = inference_stream(model, template, query, history)
-                for response, _ in gen:
+                for response, new_history in gen:
                     if len(response) > print_idx:
                         print(response[print_idx:], end='', flush=True)
                         print_idx = len(response)
@@ -221,6 +222,7 @@ def llm_infer(args: InferArguments) -> None:
                 'response': response,
                 'history': history,
             }
+            history = new_history
             if jsonl_path is not None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
