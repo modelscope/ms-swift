@@ -36,6 +36,15 @@ class TemplateType:
     codefuse_codellama = 'codefuse-codellama'
     deepseek_coder = 'deepseek-coder'
 
+    @classmethod
+    def get_template_name_list(cls) -> List[str]:
+        res = []
+        for k in cls.__dict__.keys():
+            if k.startswith('__') or k == 'get_template_name_list':
+                continue
+            res.append(cls.__dict__[k])
+        return res
+
 
 Prompt = List[Union[str, List[Union[str, int]]]]
 StopWords = Prompt

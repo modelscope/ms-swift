@@ -110,6 +110,15 @@ class DatasetName:
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
 
+    @classmethod
+    def get_dataset_name_list(cls) -> List[str]:
+        res = []
+        for k in cls.__dict__.keys():
+            if k.startswith('__') or k == 'get_dataset_name_list':
+                continue
+            res.append(cls.__dict__[k])
+        return res
+
 
 def register_dataset(
         dataset_name: str,

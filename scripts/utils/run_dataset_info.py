@@ -9,15 +9,6 @@ from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map,
 from swift.utils import stat_array
 
 
-def get_dataset_name_list() -> List[str]:
-    res = []
-    for k in DatasetName.__dict__.keys():
-        if k.startswith('__'):
-            continue
-        res.append(getattr(DatasetName, k))
-    return res
-
-
 def write_dataset_info(fpath: str) -> None:
     res_text_list = []
     if os.path.exists(fpath):
@@ -40,7 +31,7 @@ def write_dataset_info(fpath: str) -> None:
         text.split('|', 2)[1].lstrip('🔥 '): text
         for text in text_list
     }
-    dataset_name_list = get_dataset_name_list()
+    dataset_name_list = DatasetName.get_dataset_name_list()
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
