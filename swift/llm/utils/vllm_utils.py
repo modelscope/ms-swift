@@ -1,16 +1,18 @@
 import inspect
 import os
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from modelscope import GenerationConfig, snapshot_download
 from torch import dtype as Dtype
+from tqdm import tqdm
 from vllm import EngineArgs, LLMEngine, SamplingParams
 
-from swift.utils import get_logger
+from swift.utils import get_logger, seed_everything
+from .argument import InferArguments
 from .model import MODEL_MAPPING, get_model_tokenizer
-from .template import Template
+from .template import Template, get_template
 from .utils import _is_chinese_char
 
 logger = get_logger()
@@ -120,12 +122,12 @@ class VllmGenerationConfig(SamplingParams):
 
 
 def inference_stream_vllm(
-    llm_engine: LLMEngine,
-    template: Template,
-    request_list: List[Dict[str, Any]],
-    *,
-    generation_config: Optional[VllmGenerationConfig] = None
-) -> List[Dict[str, Any]]:
+        llm_engine: LLMEngine,
+        template: Template,
+        request_list: List[Dict[str, Any]],
+        *,
+        generation_config: Optional[VllmGenerationConfig] = None,
+        use_tqdm: bool = False) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -156,6 +158,8 @@ def inference_stream_vllm(
 
     batch_size = len(request_list)
     response_list = [None] * batch_size
+    print_idx_list = [0] * batch_size
+    prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
         for output in step_outputs:
@@ -165,17 +169,20 @@ def inference_stream_vllm(
             if output.finished or response.endswith(
                     '\n') or len(response) > 0 and _is_chinese_char(
                         ord(response[-1])):
-                print_idx = len(response)
+                print_idx_list[i] = len(response)
             else:
-                print_idx = max(response.rfind(' ') + 1, print_idx)
+                print_idx_list[i] = max(
+                    response.rfind(' ') + 1, print_idx_list[i])
             # avoid printing incomplete words
-            safe_response = response[:print_idx]
+            safe_response = response[:print_idx_list[i]]
             query = request['query']
             history = request['history']
             if response_list[i] is None:
                 history.append(None)
             history[-1] = (query, safe_response)
             response_list[i] = {'response': safe_response, 'history': history}
+            if output.finished:
+                prog_bar.update()
         yield response_list
 
 
@@ -184,6 +191,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    request_list: List[Dict[str, Any]],
                    *,
                    generation_config: Optional[VllmGenerationConfig] = None,
+                   use_tqdm: bool = False,
                    verbose: bool = False,
                    prompt_prefix: str = '[PROMPT]',
                    output_prefix: str = '[OUTPUT]') -> List[Dict[str, Any]]:
@@ -214,14 +222,19 @@ def inference_vllm(llm_engine: LLMEngine,
             generation_config.max_length = generation_config.max_new_tokens + len(
                 input_ids)
         llm_engine.add_request(str(i), None, generation_config, input_ids)
+
+    batch_size = len(request_list)
+    if use_tqdm is True:
+        assert verbose is False
+    prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
         for output in step_outputs:
             if output.finished:
                 outputs.append(output)
+                prog_bar.update()
 
-    batch_size = len(request_list)
     response_list = [None] * batch_size
     for output in outputs:
         i = int(output.request_id)
@@ -237,3 +250,42 @@ def inference_vllm(llm_engine: LLMEngine,
                 end='')
             print(tokenizer.decode(output.outputs[0].token_ids, False))
     return response_list
+
+
+def prepare_vllm_engine_template(
+        args: InferArguments) -> Tuple[LLMEngine, Template]:
+    logger.info(f'args: {args}')
+    logger.info(f'device_count: {torch.cuda.device_count()}')
+    seed_everything(args.seed)
+
+    assert args.quantization_bit == 0, 'not support bnb'
+    assert args.sft_type == 'full', 'you need to merge lora'
+    # Loading Model and Tokenizer
+    kwargs = {}
+    if args.sft_type == 'full' and args.ckpt_dir is not None:
+        kwargs['model_dir'] = args.ckpt_dir
+    elif args.model_cache_dir is not None:
+        kwargs['model_dir'] = args.model_cache_dir
+    llm_engine = get_vllm_engine(args.model_type, args.torch_dtype,
+                                 args.gpu_memory_utilization,
+                                 args.tensor_parallel_size,
+                                 args.pipeline_parallel_size, **kwargs)
+    tokenizer = llm_engine.tokenizer
+    logger.info(f'model_config: {llm_engine.model_config.hf_config}')
+    if not args.do_sample:
+        args.temperature = 0
+    generation_config = VllmGenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        repetition_penalty=args.repetition_penalty,
+        stop=[tokenizer.eos_token])
+    logger.info(f'generation_config: {generation_config}')
+    llm_engine.generation_config = generation_config
+    template: Template = get_template(args.template_type, tokenizer,
+                                      args.system, args.max_length,
+                                      args.truncation_strategy)
+    args.system = template.default_system
+    logger.info(f'system: {args.system}')
+    return llm_engine, template

@@ -26,7 +26,8 @@ from .utils import (LazyLLMDataset, LLMDataset, data_collate_fn, dataset_map,
 try:
     if is_vllm_available():
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine,
-                                 inference_stream_vllm, inference_vllm)
+                                 inference_stream_vllm, inference_vllm,
+                                 prepare_vllm_engine_template)
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()

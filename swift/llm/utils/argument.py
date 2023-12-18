@@ -321,6 +321,7 @@ class InferArguments:
             'help':
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
+    use_vllm: bool = False
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
@@ -372,6 +373,10 @@ class InferArguments:
     verbose: Optional[bool] = None
     # app-ui
     share: bool = False
+    # vllm
+    gpu_memory_utilization: float = 0.9
+    tensor_parallel_size: int = 1
+    pipeline_parallel_size: int = 1
     # compatibility
     show_dataset_sample: int = 10
 
@@ -420,6 +425,9 @@ class InferArguments:
         if self.ckpt_dir is None and self.overwrite_generation_config:
             self.overwrite_generation_config = False
             logger.warning('Setting overwrite_generation_config: False')
+        if self.use_vllm:
+            assert self.quantization_bit == 0, 'not support bnb'
+            assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
 
 
 @dataclass
