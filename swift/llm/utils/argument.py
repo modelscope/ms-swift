@@ -322,7 +322,8 @@ class InferArguments:
             'help':
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
-    use_vllm: Optional[bool] = None
+    infer_backend: str = field(
+        default='AUTO', metadata={'choices': ['AUTO', 'vllm', 'pytorch']})
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
@@ -427,13 +428,16 @@ class InferArguments:
             logger.warning('Setting overwrite_generation_config: False')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
-        if self.use_vllm is None:
-            if self.sft_type == 'full':
-                self.use_vllm = is_vllm_available() and MODEL_MAPPING[
-                    self.model_type].get('support_vllm', False)
+        if self.infer_backend == 'AUTO':
+            if self.sft_type == 'full' and is_vllm_available():
+                if is_vllm_available() and MODEL_MAPPING[self.model_type].get(
+                        'support_vllm', False):
+                    self.infer_backend = 'vllm'
+                else:
+                    self.infer_backend = 'pytorch'
             else:
-                self.use_vllm = False
-        if self.use_vllm:
+                self.infer_backend = 'pytorch'
+        if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'not support bnb'
             if self.sft_type == 'lora':
                 assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'

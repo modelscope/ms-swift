@@ -151,7 +151,7 @@ def prepare_model_template(
 def llm_infer(args: InferArguments) -> None:
     if args.merge_lora_and_save:
         merge_lora(args)
-    if args.use_vllm:
+    if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
@@ -197,7 +197,7 @@ def llm_infer(args: InferArguments) -> None:
             if not template.support_multi_round:
                 history = []
             print_idx = 0
-            if args.use_vllm:
+            if args.infer_backend == 'vllm':
                 gen = inference_stream_vllm(llm_engine, template,
                                             [{
                                                 'query': query,
@@ -243,7 +243,7 @@ def llm_infer(args: InferArguments) -> None:
             args.stream = False
             logger.info(f'Setting args.stream: {args.stream}')
 
-        if args.use_vllm and not args.stream:
+        if args.infer_backend == 'vllm' and not args.stream:
             if args.verbose:
                 args.verbose = False
                 logger.info('Setting args.verbose: False')
@@ -274,7 +274,7 @@ def llm_infer(args: InferArguments) -> None:
                     kwargs['history'] = history
                 if system is not None:
                     kwargs['system'] = system
-                if args.use_vllm:
+                if args.infer_backend == 'vllm':
                     assert args.stream is True
                     gen = inference_stream_vllm(llm_engine, template, [kwargs])
                     print_idx = 0

@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Tuple
 
-from .infer import prepare_model_template
+from .infer import merge_lora, prepare_model_template
 from .utils import (History, InferArguments, inference_stream,
                     limit_history_length)
 
@@ -14,14 +14,14 @@ def gradio_generation_demo(args: InferArguments) -> None:
     import gradio as gr
     if args.merge_lora_and_save:
         merge_lora(args)
-    if args.use_vllm:
+    if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
         model, template = prepare_model_template(args)
 
     def model_generation(query: str) -> str:
-        if args.use_vllm:
+        if args.infer_backend == 'vllm':
             gen = inference_stream_vllm(llm_engine, template, [{
                 'query': query
             }])
@@ -51,7 +51,7 @@ def gradio_chat_demo(args: InferArguments) -> None:
     import gradio as gr
     if args.merge_lora_and_save:
         merge_lora(args)
-    if args.use_vllm:
+    if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
@@ -60,7 +60,7 @@ def gradio_chat_demo(args: InferArguments) -> None:
     def model_chat(query: str, history: History) -> Tuple[str, History]:
         old_history, history = limit_history_length(template, query, history,
                                                     args.max_length)
-        if args.use_vllm:
+        if args.infer_backend == 'vllm':
             gen = inference_stream_vllm(llm_engine, template,
                                         [{
                                             'query': query,
