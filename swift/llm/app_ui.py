@@ -12,8 +12,6 @@ def clear_session() -> History:
 
 def gradio_generation_demo(args: InferArguments) -> None:
     import gradio as gr
-    if args.merge_lora_and_save:
-        merge_lora(args)
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
@@ -49,8 +47,6 @@ def gradio_generation_demo(args: InferArguments) -> None:
 
 def gradio_chat_demo(args: InferArguments) -> None:
     import gradio as gr
-    if args.merge_lora_and_save:
-        merge_lora(args)
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
@@ -93,6 +89,9 @@ def gradio_chat_demo(args: InferArguments) -> None:
 
 
 def llm_app_ui(args: InferArguments) -> None:
+    args.eval_human = True
+    if args.merge_lora_and_save:
+        merge_lora(args)
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:

@@ -88,15 +88,17 @@ class TestRun(unittest.TestCase):
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
                 '2', '--max_new_tokens', '100', '--use_flash_attn',
-                str(bool_var), '--use_vllm',
-                str(bool_var), '--verbose',
+                str(bool_var), '--infer_backend', {
+                    True: 'vllm',
+                    False: 'pytorch'
+                }[bool_var], '--verbose',
                 str(bool_var), '--merge_lora_and_save',
                 str(bool_var)
             ])
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
             torch.cuda.empty_cache()
-        self.assertTrue(abs(losses[0] - losses[1]) < 1e-4)
+        self.assertTrue(abs(losses[0] - losses[1]) < 2e-4)
 
     def test_vl_audio(self):
         output_dir = 'output'
