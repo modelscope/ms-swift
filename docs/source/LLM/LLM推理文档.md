@@ -1,5 +1,5 @@
 # LLM推理文档
-如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#推理加速)
+如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#推理加速)
 
 ## 目录
 - [环境准备](#环境准备)
@@ -395,6 +395,11 @@ response: 浙江有很多美食,以下是一些著名的:
 history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这有什么好吃的？', '浙江有很多美食,以下是一些著名的:\n\n1. 杭州小笼包:这是杭州著名的传统小吃,外皮薄而有韧性,内馅鲜美多汁。\n\n2. 浙江粽子:浙江粽子有多种口味,如咸蛋黄肉粽、豆沙粽等,其中以杭州粽子最为著名。\n\n3. 油爆虾:这是浙江海鲜中的代表之一,用热油爆炒虾仁,口感鲜嫩。\n\n4. 椒盐土豆丝:这是浙江传统的素菜之一,用土豆丝和椒盐一起炒制,口感清爽。\n')]
 """
 ```
+
+### 微调后模型
+如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](./LLM微调文档.md#微调后模型)
+
+
 ## Web-UI
 ### qwen-7b-chat
 使用CLI:
@@ -440,3 +445,6 @@ from swift.llm import InferArguments, ModelType, app_ui_main
 infer_args = InferArguments(model_type=ModelType.qwen_7b)
 app_ui_main(infer_args)
 ```
+
+### 微调后模型
+使用微调后模型的web-ui可以查看LLM微调文档](./LLM微调文档.md#微调后模型-1)
