@@ -19,6 +19,12 @@ class LLMInfer(BaseUI):
     sub_ui = [Model]
 
     locale_dict = {
+        'generate_alert': {
+            'value': {
+                'zh': '请先加载模型',
+                'en': 'Please load model first',
+            }
+        },
         'llm_infer': {
             'label': {
                 'zh': 'LLM推理',
@@ -103,7 +109,7 @@ class LLMInfer(BaseUI):
                         model_and_template, prompt, chatbot,
                         cls.element('max_new_tokens')
                     ],
-                    outputs=[prompt, chatbot])
+                    outputs=[prompt, chatbot], queue=True)
                 clear_history.click(
                     fn=cls.clear_session,
                     inputs=[],
@@ -111,11 +117,11 @@ class LLMInfer(BaseUI):
                     queue=False)
                 cls.element('load_checkpoint').click(
                     cls.reset_memory, [], [model_and_template],
-                    show_progress=False).then(
+                    show_progress=False, queue=True).then(
                         cls.prepare_checkpoint, [], [model_and_template],
-                        show_progress=True)
+                        show_progress=True, queue=True)
                 cls.element('load_checkpoint').click(
-                    cls.clear_session, inputs=[], outputs=[prompt, chatbot])
+                    cls.clear_session, inputs=[], outputs=[prompt, chatbot], queue=True)
 
     @classmethod
     def reset_memory(cls):
@@ -164,6 +170,9 @@ class LLMInfer(BaseUI):
     @classmethod
     def generate_chat(cls, model_and_template, prompt: str, history,
                       max_new_tokens):
+        if not model_and_template:
+            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
+            return '', None
         model, template = model_and_template
         if not cls.element('template_type').arg_value.endswith('generation'):
             old_history, history = limit_history_length(
