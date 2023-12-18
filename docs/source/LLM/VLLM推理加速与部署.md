@@ -4,6 +4,7 @@
 ## 目录
 - [环境准备](#环境准备)
 - [推理加速](#推理加速)
+- [Web-UI加速](#web-ui加速)
 - [部署](#部署)
 
 ## 环境准备
@@ -164,10 +165,12 @@ history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有�
 ```
 
 ### 微调后的模型
+
+**单样本推理**:
+
 使用LoRA进行微调的模型你需要先[merge-lora](./LLM微调文档.md#merge-lora), 产生完整的checkpoint目录.
 
 使用全参数微调的模型可以无缝使用VLLM进行推理加速.
-
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -191,6 +194,26 @@ print(f"response: {resp['response']}")
 print(f"history: {resp['history']}")
 ```
 
+使用**数据集**评估:
+```bash
+# merge LoRA增量权重并使用vllm进行推理加速
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --infer_backend vllm
+```
+
+## Web-UI加速
+
+### 原始模型
+```bash
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B-Chat --infer_backend vllm
+```
+
+### 微调后模型
+```bash
+# merge LoRA增量权重并使用vllm作为backend构建app-ui
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --infer_backend vllm
+```
 
 ## 部署
 TODO

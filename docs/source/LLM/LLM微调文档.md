@@ -222,7 +222,7 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 ## 推理
-如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#推理加速)
+如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
 
 ### 原始模型
 **单样本推理**可以查看[LLM推理文档](./LLM推理文档.md#-推理)
@@ -232,7 +232,7 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 ```
 ### 微调后模型
-**单样本推理**
+**单样本推理**:
 
 使用LoRA**增量**权重进行推理:
 ```python

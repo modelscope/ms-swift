@@ -429,12 +429,9 @@ class InferArguments:
         if self.ckpt_dir is None:
             self.sft_type = 'full'
         if self.infer_backend == 'AUTO':
-            if self.sft_type == 'full' and is_vllm_available():
-                if is_vllm_available() and MODEL_MAPPING[self.model_type].get(
-                        'support_vllm', False):
-                    self.infer_backend = 'vllm'
-                else:
-                    self.infer_backend = 'pytorch'
+            if self.sft_type == 'full' and is_vllm_available(
+            ) and MODEL_MAPPING[self.model_type].get('support_vllm', False):
+                self.infer_backend = 'vllm'
             else:
                 self.infer_backend = 'pytorch'
         if self.infer_backend == 'vllm':
