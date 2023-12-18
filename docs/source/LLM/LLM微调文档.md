@@ -291,6 +291,16 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
+**人工**评估:
+```bash
+# 直接推理
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx' --eval_human true
+
+# Merge LoRA增量权重并推理
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --eval_human true
+```
+
 ## Web-UI
 如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#部署)
 

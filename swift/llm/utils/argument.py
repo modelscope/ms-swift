@@ -428,14 +428,17 @@ class InferArguments:
             logger.warning('Setting overwrite_generation_config: False')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
+        support_vllm = MODEL_MAPPING[self.model_type].get(
+            'support_vllm', False)
         if self.infer_backend == 'AUTO':
             if self.sft_type == 'full' and is_vllm_available(
-            ) and MODEL_MAPPING[self.model_type].get('support_vllm', False):
+            ) and support_vllm:
                 self.infer_backend = 'vllm'
             else:
                 self.infer_backend = 'pytorch'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'not support bnb'
+            assert support_vllm, f'vllm not support `{self.model_type}`'
             if self.sft_type == 'lora':
                 assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
 

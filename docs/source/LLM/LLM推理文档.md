@@ -389,6 +389,14 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 """
 ```
 
+### 使用CLI
+```bash
+# qwen
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-7b-chat
+# yi
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat
+```
+
 ### 微调后模型
 如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](./LLM微调文档.md#微调后模型)
 
@@ -397,7 +405,7 @@ history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这�
 ### qwen-7b-chat
 使用CLI:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B-Chat
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b-chat
 ```
 
 使用python:
@@ -425,7 +433,7 @@ app_ui_main(infer_args)
 ### qwen-7b
 使用CLI:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b
 ```
 
 使用python:

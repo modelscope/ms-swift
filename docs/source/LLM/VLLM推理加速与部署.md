@@ -20,17 +20,13 @@ pip install -e .[llm]
 # vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
 pip install vllm -U
 
-# 如果你想要使用基于auto_gptq的模型进行推理.
-# 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
-# auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
-pip install auto_gptq -U
-
 # 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
 
 ## 推理加速
+vllm不支持bnb和auto_gptq量化的模型. vllm支持的模型可以查看[支持的模型](./支持的模型和数据集.md#模型).
 
 ### qwen-7b-chat
 ```python
@@ -164,6 +160,14 @@ history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有�
 """
 ```
 
+### 使用CLI
+```bash
+# qwen
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-7b-chat --infer_backend vllm
+# yi
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat --infer_backend vllm
+```
+
 ### 微调后的模型
 
 **单样本推理**:
@@ -194,18 +198,26 @@ print(f"response: {resp['response']}")
 print(f"history: {resp['history']}")
 ```
 
-使用**数据集**评估:
+**使用CLI**:
 ```bash
 # merge LoRA增量权重并使用vllm进行推理加速
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+
+# 使用数据集评估
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --infer_backend vllm
+# 人工评估
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
+    --infer_backend vllm \
+    --eval_human true \
 ```
 
 ## Web-UI加速
 
 ### 原始模型
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B-Chat --infer_backend vllm
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b-chat --infer_backend vllm
 ```
 
 ### 微调后模型
