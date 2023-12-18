@@ -1258,6 +1258,7 @@ def get_model_tokenizer(
         model_torch_dtype = model_info['torch_dtype']
         if torch_dtype is None:
             torch_dtype = model_torch_dtype
+            logger.info(f'Setting torch_dtype: {torch_dtype}')
         else:
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     else:
@@ -1267,6 +1268,7 @@ def get_model_tokenizer(
             torch_dtype = getattr(model_config, 'torch_dtype', None)
             if torch_dtype == torch.float32:
                 torch_dtype = torch.float16
+            logger.info(f'Setting torch_dtype: {torch_dtype}')
     kwargs['automodel_class'] = model_info['automodel_class']
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,

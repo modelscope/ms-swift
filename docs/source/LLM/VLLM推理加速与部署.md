@@ -36,14 +36,13 @@ pip install -r requirements/llm.txt  -U
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import torch
 from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_vllm
 )
 
 model_type = ModelType.qwen_7b_chat
-llm_engine = get_vllm_engine(model_type, torch.float16)
+llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
@@ -79,14 +78,13 @@ history: [('浙江的省会在哪？', '浙江省会是杭州市。'), ('这有�
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import torch
 from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_stream_vllm
 )
 
 model_type = ModelType.qwen_7b_chat
-llm_engine = get_vllm_engine(model_type, torch.float16)
+llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
@@ -128,14 +126,13 @@ history: [('浙江的省会在哪？', '浙江省会是杭州市。'), ('这有�
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import torch
 from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_vllm
 )
 
 model_type = ModelType.chatglm3_6b
-llm_engine = get_vllm_engine(model_type, torch.float16)
+llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
@@ -175,7 +172,6 @@ history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有�
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import torch
 from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_vllm
@@ -186,7 +182,7 @@ model_dir = 'vx_xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
-llm_engine = get_vllm_engine(model_type, torch.bfloat16, model_dir=model_dir)
+llm_engine = get_vllm_engine(model_type, model_dir=model_dir)
 tokenizer = llm_engine.tokenizer
 template = get_template(template_type, tokenizer)
 query = '你好'

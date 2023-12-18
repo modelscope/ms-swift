@@ -36,7 +36,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
@@ -46,7 +45,7 @@ print(f'template_type: {template_type}')  # template_type: chatml
 kwargs = {}
 # kwargs['use_flash_attn'] = True  # 使用flash_attn
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'}, **kwargs)
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'}, **kwargs)
 # 修改max_new_tokens
 model.generation_config.max_new_tokens = 128
 
@@ -99,7 +98,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b_chat_int4
 template_type = get_default_template_type(model_type)
@@ -137,13 +135,12 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: default-generation
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 64
 template = get_template(template_type, tokenizer)
 seed_everything(42)
@@ -179,7 +176,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference_stream, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
@@ -221,7 +217,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_vl_chat
 template_type = get_default_template_type(model_type)
@@ -264,7 +259,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_audio_chat
 template_type = get_default_template_type(model_type)
@@ -306,7 +300,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.chatglm3_6b
 template_type = get_default_template_type(model_type)
