@@ -18,6 +18,9 @@ from swift.ui.llm_train.quantization import Quantization
 from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class LLMTrain(BaseUI):
@@ -249,6 +252,7 @@ class LLMTrain(BaseUI):
 
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
         run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
+        logger.info(f'Run training: {run_command}')
         if not getattr(elements['dry_run'], 'arg_value', False):
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
