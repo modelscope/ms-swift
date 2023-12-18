@@ -235,10 +235,18 @@ def register_model(
     return _register_model
 
 
-@register_model(ModelType.internlm_20b, 'Shanghai_AI_Laboratory/internlm-20b',
-                LoRATM.llama2, TemplateType.default_generation_bos)
-@register_model(ModelType.internlm_7b, 'Shanghai_AI_Laboratory/internlm-7b',
-                LoRATM.llama2, TemplateType.default_generation_bos)
+@register_model(
+    ModelType.internlm_20b,
+    'Shanghai_AI_Laboratory/internlm-20b',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_vllm=True)
+@register_model(
+    ModelType.internlm_7b,
+    'Shanghai_AI_Laboratory/internlm-7b',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_vllm=True)
 @register_model(ModelType.bluelm_7b_chat_32k, 'vivo-ai/BlueLM-7B-Chat-32K',
                 LoRATM.llama2, TemplateType.bluelm)
 @register_model(ModelType.bluelm_7b_chat, 'vivo-ai/BlueLM-7B-Chat',
@@ -247,8 +255,12 @@ def register_model(
                 LoRATM.llama2, TemplateType.default_generation_bos)
 @register_model(ModelType.bluelm_7b, 'vivo-ai/BlueLM-7B-Base', LoRATM.llama2,
                 TemplateType.default_generation_bos)
-@register_model(ModelType.seqgpt_560m, 'damo/nlp_seqgpt-560m', LoRATM.bloom,
-                TemplateType.default_generation)
+@register_model(
+    ModelType.seqgpt_560m,
+    'damo/nlp_seqgpt-560m',
+    LoRATM.bloom,
+    TemplateType.default_generation,
+    support_vllm=True)
 @register_model(ModelType.xverse_13b_chat, 'xverse/XVERSE-13B-Chat',
                 LoRATM.llama2, TemplateType.xverse)
 @register_model(ModelType.xverse_13b, 'xverse/XVERSE-13B', LoRATM.llama2,
@@ -264,13 +276,15 @@ def register_model(
     'baichuan-inc/Baichuan-13B-Chat',
     LoRATM.baichuan,
     TemplateType.baichuan,
-    requires=['transformers<4.34'])
+    requires=['transformers<4.34'],
+    support_vllm=True)
 @register_model(
     ModelType.baichuan_7b,
     'baichuan-inc/baichuan-7B',
     LoRATM.baichuan,
     TemplateType.default_generation,
-    requires=['transformers<4.34'])
+    requires=['transformers<4.34'],
+    support_vllm=True)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -301,15 +315,24 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
-@register_model(ModelType.internlm_20b_chat,
-                'Shanghai_AI_Laboratory/internlm-chat-20b', LoRATM.llama2,
-                TemplateType.internlm)
-@register_model(ModelType.internlm_7b_chat_8k,
-                'Shanghai_AI_Laboratory/internlm-chat-7b-8k', LoRATM.llama2,
-                TemplateType.internlm)
-@register_model(ModelType.internlm_7b_chat,
-                'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1', LoRATM.llama2,
-                TemplateType.internlm)
+@register_model(
+    ModelType.internlm_20b_chat,
+    'Shanghai_AI_Laboratory/internlm-chat-20b',
+    LoRATM.llama2,
+    TemplateType.internlm,
+    support_vllm=True)
+@register_model(
+    ModelType.internlm_7b_chat_8k,
+    'Shanghai_AI_Laboratory/internlm-chat-7b-8k',
+    LoRATM.llama2,
+    TemplateType.internlm,
+    support_vllm=True)
+@register_model(
+    ModelType.internlm_7b_chat,
+    'Shanghai_AI_Laboratory/internlm-chat-7b-v1_1',
+    LoRATM.llama2,
+    TemplateType.internlm,
+    support_vllm=True)
 def get_model_tokenizer_internlm_chat(model_dir: str,
                                       torch_dtype: Dtype,
                                       model_kwargs: Dict[str, Any],
@@ -328,7 +351,8 @@ def get_model_tokenizer_internlm_chat(model_dir: str,
     'baichuan-inc/Baichuan-13B-Base',
     LoRATM.baichuan,
     TemplateType.default_generation,
-    requires=['transformers<4.34'])
+    requires=['transformers<4.34'],
+    support_vllm=True)
 def get_model_tokenizer_baichuan_13b(model_dir: str,
                                      torch_dtype: Dtype,
                                      model_kwargs: Dict[str, Any],
@@ -346,11 +370,18 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     return model, tokenizer
 
 
-@register_model(ModelType.baichuan2_13b_chat,
-                'baichuan-inc/Baichuan2-13B-Chat', LoRATM.baichuan,
-                TemplateType.baichuan)
-@register_model(ModelType.baichuan2_13b, 'baichuan-inc/Baichuan2-13B-Base',
-                LoRATM.baichuan, TemplateType.default_generation)
+@register_model(
+    ModelType.baichuan2_13b_chat,
+    'baichuan-inc/Baichuan2-13B-Chat',
+    LoRATM.baichuan,
+    TemplateType.baichuan,
+    support_vllm=True)
+@register_model(
+    ModelType.baichuan2_13b,
+    'baichuan-inc/Baichuan2-13B-Base',
+    LoRATM.baichuan,
+    TemplateType.default_generation,
+    support_vllm=True)
 def get_model_tokenizer_baichuan2_13b(model_dir: str,
                                       torch_dtype: Dtype,
                                       model_kwargs: Dict[str, Any],
@@ -379,10 +410,18 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
     return F.linear(hidden_states, norm_weight)
 
 
-@register_model(ModelType.baichuan2_7b_chat, 'baichuan-inc/Baichuan2-7B-Chat',
-                LoRATM.baichuan, TemplateType.baichuan)
-@register_model(ModelType.baichuan2_7b, 'baichuan-inc/Baichuan2-7B-Base',
-                LoRATM.baichuan, TemplateType.default_generation)
+@register_model(
+    ModelType.baichuan2_7b_chat,
+    'baichuan-inc/Baichuan2-7B-Chat',
+    LoRATM.baichuan,
+    TemplateType.baichuan,
+    support_vllm=True)
+@register_model(
+    ModelType.baichuan2_7b,
+    'baichuan-inc/Baichuan2-7B-Base',
+    LoRATM.baichuan,
+    TemplateType.default_generation,
+    support_vllm=True)
 def get_model_tokenizer_baichuan2(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -453,16 +492,36 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
             setattr(tokenizer_cls, k, tokenizer_config[k])
 
 
-@register_model(ModelType.chatglm3_6b_32k, 'ZhipuAI/chatglm3-6b-32k',
-                LoRATM.chatglm, TemplateType.chatglm3)
-@register_model(ModelType.chatglm3_6b, 'ZhipuAI/chatglm3-6b', LoRATM.chatglm,
-                TemplateType.chatglm3)
-@register_model(ModelType.chatglm3_6b_base, 'ZhipuAI/chatglm3-6b-base',
-                LoRATM.chatglm, TemplateType.chatglm_generation)
-@register_model(ModelType.chatglm2_6b_32k, 'ZhipuAI/chatglm2-6b-32k',
-                LoRATM.chatglm, TemplateType.chatglm2)
-@register_model(ModelType.chatglm2_6b, 'ZhipuAI/chatglm2-6b', LoRATM.chatglm,
-                TemplateType.chatglm2)
+@register_model(
+    ModelType.chatglm3_6b_32k,
+    'ZhipuAI/chatglm3-6b-32k',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True)
+@register_model(
+    ModelType.chatglm3_6b,
+    'ZhipuAI/chatglm3-6b',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True)
+@register_model(
+    ModelType.chatglm3_6b_base,
+    'ZhipuAI/chatglm3-6b-base',
+    LoRATM.chatglm,
+    TemplateType.chatglm_generation,
+    support_vllm=True)
+@register_model(
+    ModelType.chatglm2_6b_32k,
+    'ZhipuAI/chatglm2-6b-32k',
+    LoRATM.chatglm,
+    TemplateType.chatglm2,
+    support_vllm=True)
+@register_model(
+    ModelType.chatglm2_6b,
+    'ZhipuAI/chatglm2-6b',
+    LoRATM.chatglm,
+    TemplateType.chatglm2,
+    support_vllm=True)
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -502,200 +561,231 @@ def get_model_tokenizer_chatglm(model_dir: str,
     'deepseek-ai/deepseek-coder-1.3b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_coder_6_7b,
     'deepseek-ai/deepseek-coder-6.7b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_coder_33b,
     'deepseek-ai/deepseek-coder-33b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_coder_1_3b_chat,
     'deepseek-ai/deepseek-coder-1.3b-instruct',
     LoRATM.llama2,
     TemplateType.deepseek_coder,
+    eos_token='<|EOT|>',
     support_flash_attn=True,
-    eos_token='<|EOT|>')
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_coder_6_7b_chat,
     'deepseek-ai/deepseek-coder-6.7b-instruct',
     LoRATM.llama2,
     TemplateType.deepseek_coder,
+    eos_token='<|EOT|>',
     support_flash_attn=True,
-    eos_token='<|EOT|>')
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_coder_33b_chat,
     'deepseek-ai/deepseek-coder-33b-instruct',
     LoRATM.llama2,
     TemplateType.deepseek_coder,
+    eos_token='<|EOT|>',
     support_flash_attn=True,
-    eos_token='<|EOT|>')
+    support_vllm=True)
 @register_model(
     ModelType.openbuddy_deepseek_67b_chat,
     'OpenBuddy/openbuddy-deepseek-67b-v15.2',
     LoRATM.llama2,
     TemplateType.openbuddy,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_67b_chat,
     'deepseek-ai/deepseek-llm-67b-chat',
     LoRATM.llama2,
     TemplateType.deepseek,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_67b,
     'deepseek-ai/deepseek-llm-67b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_7b_chat,
     'deepseek-ai/deepseek-llm-7b-chat',
     LoRATM.llama2,
     TemplateType.deepseek,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_7b,
     'deepseek-ai/deepseek-llm-7b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.sus_34b_chat,
     'SUSTC/SUS-Chat-34B',
     LoRATM.llama2,
     TemplateType.sus,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.openbuddy_zephyr_7b_chat,
     'OpenBuddy/openbuddy-zephyr-7b-v14.1',
     LoRATM.llama2,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.zephyr_7b_beta_chat,
     'modelscope/zephyr-7b-beta',
     LoRATM.llama2,
     TemplateType.zephyr,
     requires=['transformers>=4.34'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.yi_6b_chat,
     '01ai/Yi-6B-Chat',
     LoRATM.llama2,
     TemplateType.yi,
+    eos_token='<|im_end|>',
     support_flash_attn=True,
-    eos_token='<|im_end|>')
+    support_vllm=True)
 @register_model(
     ModelType.yi_34b_chat,
     '01ai/Yi-34B-Chat',
     LoRATM.llama2,
     TemplateType.yi,
+    eos_token='<|im_end|>',
     support_flash_attn=True,
-    eos_token='<|im_end|>')
+    support_vllm=True)
 @register_model(
     ModelType.yi_34b_200k,
     '01ai/Yi-34B-200K',
     LoRATM.llama2,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.yi_34b,
     '01ai/Yi-34B',
     LoRATM.llama2,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.yi_6b_200k,
     '01ai/Yi-6B-200K',
     LoRATM.llama2,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.yi_6b,
     '01ai/Yi-6B',
     LoRATM.llama2,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
     LoRATM.llama2,
     TemplateType.ziya,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.ziya2_13b,
     'Fengshenbang/Ziya2-13B-Base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
     'OpenBuddy/openbuddy-mistral-7b-v13.1',
     LoRATM.llama2,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.openbuddy_llama2_70b_chat,
     'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
     LoRATM.llama2,
     TemplateType.openbuddy,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.openbuddy_llama2_65b_chat,
     'OpenBuddy/openbuddy-llama-65b-v8-bf16',
     LoRATM.llama2,
     TemplateType.openbuddy,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.openbuddy_llama2_13b_chat,
     'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
     LoRATM.llama2,
     TemplateType.openbuddy,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.mistral_7b_chat,
     'AI-ModelScope/Mistral-7B-Instruct-v0.1',
     LoRATM.llama2,
     TemplateType.llama,
     requires=['transformers>=4.34'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.mistral_7b_chat_v2,
     'AI-ModelScope/Mistral-7B-Instruct-v0.2',
     LoRATM.llama2,
     TemplateType.llama,
     requires=['transformers>=4.34'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.mixtral_7b_moe,
     'AI-ModelScope/Mixtral-8x7B-v0.1',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.36'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.mixtral_7b_moe_chat,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
     LoRATM.llama2,
     TemplateType.llama,
     requires=['transformers>=4.36'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -721,42 +811,48 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.llama2_13b,
     'modelscope/Llama-2-13b-ms',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.llama2_70b,
     'modelscope/Llama-2-70b-ms',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.llama2_7b_chat,
     'modelscope/Llama-2-7b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.llama2_13b_chat,
     'modelscope/Llama-2-13b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.llama2_70b_chat,
     'modelscope/Llama-2-70b-chat-ms',
     LoRATM.llama2,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
                                model_kwargs: Dict[str, Any],
@@ -832,31 +928,36 @@ def get_model_tokenizer_qwen(model_dir: str,
     'qwen/Qwen-1_8B',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_72b,
     'qwen/Qwen-72B',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.tongyi_finance_14b,
     'TongyiFinance/Tongyi-Finance-14B',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_14b,
     'qwen/Qwen-14B',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_7b,
     'qwen/Qwen-7B',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_qwen_base(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
     tokenizer.eos_token_id = tokenizer.eod_id
@@ -868,31 +969,36 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     'qwen/Qwen-1_8B-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_72b_chat,
     'qwen/Qwen-72B-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.tongyi_finance_14b_chat,
     'TongyiFinance/Tongyi-Finance-14B-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_14b_chat,
     'qwen/Qwen-14B-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_7b_chat,
     'qwen/Qwen-7B-Chat',
     LoRATM.qwen,
     TemplateType.chatml,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_qwen_chat(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
     tokenizer.eos_token_id = tokenizer.im_end_id
@@ -939,8 +1045,8 @@ def _qwen_vl_audio_decode(self,
     'qwen/Qwen-VL',
     LoRATM.qwen,
     TemplateType.default_generation,
-    support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
+    support_flash_attn=True)
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -1062,11 +1168,11 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.chatml,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    support_flash_attn=True,
     function_kwargs={
         'get_qwen_function': get_model_tokenizer_qwen_vl,
         'bits': 4
-    })
+    },
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_14b_chat_int8,
     'qwen/Qwen-14B-Chat-Int8',
@@ -1167,7 +1273,8 @@ def get_skywork_model_tokenizer(model_dir: str,
     'codefuse-ai/CodeFuse-CodeLlama-34B',
     LoRATM.llama2,
     TemplateType.codefuse_codellama,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_codellama(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -1258,6 +1365,7 @@ def get_model_tokenizer(
         model_torch_dtype = model_info['torch_dtype']
         if torch_dtype is None:
             torch_dtype = model_torch_dtype
+            logger.info(f'Setting torch_dtype: {torch_dtype}')
         else:
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     else:
@@ -1267,6 +1375,7 @@ def get_model_tokenizer(
             torch_dtype = getattr(model_config, 'torch_dtype', None)
             if torch_dtype == torch.float32:
                 torch_dtype = torch.float16
+            logger.info(f'Setting torch_dtype: {torch_dtype}')
     kwargs['automodel_class'] = model_info['automodel_class']
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,

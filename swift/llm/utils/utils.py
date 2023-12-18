@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import heapq
+import importlib.util
 import logging
 import os
 import shutil
@@ -661,6 +662,10 @@ def fix_fp16_trainable_bug(model: Module) -> None:
                 logger.info('Convert trainable parameters from fp16 to fp32.')
                 is_logging = True
             p.data = p.data.to(dtype=torch.float32)
+
+
+def is_vllm_available():
+    return importlib.util.find_spec('vllm') is not None
 
 
 # monkey patching

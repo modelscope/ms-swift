@@ -222,6 +222,8 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 ## 推理
+如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
+
 ### 原始模型
 **单样本推理**可以查看[LLM推理文档](./LLM推理文档.md#-推理)
 
@@ -230,7 +232,7 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 ```
 ### 微调后模型
-**单样本推理**
+**单样本推理**:
 
 使用LoRA**增量**权重进行推理:
 ```python
@@ -241,13 +243,12 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
 from swift.tuners import Swift
-import torch
 
 model_dir = 'vx_xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
 model = Swift.from_pretrained(model, model_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
@@ -265,13 +266,12 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
-import torch
 
 model_dir = 'vx_xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'},
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'},
                                        model_dir=model_dir)
 
 template = get_template(template_type, tokenizer)
@@ -292,6 +292,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
+如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#部署)
+
 ### 原始模型
 使用原始模型的web-ui可以查看[LLM推理文档](./LLM推理文档.md#-Web-UI)
 

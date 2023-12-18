@@ -25,10 +25,12 @@ class TestRun(unittest.TestCase):
 
     def test_basic(self):
         output_dir = 'output'
+        quantization_bit_list = [0, 4]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
+            quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
-        for quantization_bit in [0, 4]:
+        for quantization_bit in quantization_bit_list:
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False
@@ -68,6 +70,10 @@ class TestRun(unittest.TestCase):
             return
         losses = []
         for tuner_backend in ['swift', 'peft']:
+            if tuner_backend == 'swift':
+                bool_var = True
+            else:
+                bool_var = False
             output = sft_main([
                 '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
                 '--tuner_backend', tuner_backend, '--train_dataset_sample',
@@ -81,7 +87,11 @@ class TestRun(unittest.TestCase):
             torch.cuda.empty_cache()
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
-                '2', '--max_new_tokens', '100', '--use_flash_attn', 'true'
+                '2', '--max_new_tokens', '100', '--use_flash_attn',
+                str(bool_var), '--use_vllm',
+                str(bool_var), '--verbose',
+                str(bool_var), '--merge_lora_and_save',
+                str(bool_var)
             ])
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)

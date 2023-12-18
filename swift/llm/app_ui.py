@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Tuple
 
-from .infer import prepare_model_template
+from .infer import merge_lora, prepare_model_template
 from .utils import (History, InferArguments, inference_stream,
                     limit_history_length)
 
@@ -12,12 +12,26 @@ def clear_session() -> History:
 
 def gradio_generation_demo(args: InferArguments) -> None:
     import gradio as gr
-    model, template = prepare_model_template(args)
+    if args.merge_lora_and_save:
+        merge_lora(args)
+    if args.infer_backend == 'vllm':
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        llm_engine, template = prepare_vllm_engine_template(args)
+    else:
+        model, template = prepare_model_template(args)
 
     def model_generation(query: str) -> str:
-        gen = inference_stream(model, template, query, None)
-        for response, _ in gen:
-            yield response
+        if args.infer_backend == 'vllm':
+            gen = inference_stream_vllm(llm_engine, template, [{
+                'query': query
+            }])
+            for resp_list in gen:
+                response = resp_list[0]['response']
+                yield response
+        else:
+            gen = inference_stream(model, template, query, None)
+            for response, _ in gen:
+                yield response
 
     model_name = args.model_type.title()
 
@@ -35,22 +49,39 @@ def gradio_generation_demo(args: InferArguments) -> None:
 
 def gradio_chat_demo(args: InferArguments) -> None:
     import gradio as gr
-    model, template = prepare_model_template(args)
+    if args.merge_lora_and_save:
+        merge_lora(args)
+    if args.infer_backend == 'vllm':
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
+        llm_engine, template = prepare_vllm_engine_template(args)
+    else:
+        model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Tuple[str, History]:
         old_history, history = limit_history_length(template, query, history,
                                                     args.max_length)
-        gen = inference_stream(model, template, query, history)
-        for _, history in gen:
-            total_history = old_history + history
-            yield '', total_history
+        if args.infer_backend == 'vllm':
+            gen = inference_stream_vllm(llm_engine, template,
+                                        [{
+                                            'query': query,
+                                            'history': history
+                                        }])
+            for resp_list in gen:
+                history = resp_list[0]['history']
+                total_history = old_history + history
+                yield '', total_history
+        else:
+            gen = inference_stream(model, template, query, history)
+            for _, history in gen:
+                total_history = old_history + history
+                yield '', total_history
 
     model_name = args.model_type.title()
     with gr.Blocks() as demo:
         gr.Markdown(f'<center><font size=8>{model_name} Bot</center>')
 
         chatbot = gr.Chatbot(label=f'{model_name}')
-        message = gr.Textbox(lines=3, label='Input')
+        message = gr.Textbox(lines=2, label='Input')
         with gr.Row():
             clear_history = gr.Button('🧹 清除历史对话')
             send = gr.Button('🚀 发送')

@@ -151,10 +151,14 @@ def prepare_model_template(
 def llm_infer(args: InferArguments) -> None:
     if args.merge_lora_and_save:
         merge_lora(args)
-    model, template = prepare_model_template(args)
-    if args.overwrite_generation_config:
-        assert args.ckpt_dir is not None
-        model.generation_config.save_pretrained(args.ckpt_dir)
+    if args.infer_backend == 'vllm':
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        llm_engine, template = prepare_vllm_engine_template(args)
+    else:
+        model, template = prepare_model_template(args)
+        if args.overwrite_generation_config:
+            assert args.ckpt_dir is not None
+            model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
     result = []
     jsonl_path = None
@@ -193,11 +197,24 @@ def llm_infer(args: InferArguments) -> None:
             if not template.support_multi_round:
                 history = []
             print_idx = 0
-            gen = inference_stream(model, template, query, history)
-            for response, new_history in gen:
-                if len(response) > print_idx:
-                    print(response[print_idx:], end='', flush=True)
-                    print_idx = len(response)
+            if args.infer_backend == 'vllm':
+                gen = inference_stream_vllm(llm_engine, template,
+                                            [{
+                                                'query': query,
+                                                'history': history
+                                            }])
+                for resp_list in gen:
+                    response = resp_list[0]['response']
+                    new_history = resp_list[0]['history']
+                    if len(response) > print_idx:
+                        print(response[print_idx:], end='', flush=True)
+                        print_idx = len(response)
+            else:
+                gen = inference_stream(model, template, query, history)
+                for response, new_history in gen:
+                    if len(response) > print_idx:
+                        print(response[print_idx:], end='', flush=True)
+                        print_idx = len(response)
             print()
             print('-' * 50)
             obj = {
@@ -222,33 +239,68 @@ def llm_infer(args: InferArguments) -> None:
             else:
                 args.verbose = True
             logger.info(f'Setting args.verbose: {args.verbose}')
-        if not args.verbose:
-            val_dataset = tqdm(val_dataset)
-        for data in val_dataset:
-            kwargs = {'query': data['query']}
-            history = data.get('history')
-            system = data.get('system')
-            if history is not None:
-                kwargs['history'] = history
-            if system is not None:
-                kwargs['system'] = system
-            response, _ = inference(
-                model,
-                template,
-                stream=args.stream and args.verbose,
-                verbose=args.verbose,
-                **kwargs)
-            label = data.pop('response')
-            if label is not None:
-                kwargs['label'] = label
-            obj = {'response': response, **kwargs}
-            if jsonl_path is not None:
-                append_to_jsonl(jsonl_path, obj)
-            result.append(obj)
+        if not args.verbose and args.stream:
+            args.stream = False
+            logger.info(f'Setting args.stream: {args.stream}')
+
+        if args.infer_backend == 'vllm' and not args.stream:
             if args.verbose:
-                print()
-                print(f'[LABELS]{label}')
-                print('-' * 50)
+                args.verbose = False
+                logger.info('Setting args.verbose: False')
+            label_list = None
+            if 'response' in val_dataset.features:
+                label_list = val_dataset['response']
+            val_dataset = val_dataset.remove_columns('response')
+            request_list = val_dataset.to_list()
+            resp_list = inference_vllm(
+                llm_engine, template, request_list, use_tqdm=True)
+            result = []
+            if label_list is not None:
+                for request, label in zip(request_list, label_list):
+                    request['label'] = label
+            for request, resp in zip(request_list, resp_list):
+                obj = {'response': resp['response'], **request}
+                if jsonl_path is not None:
+                    append_to_jsonl(jsonl_path, obj)
+                result.append(obj)
+        else:
+            if not args.verbose:
+                val_dataset = tqdm(val_dataset)
+            for data in val_dataset:
+                kwargs = {'query': data['query']}
+                history = data.get('history')
+                system = data.get('system')
+                if history is not None:
+                    kwargs['history'] = history
+                if system is not None:
+                    kwargs['system'] = system
+                if args.infer_backend == 'vllm':
+                    assert args.stream is True
+                    gen = inference_stream_vllm(llm_engine, template, [kwargs])
+                    print_idx = 0
+                    for resp_list in gen:
+                        response = resp_list[0]['response']
+                        if args.verbose and len(response) > print_idx:
+                            print(response[print_idx:], end='', flush=True)
+                            print_idx = len(response)
+                else:
+                    response, _ = inference(
+                        model,
+                        template,
+                        stream=args.stream and args.verbose,
+                        verbose=args.verbose,
+                        **kwargs)
+                label = data.pop('response')
+                if label is not None:
+                    kwargs['label'] = label
+                obj = {'response': response, **kwargs}
+                if jsonl_path is not None:
+                    append_to_jsonl(jsonl_path, obj)
+                result.append(obj)
+                if args.verbose:
+                    print()
+                    print(f'[LABELS]{label}')
+                    print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}
