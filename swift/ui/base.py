@@ -1,5 +1,5 @@
 import os
-from functools import wraps
+from functools import partial, wraps
 from typing import Dict, List, OrderedDict, Type
 
 from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
@@ -41,23 +41,7 @@ def update_data(fn):
                     kwargs['label'] = values['label']
 
         ret = fn(self, **kwargs)
-
-        if hasattr(self, 'change'):
-
-            def change(value):
-                self.changed = True
-                arg_value = value
-                if isinstance(value, list):
-                    arg_value = ' '.join(value)
-                    self.is_list = True
-                self.arg_value = arg_value
-                return value
-
-            self.change(change, [self], [self], queue=False)
-
-            value = getattr(self, 'value', None)
-            self.arg_value = ' '.join(value) if isinstance(value,
-                                                           list) else value
+        self.constructor_args.update(kwargs)
 
         if builder is not None:
             builder.element_dict[elem_id] = self
@@ -92,6 +76,25 @@ class BaseUI:
         old_builder = builder
         builder = cls
         cls.do_build_ui(base_tab)
+        for element in cls.element_dict.values():
+            if hasattr(element, 'change'):
+
+                def change(value, self):
+                    print(value)
+                    self.changed = True
+                    arg_value = value
+                    if isinstance(value, list):
+                        arg_value = ' '.join(value)
+                        self.is_list = True
+                    self.arg_value = arg_value
+
+                element.change(
+                    partial(change, self=element), [element], [], queue=False)
+
+                value = getattr(element, 'value', None)
+                element.arg_value = ' '.join(value) if isinstance(
+                    value, list) else value
+
         builder = old_builder
 
     @classmethod

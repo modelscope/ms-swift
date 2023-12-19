@@ -19,6 +19,12 @@ class LLMInfer(BaseUI):
     sub_ui = [Model]
 
     locale_dict = {
+        'generate_alert': {
+            'value': {
+                'zh': '请先加载模型',
+                'en': 'Please load model first',
+            }
+        },
         'llm_infer': {
             'label': {
                 'zh': 'LLM推理',
@@ -91,7 +97,8 @@ class LLMInfer(BaseUI):
                     scale=8)
                 chatbot = gr.Chatbot(
                     elem_id='chatbot', elem_classes='control-height')
-                prompt = gr.Textbox(elem_id='prompt', lines=1)
+                prompt = gr.Textbox(
+                    elem_id='prompt', lines=1, interactive=False)
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -103,19 +110,21 @@ class LLMInfer(BaseUI):
                         model_and_template, prompt, chatbot,
                         cls.element('max_new_tokens')
                     ],
-                    outputs=[prompt, chatbot])
-                clear_history.click(
-                    fn=cls.clear_session,
-                    inputs=[],
                     outputs=[prompt, chatbot],
-                    queue=False)
+                    queue=True)
+                clear_history.click(
+                    fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
                 cls.element('load_checkpoint').click(
                     cls.reset_memory, [], [model_and_template],
                     show_progress=False).then(
                         cls.prepare_checkpoint, [], [model_and_template],
-                        show_progress=True)
+                        show_progress=True).then(cls.change_interactive, [],
+                                                 [prompt])
                 cls.element('load_checkpoint').click(
-                    cls.clear_session, inputs=[], outputs=[prompt, chatbot])
+                    cls.clear_session,
+                    inputs=[],
+                    outputs=[prompt, chatbot],
+                    queue=True)
 
     @classmethod
     def reset_memory(cls):
@@ -162,8 +171,15 @@ class LLMInfer(BaseUI):
         return '', None
 
     @classmethod
+    def change_interactive(cls):
+        return gr.update(interactive=True)
+
+    @classmethod
     def generate_chat(cls, model_and_template, prompt: str, history,
                       max_new_tokens):
+        if not model_and_template:
+            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
+            return '', None
         model, template = model_and_template
         if not cls.element('template_type').arg_value.endswith('generation'):
             old_history, history = limit_history_length(
