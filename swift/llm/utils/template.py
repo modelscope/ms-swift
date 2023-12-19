@@ -234,14 +234,18 @@ class StopWordsCriteria(StoppingCriteria):
         self.tokenizer = tokenizer
         self.stop_words = stop_words
         self.decode_kwargs = decode_kwargs
+        self.start_idx = -1
 
     def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
+        if self.start_idx == -1:
+            self.start_idx = len(input_ids[0]) - 1
         tokenizer = self.tokenizer
         stop_words = self.stop_words
-        text = tokenizer.decode(input_ids[0], **self.decode_kwargs)
+        text = tokenizer.decode(input_ids[0, self.start_idx:],
+                                **self.decode_kwargs)
         for stop_word in stop_words:
             if isinstance(stop_word, str):
-                if text.endswith(stop_word):
+                if stop_word in text:
                     return True
             elif isinstance(stop_word, list) and len(stop_word) > 0:
                 res = []

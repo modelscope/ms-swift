@@ -94,7 +94,7 @@ class SftArguments:
 
     neftune_alpha: float = 0.0
 
-    gradient_checkpointing: bool = True
+    gradient_checkpointing: Optional[bool] = None
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -299,8 +299,13 @@ class SftArguments:
             logger.info(
                 f'Setting self.preprocess_num_proc: {self.preprocess_num_proc}'
             )
-        if 'moe' in self.model_type:
-            assert self.gradient_checkpointing is False, 'moe not support gradient_checkpointing'
+        model_info = MODEL_MAPPING[self.model_type]
+        support_gradient_checkpointing = model_info.get(
+            'support_gradient_checkpointing', True)
+        if self.gradient_checkpointing is None:
+            self.gradient_checkpointing = support_gradient_checkpointing
+        elif not support_gradient_checkpointing:
+            assert self.gradient_checkpointing is False, 'not support gradient_checkpointing'
 
 
 @dataclass
@@ -428,8 +433,8 @@ class InferArguments:
             logger.warning('Setting overwrite_generation_config: False')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
-        support_vllm = MODEL_MAPPING[self.model_type].get(
-            'support_vllm', False)
+        model_info = MODEL_MAPPING[self.model_type]
+        support_vllm = model_info.get('support_vllm', False)
         if self.infer_backend == 'AUTO':
             if self.sft_type == 'full' and is_vllm_available(
             ) and support_vllm:
