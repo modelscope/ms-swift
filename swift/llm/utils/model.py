@@ -152,6 +152,9 @@ class ModelType:
     deepseek_coder_33b = 'deepseek-coder-33b'
     deepseek_coder_33b_chat = 'deepseek-coder-33b-chat'
 
+    cogagent_chat = 'cogagent-chat'
+    cogagent_vqa = 'cogagent-vqa'
+
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -170,6 +173,9 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
+    cogagent = ['vision_expert_query_key_value', 'vision_expert_dense',
+                     'language_expert_query_key_value', 'language_expert_dense',
+                     'query', 'key_value', 'dense']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -285,6 +291,20 @@ def register_model(
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
+@register_model(
+    ModelType.cogagent_chat,
+    'ZhipuAI/cogagent-chat',
+    LoRATM.cogagent_chat,
+    TemplateType.llama,
+    requires=['transformers>=4.36'],
+    support_vllm=False)
+@register_model(
+    ModelType.cogagent_vqa,
+    'ZhipuAI/cogagent-vqa',
+    LoRATM.cogagent,
+    TemplateType.cogagent_vqa,
+    requires=['transformers>=4.36'],
+    support_vllm=False)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],

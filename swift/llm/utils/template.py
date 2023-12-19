@@ -35,6 +35,7 @@ class TemplateType:
     deepseek = 'deepseek'
     codefuse_codellama = 'codefuse-codellama'
     deepseek_coder = 'deepseek-coder'
+    cogagent = 'cogagent'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -125,7 +126,8 @@ def _concat_context_list(
 def _encode_context_list(
     tokenizer: PreTrainedTokenizerBase,
     context_list: List[Context],
-    compute_loss_idx: Optional[List[int]] = None
+    compute_loss_idx: Optional[List[int]] = None,
+    **args,
 ) -> Tuple[List[int], Optional[List[int]], Dict[str, Any]]:
     input_ids: List[int] = []
     labels: List[int] = []
@@ -154,6 +156,7 @@ def _encode_context_list(
                             [old_audio_info[k], audio_info[k]], dim=0)
                     for k in ['audio_span_tokens', 'audio_urls']:
                         old_audio_info[k] = old_audio_info[k] + audio_info[k]
+
             token_list = tokenizer(
                 context,
                 return_attention_mask=False,
@@ -330,6 +333,14 @@ class Template:
                        self.truncation_strategy)
 
 
+class CogAgentTemplate(Template):
+
+    def encode(self, example: Dict[str,
+                                   Any], model) -> Dict[str, Optional[List[int]]]:
+        image = Image.open(context).convert('RGB')
+        return model.build_conversation_input_ids(self.tokenizer, query=example['query'],
+                                                               history=example['history'], images=[example['image']])
+
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
@@ -483,6 +494,10 @@ register_template(
     TemplateType.sus,
     Template(['{{SYSTEM}}'], ['### Human: {{QUERY}}\n\n### Assistant: '],
              ['<|endoftext|>'], ['<|endoftext|>'], ''))
+
+register_template(
+    TemplateType.cogagent,
+    CogAgentTemplate([], [], [], [], None, []))
 
 
 def get_template(
