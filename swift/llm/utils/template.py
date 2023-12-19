@@ -80,7 +80,7 @@ def get_audio_info(
         *,
         context: Optional[str] = None,
         audio_info: Optional[Dict[str,
-                                  Any]] = None) -> Optional[Dict[str, Any]]:
+        Any]] = None) -> Optional[Dict[str, Any]]:
     assert context is not None or audio_info is not None
     assert context is None or audio_info is None
     if context is None:
@@ -93,13 +93,13 @@ def get_audio_info(
 
 
 def _concat_context_list(
-    context_list: List[Context],
-    res_context_list: List[Context],
-    compute_loss_idx: List[int],
-    system: Optional[str] = None,
-    query: Optional[str] = None,
-    response: Optional[str] = None,
-    round0: Optional[int] = None,
+        context_list: List[Context],
+        res_context_list: List[Context],
+        compute_loss_idx: List[int],
+        system: Optional[str] = None,
+        query: Optional[str] = None,
+        response: Optional[str] = None,
+        round0: Optional[int] = None,
 ) -> None:
     # concat context list and replace placeholder
     round1 = None
@@ -124,10 +124,10 @@ def _concat_context_list(
 
 
 def _encode_context_list(
-    tokenizer: PreTrainedTokenizerBase,
-    context_list: List[Context],
-    compute_loss_idx: Optional[List[int]] = None,
-    **args,
+        tokenizer: PreTrainedTokenizerBase,
+        context_list: List[Context],
+        compute_loss_idx: Optional[List[int]] = None,
+        **args,
 ) -> Tuple[List[int], Optional[List[int]], Dict[str, Any]]:
     input_ids: List[int] = []
     labels: List[int] = []
@@ -293,12 +293,12 @@ class Template:
         self._is_init = False
 
     def _init_template(
-        self,
-        tokenizer: PreTrainedTokenizerBase,
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-        **kwargs
+            self,
+            tokenizer: PreTrainedTokenizerBase,
+            default_system: Optional[str] = None,
+            max_length: Optional[int] = None,
+            truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+            **kwargs
     ) -> None:
         assert self._is_init is False
         self._is_init = True
@@ -310,7 +310,7 @@ class Template:
         self.truncation_strategy = truncation_strategy
 
     def encode(self, example: Dict[str,
-                                   Any]) -> Dict[str, Optional[List[int]]]:
+    Any]) -> Dict[str, Optional[List[int]]]:
         if not self._is_init:
             raise ValueError(
                 'Template has not been initialized, please call init_template(...) first.'
@@ -335,22 +335,149 @@ class Template:
 
 
 class CogAgentTemplate(Template):
+    LANGUAGE_TOKEN_TYPE = 0
+    VISION_TOKEN_TYPE = 1
 
     def _init_template(
-        self,
-        tokenizer: PreTrainedTokenizerBase,
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-        **kwargs
+            self,
+            tokenizer: PreTrainedTokenizerBase,
+            default_system: Optional[str] = None,
+            max_length: Optional[int] = None,
+            truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+            **kwargs
     ) -> None:
         self.model = kwargs.pop('model')
         super()._init_template(tokenizer, default_system, max_length, truncation_strategy)
 
+    @staticmethod
+    def vqa_history_to_prompt(history, query):
+        # Only support single round chat in vqa mode
+        prompt = "<EOI>Question: "
+        # for i, (old_query, response) in enumerate(history):
+        #     prompt += old_query + " Short answer: " + response + " Question: "
+        prompt += query + " Short answer:"
+        return prompt
+
+    @staticmethod
+    def chat_old_history_to_prompt(history, query):
+        prompt = "<EOI>Question: "
+        for i, (old_query, response) in enumerate(history):
+            prompt += old_query + " Answer: " + response + "\nQuestion: "
+        prompt += query + " Answer:"
+        return prompt
+
+    @staticmethod
+    def chat_history_to_prompt(history, query):
+        prompt = " [INST] "
+        for i, (old_query, response) in enumerate(history):
+            prompt += old_query + " [/INST] " + response + " [INST] "
+        prompt += query + " [/INST] "
+        return prompt
+
+    @staticmethod
+    def base_history_to_prompt(history, query):
+        prompt = query
+        return prompt
+
+    _history_to_prompt = {
+        "base": base_history_to_prompt,
+        "chat": chat_history_to_prompt,
+        "chat_old": chat_old_history_to_prompt,
+        "vqa": vqa_history_to_prompt
+    }
+
+    def build_conversation_input_ids(
+            self,
+            tokenizer: "PreTrainedTokenizer",
+            *,
+            query: str,
+            label: str,
+            history: Optional[List[Tuple[str, str]]] = None,
+            images: Optional[List["PIL.Image"]] = None,
+            template_version: Optional[Literal["base", "chat", "vqa"]] = None,
+    ):
+        from torchvision import transforms
+        image_size: int = self.config.vision_config['image_size']
+        cross_image_size: int = self.config.cross_image_size
+        patch_size: int = self.config.vision_config['patch_size']
+        template_version = template_version or self.config.template_version
+        assert images is None or len(images) <= 1, f"not support multi images by now."
+        history = history or []
+        text = self._history_to_prompt[template_version](history, query)
+
+        input_ids = [tokenizer.bos_token_id]
+        token_type_ids = [self.LANGUAGE_TOKEN_TYPE]
+        if images is not None and len(images) == 1:
+            ori = images
+            # vision
+            transform = transforms.Compose(
+                [
+                    transforms.Resize(
+                        (image_size, image_size), interpolation=transforms.InterpolationMode.BICUBIC
+                    ),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+                ]
+            )
+            images = [transform(ori[0])]
+            cross_transform = transforms.Compose(
+                [
+                    transforms.Resize(
+                        (cross_image_size, cross_image_size), interpolation=transforms.InterpolationMode.BICUBIC
+                    ),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+                ]
+            )
+            cross_images = [cross_transform(ori[0])]
+            # language
+            vision_token_num = (image_size // patch_size) * (image_size // patch_size) + 2
+            input_ids += [tokenizer.pad_token_id] * vision_token_num
+            token_type_ids += [self.VISION_TOKEN_TYPE] * vision_token_num
+        text_ids = tokenizer.encode(text, add_special_tokens=False)
+        label_ids = tokenizer.encode(label, add_special_tokens=False)
+        if len(text_ids) + len(input_ids) + len(label_ids) > self.max_length - 1:
+            if self.truncation_strategy == 'delete' or (len(input_ids) + len(label_ids) >= self.max_length - 1):
+                return None
+            else:
+                text_ids = text_ids[-(self.max_length - len(input_ids) - len(label_ids) - 1):]
+
+        input_ids += text_ids
+        labels = [-100] * len(input_ids) + label_ids + [tokenizer.eos_token_id]
+        input_ids += label_ids + [tokenizer.eos_token_id]
+        token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * len(text_ids)
+        attention_mask = [1] * len(input_ids)
+
+        if len(input_ids) < self.max_length:
+            padding_len = self.max_length - len(input_ids)
+            input_ids += [tokenizer.pad_token_id] * padding_len
+            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * padding_len
+            attention_mask += [0] * padding_len
+            labels += [-100] * padding_len
+
+        return {
+            'input_ids': torch.tensor(input_ids, dtype=torch.long),
+            'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
+            'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
+            'images': images,
+            'cross_images': cross_images,
+            'labels': labels
+        }
+
     def encode(self, example: Dict[str,
-                                   Any]) -> Dict[str, Optional[List[int]]]:
-        return self.model.build_conversation_input_ids(self.tokenizer, query=example['response'],
-                                                               history=None, images=[example['query'].convert('RGB')])
+    Any]) -> Dict[str, Optional[List[int]]]:
+        input_kwargs = self.build_conversation_input_ids(self.tokenizer, query=example['system'],
+                                                         label=example['response'],
+                                                         history=example.get('history'),
+                                                         images=[example['query'].convert('RGB')])
+        if len(input_kwargs['input_ids']) > self.max_length - 1:
+            if self.truncation_strategy == 'delete':
+                return None
+            else:
+                input_kwargs['input_ids'] = input_kwargs['input_ids'][-self.max_length - 1:]
+                input_kwargs['attention_mask'] = input_kwargs['attention_mask'][-self.max_length - 1:]
+                input_kwargs['token_type_ids'] = input_kwargs['input_ids'][:self.max_length - 1]
+
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -512,12 +639,12 @@ register_template(
 
 
 def get_template(
-    template_type: str,
-    tokenizer: PreTrainedTokenizerBase,
-    default_system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    **kwargs,
+        template_type: str,
+        tokenizer: PreTrainedTokenizerBase,
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+        **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
