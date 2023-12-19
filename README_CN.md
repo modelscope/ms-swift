@@ -7,9 +7,9 @@
 <p>
 
 <p align="center">
-<a href="https://modelscope.cn/home">魔搭社区</a>&nbsp ｜ &nbsp<a href="https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E5%BF%AB%E9%80%9F%E4%BD%BF%E7%94%A8.md">文档</a>
+<a href="https://modelscope.cn/home">魔搭社区</a>
 <br>
-        中文&nbsp ｜ &nbsp<a href="README.md">English</a>
+        中文&nbsp ｜ &nbsp<a href="README.md">English</a>&nbsp ｜ &nbsp<a href="https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E5%BF%AB%E9%80%9F%E4%BD%BF%E7%94%A8.md">文档</a>
 </p>
 
 <p align="center">
