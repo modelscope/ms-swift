@@ -297,7 +297,8 @@ class Template:
         tokenizer: PreTrainedTokenizerBase,
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
-        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+        **kwargs
     ) -> None:
         assert self._is_init is False
         self._is_init = True
@@ -335,11 +336,21 @@ class Template:
 
 class CogAgentTemplate(Template):
 
+    def _init_template(
+        self,
+        tokenizer: PreTrainedTokenizerBase,
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+        **kwargs
+    ) -> None:
+        self.model = kwargs.pop('model')
+        super()._init_template(tokenizer, default_system, max_length, truncation_strategy)
+
     def encode(self, example: Dict[str,
-                                   Any], model) -> Dict[str, Optional[List[int]]]:
-        image = Image.open(context).convert('RGB')
-        return model.build_conversation_input_ids(self.tokenizer, query=example['query'],
-                                                               history=example['history'], images=[example['image']])
+                                   Any]) -> Dict[str, Optional[List[int]]]:
+        return self.model.build_conversation_input_ids(self.tokenizer, query=example['response'],
+                                                               history=None, images=[example['query'].convert('RGB')])
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -505,11 +516,12 @@ def get_template(
     tokenizer: PreTrainedTokenizerBase,
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
     template._init_template(tokenizer, default_system, max_length,
-                            truncation_strategy)
+                            truncation_strategy, **kwargs)
     template.template_type = template_type
     return template

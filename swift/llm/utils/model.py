@@ -294,15 +294,15 @@ def register_model(
 @register_model(
     ModelType.cogagent_chat,
     'ZhipuAI/cogagent-chat',
-    LoRATM.cogagent_chat,
-    TemplateType.llama,
+    LoRATM.cogagent,
+    TemplateType.cogagent,
     requires=['transformers>=4.36'],
     support_vllm=False)
 @register_model(
     ModelType.cogagent_vqa,
     'ZhipuAI/cogagent-vqa',
     LoRATM.cogagent,
-    TemplateType.cogagent_vqa,
+    TemplateType.cogagent,
     requires=['transformers>=4.36'],
     support_vllm=False)
 def get_model_tokenizer_from_repo(model_dir: str,
