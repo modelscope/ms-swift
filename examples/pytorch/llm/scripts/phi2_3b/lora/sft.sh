@@ -15,3 +15,4 @@ swift sft \
     --only_save_model true \
     --lora_target_modules ALL \
     --dataset codefuse-python-en \
+    --gradient_checkpointing false \
