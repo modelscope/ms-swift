@@ -2,7 +2,7 @@
 # 8GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --ckpt_dir "/mnt/workspace/my_git/swift/examples/pytorch/llm/output/phi2-3b/v0-20231219-204021/checkpoint-100" \
+    --ckpt_dir "phi2-3b/vx_xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 2048 \
     --use_flash_attn false \
