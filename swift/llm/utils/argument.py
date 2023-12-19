@@ -323,7 +323,7 @@ class InferArguments:
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     infer_backend: str = field(
-        default='AUTO', metadata={'choices': ['AUTO', 'vllm', 'pytorch']})
+        default='AUTO', metadata={'choices': ['AUTO', 'vllm', 'pt']})
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
@@ -435,7 +435,7 @@ class InferArguments:
             ) and support_vllm:
                 self.infer_backend = 'vllm'
             else:
-                self.infer_backend = 'pytorch'
+                self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'not support bnb'
             assert support_vllm, f'vllm not support `{self.model_type}`'

@@ -90,7 +90,7 @@ class TestRun(unittest.TestCase):
                 '2', '--max_new_tokens', '100', '--use_flash_attn',
                 str(bool_var), '--infer_backend', {
                     True: 'vllm',
-                    False: 'pytorch'
+                    False: 'pt'
                 }[bool_var], '--verbose',
                 str(bool_var), '--merge_lora_and_save',
                 str(bool_var)
