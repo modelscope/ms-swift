@@ -22,7 +22,7 @@ logger = get_logger()
 
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'cpu',
+               device_map: str = 'auto',
                **kwargs) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
@@ -150,7 +150,7 @@ def prepare_model_template(
 
 def llm_infer(args: InferArguments) -> None:
     if args.merge_lora_and_save:
-        merge_lora(args)
+        merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
