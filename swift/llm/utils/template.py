@@ -490,8 +490,8 @@ class CogAgentTemplate(Template):
                 'cross_images': [cross_images],
             }
 
-    def encode(self,
-               example: Dict[str, Any]) -> Dict[str, Optional[List[int]]]:
+    def encode(self, example: Dict[str,
+                                   Any]) -> Dict[str, Optional[List[int]]]:
         return self.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
