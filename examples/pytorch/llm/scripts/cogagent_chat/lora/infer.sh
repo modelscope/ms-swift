@@ -2,7 +2,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "/mnt/workspace/yzhao/tastelikefeet/swift/examples/pytorch/llm/output/cogagent-chat/v47-20231220-132558/checkpoint-400" \
+    --ckpt_dir "/xxx/xxx/cogagent-chat/vx-xxx/checkpoint-xx" \
     --load_args_from_ckpt_dir true \
     --eval_human true \
     --max_length 4096 \

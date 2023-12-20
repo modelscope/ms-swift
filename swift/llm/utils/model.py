@@ -367,6 +367,9 @@ def get_model_tokenizer_from_repo_cogagent(
             torch_dtype=torch_dtype,
             trust_remote_code=True,
             **model_kwargs)
+        logger.info(
+            'CogAgent with FusedLayerNorm will cause an training loss of Nan, '
+            'to avoid this, please uninstall apex.')
     return model, tokenizer
 
 
