@@ -63,6 +63,11 @@ def get_vllm_engine(model_type: str,
         tensor_parallel_size=tensor_parallel_size,
         disable_log_stats=disable_log_stats,
         **engine_kwargs)
+    try:
+        from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
+        destroy_model_parallel()
+    except ImportError:
+        pass
     llm_engine = LLMEngine.from_engine_args(engine_args)
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
