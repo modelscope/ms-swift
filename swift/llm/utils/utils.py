@@ -342,6 +342,13 @@ def data_collate_fn(batch: List[Dict[str, Any]],
             get_audio_info(tokenizer, audio_info=b['audio_info'])
             for b in batch
         ]
+    if batch[0].get('images') is not None:
+        res['images'] = [b['images'] for b in batch]
+    if batch[0].get('cross_images') is not None:
+        res['cross_images'] = [b['cross_images'] for b in batch]
+    if batch[0].get('token_type_ids') is not None:
+        res['token_type_ids'] = torch.stack(
+            [b['token_type_ids'] for b in batch])
     return res
 
 
@@ -446,6 +453,7 @@ def inference_stream(
     query: str,
     history: Optional[History] = None,
     system: Optional[str] = None,
+    image: Optional['Image'] = None,
     *,
     generation_config: Optional[GenerationConfig] = None,
     stop_words: Optional[List[StopWords]] = None,
@@ -460,13 +468,18 @@ def inference_stream(
     else:
         history = deepcopy(history)
     example = {'query': query, 'history': history, 'system': system}
+    if image is not None:
+        example['image'] = image
     inputs = template.encode(example)
     audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
     input_ids = torch.tensor(input_ids)[None].to(device)
-    attention_mask = torch.ones_like(input_ids).to(device)
+    if 'attention_mask' not in inputs:
+        attention_mask = torch.ones_like(input_ids).to(device)
+    else:
+        attention_mask = inputs['attention_mask'].to(device)
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -487,6 +500,16 @@ def inference_stream(
         stop_words.append(template.suffix[-1])
     decode_kwargs = {}
     model_kwargs = {}
+    if 'token_type_ids' in inputs:
+        model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
+    if 'images' in inputs:
+        model_kwargs['images'] = [[
+            inputs['images'][0][0].to(device).to(torch.float16)
+        ]]
+    if 'cross_images' in inputs:
+        model_kwargs['cross_images'] = [[
+            inputs['cross_images'][0][0].to(device).to(torch.float16)
+        ]]
     if audio_info is not None:
         audio_info = get_audio_info(tokenizer, audio_info=audio_info)
         decode_kwargs['audio_info'] = audio_info

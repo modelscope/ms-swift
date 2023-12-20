@@ -154,6 +154,9 @@ class ModelType:
     # phi
     phi2_3b = 'phi2-3b'
 
+    cogagent_chat = 'cogagent-chat'
+    cogagent_vqa = 'cogagent-vqa'
+
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -172,6 +175,11 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
+    cogagent = [
+        'vision_expert_query_key_value', 'vision_expert_dense',
+        'language_expert_query_key_value', 'language_expert_dense', 'query',
+        'key_value', 'dense'
+    ]
     phi = ['Wqkv']
 
 
@@ -315,6 +323,56 @@ def get_model_tokenizer_from_repo(model_dir: str,
             torch_dtype=torch_dtype,
             trust_remote_code=True,
             **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.cogagent_chat,
+    'ZhipuAI/cogagent-chat',
+    LoRATM.cogagent,
+    TemplateType.cogagent,
+    requires=['transformers>=4.36'],
+    support_vllm=False)
+@register_model(
+    ModelType.cogagent_vqa,
+    'ZhipuAI/cogagent-vqa',
+    LoRATM.cogagent,
+    TemplateType.cogagent,
+    requires=['transformers>=4.36'],
+    support_vllm=False)
+def get_model_tokenizer_from_repo_cogagent(
+        model_dir: str,
+        torch_dtype: Dtype,
+        model_kwargs: Dict[str, Any],
+        load_model: bool = True,
+        model_config=None,
+        tokenizer=None,
+        automodel_class=AutoModelForCausalLM,
+        **kwargs):
+    """load from an independent repository"""
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    model_config.torch_dtype = torch_dtype
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            'AI-ModelScope/vicuna-7b-v1.5',
+            trust_remote_code=True,
+            padding_side='left')
+    eos_token = kwargs.get('eos_token')
+    if eos_token is not None:
+        tokenizer.eos_token = eos_token
+    model = None
+    if load_model:
+        model = automodel_class.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+        logger.info(
+            'CogAgent with FusedLayerNorm will cause an training loss of Nan, '
+            'to avoid this, please uninstall apex.')
     return model, tokenizer
 
 

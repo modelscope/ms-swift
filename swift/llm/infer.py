@@ -140,9 +140,13 @@ def prepare_model_template(
     logger.info(get_model_info(model))
     show_layers(model)
 
-    template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length,
-                                      args.truncation_strategy)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     return model, template
@@ -175,6 +179,10 @@ def llm_infer(args: InferArguments) -> None:
             logger.info(
                 'The current template only supports single-round dialogues.')
         history = []
+        if 'cogagent' in args.model_type:
+            image = input('Input an image url<<< ')
+            from PIL import Image
+            image = Image.open(image)
         while True:
             if input_mode == 'S':
                 query = input('<<< ')
@@ -210,7 +218,8 @@ def llm_infer(args: InferArguments) -> None:
                         print(response[print_idx:], end='', flush=True)
                         print_idx = len(response)
             else:
-                gen = inference_stream(model, template, query, history)
+                gen = inference_stream(
+                    model, template, query, history, image=image)
                 for response, new_history in gen:
                     if len(response) > print_idx:
                         print(response[print_idx:], end='', flush=True)
