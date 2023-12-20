@@ -291,20 +291,6 @@ def register_model(
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
-@register_model(
-    ModelType.cogagent_chat,
-    'ZhipuAI/cogagent-chat',
-    LoRATM.cogagent,
-    TemplateType.cogagent,
-    requires=['transformers>=4.36'],
-    support_vllm=False)
-@register_model(
-    ModelType.cogagent_vqa,
-    'ZhipuAI/cogagent-vqa',
-    LoRATM.cogagent,
-    TemplateType.cogagent,
-    requires=['transformers>=4.36'],
-    support_vllm=False)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -321,6 +307,50 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
             model_dir, trust_remote_code=True)
+    eos_token = kwargs.get('eos_token')
+    if eos_token is not None:
+        tokenizer.eos_token = eos_token
+    model = None
+    if load_model:
+        model = automodel_class.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.cogagent_chat,
+    'ZhipuAI/cogagent-chat',
+    LoRATM.cogagent,
+    TemplateType.cogagent,
+    requires=['transformers>=4.36'],
+    support_vllm=False)
+@register_model(
+    ModelType.cogagent_vqa,
+    'ZhipuAI/cogagent-vqa',
+    LoRATM.cogagent,
+    TemplateType.cogagent,
+    requires=['transformers>=4.36'],
+    support_vllm=False)
+def get_model_tokenizer_from_repo_cogagent(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  model_config=None,
+                                  tokenizer=None,
+                                  automodel_class=AutoModelForCausalLM,
+                                  **kwargs):
+    """load from an independent repository"""
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    model_config.torch_dtype = torch_dtype
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            'AI-ModelScope/vicuna-7b-v1.5', trust_remote_code=True)
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token

@@ -341,6 +341,21 @@ def data_collate_fn(batch: List[Dict[str, Any]],
             get_audio_info(tokenizer, audio_info=b['audio_info'])
             for b in batch
         ]
+    if batch[0].get('images') is not None:
+        res['images'] = [
+            b['images']
+            for b in batch
+        ]
+    if batch[0].get('cross_images') is not None:
+        res['cross_images'] = [
+            b['cross_images']
+            for b in batch
+        ]
+    if batch[0].get('token_type_ids') is not None:
+        res['token_type_ids'] = torch.stack([
+            b['token_type_ids']
+            for b in batch
+        ])
     return res
 
 

@@ -397,10 +397,10 @@ class CogAgentTemplate(Template):
             template_version: Optional[Literal["base", "chat", "vqa"]] = None,
     ):
         from torchvision import transforms
-        image_size: int = self.config.vision_config['image_size']
-        cross_image_size: int = self.config.cross_image_size
-        patch_size: int = self.config.vision_config['patch_size']
-        template_version = template_version or self.config.template_version
+        image_size: int = self.model.config.vision_config['image_size']
+        cross_image_size: int = self.model.config.cross_image_size
+        patch_size: int = self.model.config.vision_config['patch_size']
+        template_version = template_version or self.model.config.template_version
         assert images is None or len(images) <= 1, f"not support multi images by now."
         history = history or []
         text = self._history_to_prompt[template_version](history, query)
@@ -445,7 +445,7 @@ class CogAgentTemplate(Template):
         input_ids += text_ids
         labels = [-100] * len(input_ids) + label_ids + [tokenizer.eos_token_id]
         input_ids += label_ids + [tokenizer.eos_token_id]
-        token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * len(text_ids)
+        token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * (len(text_ids) + len(label_ids) + 1)
         attention_mask = [1] * len(input_ids)
 
         if len(input_ids) < self.max_length:
@@ -466,17 +466,10 @@ class CogAgentTemplate(Template):
 
     def encode(self, example: Dict[str,
     Any]) -> Dict[str, Optional[List[int]]]:
-        input_kwargs = self.build_conversation_input_ids(self.tokenizer, query=example['system'],
+        return self.build_conversation_input_ids(self.tokenizer, query=example['system'],
                                                          label=example['response'],
                                                          history=example.get('history'),
                                                          images=[example['query'].convert('RGB')])
-        if len(input_kwargs['input_ids']) > self.max_length - 1:
-            if self.truncation_strategy == 'delete':
-                return None
-            else:
-                input_kwargs['input_ids'] = input_kwargs['input_ids'][-self.max_length - 1:]
-                input_kwargs['attention_mask'] = input_kwargs['attention_mask'][-self.max_length - 1:]
-                input_kwargs['token_type_ids'] = input_kwargs['input_ids'][:self.max_length - 1]
 
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
