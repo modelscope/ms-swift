@@ -172,9 +172,13 @@ def llm_sft(args: SftArguments) -> str:
 
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length,
-                                      args.truncation_strategy, model=model)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     if not args.lazy_tokenize:

@@ -173,9 +173,11 @@ class LoRATM(NamedTuple):
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
-    cogagent = ['vision_expert_query_key_value', 'vision_expert_dense',
-                     'language_expert_query_key_value', 'language_expert_dense',
-                     'query', 'key_value', 'dense']
+    cogagent = [
+        'vision_expert_query_key_value', 'vision_expert_dense',
+        'language_expert_query_key_value', 'language_expert_dense', 'query',
+        'key_value', 'dense'
+    ]
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -335,14 +337,15 @@ def get_model_tokenizer_from_repo(model_dir: str,
     TemplateType.cogagent,
     requires=['transformers>=4.36'],
     support_vllm=False)
-def get_model_tokenizer_from_repo_cogagent(model_dir: str,
-                                  torch_dtype: Dtype,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  model_config=None,
-                                  tokenizer=None,
-                                  automodel_class=AutoModelForCausalLM,
-                                  **kwargs):
+def get_model_tokenizer_from_repo_cogagent(
+        model_dir: str,
+        torch_dtype: Dtype,
+        model_kwargs: Dict[str, Any],
+        load_model: bool = True,
+        model_config=None,
+        tokenizer=None,
+        automodel_class=AutoModelForCausalLM,
+        **kwargs):
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
@@ -350,7 +353,9 @@ def get_model_tokenizer_from_repo_cogagent(model_dir: str,
     model_config.torch_dtype = torch_dtype
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/vicuna-7b-v1.5', trust_remote_code=True, padding_side='left')
+            'AI-ModelScope/vicuna-7b-v1.5',
+            trust_remote_code=True,
+            padding_side='left')
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token

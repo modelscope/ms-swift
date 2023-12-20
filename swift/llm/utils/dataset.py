@@ -605,22 +605,22 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     dataset = dataset.rename_columns({
         'solution': 'response',
     })
+
     def add_system(row):
         row['query'] = 'CAPTCHA:'
         return row
+
     dataset = dataset.map(add_system)
     return dataset
 
 
 register_dataset(
     DatasetName.capcha_images,
-    'AI-ModelScope/captcha-images',
-    [('default', 'train')],
+    'AI-ModelScope/captcha-images', [('default', 'train')],
     [('default', 'validation')],
     _preprocess_capcha_images,
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'vision', '🔥'])
-
 
 register_dataset(
     DatasetName.cls_fudan_news_zh,

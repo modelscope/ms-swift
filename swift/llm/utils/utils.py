@@ -342,20 +342,12 @@ def data_collate_fn(batch: List[Dict[str, Any]],
             for b in batch
         ]
     if batch[0].get('images') is not None:
-        res['images'] = [
-            b['images']
-            for b in batch
-        ]
+        res['images'] = [b['images'] for b in batch]
     if batch[0].get('cross_images') is not None:
-        res['cross_images'] = [
-            b['cross_images']
-            for b in batch
-        ]
+        res['cross_images'] = [b['cross_images'] for b in batch]
     if batch[0].get('token_type_ids') is not None:
-        res['token_type_ids'] = torch.stack([
-            b['token_type_ids']
-            for b in batch
-        ])
+        res['token_type_ids'] = torch.stack(
+            [b['token_type_ids'] for b in batch])
     return res
 
 
@@ -474,7 +466,7 @@ def inference_stream(
     example = {'query': query, 'history': history, 'system': system}
     if image is not None:
         example['image'] = image
-    inputs = template.encode(example, train=False)
+    inputs = template.encode(example)
     audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
@@ -506,9 +498,13 @@ def inference_stream(
     if 'token_type_ids' in inputs:
         model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
     if 'images' in inputs:
-        model_kwargs['images'] = [[inputs['images'][0][0].to(device).to(torch.float16)]]
+        model_kwargs['images'] = [[
+            inputs['images'][0][0].to(device).to(torch.float16)
+        ]]
     if 'cross_images' in inputs:
-        model_kwargs['cross_images'] = [[inputs['cross_images'][0][0].to(device).to(torch.float16)]]
+        model_kwargs['cross_images'] = [[
+            inputs['cross_images'][0][0].to(device).to(torch.float16)
+        ]]
     if audio_info is not None:
         audio_info = get_audio_info(tokenizer, audio_info=audio_info)
         decode_kwargs['audio_info'] = audio_info
