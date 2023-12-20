@@ -156,6 +156,7 @@ class SftArguments:
     save_on_each_node: bool = True
     save_strategy: str = field(
         default='steps', metadata={'choices': ['steps', 'no']})
+    save_safetensors: bool = True
 
     # generation config
     max_new_tokens: int = 2048
@@ -332,8 +333,8 @@ class InferArguments:
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
-    load_dataset_config: bool = True
-    eval_human: Optional[bool] = None  # False: eval val_dataset
+    load_dataset_config: bool = False
+    eval_human: Optional[bool] = None
 
     seed: int = 42
     dtype: str = field(
@@ -375,7 +376,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora_and_save: bool = False
-    safe_serialization: bool = True
+    save_safetensors: bool = True
     overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
     # app-ui
@@ -383,8 +384,9 @@ class InferArguments:
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
-    # compatibility
+    # compatibility. (Deprecated parameter.)
     show_dataset_sample: int = 10
+    safe_serialization: Optional[bool] = None
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -398,6 +400,7 @@ class InferArguments:
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
         else:
+            assert self.load_dataset_config is False
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
@@ -410,19 +413,19 @@ class InferArguments:
             self.dataset = [self.dataset]
         elif self.dataset is None:
             self.dataset = []
-        if (len(self.dataset) == 0 and len(self.custom_train_dataset_path) == 0
-                and len(self.custom_val_dataset_path) == 0):
-            if self.eval_human is None:
+        has_dataset = (
+            len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
+            or len(self.custom_val_dataset_path) > 0)
+        if self.eval_human is None:
+            if not has_dataset:
                 self.eval_human = True
-                logger.info(f'Setting self.eval_human: {self.eval_human}')
-            if not self.eval_human:
-                raise ValueError(
-                    f'self.dataset: {self.dataset}. Please set `--eval_human true` or `--dataset xxx`'
-                )
-        elif self.eval_human is None:
-            self.eval_human = False
+            else:
+                self.eval_human = False
             logger.info(f'Setting self.eval_human: {self.eval_human}')
-
+        elif self.eval_human is False and not has_dataset:
+            raise ValueError(
+                'Please provide the dataset or set `--load_dataset_config true`.'
+            )
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
@@ -436,11 +439,13 @@ class InferArguments:
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
         if self.infer_backend == 'AUTO':
-            if self.sft_type == 'full' and is_vllm_available(
-            ) and support_vllm:
-                self.infer_backend = 'vllm'
-            else:
-                self.infer_backend = 'pt'
+            if is_vllm_available() and support_vllm:
+                if (self.sft_type == 'full'
+                        or self.sft_type == 'lora' and self.merge_lora_and_save
+                        and self.quantization_bit == 0):
+                    self.infer_backend = 'vllm'
+                else:
+                    self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'not support bnb'
             assert support_vllm, f'vllm not support `{self.model_type}`'
@@ -559,6 +564,9 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.val_dataset_sample = args.show_dataset_sample
     if args.truncation_strategy == 'ignore':
         args.truncation_strategy = 'delete'
+    if isinstance(args,
+                  InferArguments) and args.safe_serialization is not None:
+        self.save_safetensors = args.safe_serialization
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
@@ -662,14 +670,13 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if len(args.custom_train_dataset_path) == 0 and len(
             args.custom_val_dataset_path) == 0:
         return
-    if '_custom_dataset' in DATASET_MAPPING:
-        DATASET_MAPPING.pop('_custom_dataset')
     register_dataset(
         '_custom_dataset',
         '_custom_dataset',
         args.custom_train_dataset_path,
         args.custom_val_dataset_path,
-        get_function=get_custom_dataset)
+        get_function=get_custom_dataset,
+        exists_ok=True)
     if args.dataset is None:
         args.dataset = ['_custom_dataset']
     elif '_custom_dataset' not in args.dataset:
@@ -684,12 +691,12 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
     with open(sft_args_path, 'r', encoding='utf-8') as f:
         sft_args = json.load(f)
     imported_keys = [
-        'model_type', 'model_id_or_path', 'model_revision', 'model_cache_dir',
-        'sft_type', 'template_type', 'dtype', 'system', 'quantization_bit',
+        'model_type', 'model_id_or_path', 'model_revision', 'sft_type',
+        'template_type', 'dtype', 'system', 'quantization_bit',
         'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
         'bnb_4bit_use_double_quant'
     ]
-    if not args.eval_human and args.load_dataset_config:
+    if args.load_dataset_config:
         imported_keys += [
             'dataset', 'dataset_seed', 'dataset_test_ratio',
             'check_dataset_strategy', 'custom_train_dataset_path',
@@ -697,7 +704,7 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         ]
     for key in imported_keys:
         if (key in {
-                'model_cache_dir', 'dataset', 'custom_train_dataset_path',
+                'dataset', 'custom_train_dataset_path',
                 'custom_val_dataset_path'
         } and getattr(args, key) is not None):
             continue

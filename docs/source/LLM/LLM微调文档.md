@@ -284,21 +284,27 @@ print(f'history: {history}')
 使用**数据集**评估:
 ```bash
 # 直接推理
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx' \
+    --load_dataset_config true \
 
 # Merge LoRA增量权重并推理
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
+    --load_dataset_config true \
 ```
 
 **人工**评估:
 ```bash
 # 直接推理
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx' --eval_human true
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
 # Merge LoRA增量权重并推理
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --eval_human true
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
