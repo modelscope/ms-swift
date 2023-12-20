@@ -151,6 +151,8 @@ class ModelType:
     deepseek_coder_6_7b_chat = 'deepseek-coder-6_7b-chat'
     deepseek_coder_33b = 'deepseek-coder-33b'
     deepseek_coder_33b_chat = 'deepseek-coder-33b-chat'
+    # phi
+    phi2_3b = 'phi2-3b'
 
     cogagent_chat = 'cogagent-chat'
     cogagent_vqa = 'cogagent-vqa'
@@ -178,6 +180,7 @@ class LoRATM(NamedTuple):
         'language_expert_query_key_value', 'language_expert_dense', 'query',
         'key_value', 'dense'
     ]
+	phi = ['Wqkv']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -835,7 +838,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    support_gradient_checkpointing=False)
 @register_model(
     ModelType.mixtral_7b_moe_chat,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
@@ -843,7 +847,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.llama,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    support_gradient_checkpointing=False)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -1347,6 +1352,27 @@ def get_model_tokenizer_codellama(model_dir: str,
         load_model,
         tokenizer=tokenizer,
         **kwargs)
+
+
+@register_model(
+    ModelType.phi2_3b,
+    'AI-ModelScope/phi-2',
+    LoRATM.phi,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+def get_model_tokenizer_phi(model_dir: str,
+                            torch_dtype: Dtype,
+                            model_kwargs: Dict[str, Any],
+                            load_model: bool = True,
+                            **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.get('use_flash_attn', False)
+    model_config.flash_attn = use_flash_attn
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, model_config, **kwargs)
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:

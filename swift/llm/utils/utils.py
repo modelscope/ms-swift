@@ -39,7 +39,8 @@ from transformers import (GenerationConfig, PreTrainedModel,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
-from .template import History, StopWordsCriteria, Template, get_audio_info
+from .template import (History, StopWords, StopWordsCriteria, Template,
+                       get_audio_info)
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -454,11 +455,14 @@ def inference_stream(
     system: Optional[str] = None,
     image: Optional['Image'] = None,
     *,
-    generation_config: Optional[GenerationConfig] = None
+    generation_config: Optional[GenerationConfig] = None,
+    stop_words: Optional[List[StopWords]] = None,
 ) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
+    if stop_words is None:
+        stop_words = []
     if history is None:
         history = []
     else:
@@ -492,7 +496,8 @@ def inference_stream(
     if stream_config.max_new_tokens is not None:
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
-    stop_words = [template.suffix[-1]]
+    if template.suffix[-1] not in stop_words:
+        stop_words.append(template.suffix[-1])
     decode_kwargs = {}
     model_kwargs = {}
     if 'token_type_ids' in inputs:
@@ -545,6 +550,7 @@ def inference(model: PreTrainedModel,
               system: Optional[str] = None,
               *,
               generation_config: Optional[GenerationConfig] = None,
+              stop_words: Optional[List[StopWords]] = None,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
@@ -552,6 +558,8 @@ def inference(model: PreTrainedModel,
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
+    if stop_words is None:
+        stop_words = []
     if history is None:
         history = []
     else:
@@ -592,7 +600,8 @@ def inference(model: PreTrainedModel,
         generation_config.pad_token_id = tokenizer.pad_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
-    stop_words = [template.suffix[-1]]
+    if template.suffix[-1] not in stop_words:
+        stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
     generate_ids = model.generate(

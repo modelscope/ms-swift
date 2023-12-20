@@ -6,7 +6,6 @@ python rome_infer.py \
     --model_revision master \
     --template_type llama \
     --dtype AUTO \
-    --eval_human true \
     --max_new_tokens 128 \
     --temperature 0.1 \
     --top_p 0.7 \
