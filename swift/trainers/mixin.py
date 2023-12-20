@@ -371,7 +371,7 @@ class SwiftMixin:
             generation_config.save_pretrained(output_dir)
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
-        save_safetensors = getattr(self.args, 'save_safetensors', False)
+        save_safetensors = self.args.save_safetensors
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
                 state_dict = self.model.state_dict()

@@ -6,4 +6,3 @@ python animatediff_infer.py \
   --model_id_or_path wyj123456/Realistic_Vision_V5.1_noVAE \
   --sft_type full \
   --ckpt_dir /output/path/like/checkpoints/iter-xxx \
-  --eval_human true  \

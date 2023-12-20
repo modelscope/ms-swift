@@ -204,13 +204,17 @@ print(f"history: {resp['history']}")
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
 # 使用数据集评估
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --infer_backend vllm
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
+    --infer_backend vllm \
+    --load_dataset_config true \
+
 # 人工评估
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
     --infer_backend vllm \
-    --eval_human true \
 ```
 
 ## Web-UI加速

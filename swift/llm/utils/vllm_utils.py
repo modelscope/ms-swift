@@ -52,6 +52,8 @@ def get_vllm_engine(model_type: str,
         torch.float32: 'float32',
         None: 'auto'
     }
+    tokenizer = get_model_tokenizer(
+        model_type, load_model=False, model_dir=model_dir)[1]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
     engine_args = EngineArgs(
         model=model_dir,
@@ -64,7 +66,7 @@ def get_vllm_engine(model_type: str,
     llm_engine = LLMEngine.from_engine_args(engine_args)
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
-    llm_engine.tokenizer = get_model_tokenizer(model_type, load_model=False)[1]
+    llm_engine.tokenizer = tokenizer
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)

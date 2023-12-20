@@ -255,7 +255,8 @@ def llm_sft(args: SftArguments) -> str:
         additional_saved_files=additional_saved_files,
         disable_tqdm=args.disable_tqdm,
         save_on_each_node=args.save_on_each_node,
-        acc_strategy=args.acc_strategy)
+        acc_strategy=args.acc_strategy,
+        save_safetensors=args.save_safetensors)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36

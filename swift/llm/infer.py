@@ -61,7 +61,7 @@ def merge_lora(args: InferArguments,
     model = model.model
     logger.info('Saving merged weights...')
     model.save_pretrained(
-        merged_lora_path, safe_serialization=args.safe_serialization)
+        merged_lora_path, safe_serialization=args.save_safetensors)
     tokenizer.save_pretrained(merged_lora_path)
     for fname in os.listdir(old_ckpt_dir):
         if fname in {'generation_config.json'}:
@@ -276,6 +276,8 @@ def llm_infer(args: InferArguments) -> None:
                     kwargs['system'] = system
                 if args.infer_backend == 'vllm':
                     assert args.stream is True
+                    if args.verbose:
+                        print(f"query: {data['query']}\nresponse: ", end='')
                     gen = inference_stream_vllm(llm_engine, template, [kwargs])
                     print_idx = 0
                     for resp_list in gen:
@@ -283,6 +285,7 @@ def llm_infer(args: InferArguments) -> None:
                         if args.verbose and len(response) > print_idx:
                             print(response[print_idx:], end='', flush=True)
                             print_idx = len(response)
+                    print()
                 else:
                     response, _ = inference(
                         model,
