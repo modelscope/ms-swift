@@ -310,7 +310,7 @@ class Template:
         self.truncation_strategy = truncation_strategy
 
     def encode(self, example: Dict[str,
-    Any]) -> Dict[str, Optional[List[int]]]:
+    Any], **kwargs) -> Dict[str, Optional[List[int]]]:
         if not self._is_init:
             raise ValueError(
                 'Template has not been initialized, please call init_template(...) first.'
@@ -347,6 +347,8 @@ class CogAgentTemplate(Template):
             **kwargs
     ) -> None:
         self.model = kwargs.pop('model')
+        self.suffix = [tokenizer.eos_token]
+        tokenizer.padding_side = 'left'
         super()._init_template(tokenizer, default_system, max_length, truncation_strategy)
 
     @staticmethod
@@ -391,10 +393,11 @@ class CogAgentTemplate(Template):
             tokenizer: "PreTrainedTokenizer",
             *,
             query: str,
-            label: str,
+            label: Optional[str] = None,
             history: Optional[List[Tuple[str, str]]] = None,
             images: Optional[List["PIL.Image"]] = None,
             template_version: Optional[Literal["base", "chat", "vqa"]] = None,
+            train: Optional[bool] = True,
     ):
         from torchvision import transforms
         image_size: int = self.model.config.vision_config['image_size']
@@ -435,7 +438,10 @@ class CogAgentTemplate(Template):
             input_ids += [tokenizer.pad_token_id] * vision_token_num
             token_type_ids += [self.VISION_TOKEN_TYPE] * vision_token_num
         text_ids = tokenizer.encode(text, add_special_tokens=False)
-        label_ids = tokenizer.encode(label, add_special_tokens=False)
+        if label is not None:
+            label_ids = tokenizer.encode(label, add_special_tokens=False)
+        else:
+            label_ids = []
         if len(text_ids) + len(input_ids) + len(label_ids) > self.max_length - 1:
             if self.truncation_strategy == 'delete' or (len(input_ids) + len(label_ids) >= self.max_length - 1):
                 return None
@@ -443,33 +449,48 @@ class CogAgentTemplate(Template):
                 text_ids = text_ids[-(self.max_length - len(input_ids) - len(label_ids) - 1):]
 
         input_ids += text_ids
-        labels = [-100] * len(input_ids) + label_ids + [tokenizer.eos_token_id]
-        input_ids += label_ids + [tokenizer.eos_token_id]
-        token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * (len(text_ids) + len(label_ids) + 1)
+        if label_ids:
+            labels = [-100] * len(input_ids) + label_ids + [tokenizer.eos_token_id]
+        if train:
+            input_ids += label_ids + [tokenizer.eos_token_id]
+            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * (len(text_ids) + len(label_ids) + 1)
+        else:
+            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * len(text_ids)
         attention_mask = [1] * len(input_ids)
 
-        if len(input_ids) < self.max_length:
-            padding_len = self.max_length - len(input_ids)
-            input_ids += [tokenizer.pad_token_id] * padding_len
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * padding_len
-            attention_mask += [0] * padding_len
-            labels += [-100] * padding_len
-
-        return {
-            'input_ids': torch.tensor(input_ids, dtype=torch.long),
-            'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
-            'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
-            'images': images,
-            'cross_images': cross_images,
-            'labels': labels
-        }
+        # if len(input_ids) < self.max_length:
+        #     padding_len = self.max_length - len(input_ids)
+        #     input_ids += [tokenizer.pad_token_id] * padding_len
+        #     token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * padding_len
+        #     attention_mask += [0] * padding_len
+        #     if label_ids:
+        #         labels += [-100] * padding_len
+        
+        if train:
+            return {
+                'input_ids': torch.tensor(input_ids, dtype=torch.long),
+                'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
+                'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
+                'images': images,
+                'cross_images': cross_images,
+                'labels': labels,
+            }
+        else:
+            return {
+                'input_ids': torch.tensor(input_ids, dtype=torch.long),
+                'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long).unsqueeze(0),
+                'attention_mask': torch.tensor(attention_mask, dtype=torch.long).unsqueeze(0),
+                'images': [images],
+                'cross_images': [cross_images],
+            }
 
     def encode(self, example: Dict[str,
-    Any]) -> Dict[str, Optional[List[int]]]:
-        return self.build_conversation_input_ids(self.tokenizer, query=example['system'],
-                                                         label=example['response'],
+    Any], train: Optional[bool] = True) -> Dict[str, Optional[List[int]]]:
+        return self.build_conversation_input_ids(self.tokenizer, query=example['query'],
+                                                         label=example.get('response'),
                                                          history=example.get('history'),
-                                                         images=[example['query'].convert('RGB')])
+                                                         images=[example['image'].convert('RGB')],
+                                                         train=train)
 
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}

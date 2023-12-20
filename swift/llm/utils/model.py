@@ -350,7 +350,7 @@ def get_model_tokenizer_from_repo_cogagent(model_dir: str,
     model_config.torch_dtype = torch_dtype
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/vicuna-7b-v1.5', trust_remote_code=True)
+            'AI-ModelScope/vicuna-7b-v1.5', trust_remote_code=True, padding_side='left')
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token

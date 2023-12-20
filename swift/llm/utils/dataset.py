@@ -28,7 +28,7 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'system', 'history'}:
+        if k in {'query', 'response', 'system', 'history', 'image'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -603,11 +603,10 @@ register_dataset(
 
 def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     dataset = dataset.rename_columns({
-        'image': 'query',
         'solution': 'response',
     })
     def add_system(row):
-        row['system'] = 'CAPTCHA:'
+        row['query'] = 'CAPTCHA:'
         return row
     dataset = dataset.map(add_system)
     return dataset
