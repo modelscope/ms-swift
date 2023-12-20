@@ -491,15 +491,13 @@ class CogAgentTemplate(Template):
             }
 
     def encode(self,
-               example: Dict[str, Any],
-               train: Optional[bool] = True) -> Dict[str, Optional[List[int]]]:
+               example: Dict[str, Any]) -> Dict[str, Optional[List[int]]]:
         return self.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
             label=example.get('response'),
             history=example.get('history'),
-            images=[example['image'].convert('RGB')],
-            train=train)
+            images=[example['image'].convert('RGB')])
 
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
