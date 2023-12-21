@@ -4,8 +4,10 @@
 import os.path
 from typing import Optional
 
-from peft import (LoraConfig, PeftConfig, PeftModel, PeftModelForCausalLM,
-                  PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
+from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
+                  LoKrConfig, LoraConfig, OFTConfig, PeftConfig, PeftModel,
+                  PeftModelForCausalLM, PeftModelForSeq2SeqLM,
+                  PeftModelForSequenceClassification,
                   PeftModelForTokenClassification, PrefixTuningConfig,
                   PromptEncoderConfig, PromptLearningConfig,
                   PromptTuningConfig, get_peft_config, get_peft_model,
@@ -60,6 +62,12 @@ PromptTuningConfig = wrap_module(PromptTuningConfig)
 PrefixTuningConfig = wrap_module(PrefixTuningConfig)
 PromptLearningConfig = wrap_module(PromptLearningConfig)
 LoraConfig = wrap_module(LoraConfig)
+AdaLoraConfig = wrap_module(AdaLoraConfig)
+IA3Config = wrap_module(IA3Config)
+LoHaConfig = wrap_module(LoHaConfig)
+LoKrConfig = wrap_module(LoKrConfig)
+LoftQConfig = wrap_module(LoftQConfig)
+OFTConfig = wrap_module(OFTConfig)
 get_peft_config = get_peft_config
 get_peft_model_state_dict = get_peft_model_state_dict
 get_peft_model = get_peft_model
