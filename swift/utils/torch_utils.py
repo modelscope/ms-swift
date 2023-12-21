@@ -1,13 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import importlib
 import os
 import random
 import socket
 from bisect import bisect_right
 from typing import List, Optional, Tuple
 
+import accelerate
 import numpy as np
 import torch
+import transformers
 import torch.distributed as dist
 from torch.nn import Module
 
@@ -15,6 +18,37 @@ from .logger import get_logger, is_master
 
 logger = get_logger()
 
+
+# monkey patching
+RETURN_TRUE = lambda check_device=True: True
+RETURN_FALSE = lambda: False
+def _func_check_and_set(module_name, func_name, func_value):
+    err_msg = f'''{func_name} not found in {module_name}.
+                  Replace HF {module_name.__package__} with an older version.'''
+    assert hasattr(module_name, func_name), err_msg
+    setattr(module_name, func_name, func_value)
+
+def torchacc_patch_accelerate():
+    # return true in is_tpu_available to enable torch_xla fsdp.
+    _func_check_and_set(accelerate.utils.imports, 'is_tpu_available',
+                        RETURN_TRUE)
+    _func_check_and_set(accelerate.utils, 'is_tpu_available', RETURN_TRUE)
+    _func_check_and_set(accelerate.state, 'is_tpu_available', RETURN_TRUE)
+    # reload these modules to import torch_xla
+    importlib.reload(accelerate.checkpointing)
+    importlib.reload(accelerate.data_loader)
+    importlib.reload(accelerate.optimizer)
+    importlib.reload(accelerate.utils.operations)
+    importlib.reload(accelerate.utils.other)
+    importlib.reload(accelerate.utils.random)
+    # put accelerate.state last to make state singleton working
+    importlib.reload(accelerate.state)
+    _func_check_and_set(accelerate.state, 'is_tpu_available', RETURN_TRUE)
+
+def torchacc_patch_transformers():
+    # tensorboard does not support nested json format which used in fsdp
+    _func_check_and_set(transformers.integrations.integration_utils,
+                        'is_tensorboard_available', RETURN_FALSE)
 
 def is_on_same_device(model: torch.nn.Module) -> bool:
     device_set = set(map(lambda p: p.device, model.parameters()))
@@ -92,14 +126,19 @@ def is_local_master():
     local_rank = get_dist_setting()[1]
     return local_rank in {-1, 0}
 
+def use_torchacc() -> bool:
+    return os.getenv("USE_TORCHACC", "0") == "1"
 
 def is_dist():
     """Determine if the training is distributed"""
+    if use_torchacc():
+        return False
     rank, local_rank, _, _ = get_dist_setting()
     return rank >= 0 and local_rank >= 0
 
-
 def is_ddp_plus_mp() -> bool:
+    if use_torchacc():
+        return False
     if not is_dist():
         return False
     n_gpu = torch.cuda.device_count()

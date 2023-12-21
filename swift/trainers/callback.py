@@ -9,7 +9,7 @@ from transformers.trainer_callback import (DefaultFlowCallback,
 from transformers.trainer_utils import IntervalStrategy, has_length
 
 from swift.trainers import TrainingArguments
-
+from swift.utils import use_torchacc
 
 class ProgressCallbackNew(ProgressCallback):
 

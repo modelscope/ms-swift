@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import os
 import shutil
+import sys
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -37,7 +38,8 @@ from transformers import (GenerationConfig, PreTrainedModel,
 
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, stat_array, upper_bound)
+                         is_local_master, is_master, stat_array, upper_bound,
+                         use_torchacc)
 from .template import (History, StopWords, StopWordsCriteria, Template,
                        get_audio_info)
 
@@ -297,6 +299,18 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
+def _get_bucket(bucket_sizes, data_length):
+  cloest_length = sys.maxsize
+  for b in bucket_sizes:
+    if b == data_length \
+      or cloest_length > b > data_length:
+      cloest_length = b
+
+  if cloest_length == sys.maxsize:
+    bucket_sizes.append(data_length)
+    cloest_length = data_length
+
+  return cloest_length
 
 def data_collate_fn(batch: List[Dict[str, Any]],
                     tokenizer: PreTrainedTokenizerBase,
@@ -331,6 +345,17 @@ def data_collate_fn(batch: List[Dict[str, Any]],
     attention_mask = pad_sequence(
         attention_mask, batch_first=True, padding_value=0)
     labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+
+    if use_torchacc():
+        longest_len = input_ids.shape[-1]
+        bucket_data_length = _get_bucket([256, 512, 768, 1024], longest_len)
+        padding_length = bucket_data_length - input_ids.shape[1]
+        input_ids = F.pad(input_ids, (0, padding_length),
+                          'constant', tokenizer.pad_token_id)
+        attention_mask = F.pad(attention_mask, (0, padding_length),
+                              'constant', 0)
+        labels = F.pad(labels, (0, padding_length),
+                      'constant', -100)
 
     res = {
         'input_ids': input_ids,
@@ -724,6 +749,8 @@ if is_ddp_plus_mp():
         _old_ddp_init(self, model, *args, **kwargs))
     transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: None
     transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
+
+if is_ddp_plus_mp() or use_torchacc():
     _old_accelerator_init = trainer.Accelerator.__init__
     trainer.Accelerator.__init__ = (
         lambda self, device_placement=False, *args, **kwargs:

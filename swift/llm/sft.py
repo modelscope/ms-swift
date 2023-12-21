@@ -14,7 +14,8 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers)
+                         seed_everything, show_layers, torchacc_patch_accelerate,
+                         torchacc_patch_transformers, use_torchacc)
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
@@ -23,10 +24,11 @@ from .utils import (LazyLLMDataset, SftArguments, Template,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
 
+
 logger = get_logger()
 
-
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
+
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -34,11 +36,18 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
           f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
 
+    if use_torchacc():
+        import torchacc as ta
+        torchacc_patch_accelerate()
+        torchacc_patch_transformers()
+        ## patch qwen for torchacc flash_attention
+        os.system('cp modeling_qwen.py /root/.cache/modelscope/hub/qwen/Qwen-72B-Chat/modeling_qwen.py')
+
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
     if is_dist() and not is_ddp_plus_mp():
         model_kwargs['device_map'] = {'': local_rank}
-    else:
+    elif not use_torchacc():
         model_kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -78,6 +87,27 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     model_info = get_model_info(model)
     logger.info(model_info)
     logger.info(model)
+
+    if use_torchacc():
+        import torchacc as ta
+
+        def get_ta_config():
+            config = ta.Config()
+            config.compute.fp16 = False
+            config.compute.bf16 = True
+
+            config.memory.gc = True
+            if config.memory.gc:
+                config.memory.gc_cls = {"QWenBlock"}
+
+            config.dist.fsdp.size = 2
+            config.dist.fsdp.wrap_layer_cls = {"QWenBlock"}
+            config.dist.fsdp.flatten_parameters = True
+
+            return config
+
+        ta_config = get_ta_config()
+        model = ta.accelerate(model, ta_config)
 
     # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
@@ -199,7 +229,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         push_to_hub=args.push_to_hub,
         resume_from_checkpoint=args.resume_from_checkpoint,
         ddp_backend=args.ddp_backend,
-        gradient_checkpointing=args.gradient_checkpointing,
+        gradient_checkpointing=False if use_torchacc() else args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
         generation_config=generation_config,
         local_rank=local_rank,
@@ -215,7 +245,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logging_first_step=True,
         **kwargs)
 
-    if args.gradient_checkpointing:
+    if args.gradient_checkpointing and not use_torchacc():
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
