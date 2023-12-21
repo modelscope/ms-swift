@@ -183,6 +183,8 @@ def llm_infer(args: InferArguments) -> None:
             image = input('Input an image url<<< ')
             from PIL import Image
             image = Image.open(image)
+        else:
+            image = None
         while True:
             if input_mode == 'S':
                 query = input('<<< ')
