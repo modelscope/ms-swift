@@ -243,24 +243,10 @@ class PushToMsHubMixin:
 class SwiftMixin:
 
     def __init__(self,
-                 model: Union[PreTrainedModel, Module] = None,
-                 args: TrainingArguments = None,
-                 data_collator: Optional[DataCollator] = None,
-                 train_dataset: Optional[HfDataset] = None,
-                 eval_dataset: Optional[Union[HfDataset,
-                                              Dict[str, HfDataset]]] = None,
-                 tokenizer: Optional[PreTrainedTokenizerBase] = None,
-                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
-                 compute_metrics: Optional[Callable[[EvalPrediction],
-                                                    Dict]] = None,
-                 callbacks: Optional[List[TrainerCallback]] = None,
-                 optimizers: Tuple[torch.optim.Optimizer,
-                                   torch.optim.lr_scheduler.LambdaLR] = (None,
-                                                                         None),
-                 preprocess_logits_for_metrics: Optional[Callable[
-                     [torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+                 *args,
                  **kwargs) -> None:
         check_model = kwargs.get('check_model', True)
+        model = args[0]
         if check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir,
@@ -280,9 +266,7 @@ class SwiftMixin:
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
         # mro
-        super().__init__(model, args, data_collator, train_dataset,
-                         eval_dataset, tokenizer, model_init, compute_metrics,
-                         callbacks, optimizers, preprocess_logits_for_metrics)
+        super().__init__(*args, **kwargs)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
 
