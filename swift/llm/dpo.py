@@ -29,7 +29,7 @@ from .utils import (LazyLLMDataset, SftArguments, DPOArguments, Template,
 logger = get_logger()
 
 
-def llm_sft(args: DPOArguments) -> str:
+def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()

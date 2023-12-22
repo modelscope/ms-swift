@@ -192,6 +192,24 @@ def load_ms_dataset(
     return concatenate_datasets(dataset_list)
 
 
+def load_hf_dataset(
+        dataset_id: str,
+        subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
+    from datasets import load_dataset
+    if subset_split_list is None or len(subset_split_list) == 0:
+        return None
+    dataset_list = []
+    for subset_split in subset_split_list:
+        if isinstance(subset_split, str):
+            subset_split = ('default', subset_split)
+        assert len(subset_split) == 2
+        subset_name, split = subset_split
+        dataset = load_dataset(
+            dataset_id, subset_name=subset_name, split=split)
+        dataset_list.append(dataset)
+    return concatenate_datasets(dataset_list)
+
+
 @register_dataset(
     DatasetName.text2sql_en,
     'AI-ModelScope/texttosqlv2_25000_v2', ['train'],
@@ -539,17 +557,42 @@ register_dataset(
     tags=['chat', 'medical'])
 
 
-register_dataset(
-    DatasetName.medical_en,
-    'huangjintao/medical_zh', [('en', 'train'), ('en', 'val')],
-    [('en', 'test')],
-    RenameColumnsPreprocessor({
-        'input': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'medical'])
+def get_dataset_from_hf(
+        dataset_id: str,
+        train_subset_split_list: List[SubsetSplit],
+        val_subset_split_list: Optional[List[SubsetSplit]],
+        preprocess_func: PreprocessFunc,
+        remove_useless_columns: bool = True,
+        train_dataset_sample: int = -1,
+        val_dataset_sample: int = -1) -> Tuple[HfDataset, Optional[HfDataset]]:
+    dataset_list = []
+    _iter = zip([train_subset_split_list, val_subset_split_list],
+                [train_dataset_sample, val_dataset_sample])
+    for subset_split_list, dataset_sample in _iter:
+        dataset = load_hf_dataset(dataset_id, subset_split_list)
+        if dataset is not None:
+            if dataset_sample > 0 and len(dataset) > dataset_sample:
+                random_state = np.random.RandomState(42)
+                idxs = random_state.permutation(dataset_sample)
+                dataset = dataset.select(idxs)
+            dataset = preprocess_func(dataset)
+            if remove_useless_columns:
+                dataset = _remove_useless_columns(dataset)
+        dataset_list.append(dataset)
+    return tuple(dataset_list)
 
+
+register_dataset(
+    DatasetName.stack_exchange_paired,
+    'AI-ModelScope/stack-exchange-paired', [('default', 'train')],
+    [('default', 'test')],
+    RenameColumnsPreprocessor({
+        'question': 'query',
+        'response_j': 'response',
+        'response_k': 'rejected_response',
+    }),
+    get_dataset_from_hf,
+    tags=['hfrl', 'dpo', 'pairwise'])
 
 
 register_dataset(
