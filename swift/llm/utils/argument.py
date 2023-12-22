@@ -453,6 +453,14 @@ class InferArguments:
                 assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
 
 
+class DPOArguments(SftArguments):
+
+    # You can specify the model by either using the model_type or model_id_or_path.
+    ref_model_type: Optional[str] = field(
+        default=None,
+        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+
+
 @dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(

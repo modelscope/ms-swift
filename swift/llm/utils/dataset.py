@@ -28,7 +28,7 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'system', 'history', 'image'}:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'image'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -110,6 +110,9 @@ class DatasetName:
     # audio
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
+
+    # dpo/hfrl dataset
+    stack_exchange_paired = 'lvwerra/stack-exchange-paired'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -534,6 +537,20 @@ register_dataset(
     }),
     get_dataset_from_repo,
     tags=['chat', 'medical'])
+
+
+register_dataset(
+    DatasetName.medical_en,
+    'huangjintao/medical_zh', [('en', 'train'), ('en', 'val')],
+    [('en', 'test')],
+    RenameColumnsPreprocessor({
+        'input': 'query',
+        'output': 'response'
+    }),
+    get_dataset_from_repo,
+    tags=['chat', 'medical'])
+
+
 
 register_dataset(
     DatasetName.medical_zh,

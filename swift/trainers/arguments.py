@@ -6,6 +6,7 @@ from typing import List, Optional
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import \
     Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
+from trl import DPOTrainer
 
 
 @dataclass

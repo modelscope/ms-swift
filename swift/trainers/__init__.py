@@ -6,6 +6,7 @@ from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
 
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .trainers import Seq2SeqTrainer, Trainer
+from .dpo_trainers import DPOTrainer
 
 try:
     # https://github.com/huggingface/transformers/pull/25702
