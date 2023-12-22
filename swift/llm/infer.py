@@ -13,6 +13,7 @@ from transformers import PreTrainedModel
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_model_info,
                          read_multi_line, seed_everything, show_layers)
+from . import get_additional_saved_files
 from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference, inference_stream,
                     set_generation_config)
@@ -62,6 +63,10 @@ def merge_lora(args: InferArguments,
     logger.info('Saving merged weights...')
     model.save_pretrained(
         merged_lora_path, safe_serialization=args.save_safetensors)
+    for add_file in get_additional_saved_files(args.model_type):
+        shutil.copy(
+            os.path.join(model.model_dir, add_file),
+            os.path.join(merged_lora_path, add_file))
     tokenizer.save_pretrained(merged_lora_path)
     for fname in os.listdir(old_ckpt_dir):
         if fname in {'generation_config.json'}:
