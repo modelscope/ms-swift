@@ -7,7 +7,7 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
                             Seq2SeqTrainingArguments, DPOTrainer)
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
@@ -20,7 +20,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          show_layers)
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, DPOArguments, Template,
-                    add_self_cognition_dataset, data_collate_fn, dataset_map,
+                    add_self_cognition_dataset, data_collate_dpo_fn, dataset_map,
                     find_all_linear_for_lora, fix_fp16_trainable_bug,
                     get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, print_example,
@@ -122,13 +122,35 @@ def llm_dpo(args: DPOArguments) -> str:
         model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
+
+    class DPOTemplate(Template):
+
+        def __init__(self, template):
+            self.template = template
+
+        def __getattr__(self, name):
+            return getattr(self.template, name)
+
+        def encode(self, example: Dict[str,
+                                    Any]) -> Dict[str, Optional[List[int]]]:
+            output = super().encode(example)
+            output['chosen_input_ids'] = output['input_ids']
+            output['chosen_labels'] = output['labels']
+            example['response'] = example['rejected_response']
+            output1 = super().encode(example)
+            output['rejected_input_ids'] = output1['input_ids']
+            output['rejected_labels'] = output1['labels']
+            output.pop('input_ids')
+            output.pop('labels')
+            return output
+
     if not args.lazy_tokenize:
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         # train_dataset = train_dataset.map(template.encode)
-        train_dataset = dataset_map(train_dataset, template.encode,
+        train_dataset = dataset_map(train_dataset, DPOTemplate(template).encode,
                                     args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode,
+            val_dataset = dataset_map(val_dataset, DPOTemplate(template).encode,
                                       args.preprocess_num_proc)
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
@@ -138,11 +160,11 @@ def llm_dpo(args: DPOArguments) -> str:
         if val_dataset is not None:
             stat_dataset(val_dataset)
     else:
-        train_dataset = LazyLLMDataset(train_dataset, template)
-        val_dataset = LazyLLMDataset(val_dataset, template)
+        train_dataset = LazyLLMDataset(train_dataset, DPOTemplate(template))
+        val_dataset = LazyLLMDataset(val_dataset, DPOTemplate(template))
 
     data_collator = partial(
-        data_collate_fn,
+        data_collate_dpo_fn,
         tokenizer=tokenizer,
         padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args

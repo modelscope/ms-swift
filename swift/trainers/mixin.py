@@ -246,7 +246,7 @@ class SwiftMixin:
                  *args,
                  **kwargs) -> None:
         check_model = kwargs.get('check_model', True)
-        model = args[0]
+        model = kwargs['model']
         if check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir,
