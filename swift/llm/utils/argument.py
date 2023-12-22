@@ -453,6 +453,7 @@ class InferArguments:
                 assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
 
 
+@dataclass
 class DPOArguments(SftArguments):
 
     # You can specify the model by either using the model_type or model_id_or_path.

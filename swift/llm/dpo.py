@@ -124,6 +124,7 @@ def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'system: {args.system}')
     if not args.lazy_tokenize:
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        # train_dataset = train_dataset.map(template.encode)
         train_dataset = dataset_map(train_dataset, template.encode,
                                     args.preprocess_num_proc)
         if val_dataset is not None:

@@ -112,7 +112,7 @@ class DatasetName:
     aishell1_mini_zh = 'aishell1-mini-zh'
 
     # dpo/hfrl dataset
-    stack_exchange_paired = 'lvwerra/stack-exchange-paired'
+    stack_exchange_paired = 'stack-exchange-paired'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -205,7 +205,7 @@ def load_hf_dataset(
         assert len(subset_split) == 2
         subset_name, split = subset_split
         dataset = load_dataset(
-            dataset_id, subset_name=subset_name, split=split)
+            dataset_id, subset_name, split=split)
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -584,7 +584,7 @@ def get_dataset_from_hf(
 
 register_dataset(
     DatasetName.stack_exchange_paired,
-    'AI-ModelScope/stack-exchange-paired', [('default', 'train')],
+    '/mnt/workspace/yzhao/tastelikefeet/swift/examples/pytorch/llm/stack-exchange-paired', [('default', 'train')],
     [('default', 'test')],
     RenameColumnsPreprocessor({
         'question': 'query',
