@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Union
 
 import json
 import numpy as np
@@ -28,7 +28,7 @@ from .utils import (LazyLLMDataset, SftArguments, Template,
 logger = get_logger()
 
 
-def llm_sft(args: SftArguments) -> Dict[str, Union[Optional[str], Any]]:
+def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
