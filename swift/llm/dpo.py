@@ -56,11 +56,10 @@ def llm_dpo(args: DPOArguments) -> str:
                                            model_kwargs, **kwargs)
     if args.ref_model_type is not None:
         model_kwargs['device_map'] = 'auto'
-        ref_model, ref_tokenizer = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
+        ref_model = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
                                                model_kwargs, **kwargs)
     else:
-        ref_model = deepcopy(model)
-        ref_tokenizer = tokenizer
+        ref_model = None
 
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
