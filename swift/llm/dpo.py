@@ -36,10 +36,6 @@ def llm_dpo(args: DPOArguments) -> str:
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
-    if is_dist() and not is_ddp_plus_mp():
-        model_kwargs['device_map'] = {'': local_rank}
-    else:
-        model_kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -55,11 +51,13 @@ def llm_dpo(args: DPOArguments) -> str:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
+    model_kwargs['device_map'] = 'auto'
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs, device_map='0')
+                                           model_kwargs, **kwargs)
     if args.ref_model_type is not None:
+        model_kwargs['device_map'] = 'auto'
         ref_model, ref_tokenizer = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
-                                               model_kwargs, **kwargs, device_map='1')
+                                               model_kwargs, **kwargs)
     else:
         ref_model = deepcopy(model)
         ref_tokenizer = tokenizer
@@ -78,7 +76,6 @@ def llm_dpo(args: DPOArguments) -> str:
     set_generation_config(model, generation_config)
 
     model = prepare_model(model, args)
-    ref_model = prepare_model(ref_model, args)
 
     show_layers(model)
     model_info = get_model_info(model)
@@ -187,9 +184,27 @@ def llm_dpo(args: DPOArguments) -> str:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
         # print_example(train_dataset[0], tokenizer)
-        # stat_dataset(train_dataset)
-        # if val_dataset is not None:
-        #     stat_dataset(val_dataset)
+
+        def stat_dataset(llm_dataset) -> None:
+            """Statistical analysis was performed on the dataset"""
+            _token_len = []
+            from datasets import Dataset as HfDataset
+            from swift.utils.np_utils import stat_array
+            if isinstance(llm_dataset, HfDataset):
+                prompt = llm_dataset['prompt']
+                chosen = llm_dataset['chosen']
+                rejected = llm_dataset['rejected']
+                for ii, cc, rr in zip(prompt, chosen, rejected):
+                    _token_len.append(len(ii) + max(len(cc), len(rr)))
+            else:
+                for d in llm_dataset:
+                    _token_len.append(len(d['prompt']))
+            _, stat_str = stat_array(_token_len)
+            logger.info(f'Dataset Token Length: {stat_str}')
+
+        stat_dataset(train_dataset)
+        if val_dataset is not None:
+            stat_dataset(val_dataset)
     else:
         train_dataset = LazyLLMDataset(train_dataset, DPOTemplate(template))
         val_dataset = LazyLLMDataset(val_dataset, DPOTemplate(template))
@@ -293,6 +308,8 @@ def llm_dpo(args: DPOArguments) -> str:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
+        max_prompt_length=2048,
+        max_length=4096,
         **trainer_kwargs)
     trainer.sft_args = args
     if is_master():

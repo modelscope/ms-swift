@@ -584,7 +584,7 @@ def get_dataset_from_hf(
 
 register_dataset(
     DatasetName.stack_exchange_paired,
-    '/mnt/workspace/yzhao/tastelikefeet/swift/examples/pytorch/llm/stack-exchange-paired', [('default', 'train')],
+    '/mnt/workspace/yzhao/tastelikefeet/datasets/stack-exchange-paired', [('default', 'train')],
     [('default', 'test')],
     RenameColumnsPreprocessor({
         'question': 'query',
