@@ -328,7 +328,7 @@ class Template:
             history = []
         if len(history) > 0:
             assert self.support_multi_round, 'the template not support multi-round chat'
-        if system is None:
+        if system is None: 
             if self.use_default_system:
                 system = self.default_system
         else:

@@ -59,10 +59,10 @@ def llm_dpo(args: DPOArguments) -> str:
     if args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+                                           model_kwargs, **kwargs, device_map='0')
     if args.ref_model_type is not None:
         ref_model, ref_tokenizer = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
-                                               model_kwargs, **kwargs)
+                                               model_kwargs, **kwargs, device_map='1')
     else:
         ref_model = deepcopy(model)
         ref_tokenizer = tokenizer
@@ -133,16 +133,50 @@ def llm_dpo(args: DPOArguments) -> str:
 
         def encode(self, example: Dict[str,
                                     Any]) -> Dict[str, Optional[List[int]]]:
-            output = super().encode(example)
-            output['chosen_input_ids'] = output['input_ids']
-            output['chosen_labels'] = output['labels']
-            example['response'] = example['rejected_response']
-            output1 = super().encode(example)
-            output['rejected_input_ids'] = output1['input_ids']
-            output['rejected_labels'] = output1['labels']
-            output.pop('input_ids')
-            output.pop('labels')
-            return output
+            query: Optional[str] = example.get('query', None)
+            history: Optional[History] = example.get('history', None)
+            system: Optional[str] = example.get('system', None)
+            if query is None:
+                query = ''
+            if history is None:
+                history = []
+            if len(history) > 0:
+                assert self.support_multi_round, 'the template not support multi-round chat'
+            if system is None: 
+                if self.use_default_system:
+                    system = self.default_system
+            else:
+                assert self.prefix_has_system is not None, 'not support `system`'
+            res_context_list: List[Context] = []
+            compute_loss_idx: List[int] = []
+            if system is None:
+                assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
+                prefix = template.prefix
+            else:
+                prefix = template.prefix_has_system
+            _concat_context_list(
+                prefix, res_context_list, compute_loss_idx, system=system)
+            for i, (q, r) in enumerate(history):
+                _concat_context_list(
+                    [*template.prompt, '{{RESPONSE}}', *template.chat_sep],
+                    res_context_list,
+                    compute_loss_idx,
+                    query=q,
+                    response=r,
+                    round0=i)
+            _concat_context_list(
+                template.prompt,
+                res_context_list,
+                compute_loss_idx,
+                query=query,
+                round0=len(history))
+            res_context_list, compute_loss_idx = _simplify_context_list(
+                res_context_list, compute_loss_idx)
+            return {
+                'prompt': res_context_list[0],
+                'chosen': example['response'],
+                'rejected': example['rejected_response'],
+            }
 
     if not args.lazy_tokenize:
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
@@ -155,10 +189,10 @@ def llm_dpo(args: DPOArguments) -> str:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
-        print_example(train_dataset[0], tokenizer)
-        stat_dataset(train_dataset)
-        if val_dataset is not None:
-            stat_dataset(val_dataset)
+        # print_example(train_dataset[0], tokenizer)
+        # stat_dataset(train_dataset)
+        # if val_dataset is not None:
+        #     stat_dataset(val_dataset)
     else:
         train_dataset = LazyLLMDataset(train_dataset, DPOTemplate(template))
         val_dataset = LazyLLMDataset(val_dataset, DPOTemplate(template))
@@ -259,7 +293,6 @@ def llm_dpo(args: DPOArguments) -> str:
         model=model,
         ref_model=ref_model,
         args=training_args,
-        data_collator=data_collator,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,

@@ -219,7 +219,7 @@ MapFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
 def _single_map(d: Dict[str, Any],
                 map_func: MapFunc) -> Optional[Dict[str, Any]]:
     d = map_func(d)
-    if d is None or d.get('input_ids') is None:
+    if d is None:
         return None
     audio_info = d.get('audio_info')
     if audio_info is not None:
