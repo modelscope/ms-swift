@@ -588,7 +588,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     ModelType.codegeex2_6b,
     'ZhipuAI/codegeex2-6b',
     LoRATM.chatglm,
-    TemplateType.chatglm2,
+    TemplateType.chatglm_generation,
     support_vllm=True)
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
