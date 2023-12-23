@@ -63,6 +63,7 @@ class ModelType:
     chatglm3_6b_base = 'chatglm3-6b-base'
     chatglm3_6b = 'chatglm3-6b'
     chatglm3_6b_32k = 'chatglm3-6b-32k'
+    codegeex2_6b = 'codegeex2-6b'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_7b_chat = 'llama2-7b-chat'
@@ -580,6 +581,12 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
 @register_model(
     ModelType.chatglm2_6b,
     'ZhipuAI/chatglm2-6b',
+    LoRATM.chatglm,
+    TemplateType.chatglm2,
+    support_vllm=True)
+@register_model(
+    ModelType.codegeex2_6b,
+    'ZhipuAI/codegeex2-6b',
     LoRATM.chatglm,
     TemplateType.chatglm2,
     support_vllm=True)
