@@ -215,7 +215,7 @@ def llm_dpo(args: DPOArguments) -> str:
         padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args
     evaluation_strategy = IntervalStrategy.STEPS
-    load_best_model_at_end = True
+    load_best_model_at_end = False
     if val_dataset is None:
         evaluation_strategy = IntervalStrategy.NO
         load_best_model_at_end = False

@@ -30,7 +30,7 @@ python llm_dpo.py \
     --gradient_accumulation_steps  16  \
     --max_grad_norm  1.0  \
     --warmup_ratio  0.03  \
-    --eval_steps  500  \
+    --eval_steps  10000  \
     --save_steps  500  \
     --save_total_limit  2  \
-    --logging_steps  10
+    --logging_steps  10 \
