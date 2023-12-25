@@ -404,6 +404,11 @@ class InferArguments:
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
+        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
+                self.ckpt_dir):
+            raise ValueError(
+                f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
+                'the dir contains a `sft_args.json` file.')
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -451,6 +456,12 @@ class InferArguments:
             assert support_vllm, f'vllm not support `{self.model_type}`'
             if self.sft_type == 'lora':
                 assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
+
+    @staticmethod
+    def check_ckpt_dir_correct(ckpt_dir) -> bool:
+        if not os.path.exists(ckpt_dir):
+            return False
+        return os.path.isfile(os.path.join(ckpt_dir, 'sft_args.json'))
 
 
 @dataclass
@@ -566,7 +577,7 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.truncation_strategy = 'delete'
     if isinstance(args,
                   InferArguments) and args.safe_serialization is not None:
-        self.save_safetensors = args.safe_serialization
+        args.save_safetensors = args.safe_serialization
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
