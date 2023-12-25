@@ -389,6 +389,11 @@ class InferArguments:
     safe_serialization: Optional[bool] = None
 
     def __post_init__(self) -> None:
+        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
+                self.ckpt_dir):
+            raise ValueError(
+                f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
+                'the dir contains a `configuration.json` file.')
         handle_compatibility(self)
         handle_path(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
@@ -451,6 +456,18 @@ class InferArguments:
             assert support_vllm, f'vllm not support `{self.model_type}`'
             if self.sft_type == 'lora':
                 assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
+
+    @staticmethod
+    def check_ckpt_dir_correct(ckpt_dir) -> bool:
+        """Check the checkpoint dir is correct, which means it must contains a `configuration.json` file.
+        Args:
+            ckpt_dir: The checkpoint dir
+        Returns:
+            A bool value represents the dir is valid or not.
+        """
+        if not os.path.exists(ckpt_dir):
+            return False
+        return os.path.isfile(os.path.join(ckpt_dir, 'configuration.json'))
 
 
 @dataclass
@@ -566,7 +583,7 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.truncation_strategy = 'delete'
     if isinstance(args,
                   InferArguments) and args.safe_serialization is not None:
-        self.save_safetensors = args.safe_serialization
+        args.save_safetensors = args.safe_serialization
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
