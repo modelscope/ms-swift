@@ -459,6 +459,12 @@ class InferArguments:
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
+        """Check the checkpoint dir is correct, which means it must contains a `configuration.json` file.
+        Args:
+            ckpt_dir: The checkpoint dir
+        Returns:
+            A bool value represents the dir is valid or not.
+        """
         if not os.path.exists(ckpt_dir):
             return False
         return os.path.isfile(os.path.join(ckpt_dir, 'configuration.json'))
