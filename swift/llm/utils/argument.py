@@ -389,6 +389,11 @@ class InferArguments:
     safe_serialization: Optional[bool] = None
 
     def __post_init__(self) -> None:
+        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
+                self.ckpt_dir):
+            raise ValueError(
+                f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
+                'the dir contains a `configuration.json` file.')
         handle_compatibility(self)
         handle_path(self)
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
@@ -404,11 +409,6 @@ class InferArguments:
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
-        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
-                self.ckpt_dir):
-            raise ValueError(
-                f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
-                'the dir contains a `sft_args.json` file.')
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -461,7 +461,7 @@ class InferArguments:
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
         if not os.path.exists(ckpt_dir):
             return False
-        return os.path.isfile(os.path.join(ckpt_dir, 'sft_args.json'))
+        return os.path.isfile(os.path.join(ckpt_dir, 'configuration.json'))
 
 
 @dataclass
