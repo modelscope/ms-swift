@@ -56,7 +56,7 @@ class SCETuningConfig(SwiftConfig):
         default='decoder',
         metadata={
             'help':
-            'Location of tuner operation. The tuner mode choices: encoder, decoder'
+            'Location of tuner operation. The tuner mode choices: encoder, decoder, and identity'
         })
 
     tuner_op: str = field(
@@ -191,7 +191,7 @@ class SCETuning(SwiftAdapter):
         # 3. inject the tuners
         for tuner_id, t_module in enumerate(target_module_ins_list):
             t_module.forward_origin = getattr(t_module, 'forward')
-            if config.tuner_mode == 'encoder':
+            if config.tuner_mode in ('encoder', 'identity'):
                 _forward = _forward_encoder_mode
             elif config.tuner_mode == 'decoder':
                 _forward = _forward_decoder_mode
