@@ -600,24 +600,43 @@ def process_hh_rlhf(dataset):
 
     def reorganize_row(row):
         import re
-        chosen = row['chosen']
-        rejected = row['rejected']
-        parts_chosen = [s.strip() for s in re.split("Human:|Assistant:", chosen)]
-        parts_rejected = [s.strip() for s in re.split("Human:|Assistant:", rejected)]
-        assert ''.join(parts_chosen[:-1]) == ''.join(parts_rejected[:-1])
+        chosen = row['chosen'].strip()
+        rejected = row['rejected'].strip()
+        parts_chosen = [s.strip() for s in re.split("\n\nHuman:|\n\nAssistant:|\n\nHum:", chosen)]
+        parts_rejected = [s.strip() for s in re.split("\n\nHuman:|\n\nAssistant:|\n\nHum:", rejected)]
+        if parts_chosen[0].startswith('Human:'):
+            assert parts_rejected[0].startswith('Human:')
+            parts_chosen[0] = parts_chosen[0][6:].strip()
+            parts_rejected[0] = parts_rejected[0][6:].strip()
         history = []
-        for idx in range(0, len(parts_chosen[:-2]), 2):
-            history.append((parts_chosen[idx], parts_chosen[idx+1]))
-        query = parts_chosen[-2]
-        response = parts_chosen[-1]
-        rejected_response = parts_rejected[-1]
+        for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
+            if s1 == s2:
+                if idx % 2 == 0:
+                    history.append([s1, None])
+                else:
+                    history[-1][-1] = s1
+            else:
+                break
+        
+        if idx % 2 == 0:
+            print(f'filtered row.')
+            return {
+                'query': None,
+                'response': None,
+                'rejected_response': None,
+                'history': None,
+            }
+        query = history[-1][0]
+        history = history[:-1]
+        response = s1
+        rejected_response = s2
         return {
             'query': query,
             'response': response,
             'rejected_response': rejected_response,
             'history': history,
         }
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(

@@ -170,18 +170,18 @@ def llm_dpo(args: DPOArguments) -> str:
             res_context_list, compute_loss_idx = _simplify_context_list(
                 res_context_list, compute_loss_idx)
             return {
-                'prompt': res_context_list[0],
+                'prompt': ''.join(res_context_list),
                 'chosen': example['response'],
                 'rejected': example['rejected_response'],
             }
 
     if not args.lazy_tokenize:
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        train_dataset = train_dataset.map(DPOTemplate(template).encode)
+        train_dataset = train_dataset.map(DPOTemplate(template).encode, load_from_cache_file=False)
         # train_dataset = dataset_map(train_dataset, DPOTemplate(template).encode,
         #                             args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = val_dataset.map(DPOTemplate(template).encode)
+            val_dataset = val_dataset.map(DPOTemplate(template).encode, load_from_cache_file=False)
             # val_dataset = dataset_map(val_dataset, DPOTemplate(template).encode,
             #                           args.preprocess_num_proc)
         if args.test_oom_error:
@@ -303,8 +303,8 @@ def llm_dpo(args: DPOArguments) -> str:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        max_prompt_length=2048,
-        max_length=4096,
+        max_prompt_length=512,
+        max_length=1024,
         **trainer_kwargs)
     trainer.sft_args = args
     if is_master():
