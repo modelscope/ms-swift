@@ -111,8 +111,9 @@ class DatasetName:
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
 
-    # dpo/hfrl dataset
     stack_exchange_paired = 'stack-exchange-paired'
+    # dpo/hfrl dataset
+    hh_rlhf = 'hh-rlhf'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -591,6 +592,39 @@ register_dataset(
         'response_j': 'response',
         'response_k': 'rejected_response',
     }),
+    get_dataset_from_hf,
+    tags=['hfrl', 'dpo', 'pairwise'])
+
+
+def process_hh_rlhf(dataset):
+
+    def reorganize_row(row):
+        import re
+        chosen = row['chosen']
+        rejected = row['rejected']
+        parts_chosen = [s.strip() for s in re.split("Human:|Assistant:", chosen)]
+        parts_rejected = [s.strip() for s in re.split("Human:|Assistant:", rejected)]
+        assert ''.join(parts_chosen[:-1]) == ''.join(parts_rejected[:-1])
+        history = []
+        for idx in range(0, len(parts_chosen[:-2]), 2):
+            history.append((parts_chosen[idx], parts_chosen[idx+1]))
+        query = parts_chosen[-2]
+        response = parts_chosen[-1]
+        rejected_response = parts_rejected[-1]
+        return {
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+            'history': history,
+        }
+    return dataset.map(reorganize_row)
+
+
+register_dataset(
+    DatasetName.hh_rlhf,
+    '/mnt/workspace/yzhao/tastelikefeet/datasets/hh-rlhf', [('default', 'train')],
+    [('default', 'test')],
+    process_hh_rlhf,
     get_dataset_from_hf,
     tags=['hfrl', 'dpo', 'pairwise'])
 

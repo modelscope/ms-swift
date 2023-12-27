@@ -36,6 +36,11 @@ def llm_dpo(args: DPOArguments) -> str:
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
+    if is_dist() and not is_ddp_plus_mp():
+        model_kwargs['device_map'] = {'': local_rank}
+    else:
+        model_kwargs['device_map'] = 'auto'
+    # model_kwargs['device_map'] = {'': local_rank}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -51,11 +56,9 @@ def llm_dpo(args: DPOArguments) -> str:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
-    model_kwargs['device_map'] = 'auto'
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     if args.ref_model_type is not None:
-        model_kwargs['device_map'] = 'auto'
         ref_model, ref_tokenizer = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
                                                model_kwargs, **kwargs)
     else:
@@ -174,12 +177,13 @@ def llm_dpo(args: DPOArguments) -> str:
 
     if not args.lazy_tokenize:
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        # train_dataset = train_dataset.map(template.encode)
-        train_dataset = dataset_map(train_dataset, DPOTemplate(template).encode,
-                                    args.preprocess_num_proc)
+        train_dataset = train_dataset.map(DPOTemplate(template).encode)
+        # train_dataset = dataset_map(train_dataset, DPOTemplate(template).encode,
+        #                             args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, DPOTemplate(template).encode,
-                                      args.preprocess_num_proc)
+            val_dataset = val_dataset.map(DPOTemplate(template).encode)
+            # val_dataset = dataset_map(val_dataset, DPOTemplate(template).encode,
+            #                           args.preprocess_num_proc)
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
@@ -289,15 +293,6 @@ def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'training_args: {training_args}')
 
     trainer_kwargs = {}
-    if args.predict_with_generate:
-        trainer_kwargs['compute_metrics'] = partial(
-            compute_nlg_metrics, tokenizer=tokenizer)
-    else:
-        compute_metrics = partial(
-            compute_acc_metrics, acc_strategy=args.acc_strategy)
-        trainer_kwargs['compute_metrics'] = compute_metrics
-        trainer_kwargs[
-            'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
 
