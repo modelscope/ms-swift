@@ -36,7 +36,7 @@ def llm_dpo(args: DPOArguments) -> str:
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
-    if is_dist() and not is_ddp_plus_mp():
+    if (is_dist() and not is_ddp_plus_mp()) or "HF_ACCELERATOR" in os.environ:
         model_kwargs['device_map'] = {'': local_rank}
     else:
         model_kwargs['device_map'] = 'auto'
@@ -59,11 +59,10 @@ def llm_dpo(args: DPOArguments) -> str:
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     if args.ref_model_type is not None:
-        ref_model, ref_tokenizer = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
+        ref_model, _ = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
                                                model_kwargs, **kwargs)
     else:
         ref_model = None
-        ref_tokenizer = None
 
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
@@ -175,48 +174,9 @@ def llm_dpo(args: DPOArguments) -> str:
                 'rejected': example['rejected_response'],
             }
 
-    if not args.lazy_tokenize:
-        logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        train_dataset = train_dataset.map(DPOTemplate(template).encode, load_from_cache_file=False)
-        # train_dataset = dataset_map(train_dataset, DPOTemplate(template).encode,
-        #                             args.preprocess_num_proc)
-        if val_dataset is not None:
-            val_dataset = val_dataset.map(DPOTemplate(template).encode, load_from_cache_file=False)
-            # val_dataset = dataset_map(val_dataset, DPOTemplate(template).encode,
-            #                           args.preprocess_num_proc)
-        if args.test_oom_error:
-            train_dataset = sort_by_max_length(train_dataset, 20000)
-        # Data analysis
-        # print_example(train_dataset[0], tokenizer)
+    if args.test_oom_error:
+        train_dataset = sort_by_max_length(train_dataset, 20000)
 
-        def stat_dataset(llm_dataset) -> None:
-            """Statistical analysis was performed on the dataset"""
-            _token_len = []
-            from datasets import Dataset as HfDataset
-            from swift.utils.np_utils import stat_array
-            if isinstance(llm_dataset, HfDataset):
-                prompt = llm_dataset['prompt']
-                chosen = llm_dataset['chosen']
-                rejected = llm_dataset['rejected']
-                for ii, cc, rr in zip(prompt, chosen, rejected):
-                    _token_len.append(len(ii) + max(len(cc), len(rr)))
-            else:
-                for d in llm_dataset:
-                    _token_len.append(len(d['prompt']))
-            _, stat_str = stat_array(_token_len)
-            logger.info(f'Dataset Token Length: {stat_str}')
-
-        stat_dataset(train_dataset)
-        if val_dataset is not None:
-            stat_dataset(val_dataset)
-    else:
-        train_dataset = LazyLLMDataset(train_dataset, DPOTemplate(template))
-        val_dataset = LazyLLMDataset(val_dataset, DPOTemplate(template))
-
-    data_collator = partial(
-        data_collate_dpo_fn,
-        tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args
     evaluation_strategy = IntervalStrategy.STEPS
     load_best_model_at_end = False
@@ -303,8 +263,9 @@ def llm_dpo(args: DPOArguments) -> str:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        max_prompt_length=512,
-        max_length=1024,
+        template=template,
+        max_prompt_length=args.max_prompt_length,
+        max_length=args.max_length,
         **trainer_kwargs)
     trainer.sft_args = args
     if is_master():

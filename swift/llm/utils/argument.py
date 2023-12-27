@@ -456,10 +456,11 @@ class InferArguments:
 @dataclass
 class DPOArguments(SftArguments):
 
-    # You can specify the model by either using the model_type or model_id_or_path.
     ref_model_type: Optional[str] = field(
         default=None,
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+
+    max_prompt_length: int = 1024
 
 
 @dataclass

@@ -175,7 +175,7 @@ def _encode_context_list(
         return input_ids, labels, kwargs
 
 
-def _encode(template: 'Template', query: str, response: Optional[str],
+def _encode(template: 'Template', query: str, response: Optional[str], rejected_response: Optional[str],
             history: History, system: Optional[str],
             truncation_strategy: str) -> Dict[str, Optional[List[int]]]:
     res_context_list: List[Context] = []
@@ -320,6 +320,7 @@ class Template:
             )
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
+        rejected_response: Optional[str] = example.get('rejected_response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         if query is None:
@@ -333,7 +334,7 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'not support `system`'
-        return _encode(self, query, response, history, system,
+        return _encode(self, query, response, rejected_response, history, system,
                        self.truncation_strategy)
 
 
