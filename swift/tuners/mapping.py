@@ -7,6 +7,7 @@ from .neftune import NEFTune, NEFTuneConfig
 from .prompt import Prompt, PromptConfig
 from .restuning import ResTuning, ResTuningConfig
 from .rome import Rome, RomeConfig
+from .scetuning.scetuning import SCETuning, SCETuningConfig
 from .side import Side, SideConfig
 
 
@@ -19,6 +20,7 @@ class SwiftTuners:
     ROME = 'ROME'
     LONGLORA = 'longlora'
     NEFTUNE = 'neftune'
+    SCETUNING = 'SCETuning'
 
 
 SWIFT_MAPPING = {
@@ -30,4 +32,5 @@ SWIFT_MAPPING = {
     SwiftTuners.ROME: (RomeConfig, Rome),
     SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
     SwiftTuners.NEFTUNE: (NEFTuneConfig, NEFTune),
+    SwiftTuners.SCETUNING: (SCETuningConfig, SCETuning),
 }

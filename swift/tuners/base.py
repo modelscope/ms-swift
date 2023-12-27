@@ -101,7 +101,7 @@ class SwiftModel(nn.Module):
                             break
                     state_dict[key] = value
         incompatible_keys = self.model.load_state_dict(state_dict, False)
-        if len(incompatible_keys[1]) > 0:
+        if incompatible_keys and len(incompatible_keys[1]) > 0:
             logger.error(
                 f'Load state dict with unexpected keys: {incompatible_keys[1]}'
             )
