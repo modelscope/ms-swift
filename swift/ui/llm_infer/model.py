@@ -116,14 +116,15 @@ class Model(BaseUI):
                     TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
                     ['template'], 'default_system', None)
                 template = MODEL_MAPPING[choice]['template']
-            return model_id_or_path, default_system, template
+            return model_id_or_path, default_system, template, gr.update(
+                interactive=choice == base_tab.locale('checkpoint',
+                                                      cls.lang)['value'])
 
-        def update_model_id_or_path(path):
+        def update_model_id_or_path(model_type, path):
             if not path:
                 return None, None, None
             local_path = os.path.join(path, 'sft_args.json')
             if not os.path.exists(local_path):
-                model_type = cls.element('model_type').arg_value
                 default_system = getattr(
                     TEMPLATE_MAPPING[MODEL_MAPPING[model_type]['template']]
                     ['template'], 'default_system', None)
@@ -141,9 +142,11 @@ class Model(BaseUI):
         model_type.change(
             update_input_model,
             inputs=[model_type],
-            outputs=[model_id_or_path, system, template_type])
+            outputs=[
+                model_id_or_path, system, template_type, model_id_or_path
+            ])
 
         model_id_or_path.change(
             update_model_id_or_path,
-            inputs=[model_id_or_path],
+            inputs=[model_type, model_id_or_path],
             outputs=[system, template_type])

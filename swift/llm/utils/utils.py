@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import heapq
+import importlib.util
 import logging
 import os
 import shutil
-import time
+from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
@@ -38,7 +39,8 @@ from transformers import (GenerationConfig, PreTrainedModel,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
-from .template import History, StopWordsCriteria, Template, get_audio_info
+from .template import (History, StopWords, StopWordsCriteria, Template,
+                       get_audio_info)
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -340,6 +342,13 @@ def data_collate_fn(batch: List[Dict[str, Any]],
             get_audio_info(tokenizer, audio_info=b['audio_info'])
             for b in batch
         ]
+    if batch[0].get('images') is not None:
+        res['images'] = [b['images'] for b in batch]
+    if batch[0].get('cross_images') is not None:
+        res['cross_images'] = [b['cross_images'] for b in batch]
+    if batch[0].get('token_type_ids') is not None:
+        res['token_type_ids'] = torch.stack(
+            [b['token_type_ids'] for b in batch])
     return res
 
 
@@ -439,25 +448,42 @@ def _is_chinese_char(cp):
 
 
 def inference_stream(
-        model: PreTrainedModel,
-        template: Template,
-        query: str,
-        history: Optional[History] = None,
-        system: Optional[str] = None) -> Iterator[Tuple[str, History]]:
+    model: PreTrainedModel,
+    template: Template,
+    query: str,
+    history: Optional[History] = None,
+    system: Optional[str] = None,
+    image: Optional['Image'] = None,
+    *,
+    generation_config: Optional[GenerationConfig] = None,
+    stop_words: Optional[List[StopWords]] = None,
+) -> Iterator[Tuple[str, History]]:
+    """
+    generation_config: Priority: generation_config > model.generation_config.
+    """
+    if stop_words is None:
+        stop_words = []
     if history is None:
         history = []
     else:
-        history = history.copy()
+        history = deepcopy(history)
     example = {'query': query, 'history': history, 'system': system}
+    if image is not None:
+        example['image'] = image
     inputs = template.encode(example)
     audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
     input_ids = torch.tensor(input_ids)[None].to(device)
-    attention_mask = torch.ones_like(input_ids).to(device)
+    if 'attention_mask' not in inputs:
+        attention_mask = torch.ones_like(input_ids).to(device)
+    else:
+        attention_mask = inputs['attention_mask'].to(device)
     model.eval()
-    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config', None)
+    generation_config = deepcopy(generation_config)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
     model.__class__.generate_stream = NewGenerationMixin.generate
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
@@ -470,9 +496,20 @@ def inference_stream(
     if stream_config.max_new_tokens is not None:
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
-    stop_words = [template.suffix[-1]]
+    if template.suffix[-1] not in stop_words:
+        stop_words.append(template.suffix[-1])
     decode_kwargs = {}
     model_kwargs = {}
+    if 'token_type_ids' in inputs:
+        model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
+    if 'images' in inputs:
+        model_kwargs['images'] = [[
+            inputs['images'][0][0].to(device).to(torch.float16)
+        ]]
+    if 'cross_images' in inputs:
+        model_kwargs['cross_images'] = [[
+            inputs['cross_images'][0][0].to(device).to(torch.float16)
+        ]]
     if audio_info is not None:
         audio_info = get_audio_info(tokenizer, audio_info=audio_info)
         decode_kwargs['audio_info'] = audio_info
@@ -487,16 +524,19 @@ def inference_stream(
         **model_kwargs,
         seed=-1)
     generate_ids = []
+    response = ''
+    print_idx = 0
     history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
         response = tokenizer.decode(generate_ids, True, **decode_kwargs)
         if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
                 ord(response[-1])):
-            safe_response = response
+            print_idx = len(response)
         else:
-            safe_response = response[:response.rfind(' ')
-                                     + 1]  # avoid printing incomplete words
+            print_idx = max(response.rfind(' ') + 1, print_idx)
+        # avoid printing incomplete words
+        safe_response = response[:print_idx]
         history[-1] = (query, safe_response)
         yield safe_response, history
     history[-1] = (query, response)
@@ -509,14 +549,21 @@ def inference(model: PreTrainedModel,
               history: Optional[History] = None,
               system: Optional[str] = None,
               *,
+              generation_config: Optional[GenerationConfig] = None,
+              stop_words: Optional[List[StopWords]] = None,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+    """
+    generation_config: Priority: generation_config > model.generation_config.
+    """
+    if stop_words is None:
+        stop_words = []
     if history is None:
         history = []
     else:
-        history = history.copy()
+        history = deepcopy(history)
     example = {'query': query, 'history': history, 'system': system}
     inputs = template.encode(example)
     audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
@@ -526,7 +573,9 @@ def inference(model: PreTrainedModel,
     input_ids = torch.tensor(input_ids)[None].to(device)
     attention_mask = torch.ones_like(input_ids).to(device)
     model.eval()
-    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config', None)
+    generation_config = deepcopy(generation_config)
     if stream is True and verbose is False:
         logger.warning(
             'Please set verbose to True to support TextStreamer, or use `inference_stream.`'
@@ -551,7 +600,8 @@ def inference(model: PreTrainedModel,
         generation_config.pad_token_id = tokenizer.pad_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
-    stop_words = [template.suffix[-1]]
+    if template.suffix[-1] not in stop_words:
+        stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
     generate_ids = model.generate(
@@ -644,6 +694,10 @@ def fix_fp16_trainable_bug(model: Module) -> None:
                 logger.info('Convert trainable parameters from fp16 to fp32.')
                 is_logging = True
             p.data = p.data.to(dtype=torch.float32)
+
+
+def is_vllm_available():
+    return importlib.util.find_spec('vllm') is not None
 
 
 # monkey patching

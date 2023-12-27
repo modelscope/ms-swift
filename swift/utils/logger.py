@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import importlib
+import importlib.util
 import logging
 import os
 from typing import Optional

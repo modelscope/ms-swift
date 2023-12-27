@@ -1,4 +1,6 @@
 # LLM推理文档
+如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#推理加速)
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
@@ -34,7 +36,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
@@ -44,7 +45,7 @@ print(f'template_type: {template_type}')  # template_type: chatml
 kwargs = {}
 # kwargs['use_flash_attn'] = True  # 使用flash_attn
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'}, **kwargs)
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'}, **kwargs)
 # 修改max_new_tokens
 model.generation_config.max_new_tokens = 128
 
@@ -97,7 +98,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b_chat_int4
 template_type = get_default_template_type(model_type)
@@ -135,13 +135,12 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: default-generation
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 64
 template = get_template(template_type, tokenizer)
 seed_everything(42)
@@ -177,7 +176,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference_stream, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
@@ -219,7 +217,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_vl_chat
 template_type = get_default_template_type(model_type)
@@ -262,7 +259,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.qwen_audio_chat
 template_type = get_default_template_type(model_type)
@@ -304,7 +300,6 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-import torch
 
 model_type = ModelType.chatglm3_6b
 template_type = get_default_template_type(model_type)
@@ -393,11 +388,24 @@ response: 浙江有很多美食,以下是一些著名的:
 history: [('浙江的省会在哪里？', '浙江的省会是杭州。'), ('这有什么好吃的？', '浙江有很多美食,以下是一些著名的:\n\n1. 杭州小笼包:这是杭州著名的传统小吃,外皮薄而有韧性,内馅鲜美多汁。\n\n2. 浙江粽子:浙江粽子有多种口味,如咸蛋黄肉粽、豆沙粽等,其中以杭州粽子最为著名。\n\n3. 油爆虾:这是浙江海鲜中的代表之一,用热油爆炒虾仁,口感鲜嫩。\n\n4. 椒盐土豆丝:这是浙江传统的素菜之一,用土豆丝和椒盐一起炒制,口感清爽。\n')]
 """
 ```
+
+### 使用CLI
+```bash
+# qwen
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-7b-chat
+# yi
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat
+```
+
+### 微调后模型
+如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](./LLM微调文档.md#微调后模型)
+
+
 ## Web-UI
 ### qwen-7b-chat
 使用CLI:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift app-ui --model_id_or_path qwen/Qwen-7B-Chat
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b-chat
 ```
 
 使用python:
@@ -425,7 +433,7 @@ app_ui_main(infer_args)
 ### qwen-7b
 使用CLI:
 ```bash
-swift app-ui --model_id_or_path qwen/Qwen-7B
+CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b
 ```
 
 使用python:
@@ -438,3 +446,6 @@ from swift.llm import InferArguments, ModelType, app_ui_main
 infer_args = InferArguments(model_type=ModelType.qwen_7b)
 app_ui_main(infer_args)
 ```
+
+### 微调后模型
+使用微调后模型的web-ui可以查看LLM微调文档](./LLM微调文档.md#微调后模型-1)

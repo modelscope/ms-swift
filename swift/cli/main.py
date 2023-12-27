@@ -1,17 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import importlib.util
 import os
 import subprocess
 import sys
 from typing import Dict, List, Optional
 
-from swift.cli import app_ui, infer, merge_lora, sft, ui
-
 ROUTE_MAPPING: Dict[str, str] = {
-    'sft': sft.__file__,
-    'infer': infer.__file__,
-    'app-ui': app_ui.__file__,
-    'merge-lora': merge_lora.__file__,
-    'web-ui': ui.__file__
+    'sft': 'swift.cli.sft',
+    'infer': 'swift.cli.infer',
+    'app-ui': 'swift.cli.app_ui',
+    'merge-lora': 'swift.cli.merge_lora',
+    'web-ui': 'swift.cli.web_ui'
 }
 
 ROUTE_MAPPING.update(
@@ -46,7 +45,7 @@ def cli_main() -> None:
     argv = sys.argv[1:]
     method_name = argv[0]
     argv = argv[1:]
-    file_path = ROUTE_MAPPING[method_name]
+    file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
     if torchrun_args is None or method_name != 'sft':
         args = ['python', file_path, *argv]

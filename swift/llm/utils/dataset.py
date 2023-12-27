@@ -28,7 +28,7 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'system', 'history'}:
+        if k in {'query', 'response', 'system', 'history', 'image'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -106,9 +106,19 @@ class DatasetName:
     # vision
     coco_en = 'coco-en'
     coco_mini_en = 'coco-mini-en'
+    capcha_images = 'capcha-images'
     # audio
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
+
+    @classmethod
+    def get_dataset_name_list(cls) -> List[str]:
+        res = []
+        for k in cls.__dict__.keys():
+            if k.startswith('__') or k == 'get_dataset_name_list':
+                continue
+            res.append(cls.__dict__[k])
+        return res
 
 
 def register_dataset(
@@ -589,6 +599,28 @@ register_dataset(
     _preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
+
+
+def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
+    dataset = dataset.rename_columns({
+        'solution': 'response',
+    })
+
+    def add_system(row):
+        row['query'] = 'CAPTCHA:'
+        return row
+
+    dataset = dataset.map(add_system)
+    return dataset
+
+
+register_dataset(
+    DatasetName.capcha_images,
+    'AI-ModelScope/captcha-images', [('default', 'train')],
+    [('default', 'validation')],
+    _preprocess_capcha_images,
+    get_dataset_from_repo,
+    tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 register_dataset(
     DatasetName.cls_fudan_news_zh,

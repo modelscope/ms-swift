@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
+from typing import Any, Dict, Union
 
 import json
 import numpy as np
@@ -27,7 +28,7 @@ from .utils import (LazyLLMDataset, SftArguments, Template,
 logger = get_logger()
 
 
-def llm_sft(args: SftArguments) -> str:
+def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -172,9 +173,13 @@ def llm_sft(args: SftArguments) -> str:
 
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length,
-                                      args.truncation_strategy)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     if not args.lazy_tokenize:
@@ -255,7 +260,8 @@ def llm_sft(args: SftArguments) -> str:
         additional_saved_files=additional_saved_files,
         disable_tqdm=args.disable_tqdm,
         save_on_each_node=args.save_on_each_node,
-        acc_strategy=args.acc_strategy)
+        acc_strategy=args.acc_strategy,
+        save_safetensors=args.save_safetensors)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36

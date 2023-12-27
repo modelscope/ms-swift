@@ -13,16 +13,16 @@ from transformers import PreTrainedModel
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_model_info,
                          read_multi_line, seed_everything, show_layers)
-from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference, inference_stream,
-                    set_generation_config)
+from .utils import (InferArguments, Template, get_additional_saved_files,
+                    get_dataset, get_model_tokenizer, get_template, inference,
+                    inference_stream, set_generation_config)
 
 logger = get_logger()
 
 
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'cpu',
+               device_map: str = 'auto',
                **kwargs) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None
@@ -32,6 +32,20 @@ def merge_lora(args: InferArguments,
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
+    old_ckpt_dir = args.ckpt_dir
+    ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
+    merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
+    logger.info(f'merged_lora_path: `{merged_lora_path}`')
+    logger.info("Setting args.sft_type: 'full'")
+    logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
+    args.sft_type = 'full'
+    args.ckpt_dir = merged_lora_path
+    if os.path.exists(args.ckpt_dir) and not replace_if_exists:
+        logger.info(
+            f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
+            'skipping the saving process. '
+            'you can pass `replace_if_exists=True` to overwrite it.')
+        return
     # Loading Model and Tokenizer
     kwargs = {}
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
@@ -42,57 +56,44 @@ def merge_lora(args: InferArguments,
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
-    model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
+    model = Swift.from_pretrained(model, old_ckpt_dir, inference_mode=True)
     Swift.merge_and_unload(model)
     model = model.model
-
-    old_ckpt_dir = args.ckpt_dir
-    ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
-    merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
-    logger.info(f'merged_lora_path: `{merged_lora_path}`')
-    logger.info("Setting args.sft_type: 'full'")
-    logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
-    args.sft_type = 'full'
-    args.ckpt_dir = merged_lora_path
-
-    if not os.path.exists(args.ckpt_dir) or replace_if_exists:
-        logger.info('Saving merged weights...')
-        model.save_pretrained(
-            args.ckpt_dir, safe_serialization=args.safe_serialization)
-        tokenizer.save_pretrained(args.ckpt_dir)
-        for fname in os.listdir(old_ckpt_dir):
-            if fname in {'generation_config.json'}:
-                src_path = os.path.join(old_ckpt_dir, fname)
-                tgt_path = os.path.join(args.ckpt_dir, fname)
-                shutil.copy(src_path, tgt_path)
-        # configuration.json
-        configuration_fname = 'configuration.json'
-        old_configuration_path = os.path.join(old_ckpt_dir,
-                                              configuration_fname)
-        new_configuration_path = os.path.join(args.ckpt_dir,
-                                              configuration_fname)
-        if os.path.exists(old_configuration_path):
-            with open(old_configuration_path, 'r', encoding='utf-8') as f:
-                res = json.load(f)
-            res.pop('adapter_cfg', None)
-            with open(new_configuration_path, 'w', encoding='utf-8') as f:
-                json.dump(res, f, ensure_ascii=False, indent=4)
-        # sft_args.json
-        sft_args_fname = 'sft_args.json'
-        old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
-        new_sft_args_path = os.path.join(args.ckpt_dir, sft_args_fname)
-        if os.path.exists(old_sft_args_path):
-            with open(old_sft_args_path, 'r', encoding='utf-8') as f:
-                res = json.load(f)
-            res['sft_type'] = 'full'
-            with open(new_sft_args_path, 'w', encoding='utf-8') as f:
-                json.dump(res, f, ensure_ascii=False, indent=2)
-        logger.info(f'Successfully merged LoRA and saved in {args.ckpt_dir}.')
-    else:
-        logger.info(
-            f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
-            'skipping the saving process. '
-            'you can pass `replace_if_exists=True` to overwrite it.')
+    logger.info('Saving merged weights...')
+    model.save_pretrained(
+        merged_lora_path, safe_serialization=args.save_safetensors)
+    for add_file in get_additional_saved_files(args.model_type):
+        shutil.copy(
+            os.path.join(model.model_dir, add_file),
+            os.path.join(merged_lora_path, add_file))
+    tokenizer.save_pretrained(merged_lora_path)
+    for fname in os.listdir(old_ckpt_dir):
+        if fname in {'generation_config.json'}:
+            src_path = os.path.join(old_ckpt_dir, fname)
+            tgt_path = os.path.join(merged_lora_path, fname)
+            shutil.copy(src_path, tgt_path)
+    # configuration.json
+    configuration_fname = 'configuration.json'
+    old_configuration_path = os.path.join(old_ckpt_dir, configuration_fname)
+    new_configuration_path = os.path.join(merged_lora_path,
+                                          configuration_fname)
+    if os.path.exists(old_configuration_path):
+        with open(old_configuration_path, 'r', encoding='utf-8') as f:
+            res = json.load(f)
+        res.pop('adapter_cfg', None)
+        with open(new_configuration_path, 'w', encoding='utf-8') as f:
+            json.dump(res, f, ensure_ascii=False, indent=4)
+    # sft_args.json
+    sft_args_fname = 'sft_args.json'
+    old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
+    new_sft_args_path = os.path.join(merged_lora_path, sft_args_fname)
+    if os.path.exists(old_sft_args_path):
+        with open(old_sft_args_path, 'r', encoding='utf-8') as f:
+            res = json.load(f)
+        res['sft_type'] = 'full'
+        with open(new_sft_args_path, 'w', encoding='utf-8') as f:
+            json.dump(res, f, ensure_ascii=False, indent=2)
+    logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     return merged_lora_path
 
 
@@ -143,9 +144,13 @@ def prepare_model_template(
     logger.info(get_model_info(model))
     show_layers(model)
 
-    template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length,
-                                      args.truncation_strategy)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     return model, template
@@ -153,11 +158,15 @@ def prepare_model_template(
 
 def llm_infer(args: InferArguments) -> None:
     if args.merge_lora_and_save:
-        merge_lora(args)
-    model, template = prepare_model_template(args)
-    if args.overwrite_generation_config:
-        assert args.ckpt_dir is not None
-        model.generation_config.save_pretrained(args.ckpt_dir)
+        merge_lora(args, device_map='cpu')
+    if args.infer_backend == 'vllm':
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        llm_engine, template = prepare_vllm_engine_template(args)
+    else:
+        model, template = prepare_model_template(args)
+        if args.overwrite_generation_config:
+            assert args.ckpt_dir is not None
+            model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
     result = []
     jsonl_path = None
@@ -174,6 +183,12 @@ def llm_infer(args: InferArguments) -> None:
             logger.info(
                 'The current template only supports single-round dialogues.')
         history = []
+        if 'cogagent' in args.model_type:
+            image = input('Input an image url<<< ')
+            from PIL import Image
+            image = Image.open(image)
+        else:
+            image = None
         while True:
             if input_mode == 'S':
                 query = input('<<< ')
@@ -195,20 +210,34 @@ def llm_infer(args: InferArguments) -> None:
                 continue
             if not template.support_multi_round:
                 history = []
-            gen = inference_stream(model, template, query, history)
             print_idx = 0
-            for response, history in gen:
-                if len(response) > print_idx:
-                    print(response[print_idx:], end='', flush=True)
-                    print_idx = len(response)
+            if args.infer_backend == 'vllm':
+                gen = inference_stream_vllm(llm_engine, template,
+                                            [{
+                                                'query': query,
+                                                'history': history
+                                            }])
+                for resp_list in gen:
+                    response = resp_list[0]['response']
+                    new_history = resp_list[0]['history']
+                    if len(response) > print_idx:
+                        print(response[print_idx:], end='', flush=True)
+                        print_idx = len(response)
+            else:
+                gen = inference_stream(
+                    model, template, query, history, image=image)
+                for response, new_history in gen:
+                    if len(response) > print_idx:
+                        print(response[print_idx:], end='', flush=True)
+                        print_idx = len(response)
             print()
             print('-' * 50)
-            item = history[-1]
             obj = {
-                'query': item[0],
-                'response': item[1],
+                'query': query,
+                'response': response,
                 'history': history,
             }
+            history = new_history
             if jsonl_path is not None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
@@ -225,27 +254,71 @@ def llm_infer(args: InferArguments) -> None:
             else:
                 args.verbose = True
             logger.info(f'Setting args.verbose: {args.verbose}')
-        if not args.verbose:
-            val_dataset = tqdm(val_dataset)
-        for data in val_dataset:
-            _, history = inference(
-                model,
-                template,
-                data.get('query'),
-                data.get('history'),
-                data.get('system'),
-                stream=args.stream and args.verbose,
-                verbose=args.verbose)
-            label = data.get('response')
-            item = history[0]
-            obj = {'query': item[0], 'response': item[1], 'label': label}
-            if jsonl_path is not None:
-                append_to_jsonl(jsonl_path, obj)
-            result.append(obj)
+        if not args.verbose and args.stream:
+            args.stream = False
+            logger.info(f'Setting args.stream: {args.stream}')
+
+        if args.infer_backend == 'vllm' and not args.stream:
             if args.verbose:
-                print()
-                print(f'[LABELS]{label}')
-                print('-' * 50)
+                args.verbose = False
+                logger.info('Setting args.verbose: False')
+            label_list = None
+            if 'response' in val_dataset.features:
+                label_list = val_dataset['response']
+            val_dataset = val_dataset.remove_columns('response')
+            request_list = val_dataset.to_list()
+            resp_list = inference_vllm(
+                llm_engine, template, request_list, use_tqdm=True)
+            result = []
+            if label_list is not None:
+                for request, label in zip(request_list, label_list):
+                    request['label'] = label
+            for request, resp in zip(request_list, resp_list):
+                obj = {'response': resp['response'], **request}
+                if jsonl_path is not None:
+                    append_to_jsonl(jsonl_path, obj)
+                result.append(obj)
+        else:
+            if not args.verbose:
+                val_dataset = tqdm(val_dataset)
+            for data in val_dataset:
+                kwargs = {'query': data['query']}
+                history = data.get('history')
+                system = data.get('system')
+                if history is not None:
+                    kwargs['history'] = history
+                if system is not None:
+                    kwargs['system'] = system
+                if args.infer_backend == 'vllm':
+                    assert args.stream is True
+                    if args.verbose:
+                        print(f"query: {data['query']}\nresponse: ", end='')
+                    gen = inference_stream_vllm(llm_engine, template, [kwargs])
+                    print_idx = 0
+                    for resp_list in gen:
+                        response = resp_list[0]['response']
+                        if args.verbose and len(response) > print_idx:
+                            print(response[print_idx:], end='', flush=True)
+                            print_idx = len(response)
+                    print()
+                else:
+                    response, _ = inference(
+                        model,
+                        template,
+                        stream=args.stream and args.verbose,
+                        verbose=args.verbose,
+                        **kwargs)
+                label = data.pop('response')
+                if label is not None:
+                    kwargs['label'] = label
+                obj = {'response': response, **kwargs}
+                if jsonl_path is not None:
+                    append_to_jsonl(jsonl_path, obj)
+                result.append(obj)
+                if args.verbose:
+                    print()
+                    print(f'[LABELS]{label}')
+                    print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}

@@ -8,9 +8,9 @@ def write_model_info_table2(fpath: str) -> None:
     with open(fpath, 'w', encoding='utf-8') as f:
         f.write(
             '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
-            ' Support Flash Attn | Requires |\n'
+            ' Support Flash Attn | Support VLLM | Requires |\n'
             '| ---------  | -------- | --------------------------- | ---------------- |'
-            ' ------------------ | -------- |\n')
+            ' ------------------ | ------------ | -------- |\n')
     res = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
     for model_name in model_name_list:
@@ -20,16 +20,18 @@ def write_model_info_table2(fpath: str) -> None:
         template = model_info['template']
         support_flash_attn = model_info.get('support_flash_attn', False)
         support_flash_attn = bool_mapping[support_flash_attn]
+        support_vllm = model_info.get('support_vllm', False)
+        support_vllm = bool_mapping[support_vllm]
         requires = ', '.join(model_info['requires'])
         r = [
             model_name, model_id, lora_target_modules, template,
-            support_flash_attn, requires
+            support_flash_attn, support_vllm, requires
         ]
         res.append(r)
     text = ''
     for r in res:
         url = f'https://modelscope.cn/models/{r[1]}/summary'
-        text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|\n'
+        text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|\n'
     with open(fpath, 'a', encoding='utf-8') as f:
         f.write(text)
     print()

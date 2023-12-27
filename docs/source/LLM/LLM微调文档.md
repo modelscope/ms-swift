@@ -136,13 +136,13 @@ cd examples/pytorch/llm
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
 - 如果你想要使用量化参数`--quantization_bit 4`, 你需要先安装[bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`. 这会减少显存消耗, 但通常会降低训练速度.
 - 如果你想要使用基于**auto_gptq**的量化, 你需要先安装对应cuda版本的[auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
-  > 使用auto_gptq的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
+  > 使用auto_gptq的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
-- 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
+- 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](./自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
-- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型)
-- 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式)
-- 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
+- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
+- 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](./自定义与拓展.md#注册数据集的方式)
+- 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`--ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看[scripts文件夹](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts). 如果你想要**自定义sh脚本**, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
@@ -216,12 +216,14 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 ## Merge LoRA
-提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora.
+提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
 ```bash
 swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 ```
 
 ## 推理
+如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
+
 ### 原始模型
 **单样本推理**可以查看[LLM推理文档](./LLM推理文档.md#-推理)
 
@@ -230,7 +232,7 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 ```
 ### 微调后模型
-**单样本推理**
+**单样本推理**:
 
 使用LoRA**增量**权重进行推理:
 ```python
@@ -241,13 +243,12 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
 from swift.tuners import Swift
-import torch
 
 model_dir = 'vx_xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'})
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
 model = Swift.from_pretrained(model, model_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
@@ -265,13 +266,12 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
-import torch
 
 model_dir = 'vx_xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
-model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16, {'device_map': 'auto'},
+model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'},
                                        model_dir=model_dir)
 
 template = get_template(template_type, tokenizer)
@@ -284,6 +284,22 @@ print(f'history: {history}')
 使用**数据集**评估:
 ```bash
 # 直接推理
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx' \
+    --load_dataset_config true \
+
+# Merge LoRA增量权重并推理
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
+    --load_dataset_config true \
+```
+
+**人工**评估:
+```bash
+# 直接推理
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
 # Merge LoRA增量权重并推理
@@ -292,6 +308,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
+如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#部署)
+
 ### 原始模型
 使用原始模型的web-ui可以查看[LLM推理文档](./LLM推理文档.md#-Web-UI)
 

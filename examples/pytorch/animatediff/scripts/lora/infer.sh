@@ -7,4 +7,3 @@ python animatediff_infer.py \
   --motion_adapter_id_or_path Shanghai_AI_Laboratory/animatediff-motion-adapter-v1-5-2 \
   --sft_type lora \
   --ckpt_dir /output/path/like/checkpoints/iter-xxx \
-  --eval_human true  \
