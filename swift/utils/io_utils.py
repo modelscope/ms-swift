@@ -3,6 +3,10 @@ from typing import Any, List
 
 import json
 
+from .logger import get_logger
+
+logger = get_logger()
+
 
 def read_from_jsonl(fpath: str, encoding: str = 'utf-8') -> List[Any]:
     res: List[Any] = []
@@ -24,5 +28,9 @@ def write_to_jsonl(fpath: str,
 
 
 def append_to_jsonl(fpath: str, obj: Any, encoding: str = 'utf-8') -> None:
-    with open(fpath, 'a', encoding=encoding) as f:
-        f.write(f'{json.dumps(obj, ensure_ascii=False)}\n')
+    try:
+        with open(fpath, 'a', encoding=encoding) as f:
+            f.write(f'{json.dumps(obj, ensure_ascii=False)}\n')
+    except Exception as e:
+        logger.error(f'Cannot write content to jsonl file:{obj}')
+        logger.error(e)
