@@ -28,7 +28,10 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'image'}:
+        if k in {
+                'query', 'response', 'rejected_response', 'system', 'history',
+                'image'
+        }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -205,8 +208,7 @@ def load_hf_dataset(
             subset_split = ('default', subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
-        dataset = load_dataset(
-            dataset_id, subset_name, split=split)
+        dataset = load_dataset(dataset_id, subset_name, split=split)
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -585,8 +587,8 @@ def get_dataset_from_hf(
 
 register_dataset(
     DatasetName.stack_exchange_paired,
-    '/mnt/workspace/yzhao/tastelikefeet/datasets/stack-exchange-paired', [('default', 'train')],
-    [('default', 'test')],
+    '/mnt/workspace/yzhao/tastelikefeet/datasets/stack-exchange-paired',
+    [('default', 'train')], [('default', 'test')],
     RenameColumnsPreprocessor({
         'question': 'query',
         'response_j': 'response',
@@ -602,13 +604,20 @@ def process_hh_rlhf(dataset):
         import re
         chosen = row['chosen'].strip()
         rejected = row['rejected'].strip()
-        parts_chosen = [s.strip() for s in re.split("\n\nHuman:|\n\nAssistant:|\n\nHum:", chosen)]
-        parts_rejected = [s.strip() for s in re.split("\n\nHuman:|\n\nAssistant:|\n\nHum:", rejected)]
+        parts_chosen = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
+        ]
+        parts_rejected = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
+        ]
         if parts_chosen[0].startswith('Human:'):
             assert parts_rejected[0].startswith('Human:')
             parts_chosen[0] = parts_chosen[0][6:].strip()
             parts_rejected[0] = parts_rejected[0][6:].strip()
         history = []
+        idx, s1, s2 = None, None, None
         for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
             if s1 == s2:
                 if idx % 2 == 0:
@@ -617,9 +626,8 @@ def process_hh_rlhf(dataset):
                     history[-1][-1] = s1
             else:
                 break
-        
+
         if idx % 2 == 0:
-            print(f'filtered row.')
             return {
                 'query': None,
                 'response': None,
@@ -636,17 +644,18 @@ def process_hh_rlhf(dataset):
             'rejected_response': rejected_response,
             'history': history,
         }
-    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
+
+    return dataset.map(reorganize_row).filter(
+        lambda row: row['query'] is not None)
 
 
 register_dataset(
     DatasetName.hh_rlhf,
-    '/mnt/workspace/yzhao/tastelikefeet/datasets/hh-rlhf', [('default', 'train')],
-    [('default', 'test')],
+    '/mnt/workspace/yzhao/tastelikefeet/datasets/hh-rlhf',
+    [('default', 'train')], [('default', 'test')],
     process_hh_rlhf,
     get_dataset_from_hf,
     tags=['hfrl', 'dpo', 'pairwise'])
-
 
 register_dataset(
     DatasetName.medical_zh,

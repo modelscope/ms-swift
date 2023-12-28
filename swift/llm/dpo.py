@@ -1,27 +1,29 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from copy import deepcopy
 from functools import partial
 from typing import Any, Dict, List, Optional
 
+import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
-from swift.trainers import (IntervalStrategy, Seq2SeqTrainingArguments, DPOTrainer)
+from swift.trainers import (DPOTrainer, IntervalStrategy,
+                            Seq2SeqTrainingArguments)
 from swift.utils import (check_json_format, compute_acc_metrics,
-                         compute_nlg_metrics, get_dist_setting, get_logger, get_model_info,
-                         is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_metrics, seed_everything,
-                         show_layers)
-from .utils import History
+                         compute_nlg_metrics, get_dist_setting, get_logger,
+                         get_model_info, is_ddp_plus_mp, is_dist, is_master,
+                         plot_images, preprocess_logits_for_metrics,
+                         seed_everything, show_layers)
 from .tuner import prepare_model
-from .utils import (LazyLLMDataset, DPOArguments, Template,
+from .utils import (DPOArguments, History, LazyLLMDataset, Template,
                     data_collate_dpo_fn, dataset_map,
                     get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, set_generation_config, sort_by_max_length)
-from .utils.template import Context, _concat_context_list, _simplify_context_list
+                    get_model_tokenizer, get_template, set_generation_config,
+                    sort_by_max_length)
+from .utils.template import (Context, _concat_context_list,
+                             _simplify_context_list)
 
 logger = get_logger()
 
@@ -36,7 +38,7 @@ def llm_dpo(args: DPOArguments) -> str:
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
-    if (is_dist() and not is_ddp_plus_mp()) or "HF_ACCELERATOR" in os.environ:
+    if (is_dist() and not is_ddp_plus_mp()) or 'HF_ACCELERATOR' in os.environ:
         model_kwargs['device_map'] = {'': local_rank}
     else:
         model_kwargs['device_map'] = 'auto'
@@ -59,8 +61,9 @@ def llm_dpo(args: DPOArguments) -> str:
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
     if args.ref_model_type is not None:
-        ref_model, _ = get_model_tokenizer(args.ref_model_type, args.torch_dtype,
-                                               model_kwargs, **kwargs)
+        ref_model, _ = get_model_tokenizer(args.ref_model_type,
+                                           args.torch_dtype, model_kwargs,
+                                           **kwargs)
     else:
         ref_model = None
 
@@ -128,7 +131,7 @@ def llm_dpo(args: DPOArguments) -> str:
             return getattr(self.template, name)
 
         def encode(self, example: Dict[str,
-                                    Any]) -> Dict[str, Optional[List[int]]]:
+                                       Any]) -> Dict[str, Optional[List[int]]]:
             query: Optional[str] = example.get('query', None)
             history: Optional[History] = example.get('history', None)
             system: Optional[str] = example.get('system', None)
@@ -138,7 +141,7 @@ def llm_dpo(args: DPOArguments) -> str:
                 history = []
             if len(history) > 0:
                 assert self.support_multi_round, 'the template not support multi-round chat'
-            if system is None: 
+            if system is None:
                 if self.use_default_system:
                     system = self.default_system
             else:

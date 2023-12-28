@@ -242,9 +242,7 @@ class PushToMsHubMixin:
 
 class SwiftMixin:
 
-    def __init__(self,
-                 *args,
-                 **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         check_model = kwargs.get('check_model', True)
         model = kwargs['model']
         if check_model and hasattr(model, 'model_dir'):

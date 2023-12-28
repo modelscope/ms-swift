@@ -335,24 +335,20 @@ def get_model_tokenizer_from_repo(model_dir: str,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.36'],
     support_vllm=False)
-def get_model_tokenizer(
-    model_dir: str,
-    torch_dtype: Dtype,
-    model_kwargs: Dict[str, Any],
-    load_model: bool = True,
-    model_config=None,
-    tokenizer=None,
-    automodel_class=AutoModelForCausalLM,
-    **kwargs
-):
+def get_model_tokenizer(model_dir: str,
+                        torch_dtype: Dtype,
+                        model_kwargs: Dict[str, Any],
+                        load_model: bool = True,
+                        model_config=None,
+                        tokenizer=None,
+                        automodel_class=AutoModelForCausalLM,
+                        **kwargs):
     if model_config is None:
-        model_config = AutoConfig.from_pretrained(
-            model_dir)
+        model_config = AutoConfig.from_pretrained(model_dir)
     model_config.torch_dtype = torch_dtype
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/gpt2',
-            padding_side='left')
+            'AI-ModelScope/gpt2', padding_side='left')
     model = None
     if load_model:
         model = automodel_class.from_pretrained(

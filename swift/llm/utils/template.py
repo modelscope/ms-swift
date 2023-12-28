@@ -175,7 +175,7 @@ def _encode_context_list(
         return input_ids, labels, kwargs
 
 
-def _encode(template: 'Template', query: str, response: Optional[str], rejected_response: Optional[str],
+def _encode(template: 'Template', query: str, response: Optional[str],
             history: History, system: Optional[str],
             truncation_strategy: str) -> Dict[str, Optional[List[int]]]:
     res_context_list: List[Context] = []
@@ -227,6 +227,55 @@ def _encode(template: 'Template', query: str, response: Optional[str], rejected_
     # Compatible with qwen-audio
     if 'audio_info' in kwargs:
         res['audio_info'] = kwargs['audio_info']
+    return res
+
+
+def _encode_pairwise(
+        template: 'Template', query: str, response: Optional[str],
+        rejected_response: Optional[str], system: Optional[str],
+        truncation_strategy: str) -> Dict[str, Optional[List[int]]]:
+    res_context_list: List[Context] = []
+    compute_loss_idx: List[int] = []
+    if system is None:
+        assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
+        prefix = template.prefix
+    else:
+        prefix = template.prefix_has_system
+    _concat_context_list(
+        prefix, res_context_list, compute_loss_idx, system=system)
+    _concat_context_list(
+        template.prompt,
+        res_context_list,
+        compute_loss_idx,
+        query=query,
+        round0=True)
+    res_context_list, compute_loss_idx = _simplify_context_list(
+        res_context_list, compute_loss_idx)
+    input_ids, labels, kwargs = _encode_context_list(template.tokenizer,
+                                                     res_context_list,
+                                                     compute_loss_idx)
+
+    if response is not None:
+        tgt_input_ids = _encode_context_list(template.tokenizer, [response])[0]
+        tgt_input_ids += _encode_context_list(template.tokenizer,
+                                              template.suffix)[0]
+        labels = labels + tgt_input_ids
+        input_ids += tgt_input_ids
+    else:
+        labels = None
+
+    if template.max_length is not None:
+        if truncation_strategy == 'delete' and len(
+                input_ids) > template.max_length:
+            return None
+        input_ids = input_ids[-template.max_length:]
+        if labels is not None:
+            labels = labels[-template.max_length:]
+    res = {
+        'input_ids': input_ids,
+        'attention_mask': [1] * len(input_ids),
+        'labels': labels
+    }
     return res
 
 
@@ -320,7 +369,8 @@ class Template:
             )
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
-        rejected_response: Optional[str] = example.get('rejected_response', None)
+        rejected_response: Optional[str] = example.get('rejected_response',
+                                                       None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         if query is None:
@@ -329,13 +379,17 @@ class Template:
             history = []
         if len(history) > 0:
             assert self.support_multi_round, 'the template not support multi-round chat'
-        if system is None: 
+        if system is None:
             if self.use_default_system:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'not support `system`'
-        return _encode(self, query, response, rejected_response, history, system,
-                       self.truncation_strategy)
+        if rejected_response is None:
+            return _encode(self, query, response, history, system,
+                           self.truncation_strategy)
+        else:
+            return _encode_pairwise(self, query, response, rejected_response,
+                                    system, self.truncation_strategy)
 
 
 class CogAgentTemplate(Template):

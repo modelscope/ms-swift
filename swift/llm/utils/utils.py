@@ -299,8 +299,8 @@ def stat_dataset(llm_dataset: Dataset) -> None:
 
 
 def data_collate_dpo_fn(batch: List[Dict[str, Any]],
-                    tokenizer: PreTrainedTokenizerBase,
-                    padding_to: Optional[int] = None) -> Dict[str, Any]:
+                        tokenizer: PreTrainedTokenizerBase,
+                        padding_to: Optional[int] = None) -> Dict[str, Any]:
     """
     Args:
         batch(`List[Dict[str, Any]]`): The input data in batch
@@ -317,20 +317,26 @@ def data_collate_dpo_fn(batch: List[Dict[str, Any]],
     ]
 
     if padding_to is not None and padding_to > chosen_input_ids[0].shape[-1]:
-        chosen_input_ids[0] = F.pad(chosen_input_ids[0],
-                             (0, padding_to - chosen_input_ids[0].shape[-1]),
-                             'constant', tokenizer.pad_token_id)
-        chosen_labels[0] = F.pad(chosen_labels[0], (0, padding_to - chosen_labels[0].shape[-1]),
-                          'constant', -100)
+        chosen_input_ids[0] = F.pad(
+            chosen_input_ids[0],
+            (0, padding_to - chosen_input_ids[0].shape[-1]), 'constant',
+            tokenizer.pad_token_id)
+        chosen_labels[0] = F.pad(chosen_labels[0],
+                                 (0, padding_to - chosen_labels[0].shape[-1]),
+                                 'constant', -100)
         chosen_attention_mask[0] = F.pad(
-            chosen_attention_mask[0], (0, padding_to - chosen_attention_mask[0].shape[-1]),
-            'constant', 0)
+            chosen_attention_mask[0],
+            (0, padding_to - chosen_attention_mask[0].shape[-1]), 'constant',
+            0)
 
     chosen_input_ids = pad_sequence(
-        chosen_input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        chosen_input_ids,
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id)
     chosen_attention_mask = pad_sequence(
         chosen_attention_mask, batch_first=True, padding_value=0)
-    chosen_labels = pad_sequence(chosen_labels, batch_first=True, padding_value=-100)
+    chosen_labels = pad_sequence(
+        chosen_labels, batch_first=True, padding_value=-100)
 
     rejected_input_ids = [torch.tensor(b['rejected_input_ids']) for b in batch]
     rejected_labels = [torch.tensor(b['rejected_labels']) for b in batch]
@@ -340,20 +346,26 @@ def data_collate_dpo_fn(batch: List[Dict[str, Any]],
     ]
 
     if padding_to is not None and padding_to > input_ids[0].shape[-1]:
-        rejected_input_ids[0] = F.pad(rejected_input_ids[0],
-                            (0, padding_to - rejected_input_ids[0].shape[-1]),
-                            'constant', tokenizer.pad_token_id)
-        rejected_labels[0] = F.pad(rejected_labels[0], (0, padding_to - rejected_labels[0].shape[-1]),
-                        'constant', -100)
+        rejected_input_ids[0] = F.pad(
+            rejected_input_ids[0],
+            (0, padding_to - rejected_input_ids[0].shape[-1]), 'constant',
+            tokenizer.pad_token_id)
+        rejected_labels[0] = F.pad(
+            rejected_labels[0], (0, padding_to - rejected_labels[0].shape[-1]),
+            'constant', -100)
         rejected_attention_mask[0] = F.pad(
-            rejected_attention_mask[0], (0, padding_to - rejected_attention_mask[0].shape[-1]),
-            'constant', 0)
+            rejected_attention_mask[0],
+            (0, padding_to - rejected_attention_mask[0].shape[-1]), 'constant',
+            0)
 
     rejected_input_ids = pad_sequence(
-        rejected_input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        rejected_input_ids,
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id)
     rejected_attention_mask = pad_sequence(
         rejected_attention_mask, batch_first=True, padding_value=0)
-    rejected_labels = pad_sequence(rejected_labels, batch_first=True, padding_value=-100)
+    rejected_labels = pad_sequence(
+        rejected_labels, batch_first=True, padding_value=-100)
     res = {
         'chosen_input_ids': chosen_input_ids,
         'chosen_attention_mask': chosen_attention_mask,

@@ -1,11 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.utils import get_main
 from .app_ui import llm_app_ui
+from .dpo import llm_dpo
 from .infer import llm_infer, merge_lora
 from .rome import rome_infer
 from .sft import llm_sft
-from .dpo import llm_dpo
-from .utils import InferArguments, RomeArguments, SftArguments, DPOArguments
+from .utils import DPOArguments, InferArguments, RomeArguments, SftArguments
 
 sft_main = get_main(SftArguments, llm_sft)
 infer_main = get_main(InferArguments, llm_infer)

@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import InferArguments, RomeArguments, SftArguments, DPOArguments
+from .argument import DPOArguments, InferArguments, RomeArguments, SftArguments
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, add_self_cognition_dataset, get_dataset,
                       get_dataset_from_repo, load_dataset_from_local,
@@ -16,10 +16,11 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          TextGenerationPreprocessor)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        Template, TemplateType, get_template, register_template)
-from .utils import (LazyLLMDataset, LLMDataset, data_collate_fn, data_collate_dpo_fn, dataset_map,
-                    download_dataset, find_all_linear_for_lora,
-                    fix_fp16_trainable_bug, history_to_messages, inference,
-                    inference_stream, is_vllm_available, limit_history_length,
+from .utils import (LazyLLMDataset, LLMDataset, data_collate_dpo_fn,
+                    data_collate_fn, dataset_map, download_dataset,
+                    find_all_linear_for_lora, fix_fp16_trainable_bug,
+                    history_to_messages, inference, inference_stream,
+                    is_vllm_available, limit_history_length,
                     messages_to_history, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 

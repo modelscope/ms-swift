@@ -5,8 +5,8 @@ from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
                                         IntervalStrategy, SchedulerType)
 
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
-from .trainers import Seq2SeqTrainer, Trainer
 from .dpo_trainers import DPOTrainer
+from .trainers import Seq2SeqTrainer, Trainer
 
 try:
     # https://github.com/huggingface/transformers/pull/25702
