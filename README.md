@@ -5,12 +5,12 @@
     <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
     <br>
 <p>
-
 <p align="center">
-<a href="https://modelscope.cn/home">ModelScope Hub</a>
+<a href="https://modelscope.cn/home">ModelScope Community</a>
 <br>
         <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish&nbsp ｜ &nbsp<a href="https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E5%BF%AB%E9%80%9F%E4%BD%BF%E7%94%A8.md">Docs</a>
 </p>
+
 
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
@@ -25,7 +25,8 @@
 ## 📖 Table of Contents
 - [Introduction](#-introduction)
 - [News](#-news)
-- [LLM Training and Inference](#-llm-training-and-inference)
+- 🔥[LLM Training and Inference](#-llm-training-and-inference)
+- 🔥[SCEdit Tuner](#-SCEdit)
 - [Installation](#-installation)
 - [Getting Started](#-getting-started)
 - [Learn More](#-learn-more)
@@ -38,16 +39,16 @@ SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible fra
 Currently supported approches (and counting):
 
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
-2. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
-3. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
-4. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
-5. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-6. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
-7. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
-8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
-10. SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
-11. All tuners offered on [PEFT](https://github.com/huggingface/peft)
+2. SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
+3. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
+4. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
+5. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
+6. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
+7. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
+8. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
+9. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+10. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
+11. All tuners offered on [PEFT](https://github.com/huggingface/peft), like IA3, AdaLoRA
 
 Key features:
 
@@ -61,6 +62,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
+- 2023.12.28: Support SCEdit! This tuner can easily reduce memory usage and speed up training speed .
 - 2023.12.23: Support [codegeex2-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codegeex2_6b).
 - 2023.12.19: Support [phi2-3b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/phi2_3b).
 - 2023.12.18: Support for **VLLM** for inference acceleration and deployment. For more details, refer to [VLLM Inference Acceleration and Deployment](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md).
@@ -162,6 +164,12 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - Supported Templates:
   - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, chatml, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek
+
+## 🌁SCEdit
+
+### Benchmark 
+
+
 
 
 ## 🛠️ Installation
