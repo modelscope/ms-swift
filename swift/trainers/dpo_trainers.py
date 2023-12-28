@@ -168,13 +168,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         from datasets import Dataset as HfDataset
         from swift.utils.np_utils import stat_array
         if isinstance(llm_dataset, HfDataset):
-            prompt = llm_dataset['prompt']
-            chosen = llm_dataset['chosen']
-            rejected = llm_dataset['rejected']
-            for ii, cc, rr in zip(prompt, chosen, rejected):
-                _token_len.append(len(ii) + max(len(cc), len(rr)))
+            chosen = llm_dataset['chosen_input_ids']
+            rejected = llm_dataset['rejected_input_ids']
+            for cc, rr in zip(chosen, rejected):
+                _token_len.append(max(len(cc), len(rr)))
         else:
             for d in llm_dataset:
-                _token_len.append(len(d['prompt']))
+                _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
