@@ -18,7 +18,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (DPOArguments, History, LazyLLMDataset, Template,
-                    data_collate_dpo_fn, dataset_map,
+                    dataset_map,
                     get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, set_generation_config,
                     sort_by_max_length)

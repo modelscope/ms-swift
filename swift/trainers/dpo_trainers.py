@@ -4,8 +4,8 @@ from torch import nn
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
-from swift.llm import Template, sort_by_max_length
-from swift.llm.utils.template import (Context, _concat_context_list,
+from swift.llm.utils.utils import sort_by_max_length
+from swift.llm.utils.template import (Template, Context, _concat_context_list,
                                       _encode_context_list,
                                       _simplify_context_list)
 from swift.trainers.mixin import PushToMsHubMixin, SwiftMixin
