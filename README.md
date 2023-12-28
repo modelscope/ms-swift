@@ -39,7 +39,7 @@ SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible fra
 Currently supported approches (and counting):
 
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
-2. SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
+2. 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
 3. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
 4. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
 5. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
@@ -62,7 +62,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
-- 2023.12.28: Support SCEdit! This tuner can easily reduce memory usage and speed up training speed .
+- 2023.12.28: Support SCEdit! This framework can easily reduce memory usage in training and inference, and replace ControlNet for controllable image generating scenarios, view the following chapter for details.
 - 2023.12.23: Support [codegeex2-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codegeex2_6b).
 - 2023.12.19: Support [phi2-3b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/phi2_3b).
 - 2023.12.18: Support for **VLLM** for inference acceleration and deployment. For more details, refer to [VLLM Inference Acceleration and Deployment](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md).
@@ -165,11 +165,32 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
   - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, chatml, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek
 
-## 🌁SCEdit
+## 🔥SCEdit
 
-### Benchmark 
+SCEdit is an efficient generative fine-tuning framework proposed by Alibaba TongYi Vision Intelligence Lab. This framework not only supports the fine-tuning capability of downstream tasks for text-to-image neural networks, but also **saves 30%-50% of the training memory overhead compared with LoRA**, and can be applied to various generation scenarios. Moreover, it can **be directly extended to controllable image generation tasks with only 7.9% of the parameter amount needed for ControlNet and 30% savings in memory overhead**, supporting conditional generation tasks such as edge images, depth images, segmentated images, poses, color images, and image completion.
 
+We used the [person style transfer dataset](https://modelscope.cn/datasets/damo/style_custom_dataset/dataPeview) for testing, and the test results are as follows:
 
+```text
+Prompt: A boy in a camouflage jacket with a scarf
+```
+
+| Method         | bs   | ep   | Module                                                      | Param                         | Mem      | 3D style                                                     |
+| -------------- | ---- | ---- | ----------------------------------------------------------- | ----------------------------- | -------- | ------------------------------------------------------------ |
+| LoRA r=64      | 1    | 50   | ".*unet.*.(to_q\|to_k\|to_v\|to_out.0\|net.0.proj\|net.2)$" | 23937024 / 1090172331 = 2.20% | 8440MiB  | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665229562-0f33bbb0-c492-41b4-9f37-3ae720dca80d.png) |
+| SCEdit Decoder | 1    | 50   | ratio=1.0                                                   | 19680000 / 1085915307 = 1.81% | 7556MiB  | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665933913-74b98741-3b57-46a4-9871-539df3a0112c.png) |
+| LoRA r=64      | 10   | 100  | ".*unet.*.(to_q\|to_k\|to_v\|to_out.0\|net.0.proj\|net.2)$" | 23937024 / 1090172331 = 2.20% | 26300MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750608529-de20d0e7-bf9c-4928-8e59-73cc54f2c8d7.png) |
+| SCEdit Decoder | 10   | 100  | ratio=1.0                                                   | 19680000 / 1085915307 = 1.81% | 18634MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703663033092-94492e44-341f-4259-9df4-13c168e3b5d6.png) |
+| LoRA r=64      | 30   | 200  | ".*unet.*.(to_q\|to_k\|to_v\|to_out.0\|net.0.proj\|net.2)$" | 23937024 / 1090172331 = 2.20% | 69554MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750626635-2e368d7b-5e99-4a06-b189-8615f302bcd7.png) |
+| SCEdit Decoder | 30   | 200  | ratio=1.0                                                   | 19680000 / 1085915307 = 1.81% | 43350MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703662246942-1102b1f4-93ab-4653-b943-3302f2a5259e.png) |
+
+The benchmark listed above can be reproduced by：
+
+```shell
+# Install swift by the next chapter
+cd examples/pytorch/multi_modal/notebook
+python text_to_image_synthesis.py
+```
 
 
 ## 🛠️ Installation
