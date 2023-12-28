@@ -167,22 +167,18 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 ## 🔥SCEdit
 
-SCEdit is an efficient generative fine-tuning framework proposed by Alibaba TongYi Vision Intelligence Lab. This framework not only supports the fine-tuning capability of downstream tasks for text-to-image neural networks, but also **saves 30%-50% of the training memory overhead compared with LoRA**, and can be applied to various generation scenarios. Moreover, it can **be directly extended to controllable image generation tasks with only 7.9% of the parameter amount needed for ControlNet and 30% savings in memory overhead**, supporting conditional generation tasks such as edge images, depth images, segmentated images, poses, color images, and image completion.
+SCEdit is an efficient generative fine-tuning framework proposed by Alibaba TongYi Vision Intelligence Lab. This framework enhances the fine-tuning capabilities for text-to-image generation downstream tasks and enables quick adaptation to specific generative scenarios, **saving 30%-50% of training memory costs compared to LoRA**. Furthermore, it can be directly extended to controllable image generation tasks, **requiring only 7.9% of the parameters that ControlNet needs for conditional generation and saving 30% of memory usage**. It supports various conditional generation tasks including edge maps, depth maps, segmentation maps, poses, color maps, and image completion.
 
-We used the [person style transfer dataset](https://modelscope.cn/datasets/damo/style_custom_dataset/dataPeview) for testing, and the test results are as follows:
+We using 3D style data from the [style transfer dataset](https://modelscope.cn/datasets/damo/style_custom_dataset/dataPeview) for training, and testing with the same `Prompt: A boy in a camouflage jacket with a scarf`. The qualitative and quantitative results are as follows:
 
-```text
-Prompt: A boy in a camouflage jacket with a scarf
-```
-
-| Method         | bs   | ep   | Module                                                      | Param                         | Mem      | 3D style                                                     |
-| -------------- | ---- | ---- | ----------------------------------------------------------- | ----------------------------- | -------- | ------------------------------------------------------------ |
-| LoRA r=64      | 1    | 50   | ".*unet.*.(to_q\|to_k\|to_v\|to_out.0\|net.0.proj\|net.2)$" | 23937024 / 1090172331 = 2.20% | 8440MiB  | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665229562-0f33bbb0-c492-41b4-9f37-3ae720dca80d.png) |
-| SCEdit Decoder | 1    | 50   | ratio=1.0                                                   | 19680000 / 1085915307 = 1.81% | 7556MiB  | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665933913-74b98741-3b57-46a4-9871-539df3a0112c.png) |
-| LoRA r=64      | 10   | 100  | ".*unet.*.(to_q\|to_k\|to_v\|to_out.0\|net.0.proj\|net.2)$" | 23937024 / 1090172331 = 2.20% | 26300MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750608529-de20d0e7-bf9c-4928-8e59-73cc54f2c8d7.png) |
-| SCEdit Decoder | 10   | 100  | ratio=1.0                                                   | 19680000 / 1085915307 = 1.81% | 18634MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703663033092-94492e44-341f-4259-9df4-13c168e3b5d6.png) |
-| LoRA r=64      | 30   | 200  | ".*unet.*.(to_q\|to_k\|to_v\|to_out.0\|net.0.proj\|net.2)$" | 23937024 / 1090172331 = 2.20% | 69554MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750626635-2e368d7b-5e99-4a06-b189-8615f302bcd7.png) |
-| SCEdit Decoder | 30   | 200  | ratio=1.0                                                   | 19680000 / 1085915307 = 1.81% | 43350MiB | ![img](https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703662246942-1102b1f4-93ab-4653-b943-3302f2a5259e.png) |
+| Method    | bs   | ep   | Target Module | Param. (M)    | Mem. (MiB) | 3D style                                                     |
+| --------- | ---- | ---- | ------------- | ------------- | ---------- | ------------------------------------------------------------ |
+| LoRA/r=64 | 1    | 50   | q/k/v/out/mlp | 23.94 (2.20%) | 8440MiB    | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665229562-0f33bbb0-c492-41b4-9f37-3ae720dca80d.png" alt="img" style="zoom:20%;" /> |
+| SCEdit    | 1    | 50   | up_blocks     | 19.68 (1.81%) | 7556MiB    | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665933913-74b98741-3b57-46a4-9871-539df3a0112c.png" alt="img" style="zoom:20%;" /> |
+| LoRA/r=64 | 10   | 100  | q/k/v/out/mlp | 23.94 (2.20%) | 26300MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750608529-de20d0e7-bf9c-4928-8e59-73cc54f2c8d7.png" alt="img" style="zoom:20%;" /> |
+| SCEdit    | 10   | 100  | up_blocks     | 19.68 (1.81%) | 18634MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703663033092-94492e44-341f-4259-9df4-13c168e3b5d6.png" alt="img" style="zoom:20%;" /> |
+| LoRA/r=64 | 30   | 200  | q/k/v/out/mlp | 23.94 (2.20%) | 69554MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750626635-2e368d7b-5e99-4a06-b189-8615f302bcd7.png" alt="img" style="zoom:20%;" /> |
+| SCEdit    | 30   | 200  | up_blocks     | 19.68 (1.81%) | 43350MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703662246942-1102b1f4-93ab-4653-b943-3302f2a5259e.png" alt="img" style="zoom:20%;" /> |
 
 The benchmark listed above can be reproduced by：
 
