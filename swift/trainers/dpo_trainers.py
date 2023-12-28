@@ -4,7 +4,7 @@ from torch import nn
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
-from swift.llm import Template
+from swift.llm import Template, sort_by_max_length
 from swift.llm.utils.template import (Context, _concat_context_list,
                                       _encode_context_list,
                                       _simplify_context_list)
@@ -16,11 +16,13 @@ logger = get_logger()
 
 class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
-    def __init__(self, *args, template: Template, **kwargs):
+    def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
         super().__init__(*args, **kwargs)
         self.stat_dataset(self.train_dataset)
         self.stat_dataset(self.eval_dataset)
+        if test_oom_error:
+            self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
 
     def concat_template(self, feature):
         query: Optional[str] = feature.get('query', None)

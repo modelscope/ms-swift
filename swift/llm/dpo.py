@@ -122,64 +122,6 @@ def llm_dpo(args: DPOArguments) -> str:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
 
-    class DPOTemplate(Template):
-
-        def __init__(self, template):
-            self.template = template
-
-        def __getattr__(self, name):
-            return getattr(self.template, name)
-
-        def encode(self, example: Dict[str,
-                                       Any]) -> Dict[str, Optional[List[int]]]:
-            query: Optional[str] = example.get('query', None)
-            history: Optional[History] = example.get('history', None)
-            system: Optional[str] = example.get('system', None)
-            if query is None:
-                query = ''
-            if history is None:
-                history = []
-            if len(history) > 0:
-                assert self.support_multi_round, 'the template not support multi-round chat'
-            if system is None:
-                if self.use_default_system:
-                    system = self.default_system
-            else:
-                assert self.prefix_has_system is not None, 'not support `system`'
-            res_context_list: List[Context] = []
-            compute_loss_idx: List[int] = []
-            if system is None:
-                assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
-                prefix = template.prefix
-            else:
-                prefix = template.prefix_has_system
-            _concat_context_list(
-                prefix, res_context_list, compute_loss_idx, system=system)
-            for i, (q, r) in enumerate(history):
-                _concat_context_list(
-                    [*template.prompt, '{{RESPONSE}}', *template.chat_sep],
-                    res_context_list,
-                    compute_loss_idx,
-                    query=q,
-                    response=r,
-                    round0=i)
-            _concat_context_list(
-                template.prompt,
-                res_context_list,
-                compute_loss_idx,
-                query=query,
-                round0=len(history))
-            res_context_list, compute_loss_idx = _simplify_context_list(
-                res_context_list, compute_loss_idx)
-            return {
-                'prompt': ''.join(res_context_list),
-                'chosen': example['response'],
-                'rejected': example['rejected_response'],
-            }
-
-    if args.test_oom_error:
-        train_dataset = sort_by_max_length(train_dataset, 20000)
-
     # Setting training_args
     evaluation_strategy = IntervalStrategy.STEPS
     load_best_model_at_end = False
@@ -269,6 +211,7 @@ def llm_dpo(args: DPOArguments) -> str:
         template=template,
         max_prompt_length=args.max_prompt_length,
         max_length=args.max_length,
+        test_oom_error=args.test_oom_error,
         **trainer_kwargs)
     trainer.sft_args = args
     if is_master():
