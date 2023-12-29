@@ -1,28 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from copy import deepcopy
-from functools import partial
-from typing import Any, Dict, List, Optional
 
 import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import IntervalStrategy
 
-from swift.trainers import (DPOTrainer, IntervalStrategy,
-                            Seq2SeqTrainingArguments)
-from swift.utils import (check_json_format, compute_acc_metrics,
-                         compute_nlg_metrics, get_dist_setting, get_logger,
+from swift.trainers.arguments import Seq2SeqTrainingArguments
+from swift.trainers.dpo_trainers import DPOTrainer
+from swift.utils import (check_json_format, get_dist_setting, get_logger,
                          get_model_info, is_ddp_plus_mp, is_dist, is_master,
-                         plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers)
+                         plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
-from .utils import (DPOArguments, History, LazyLLMDataset, Template,
-                    dataset_map, get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, set_generation_config,
-                    sort_by_max_length)
-from .utils.template import (Context, _concat_context_list,
-                             _simplify_context_list)
+from .utils import (DPOArguments, Template, get_additional_saved_files,
+                    get_dataset, get_model_tokenizer, get_template,
+                    set_generation_config)
 
 logger = get_logger()
 
