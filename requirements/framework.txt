@@ -14,3 +14,4 @@ safetensors
 tensorboard
 tqdm
 transformers>=4.33,<4.37
+trl>=0.7.7
