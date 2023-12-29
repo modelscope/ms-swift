@@ -447,17 +447,15 @@ def _is_chinese_char(cp):
     return False
 
 
-def inference_stream(
-    model: PreTrainedModel,
-    template: Template,
-    query: str,
-    history: Optional[History] = None,
-    system: Optional[str] = None,
-    image: Optional['Image'] = None,
-    *,
-    generation_config: Optional[GenerationConfig] = None,
-    stop_words: Optional[List[StopWords]] = None,
-) -> Iterator[Tuple[str, History]]:
+def inference_stream(model: PreTrainedModel,
+                     template: Template,
+                     query: str,
+                     history: Optional[History] = None,
+                     system: Optional[str] = None,
+                     *,
+                     generation_config: Optional[GenerationConfig] = None,
+                     stop_words: Optional[List[StopWords]] = None,
+                     **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
@@ -468,6 +466,7 @@ def inference_stream(
     else:
         history = deepcopy(history)
     example = {'query': query, 'history': history, 'system': system}
+    image = kwargs.pop('image', None)
     if image is not None:
         example['image'] = image
     inputs = template.encode(example)
@@ -500,6 +499,7 @@ def inference_stream(
         stop_words.append(template.suffix[-1])
     decode_kwargs = {}
     model_kwargs = {}
+    # Compatible with cogagent
     if 'token_type_ids' in inputs:
         model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
     if 'images' in inputs:
@@ -510,6 +510,7 @@ def inference_stream(
         model_kwargs['cross_images'] = [[
             inputs['cross_images'][0][0].to(device).to(torch.float16)
         ]]
+    # Compatible with qwen-audio
     if audio_info is not None:
         audio_info = get_audio_info(tokenizer, audio_info=audio_info)
         decode_kwargs['audio_info'] = audio_info

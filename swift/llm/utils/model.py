@@ -63,6 +63,7 @@ class ModelType:
     chatglm3_6b_base = 'chatglm3-6b-base'
     chatglm3_6b = 'chatglm3-6b'
     chatglm3_6b_32k = 'chatglm3-6b-32k'
+    codegeex2_6b = 'codegeex2-6b'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_7b_chat = 'llama2-7b-chat'
@@ -297,7 +298,7 @@ def register_model(
     requires=['transformers<4.34'],
     support_vllm=True)
 def get_model_tokenizer_from_repo(model_dir: str,
-                                  torch_dtype: Dtype,
+                                  torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   model_config=None,
@@ -308,7 +309,8 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
-    model_config.torch_dtype = torch_dtype
+    if torch_dtype is not None:
+        model_config.torch_dtype = torch_dtype
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
             model_dir, trust_remote_code=True)
@@ -331,45 +333,28 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'ZhipuAI/cogagent-chat',
     LoRATM.cogagent,
     TemplateType.cogagent,
-    requires=['transformers>=4.36'],
-    support_vllm=False)
+    support_gradient_checkpointing=False)
 @register_model(
     ModelType.cogagent_vqa,
     'ZhipuAI/cogagent-vqa',
     LoRATM.cogagent,
     TemplateType.cogagent,
-    requires=['transformers>=4.36'],
-    support_vllm=False)
-def get_model_tokenizer_from_repo_cogagent(
-        model_dir: str,
-        torch_dtype: Dtype,
-        model_kwargs: Dict[str, Any],
-        load_model: bool = True,
-        model_config=None,
-        tokenizer=None,
-        automodel_class=AutoModelForCausalLM,
-        **kwargs):
-    """load from an independent repository"""
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(
-            model_dir, trust_remote_code=True)
-    model_config.torch_dtype = torch_dtype
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/vicuna-7b-v1.5',
-            trust_remote_code=True,
-            padding_side='left')
-    eos_token = kwargs.get('eos_token')
-    if eos_token is not None:
-        tokenizer.eos_token = eos_token
-    model = None
-    if load_model:
-        model = automodel_class.from_pretrained(
-            model_dir,
-            config=model_config,
-            torch_dtype=torch_dtype,
-            trust_remote_code=True,
-            **model_kwargs)
+    support_gradient_checkpointing=False)
+def get_model_tokenizer_cogagent(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(
+        'AI-ModelScope/vicuna-7b-v1.5', trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        tokenizer=tokenizer,
+        **kwargs)
+    if model is not None:
         logger.info(
             'CogAgent with FusedLayerNorm will cause an training loss of Nan, '
             'to avoid this, please uninstall apex.')
@@ -582,6 +567,12 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     'ZhipuAI/chatglm2-6b',
     LoRATM.chatglm,
     TemplateType.chatglm2,
+    support_vllm=True)
+@register_model(
+    ModelType.codegeex2_6b,
+    'ZhipuAI/codegeex2-6b',
+    LoRATM.chatglm,
+    TemplateType.chatglm_generation,
     support_vllm=True)
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
@@ -969,6 +960,7 @@ def get_model_tokenizer_qwen(model_dir: str,
                 v = True
             setattr(model_config, k, v)
 
+    torch_dtype = None
     use_flash_attn = kwargs.pop('use_flash_attn', None)
     if use_flash_attn is None:
         use_flash_attn = 'auto'
