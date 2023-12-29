@@ -1,21 +1,21 @@
-# Experimental environment: A100
+# Experimental environment: 8*A100
+# Memory usage: 8 * 50G
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
-python llm_dpo.py \
-    --model_type  qwen-7b \
-    --ref_model_type  qwen-7b \
+accelerate launch llm_dpo.py \
+    --model_type  mistral-7b \
+    --ref_model_type  mistral-7b \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  stack-exchange-paired  \
-    --train_dataset_sample  20000  \
+    --dataset  hh-rlhf  \
+    --train_dataset_sample  -1  \
     --truncation_strategy  truncation_left  \
     --val_dataset_sample  2000  \
-    --num_train_epochs  1  \
-    --max_length  2048  \
-    --max_prompt_length  1024  \
+    --num_train_epochs  3  \
+    --max_length  1024  \
+    --max_prompt_length  512  \
     --check_dataset_strategy  none  \
     --lora_rank  8  \
     --lora_alpha  32  \
