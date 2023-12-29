@@ -28,7 +28,10 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'system', 'history', 'image'}:
+        if k in {
+                'query', 'response', 'rejected_response', 'system', 'history',
+                'image'
+        }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -110,6 +113,10 @@ class DatasetName:
     # audio
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
+
+    stack_exchange_paired = 'stack-exchange-paired'
+    # dpo/hfrl dataset
+    hh_rlhf = 'hh-rlhf'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -534,6 +541,46 @@ register_dataset(
     }),
     get_dataset_from_repo,
     tags=['chat', 'medical'])
+
+register_dataset(
+    DatasetName.stack_exchange_paired,
+    'AI-ModelScope/stack-exchange-paired', [('default', 'train')],
+    None,
+    RenameColumnsPreprocessor({
+        'question': 'query',
+        'response_j': 'response',
+        'response_k': 'rejected_response',
+    }),
+    get_dataset_from_repo,
+    tags=['hfrl', 'dpo', 'pairwise'])
+
+
+def process_hh_rlhf(dataset):
+
+    def extract_anthropic_prompt(prompt_and_response):
+        """Extract the anthropic prompt from a prompt and response pair."""
+        search_term = '\n\nAssistant:'
+        search_term_idx = prompt_and_response.rfind(search_term)
+        assert search_term_idx != -1, f"Prompt and response does not contain '{search_term}'"
+        return prompt_and_response[:search_term_idx + len(search_term)]
+
+    def reorganize_row_simple(sample) -> Dict[str, str]:
+        prompt = extract_anthropic_prompt(sample['chosen'])
+        return {
+            'query': prompt,
+            'response': sample['chosen'][len(prompt):],
+            'rejected_response': sample['rejected'][len(prompt):],
+        }
+
+    return dataset.map(reorganize_row_simple)
+
+
+register_dataset(
+    DatasetName.hh_rlhf,
+    'AI-ModelScope/hh-rlhf', [('default', 'train')], [('default', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['hfrl', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.medical_zh,

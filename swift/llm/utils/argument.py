@@ -471,6 +471,16 @@ class InferArguments:
 
 
 @dataclass
+class DPOArguments(SftArguments):
+
+    ref_model_type: Optional[str] = field(
+        default=None,
+        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+
+    max_prompt_length: int = 1024
+
+
+@dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(
         default=None,
