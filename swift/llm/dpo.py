@@ -64,7 +64,7 @@ def llm_dpo(args: DPOArguments) -> str:
                                            args.torch_dtype, model_kwargs,
                                            **kwargs)
     else:
-        ref_model = None
+        ref_model = deepcopy(model)
 
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
