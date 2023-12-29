@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import fields
 from typing import Type
 
@@ -18,6 +19,9 @@ class LLMInfer(BaseUI):
     group = 'llm_infer'
 
     sub_ui = [Model]
+
+    int_regex = r'^[-+]?[0-9]+$'
+    float_regex = r'[-+]?(?:\d*\.*\d+)'
 
     locale_dict = {
         'generate_alert': {
@@ -159,6 +163,12 @@ class LLMInfer(BaseUI):
             compare_value_ui = str(value) if not isinstance(
                 value, (list, dict)) else value
             if key in infer_args and compare_value_ui != compare_value_arg and value:
+                if isinstance(value, str) and re.fullmatch(
+                        cls.int_regex, value):
+                    value = int(value)
+                elif isinstance(value, str) and re.fullmatch(
+                        cls.float_regex, value):
+                    value = float(value)
                 kwargs[key] = value if not isinstance(
                     value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list)

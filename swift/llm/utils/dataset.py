@@ -577,7 +577,8 @@ def process_hh_rlhf(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf,
-    'AI-ModelScope/hh-rlhf', [('default', 'train')], [('default', 'test')],
+    'AI-ModelScope/hh-rlhf', [('harmless-base', 'train')],
+    [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
     tags=['hfrl', 'dpo', 'pairwise'])
