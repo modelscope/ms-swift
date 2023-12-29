@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 from dataclasses import fields
 from typing import Dict, Type
@@ -263,14 +262,7 @@ class LLMTrain(BaseUI):
             cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
 
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
-        if sys.platform == 'win32':
-            if cuda_param:
-                cuda_param = f'set {cuda_param}&&'
-            if ddp_param:
-                ddp_param = f'set {ddp_param}&&'
-            run_command = f'{cuda_param}{ddp_param}start /min swift sft {params} >> {log_file}'
-        else:
-            run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
+        run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
         if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
