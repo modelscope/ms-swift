@@ -157,8 +157,6 @@ class ModelType:
     cogagent_chat = 'cogagent-chat'
     cogagent_vqa = 'cogagent-vqa'
 
-    gpt2 = 'gpt2'
-
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -324,37 +322,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
             config=model_config,
             torch_dtype=torch_dtype,
             trust_remote_code=True,
-            **model_kwargs)
-    return model, tokenizer
-
-
-@register_model(
-    ModelType.gpt2,
-    'AI-ModelScope/gpt2',
-    LoRATM.qwen,
-    TemplateType.default_generation_bos,
-    requires=['transformers>=4.36'],
-    support_vllm=False)
-def get_model_tokenizer(model_dir: str,
-                        torch_dtype: Dtype,
-                        model_kwargs: Dict[str, Any],
-                        load_model: bool = True,
-                        model_config=None,
-                        tokenizer=None,
-                        automodel_class=AutoModelForCausalLM,
-                        **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir)
-    model_config.torch_dtype = torch_dtype
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/gpt2', padding_side='left')
-    model = None
-    if load_model:
-        model = automodel_class.from_pretrained(
-            model_dir,
-            config=model_config,
-            torch_dtype=torch_dtype,
             **model_kwargs)
     return model, tokenizer
 

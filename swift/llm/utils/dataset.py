@@ -587,8 +587,8 @@ def get_dataset_from_hf(
 
 register_dataset(
     DatasetName.stack_exchange_paired,
-    '/mnt/workspace/yzhao/tastelikefeet/datasets/stack-exchange-paired',
-    [('default', 'train')], [('default', 'test')],
+    'AI-ModelScope/stack-exchange-paired', [('default', 'train')],
+    [('default', 'test')],
     RenameColumnsPreprocessor({
         'question': 'query',
         'response_j': 'response',
@@ -602,72 +602,25 @@ def process_hh_rlhf(dataset):
 
     def extract_anthropic_prompt(prompt_and_response):
         """Extract the anthropic prompt from a prompt and response pair."""
-        search_term = "\n\nAssistant:"
+        search_term = '\n\nAssistant:'
         search_term_idx = prompt_and_response.rfind(search_term)
         assert search_term_idx != -1, f"Prompt and response does not contain '{search_term}'"
-        return prompt_and_response[: search_term_idx + len(search_term)]
+        return prompt_and_response[:search_term_idx + len(search_term)]
 
     def reorganize_row_simple(sample) -> Dict[str, str]:
-        prompt = extract_anthropic_prompt(sample["chosen"])
+        prompt = extract_anthropic_prompt(sample['chosen'])
         return {
-            "query": prompt,
-            "response": sample["chosen"][len(prompt) :],
-            "rejected_response": sample["rejected"][len(prompt) :],
+            'query': prompt,
+            'response': sample['chosen'][len(prompt):],
+            'rejected_response': sample['rejected'][len(prompt):],
         }
 
-    def reorganize_row(row):
-        import re
-        chosen = row['chosen'].strip()
-        rejected = row['rejected'].strip()
-        parts_chosen = [
-            s.strip()
-            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
-        ]
-        parts_rejected = [
-            s.strip()
-            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
-        ]
-        if parts_chosen[0].startswith('Human:'):
-            assert parts_rejected[0].startswith('Human:')
-            parts_chosen[0] = parts_chosen[0][6:].strip()
-            parts_rejected[0] = parts_rejected[0][6:].strip()
-        history = []
-        idx, s1, s2 = None, None, None
-        for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
-            if s1 == s2:
-                if idx % 2 == 0:
-                    history.append([s1, None])
-                else:
-                    history[-1][-1] = s1
-            else:
-                break
-
-        if idx % 2 == 0:
-            return {
-                'query': None,
-                'response': None,
-                'rejected_response': None,
-                'history': None,
-            }
-        query = history[-1][0]
-        history = history[:-1]
-        response = s1
-        rejected_response = s2
-        return {
-            'query': query,
-            'response': response,
-            'rejected_response': rejected_response,
-            'history': history,
-        }
-
-    return dataset.map(reorganize_row_simple).filter(
-        lambda row: row['query'] is not None)
+    return dataset.map(reorganize_row_simple)
 
 
 register_dataset(
     DatasetName.hh_rlhf,
-    '/mnt/workspace/yzhao/tastelikefeet/datasets/hh-rlhf',
-    [('default', 'train')], [('default', 'test')],
+    'AI-ModelScope/hh-rlhf', [('default', 'train')], [('default', 'test')],
     process_hh_rlhf,
     get_dataset_from_hf,
     tags=['hfrl', 'dpo', 'pairwise'])

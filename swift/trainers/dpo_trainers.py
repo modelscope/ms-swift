@@ -4,10 +4,10 @@ from torch import nn
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
-from swift.llm.utils.utils import sort_by_max_length
-from swift.llm.utils.template import (Template, Context, _concat_context_list,
+from swift.llm.utils.template import (Context, Template, _concat_context_list,
                                       _encode_context_list,
                                       _simplify_context_list)
+from swift.llm.utils.utils import sort_by_max_length
 from swift.trainers.mixin import PushToMsHubMixin, SwiftMixin
 from swift.utils import get_logger
 
@@ -16,7 +16,11 @@ logger = get_logger()
 
 class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
-    def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
+    def __init__(self,
+                 *args,
+                 template: Template,
+                 test_oom_error=False,
+                 **kwargs):
         self.template = template
         super().__init__(*args, **kwargs)
         self.stat_dataset(self.train_dataset)
@@ -135,16 +139,16 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             }
             chosen_sequence_tokens['labels'] = chosen_sequence_tokens[
                 'input_ids'][:]
+            _paddings = [self.label_pad_token_id] * len(
+                chosen_tokens['prompt_input_ids'])
             chosen_sequence_tokens[
-                'labels'][:len(chosen_tokens['prompt_input_ids'])] = [
-                    self.label_pad_token_id
-                ] * len(chosen_tokens['prompt_input_ids'])
+                'labels'][:len(chosen_tokens['prompt_input_ids'])] = _paddings
             rejected_sequence_tokens['labels'] = rejected_sequence_tokens[
                 'input_ids'][:]
-            rejected_sequence_tokens[
-                'labels'][:len(rejected_tokens['prompt_input_ids'])] = [
-                    self.label_pad_token_id
-                ] * len(rejected_tokens['prompt_input_ids'])
+            _paddings = [self.label_pad_token_id] * len(
+                rejected_tokens['prompt_input_ids'])
+            rejected_sequence_tokens['labels'][:len(
+                rejected_tokens['prompt_input_ids'])] = _paddings
 
             for k, toks in {
                     'chosen_': chosen_sequence_tokens,
@@ -174,6 +178,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 _token_len.append(max(len(cc), len(rr)))
         else:
             for d in llm_dataset:
-                _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
+                _token_len.append(
+                    max(
+                        len(d['chosen_input_ids']),
+                        len(d['rejected_input_ids'])))
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
