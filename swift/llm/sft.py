@@ -331,6 +331,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             trainer._add_patterns_to_gitignores(['images/'])
             trainer.push_to_hub()
     return {
+        'memory': trainer.perf['memory'],
+        'train_info': {
+            'time': trainer.perf['train_time'],
+            'num_samples': len(train_dataset),
+            'samples/s': len(train_dataset) / trainer.perf['train_time']
+        },
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,

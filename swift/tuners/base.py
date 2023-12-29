@@ -485,7 +485,7 @@ class SwiftModel(nn.Module):
                f'|| trainable%: {100 * trainable_params / all_param:.4f}' \
                '|| cuda memory: ' \
                f'{sum([torch.cuda.memory_allocated(i) for i in range(torch.cuda.device_count())])/1024/1024/1024:.2f}' \
-               'GB.'
+               'GiB.'
 
 
 class Swift:
