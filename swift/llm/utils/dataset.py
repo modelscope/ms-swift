@@ -545,7 +545,7 @@ register_dataset(
 register_dataset(
     DatasetName.stack_exchange_paired,
     'AI-ModelScope/stack-exchange-paired', [('default', 'train')],
-    [('default', 'test')],
+    None,
     RenameColumnsPreprocessor({
         'question': 'query',
         'response_j': 'response',
