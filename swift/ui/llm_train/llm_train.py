@@ -6,6 +6,7 @@ from typing import Dict, Type
 import gradio as gr
 import json
 import torch
+from gradio import Accordion, Tab
 
 from swift.llm import SftArguments
 from swift.ui.base import BaseUI
@@ -146,9 +147,11 @@ class LLMTrain(BaseUI):
     }
 
     choice_dict = {}
+    default_dict = {}
     for f in fields(SftArguments):
         if 'choices' in f.metadata:
             choice_dict[f.name] = f.metadata['choices']
+        default_dict[f.name] = getattr(SftArguments, f.name)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -193,7 +196,10 @@ class LLMTrain(BaseUI):
                 SelfCog.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
                 submit.click(
-                    cls.train, [], [
+                    cls.train, [
+                        value for value in cls.elements().values()
+                        if not isinstance(value, (Tab, Accordion))
+                    ], [
                         cls.element('running_cmd'),
                         cls.element('logging_dir'),
                         cls.element('runtime_tab')
@@ -201,48 +207,53 @@ class LLMTrain(BaseUI):
                     show_progress=True)
 
     @classmethod
-    def train(cls):
-        ignore_elements = ('model_type', 'logging_dir')
-        args = fields(SftArguments)
-        args = {arg.name: arg.type for arg in args}
+    def train(cls, *args):
+        ignore_elements = ('model_type', 'logging_dir', 'more_params')
+        sft_args = fields(SftArguments)
+        sft_args = {
+            arg.name: getattr(SftArguments, arg.name)
+            for arg in sft_args
+        }
         kwargs = {}
-        more_params = getattr(cls.element('more_params'), 'arg_value', None)
-        if more_params:
-            more_params = json.loads(more_params)
-        else:
-            more_params = {}
+        kwargs_is_list = {}
+        other_kwargs = {}
+        more_params = {}
+        keys = [
+            key for key, value in cls.elements().items()
+            if not isinstance(value, (Tab, Accordion))
+        ]
+        for key, value in zip(keys, args):
+            compare_value = sft_args.get(key)
+            compare_value_arg = str(compare_value) if not isinstance(
+                compare_value, (list, dict)) else compare_value
+            compare_value_ui = str(value) if not isinstance(
+                value, (list, dict)) else value
+            if key not in ignore_elements and key in sft_args and compare_value_ui != compare_value_arg and value:
+                kwargs[key] = value if not isinstance(
+                    value, list) else ' '.join(value)
+                kwargs_is_list[key] = isinstance(value, list) or getattr(
+                    cls.element(key), 'is_list', False)
+            else:
+                other_kwargs[key] = value
+            if key == 'more_params' and value:
+                more_params = json.loads(value)
 
-        elements = cls.elements()
-
-        for e in elements:
-            if e in args and getattr(elements[e], 'changed', False) and getattr(elements[e], 'arg_value', None) \
-                    and e not in ignore_elements:
-                kwargs[e] = elements[e].arg_value
         kwargs.update(more_params)
         sft_args = SftArguments(**kwargs)
         params = ''
-        output_dir = sft_args.logging_dir.split('runs')[0]
-        elements['output_dir'].changed = True
-        elements['output_dir'].arg_value = output_dir
 
-        for e in elements:
-            if e in args and getattr(elements[e], 'changed',
-                                     False) and getattr(
-                                         elements[e], 'arg_value',
-                                         None) and e not in ignore_elements:
-                if getattr(elements[e], 'is_list', False):
-                    params += f'--{e} {elements[e].arg_value} '
-                else:
-                    params += f'--{e} "{elements[e].arg_value}" '
+        for e in kwargs:
+            if kwargs_is_list[e]:
+                params += f'--{e} {kwargs[e]} '
+            else:
+                params += f'--{e} "{kwargs[e]}" '
         params += '--add_output_dir_suffix False '
         for key, param in more_params.items():
             params += f'--{key} "{param}" '
         ddp_param = ''
-        devices = getattr(elements['gpu_id'], 'arg_value',
-                          ' '.join(elements['gpu_id'].value)).split(' ')
+        devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
-        if getattr(elements['use_ddp'], 'arg_value',
-                   elements['use_ddp'].value):
+        if other_kwargs['use_ddp']:
             ddp_param = f'NPROC_PER_NODE={len(devices)}'
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
@@ -253,7 +264,7 @@ class LLMTrain(BaseUI):
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
         run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
-        if not getattr(elements['dry_run'], 'arg_value', False):
+        if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
