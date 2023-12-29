@@ -5,6 +5,7 @@ from typing import Type
 import gradio as gr
 import json
 import torch
+from gradio import Accordion, Tab
 
 from swift.llm import (InferArguments, inference_stream, limit_history_length,
                        prepare_model_template)
@@ -107,7 +108,8 @@ class LLMInfer(BaseUI):
                 submit.click(
                     cls.generate_chat,
                     inputs=[
-                        model_and_template, prompt, chatbot,
+                        model_and_template,
+                        cls.element('template_type'), prompt, chatbot,
                         cls.element('max_new_tokens')
                     ],
                     outputs=[prompt, chatbot],
@@ -117,7 +119,10 @@ class LLMInfer(BaseUI):
                 cls.element('load_checkpoint').click(
                     cls.reset_memory, [], [model_and_template],
                     show_progress=False).then(
-                        cls.prepare_checkpoint, [], [model_and_template],
+                        cls.prepare_checkpoint, [
+                            value for value in cls.elements().values()
+                            if not isinstance(value, (Tab, Accordion))
+                        ], [model_and_template],
                         show_progress=True).then(cls.change_interactive, [],
                                                  [prompt])
                 cls.element('load_checkpoint').click(
@@ -131,39 +136,51 @@ class LLMInfer(BaseUI):
         return []
 
     @classmethod
-    def prepare_checkpoint(cls):
+    def prepare_checkpoint(cls, *args):
         global model, tokenizer, template
         torch.cuda.empty_cache()
-        args = fields(InferArguments)
-        args = {arg.name: arg.type for arg in args}
+        infer_args = fields(InferArguments)
+        infer_args = {
+            arg.name: getattr(InferArguments, arg.name)
+            for arg in infer_args
+        }
         kwargs = {}
-        more_params = getattr(cls.element('more_params'), 'arg_value', None)
-        if more_params:
-            more_params = json.loads(more_params)
-        else:
-            more_params = {}
+        kwargs_is_list = {}
+        other_kwargs = {}
+        more_params = {}
+        keys = [
+            key for key, value in cls.elements().items()
+            if not isinstance(value, (Tab, Accordion))
+        ]
+        for key, value in zip(keys, args):
+            compare_value = infer_args.get(key)
+            compare_value_arg = str(compare_value) if not isinstance(
+                compare_value, (list, dict)) else compare_value
+            compare_value_ui = str(value) if not isinstance(
+                value, (list, dict)) else value
+            if key in infer_args and compare_value_ui != compare_value_arg and value:
+                kwargs[key] = value if not isinstance(
+                    value, list) else ' '.join(value)
+                kwargs_is_list[key] = isinstance(value, list)
+            else:
+                other_kwargs[key] = value
+            if key == 'more_params' and value:
+                more_params = json.loads(value)
 
-        elements = cls.elements()
-        for e in elements:
-            if e in args and getattr(elements[e], 'changed',
-                                     False) and getattr(
-                                         elements[e], 'arg_value', None):
-                kwargs[e] = elements[e].arg_value
         kwargs.update(more_params)
-        if elements['model_type'].arg_value == cls.locale(
-                'checkpoint', cls.lang)['value']:
+        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
             kwargs['ckpt_dir'] = kwargs.pop('model_id_or_path')
         if 'ckpt_dir' in kwargs or 'model_id_or_path' in kwargs:
             kwargs.pop('model_type', None)
 
-        devices = getattr(elements['gpu_id'], 'arg_value',
-                          ' '.join(elements['gpu_id'].value)).split(' ')
+        devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
-        os.environ['CUDA_VISIBLE_DEVICES'] = gpus
-        args = InferArguments(**kwargs)
-        model, template = prepare_model_template(args)
+        if gpus != 'cpu':
+            os.environ['CUDA_VISIBLE_DEVICES'] = gpus
+        inter_args = InferArguments(**kwargs)
+        model, template = prepare_model_template(inter_args)
         return [model, template]
 
     @classmethod
@@ -175,13 +192,13 @@ class LLMInfer(BaseUI):
         return gr.update(interactive=True)
 
     @classmethod
-    def generate_chat(cls, model_and_template, prompt: str, history,
-                      max_new_tokens):
+    def generate_chat(cls, model_and_template, template_type, prompt: str,
+                      history, max_new_tokens):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
         model, template = model_and_template
-        if not cls.element('template_type').arg_value.endswith('generation'):
+        if not template_type.endswith('generation'):
             old_history, history = limit_history_length(
                 template, prompt, history, int(max_new_tokens))
         else:

@@ -1,12 +1,13 @@
 import os
 from functools import partial, wraps
-from typing import Dict, List, OrderedDict, Type
+from typing import Any, Dict, List, OrderedDict, Type
 
 from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
                     TabItem, Textbox)
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
+base_builder: Type['BaseUI'] = None
 lang = os.environ.get('SWIFT_UI_LANG', all_langs[0])
 
 
@@ -18,7 +19,7 @@ def update_data(fn):
         self = args[0]
 
         if builder is not None:
-            choices = builder.choice(elem_id)
+            choices = base_builder.choice(elem_id)
             if choices:
                 kwargs['choices'] = choices
 
@@ -29,6 +30,9 @@ def update_data(fn):
 
         if 'is_list' in kwargs:
             self.is_list = kwargs.pop('is_list')
+
+        if base_builder and base_builder.default(elem_id):
+            kwargs['value'] = base_builder.default(elem_id)
 
         if builder is not None:
             if elem_id in builder.locales(lang):
@@ -62,6 +66,7 @@ Button.__init__ = update_data(Button.__init__)
 class BaseUI:
 
     choice_dict: Dict[str, List] = {}
+    default_dict: Dict[str, Any] = {}
     locale_dict: Dict[str, Dict] = {}
     element_dict: Dict[str, Dict] = {}
     sub_ui: List[Type['BaseUI']] = []
@@ -71,31 +76,15 @@ class BaseUI:
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
         """Build UI"""
-        global builder
+        global builder, base_builder
         cls.element_dict = {}
         old_builder = builder
+        old_base_builder = base_builder
         builder = cls
+        base_builder = base_tab
         cls.do_build_ui(base_tab)
-        for element in cls.element_dict.values():
-            if hasattr(element, 'change'):
-
-                def change(value, self):
-                    print(value)
-                    self.changed = True
-                    arg_value = value
-                    if isinstance(value, list):
-                        arg_value = ' '.join(value)
-                        self.is_list = True
-                    self.arg_value = arg_value
-
-                element.change(
-                    partial(change, self=element), [element], [], queue=False)
-
-                value = getattr(element, 'value', None)
-                element.arg_value = ' '.join(value) if isinstance(
-                    value, list) else value
-
         builder = old_builder
+        base_builder = old_base_builder
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -110,6 +99,15 @@ class BaseUI:
             if _choice:
                 return _choice
         return cls.choice_dict.get(elem_id, [])
+
+    @classmethod
+    def default(cls, elem_id):
+        """Get choice by elem_id"""
+        for sub_ui in BaseUI.sub_ui:
+            _choice = sub_ui.default(elem_id)
+            if _choice:
+                return _choice
+        return cls.default_dict.get(elem_id, [])
 
     @classmethod
     def locale(cls, elem_id, lang):
