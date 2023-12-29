@@ -6,6 +6,15 @@ from types import FunctionType, MethodType
 from typing import List, Union
 
 from torch.nn import Module
+from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
+                                        HPSearchBackend, HubStrategy,
+                                        IntervalStrategy, SchedulerType)
+
+try:
+    # https://github.com/huggingface/transformers/pull/25702
+    from transformers.trainer_utils import ShardedDDPOption
+except ImportError:
+    ShardedDDPOption = None
 
 
 def can_return_loss(model: Module) -> List[str]:
