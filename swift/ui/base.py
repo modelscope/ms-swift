@@ -31,7 +31,7 @@ def update_data(fn):
         if 'is_list' in kwargs:
             self.is_list = kwargs.pop('is_list')
 
-        if base_builder and base_builder.default(elem_id):
+        if base_builder and base_builder.default(elem_id) is not None:
             kwargs['value'] = base_builder.default(elem_id)
 
         if builder is not None:
@@ -107,7 +107,7 @@ class BaseUI:
             _choice = sub_ui.default(elem_id)
             if _choice:
                 return _choice
-        return cls.default_dict.get(elem_id, [])
+        return cls.default_dict.get(elem_id, None)
 
     @classmethod
     def locale(cls, elem_id, lang):
