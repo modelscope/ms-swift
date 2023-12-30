@@ -37,11 +37,10 @@ def test_memory_time(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     args_kwargs = get_non_default_args(train_args)
     print(f'args_kwargs: {args_kwargs}')
     for i in range(train_args.run_time):
-        start_t = time.time()
         sft_args = SftArguments(
             dataset_test_ratio=0,
             dataset=DatasetName.cls_fudan_news_zh,
-            train_dataset_sample=1000,
+            train_dataset_sample=-1,
             save_strategy='no',
             check_dataset_strategy='warning',
             truncation_strategy='truncation_left',
@@ -49,12 +48,10 @@ def test_memory_time(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
             preprocess_num_proc=4,
             **args_kwargs)
         output = sft_main(sft_args)
-        t = (time.time() - start_t) / 60  # min
-        max_memory = torch.cuda.max_memory_reserved() / 1024**2
         torch.cuda.empty_cache()
     output = {
-        'time': f'{t}min',
-        'memory': f'{max_memory}MiB',
+        'samples/s': f"{output['train_info']['samples/s']:.2f}",
+        'memory': output['memory'],
         'train_args': check_json_format(args_kwargs),
         'model_info': output['model_info'],
     }

@@ -91,13 +91,18 @@ class TestRun(unittest.TestCase):
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
             torch.cuda.empty_cache()
+            load_dataset_config = str(bool_var or NO_EVAL_HUMAN)
+            if load_dataset_config:
+                show_dataset_sample = 2
+            else:
+                show_dataset_sample = -1
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
-                '-1', '--max_new_tokens', '100', '--use_flash_attn', 'true',
-                '--verbose',
+                str(show_dataset_sample), '--max_new_tokens', '100',
+                '--use_flash_attn', 'true', '--verbose',
                 str(not bool_var), '--merge_lora_and_save',
                 str(bool_var), '--load_dataset_config',
-                str(bool_var or NO_EVAL_HUMAN)
+                str(load_dataset_config)
             ])
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
