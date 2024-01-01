@@ -69,6 +69,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         top_p=args.top_p,
         do_sample=args.do_sample,
         repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')

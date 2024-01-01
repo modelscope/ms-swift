@@ -132,6 +132,7 @@ def prepare_model_template(
         top_p=args.top_p,
         do_sample=args.do_sample,
         repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
@@ -210,27 +211,34 @@ def llm_infer(args: InferArguments) -> None:
                 continue
             if not template.support_multi_round:
                 history = []
-            print_idx = 0
             if args.infer_backend == 'vllm':
                 gen = inference_stream_vllm(llm_engine, template,
                                             [{
                                                 'query': query,
                                                 'history': history
                                             }])
+                print_idx = 0
                 for resp_list in gen:
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
                     if len(response) > print_idx:
                         print(response[print_idx:], end='', flush=True)
                         print_idx = len(response)
+                print()
             else:
-                gen = inference_stream(
-                    model, template, query, history, image=image)
-                for response, new_history in gen:
-                    if len(response) > print_idx:
-                        print(response[print_idx:], end='', flush=True)
-                        print_idx = len(response)
-            print()
+                if args.stream:
+                    gen = inference_stream(
+                        model, template, query, history, image=image)
+                    print_idx = 0
+                    for response, new_history in gen:
+                        if len(response) > print_idx:
+                            print(response[print_idx:], end='', flush=True)
+                            print_idx = len(response)
+                    print()
+                else:
+                    response, new_history = inference(
+                        model, template, query, history, image=image)
+                    print(response)
             print('-' * 50)
             obj = {
                 'query': query,

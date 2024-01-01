@@ -165,6 +165,7 @@ class SftArguments:
     top_k: int = 20
     top_p: float = 0.7
     repetition_penalty: float = 1.05
+    num_beams: int = 1
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -373,6 +374,7 @@ class InferArguments:
     top_k: int = 20
     top_p: float = 0.7
     repetition_penalty: float = 1.05
+    num_beams: int = 1
 
     # other
     use_flash_attn: Optional[bool] = None
@@ -466,6 +468,9 @@ class InferArguments:
                 assert self.merge_lora_and_save is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
                     'Please set --merge_lora_and_save true.')
+        if self.num_beams != 1:
+            self.stream = False
+            logger.info('Setting self.stream: False')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
