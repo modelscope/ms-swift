@@ -377,7 +377,7 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     save_safetensors: bool = True
-    overwrite_generation_config: bool = False
+    overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
     # app-ui
     share: bool = False
@@ -436,9 +436,14 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
-        if self.ckpt_dir is None and self.overwrite_generation_config:
-            self.overwrite_generation_config = False
-            logger.warning('Setting overwrite_generation_config: False')
+        if self.overwrite_generation_config is None:
+            if self.ckpt_dir is None:
+                self.overwrite_generation_config = False
+            else:
+                self.overwrite_generation_config = True
+            logger.info(
+                f'Setting overwrite_generation_config: {self.overwrite_generation_config}'
+            )
         if self.ckpt_dir is None:
             self.sft_type = 'full'
         model_info = MODEL_MAPPING[self.model_type]

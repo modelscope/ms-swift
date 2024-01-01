@@ -162,11 +162,13 @@ def llm_infer(args: InferArguments) -> None:
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
+        generation_config = llm_engine.generation_config
     else:
         model, template = prepare_model_template(args)
-        if args.overwrite_generation_config:
-            assert args.ckpt_dir is not None
-            model.generation_config.save_pretrained(args.ckpt_dir)
+        generation_config = model.generation_config
+    if args.overwrite_generation_config:
+        assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
+        generation_config.save_pretrained(args.ckpt_dir)
     # Inference
     result = []
     jsonl_path = None
