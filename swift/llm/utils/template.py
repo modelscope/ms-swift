@@ -331,12 +331,12 @@ class Template:
                  prefix_has_system: Optional[Prompt] = None) -> None:
         self.prefix = prefix
         if _has_system(prefix):
-            assert prefix_has_system is None
-            assert default_system is not None
+            assert prefix_has_system is None, 'The prefix already contains {{SYSTEM}}.'
+            assert default_system is not None, 'You need to provide the `default_system`.'
             prefix_has_system = prefix
         self.prefix_has_system = prefix_has_system
         if self.prefix_has_system is None:
-            assert default_system is None
+            assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
         self.support_multi_round = self.chat_sep is not None
@@ -352,11 +352,11 @@ class Template:
                        truncation_strategy: Literal[
                            'delete', 'truncation_left'] = 'delete',
                        **kwargs) -> None:
-        assert self._is_init is False
+        assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
         if default_system is not None:
-            assert self.prefix_has_system is not None
+            assert self.prefix_has_system is not None, 'The template does not support `system`.'
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
@@ -365,7 +365,7 @@ class Template:
                                    Any]) -> Dict[str, Optional[List[int]]]:
         if not self._is_init:
             raise ValueError(
-                'Template has not been initialized, please call init_template(...) first.'
+                'Template is not initialized, please use the `get_template` function to obtain the template.'
             )
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
@@ -378,12 +378,12 @@ class Template:
         if history is None:
             history = []
         if len(history) > 0:
-            assert self.support_multi_round, 'the template not support multi-round chat'
+            assert self.support_multi_round, 'The template does not support multi-round chat.'
         if system is None:
             if self.use_default_system:
                 system = self.default_system
         else:
-            assert self.prefix_has_system is not None, 'not support `system`'
+            assert self.prefix_has_system is not None, 'The template does not support `system`.'
         if rejected_response is None:
             return _encode(self, query, response, history, system,
                            self.truncation_strategy)
