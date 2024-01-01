@@ -35,19 +35,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             'gen_len':
             0,
             'memory': {},
-            'train_time':
-            0.,
             'model':
             self.model.get_trainable_parameters() if hasattr(
                 self.model, 'get_trainable_parameters') else None,
         }
-
-    def training_step(self, *args, **kwargs) -> torch.Tensor:
-        train_time = time.time()
-        training_output = super().training_step(*args, **kwargs)
-        train_time = time.time() - train_time
-        self.perf['train_time'] = self.perf['train_time'] + train_time
-        return training_output
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         super().train(*args, **kwargs)

@@ -18,10 +18,10 @@ from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        Template, TemplateType, get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, data_collate_fn, dataset_map,
                     download_dataset, find_all_linear_for_lora,
-                    fix_fp16_trainable_bug, history_to_messages, inference,
-                    inference_stream, is_vllm_available, limit_history_length,
-                    messages_to_history, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    fix_fp16_trainable_bug, get_time_info, history_to_messages,
+                    inference, inference_stream, is_vllm_available,
+                    limit_history_length, messages_to_history, print_example,
+                    set_generation_config, sort_by_max_length, stat_dataset)
 
 try:
     if is_vllm_available():

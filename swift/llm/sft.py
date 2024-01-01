@@ -22,8 +22,9 @@ from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
                     find_all_linear_for_lora, fix_fp16_trainable_bug,
                     get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, print_example,
-                    set_generation_config, sort_by_max_length, stat_dataset)
+                    get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length,
+                    stat_dataset)
 
 logger = get_logger()
 
@@ -183,6 +184,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     if not args.lazy_tokenize:
+        dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode,
                                     args.preprocess_num_proc)
@@ -193,10 +195,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
         print_example(train_dataset[0], tokenizer)
-        stat_dataset(train_dataset)
+        dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
-            stat_dataset(val_dataset)
+            dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
+        dataset_info = None
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)
 
@@ -321,6 +324,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
+    train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
@@ -332,15 +336,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             trainer.push_to_hub()
     return {
         'memory': trainer.perf['memory'],
-        'train_info': {
-            'time': trainer.perf['train_time'],
-            'num_samples': len(train_dataset),
-            'samples/s': len(train_dataset) / trainer.perf['train_time']
-        },
+        'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
         'model_info': model_info,
+        'dataset_info': dataset_info,
     }
