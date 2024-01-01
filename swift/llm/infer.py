@@ -25,8 +25,8 @@ def merge_lora(args: InferArguments,
                device_map: str = 'auto',
                **kwargs) -> str:
     logger.info(f'replace_if_exists: {replace_if_exists}')
-    assert args.ckpt_dir is not None
-    assert args.sft_type == 'lora'
+    assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
+    assert args.sft_type == 'lora', "Only supports sft_type == 'lora'"
     assert 'int4' not in args.model_type, 'int4 model is not supported'
     assert 'int8' not in args.model_type, 'int8 model is not supported'
     if args.quantization_bit != 0:

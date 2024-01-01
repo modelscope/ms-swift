@@ -219,7 +219,7 @@ class SftArguments:
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
             )
             if 'int4' in self.model_type or 'int8' in self.model_type:
-                assert self.quantization_bit == 0
+                assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -229,8 +229,11 @@ class SftArguments:
                     self.only_save_model = True
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters < 1
-            assert self.quantization_bit == 0, 'not supported'
-            assert self.dtype != 'fp16', 'please use bf16 or fp32'
+            assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
+            assert self.dtype != 'fp16', (
+                "Fine-tuning with dtype=='fp16' can lead to NaN issues. "
+                'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.'
+            )
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
             if self.only_save_model is None:
@@ -306,7 +309,7 @@ class SftArguments:
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
         elif not support_gradient_checkpointing:
-            assert self.gradient_checkpointing is False, 'not support gradient_checkpointing'
+            assert self.gradient_checkpointing is False, f'{self.model_type} not support gradient_checkpointing.'
 
 
 @dataclass
@@ -405,7 +408,7 @@ class InferArguments:
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
         else:
-            assert self.load_dataset_config is False
+            assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
@@ -457,10 +460,12 @@ class InferArguments:
                 else:
                     self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
-            assert self.quantization_bit == 0, 'not support bnb'
+            assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             assert support_vllm, f'vllm not support `{self.model_type}`'
             if self.sft_type == 'lora':
-                assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
+                assert self.merge_lora_and_save is True, (
+                    'To use VLLM, you need to provide the complete weight parameters. '
+                    'Please set --merge_lora_and_save true.')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:

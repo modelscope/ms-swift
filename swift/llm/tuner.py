@@ -34,7 +34,9 @@ def prepare_model(model, args):
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
             elif args.sft_type == 'longlora':
-                assert args.tuner_backend != 'peft'
+                assert args.tuner_backend != 'peft', (
+                    'peft does not support longlora. You need to set `--tuner_backend swift`.'
+                )
                 assert LongLoRAModelType.LLAMA in args.model_type
                 longlora_config = LongLoRAConfig(
                     r=args.lora_rank,
