@@ -3,12 +3,13 @@
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import freeze_model_parameters, get_logger
-from .utils import find_all_linear_for_lora, fix_fp16_trainable_bug
+from .utils import (SftArguments, find_all_linear_for_lora,
+                    fix_fp16_trainable_bug)
 
 logger = get_logger()
 
 
-def prepare_model(model, args):
+def prepare_model(model, args: SftArguments):
     # Preparing LoRA
     if args.sft_type in ('lora', 'qalora', 'longlora'):
         if args.resume_from_checkpoint is None:
