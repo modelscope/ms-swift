@@ -108,7 +108,7 @@ class VllmGenerationConfig(SamplingParams):
             top_k = -1
             top_p = 1
             temperature = 0
-            logger.info(
+            logger.warning(
                 'The output of num_beams in vllm may not be consistent with the output of num_beams in transformers.'
             )
         if top_k == 0:
