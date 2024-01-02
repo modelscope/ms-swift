@@ -23,7 +23,7 @@
 - bitsandbytes 0.41.3.post2
 
 
-我们使用了1000条训练数据集进行基准测试. 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
+实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
 
 以下为所有实验的相同命令行设置部分:
 ```bash
