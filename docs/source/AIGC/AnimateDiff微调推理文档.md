@@ -165,7 +165,7 @@ learning_rate: Optional[float] = None # 学习率
 weight_decay: float = 0.01 # adamw参数
 gradient_accumulation_steps: int = 16 # ga大小
 max_grad_norm: float = 1. # grad norm大小
-lr_scheduler_type: str = 'linear' # lr_scheduler的类型
+lr_scheduler_type: str = 'cosine' # lr_scheduler的类型
 warmup_ratio: float = 0.05 # 是否warmup及warmup占比
 
 eval_steps: int = 50 # eval step间隔
