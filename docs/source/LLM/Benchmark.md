@@ -20,7 +20,7 @@
 - flash_attn 2.3.4
 - xformers 0.0.23
 - auto_gptq 0.5.1
-- bitsandbytes 0.41.3
+- bitsandbytes 0.41.3.post2
 
 
 我们使用了1000条训练数据集进行基准测试. 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
@@ -29,7 +29,6 @@
 ```bash
     --dataset_test_ratio 0 \
     --dataset cls-fudan-news-zh \
-    --train_dataset_sample 1000 \
     --save_strategy no \
     --check_dataset_strategy warning \
     --truncation_strategy truncation_left \
@@ -40,12 +39,15 @@
 ```bash
     --max_length 2048 \
     --batch_size 1 \
-    --gradient_checkpinting true \
+    --gradient_checkpointing true \
     --use_flash_attn true \
     --lora_rank 8 \
     --lora_target_modules DEFAULT \
     --quantization_bit 0 \
 ```
+
+对应测试数据集的token数统计量(由qwen的tokenizer获取): 3234.4±2547.5, min=91, max=19548
+
 
 ## 量化
 测试脚本为:
@@ -61,152 +63,76 @@ swift sft \
     <tr>
         <td>Model Type [LoRA]</td>
         <td>Quantization</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
     </tr>
     <tr>
         <td rowspan="4">qwen-7b-chat</td>
         <td>bf16</td>
-        <td>7.01min</td>
-        <td>19362MiB</td>
+        <td>4.31</td>
+        <td>27.74</td>
     </tr>
     <tr>
         <td>int4 (gptq)</td>
-        <td>11.37min</td>
-        <td>10504MiB</td>
+        <td>2.05</td>
+        <td>19.21</td>
     </tr>
     <tr>
         <td>int8 (gptq)</td>
-        <td>11.73min</td>
-        <td>13648MiB</td>
+        <td>1.97</td>
+        <td>22.20</td>
     </tr>
     <tr>
         <td>int4 (bnb)</td>
-        <td>9.41min</td>
-        <td>13616MiB</td>
+        <td>2.41</td>
+        <td>23.85</td>
     </tr>
     <tr>
         <td rowspan="4">qwen-14b-chat</td>
         <td>bf16</td>
-        <td>11.73min</td>
-        <td>32186MiB</td>
+        <td>2.60</td>
+        <td>40.14</td>
     </tr>
     <tr>
         <td>int4 (gptq)</td>
-        <td>19.69min</td>
-        <td>14852MiB</td>
+        <td>1.15</td>
+        <td>23.30</td>
     </tr>
     <tr>
         <td>int8 (gptq)</td>
-        <td>20.60min</td>
-        <td>20790MiB</td>
+        <td>1.08</td>
+        <td>29.13</td>
     </tr>
     <tr>
         <td>int4 (bnb)</td>
-        <td>16.30min</td>
-        <td>19278MiB</td>
+        <td>1.36</td>
+        <td>30.05</td>
     </tr>
+{"samples/s": "0.59", "memory": {"cuda:0": "73.71GiB", "cuda:1": "78.54GiB"}, "train_args": {"model_type": "qwen-72b-chat", "use_flash_attn": true}, "model_info": "SwiftModel: 72308.8916M Params (20.9715M Trainable [0.0290%]), 2.6215M Buffers.", "dataset_info": {"train_dataset": "843.897936±600.024344, min=91.000000, max=2048.000000, size=1793"}}
     <tr>
         <td rowspan="4">qwen-72b-chat</td>
         <td>bf16</td>
-        <td>-</td>
-        <td>OOM</td>
+        <td>0.59 (2*A100)</td>
+        <td>73.71+78.54</td>
     </tr>
     <tr>
         <td>int4 (gptq)</td>
-        <td>97.94min</td>
-        <td>46980MiB</td>
+        <td>0.23</td>
+        <td>54.86</td>
     </tr>
     <tr>
         <td>int8 (gptq)</td>
-        <td>103.83min</td>
-        <td>80646MiB</td>
+        <td>0.21</td>
+        <td>78.44</td>
     </tr>
     <tr>
         <td>int4 (bnb)</td>
-        <td>81.72min</td>
-        <td>62430MiB</td>
+        <td>0.28</td>
+        <td>74.87</td>
     </tr>
 </table>
 
 ## Max Length
-### Full
-测试脚本为:
-```bash
-swift sft \
-    --model_type {MODEL_TYPE} \
-    --max_length {MAX_LENGTH} \
-    --sft_type full \
-    ...
-```
-
-<table>
-    <tr>
-        <td>Model Type [FULL]</td>
-        <td>Max Length</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
-    </tr>
-    <tr>
-        <td rowspan="5">qwen-1_8b-chat</td>
-        <td>512</td>
-        <td>1.85min</td>
-        <td>18010MiB</td>
-    </tr>
-    <tr>
-        <td>1024</td>
-        <td>1.98min</td>
-        <td>18072MiB</td>
-    </tr>
-    <tr>
-        <td>2048</td>
-        <td>2.76min</td>
-        <td>20286MiB</td>
-    </tr>
-    <tr>
-        <td>4096</td>
-        <td>3.87min</td>
-        <td>26436MiB</td>
-    </tr>
-    <tr>
-        <td>8192</td>
-        <td>4.86min</td>
-        <td>37530MiB</td>
-    </tr>
-    <tr>
-        <td rowspan="5">qwen-7b-chat</td>
-        <td>512</td>
-        <td>3.89min</td>
-        <td>75213MiB</td>
-    </tr>
-    <tr>
-        <td>1024</td>
-        <td>5.74min</td>
-        <td>75627MiB</td>
-    </tr>
-    <tr>
-        <td>2048</td>
-        <td>8.88min</td>
-        <td>76520MiB</td>
-    </tr>
-    <tr>
-        <td>4096</td>
-        <td>13.94min</td>
-        <td>78986MiB</td>
-    </tr>
-    <tr>
-        <td>8192</td>
-        <td>-</td>
-        <td>OOM</td>
-    </tr>
-    <tr>
-        <td rowspan="1">qwen-14b-chat</td>
-        <td>512</td>
-        <td>-</td>
-        <td>OOM</td>
-    </tr>
-</table>
-
 ### LoRA
 测试脚本为:
 ```bash
@@ -221,86 +147,164 @@ swift sft \
     <tr>
         <td>Model Type [LoRA]</td>
         <td>Max Length</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
     </tr>
     <tr>
         <td rowspan="5">qwen-1_8b-chat</td>
         <td>512</td>
-        <td>2.02min</td>
-        <td>4610MiB</td>
+        <td>9.88</td>
+        <td>6.99</td>
     </tr>
     <tr>
         <td>1024</td>
-        <td>2.07min</td>
-        <td>5576MiB</td>
+        <td>9.90</td>
+        <td>10.71</td>
     </tr>
     <tr>
         <td>2048</td>
-        <td>2.48min</td>
-        <td>7624MiB</td>
+        <td>8.77</td>
+        <td>16.35</td>
     </tr>
     <tr>
         <td>4096</td>
-        <td>3.73min</td>
-        <td>17324MiB</td>
+        <td>5.92</td>
+        <td>23.80</td>
     </tr>
     <tr>
         <td>8192</td>
-        <td>4.48min</td>
-        <td>36620MiB</td>
+        <td>4.19</td>
+        <td>37.03</td>
     </tr>
     <tr>
         <td rowspan="5">qwen-7b-chat</td>
         <td>512</td>
-        <td>2.52min</td>
-        <td>15926MiB</td>
+        <td>7.43</td>
+        <td>18.01</td>
     </tr>
     <tr>
         <td>1024</td>
-        <td>4.11min</td>
-        <td>17096MiB</td>
+        <td>6.51</td>
+        <td>21.73</td>
     </tr>
     <tr>
         <td>2048</td>
-        <td>7.01min</td>
-        <td>19362MiB</td>
+        <td>4.31</td>
+        <td>27.74</td>
     </tr>
     <tr>
         <td>4096</td>
-        <td>11.12min</td>
-        <td>29264MiB</td>
+        <td>2.05</td>
+        <td>35.31</td>
     </tr>
     <tr>
         <td>8192</td>
-        <td>13.63min</td>
-        <td>48560MiB</td>
+        <td>1.34</td>
+        <td>48.41</td>
     </tr>
     <tr>
         <td rowspan="5">qwen-14b-chat</td>
         <td>512</td>
-        <td>3.94min</td>
-        <td>28466MiB</td>
+        <td>5.63</td>
+        <td>30.14</td>
     </tr>
     <tr>
         <td>1024</td>
-        <td>6.67min</td>
-        <td>29708MiB</td>
+        <td>4.36</td>
+        <td>34.43</td>
     </tr>
     <tr>
         <td>2048</td>
-        <td>11.73min</td>
-        <td>32186MiB</td>
+        <td>2.60</td>
+        <td>40.14</td>
     </tr>
     <tr>
         <td>4096</td>
-        <td>18.88min</td>
-        <td>42098MiB</td>
+        <td>1.17</td>
+        <td>47.95</td>
     </tr>
     <tr>
         <td>8192</td>
-        <td>23.61min</td>
-        <td>61412MiB</td>
+        <td>0.79</td>
+        <td>60.74</td>
+    </tr>
+</table>
+
+
+### Full
+测试脚本为:
+```bash
+swift sft \
+    --model_type {MODEL_TYPE} \
+    --max_length {MAX_LENGTH} \
+    --sft_type full \
+    ...
+```
+
+<table>
+    <tr>
+        <td>Model Type [FULL]</td>
+        <td>Max Length</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
+    </tr>
+    <tr>
+        <td rowspan="5">qwen-1_8b-chat</td>
+        <td>512</td>
+        <td>10.77</td>
+        <td>18.16</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>10.39</td>
+        <td>18.62</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>8.73</td>
+        <td>35.11</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>5.45</td>
+        <td>31.62</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>3.81</td>
+        <td>38.93</td>
+    </tr>
+    <tr>
+        <td rowspan="5">qwen-7b-chat</td>
+        <td>512</td>
+        <td>5.96</td>
+        <td>73.37</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>5.00</td>
+        <td>73.64</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>3.30</td>
+        <td>74.26</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>1.64</td>
+        <td>78.76</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>-</td>
+        <td>OOM</td>
+    </tr>
+    <tr>
+        <td rowspan="1">qwen-14b-chat</td>
+        <td>512</td>
+        <td>-</td>
+        <td>OOM</td>
     </tr>
 </table>
 
@@ -319,29 +323,29 @@ swift sft \
     <tr>
         <td>Model Type [LoRA]</td>
         <td>Batch Size</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
     </tr>
     <tr>
         <td rowspan="4">qwen-7b-chat</td>
         <td>1</td>
-        <td>7.01min</td>
-        <td>19362MiB</td>
+        <td>4.31</td>
+        <td>27.74</td>
     </tr>
     <tr>
         <td>2</td>
-        <td>8.05min</td>
-        <td>24842MiB</td>
+        <td>3.60</td>
+        <td>43.11</td>
     </tr>
     <tr>
         <td>4</td>
-        <td>7.95min</td>
-        <td>34842MiB</td>
+        <td>3.02</td>
+        <td>63.81</td>
     </tr>
     <tr>
         <td>8</td>
-        <td>7.94min</td>
-        <td>54844MiB</td>
+        <td>2.77</td>
+        <td>76.14</td>
     </tr>
 </table>
 
@@ -361,33 +365,33 @@ swift sft \
         <td>Model Type [LoRA]</td>
         <td>Use Flash Attn</td>
         <td>Gradient Checkpointing</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
     </tr>
     <tr>
         <td rowspan="4">qwen-7b-chat</td>
         <td>&#x2714;</td>
         <td>&#x2714;</td>
-        <td>7.01min</td>
-        <td>19362MiB</td>
+        <td>4.31</td>
+        <td>27.74</td>
     </tr>
     <tr>
         <td>&#x2714;</td>
         <td>&#x2718;</td>
-        <td>5.19min</td>
-        <td>30316MiB</td>
+        <td>6.19</td>
+        <td>37.70</td>
     </tr>
     <tr>
         <td>&#x2718;</td>
         <td>&#x2714;</td>
-        <td>9.94min</td>
-        <td>19422MiB</td>
+        <td>3.13</td>
+        <td>27.71</td>
     </tr>
     <tr>
         <td>&#x2718;</td>
         <td>&#x2718;</td>
-        <td>7.37min</td>
-        <td>42260MiB</td>
+        <td>4.45</td>
+        <td>57.67</td>
     </tr>
 </table>
 
@@ -403,63 +407,63 @@ swift sft \
 <table>
     <tr>
         <td>Model Type [LoRA]</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
     </tr>
     <tr>
         <td>qwen-1_8b-chat</td>
-        <td>2.48min</td>
-        <td>7624MiB</td>
+        <td>8.77</td>
+        <td>16.35</td>
     </tr>
     <tr>
         <td>qwen-7b-chat</td>
-        <td>7.01min</td>
-        <td>19362MiB</td>
+        <td>4.31</td>
+        <td>27.74</td>
     </tr>
     <tr>
         <td>qwen-14b-chat</td>
-        <td>11.73min</td>
-        <td>32186MiB</td>
+        <td>2.60</td>
+        <td>40.14</td>
     </tr>
     <tr>
         <td>chatglm2-6b</td>
-        <td>7.14min</td>
-        <td>14540MiB</td>
+        <td>4.26</td>
+        <td>20.43</td>
     </tr>
     <tr>
         <td>chatglm3-6b</td>
-        <td>7.19min</td>
-        <td>14612MiB</td>
+        <td>4.29</td>
+        <td>17.20</td>
     </tr>
     <tr>
-        <td>baichuan2-7b</td>
-        <td>8.61min</td>
-        <td>19254MiB</td>
+        <td>baichuan2-7b-chat</td>
+        <td>3.49</td>
+        <td>19.18</td>
     </tr>
     <tr>
-        <td>baichuan2-13b</td>
-        <td>16.37min</td>
-        <td>33118MiB</td>
+        <td>baichuan2-13b-chat</td>
+        <td>1.96</td>
+        <td>32.40</td>
     </tr>
     <tr>
         <td>yi-6b-chat</td>
-        <td>8.18min</td>
-        <td>14386MiB</td>
+        <td>3.98</td>
+        <td>16.28</td>
     </tr>
     <tr>
         <td>yi-34b-chat</td>
-        <td>30.77min</td>
-        <td>70482MiB</td>
+        <td>1.06</td>
+        <td>71.34</td>
     </tr>
     <tr>
         <td>openbuddy-mistral-7b-chat</td>
-        <td>9.08min</td>
-        <td>16618MiB</td>
+        <td>3.24</td>
+        <td>19.89</td>
     </tr>
     <tr>
         <td>openbuddy-zephyr-7b-chat</td>
-        <td>9.10min</td>
-        <td>16618MiB</td>
+        <td>3.25</td>
+        <td>19.89</td>
     </tr>
 </table>
 
@@ -479,37 +483,37 @@ swift sft \
         <td>Model Type [LoRA]</td>
         <td>LoRA Rank</td>
         <td>LoRA Target Modules</td>
-        <td>Training Speed</td>
-        <td>GPU Memory</td>
-        <td>Trainable Params</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
+        <td>Trainable Params (M)</td>
     </tr>
     <tr>
         <td rowspan="4">qwen-7b-chat</td>
         <td>2</td>
         <td>DEFAULT (c_attn)</td>
-        <td>7.01min</td>
-        <td>19300MiB</td>
-        <td>1.05M</td>
+        <td>4.27</td>
+        <td>27.72</td>
+        <td>1.05</td>
     </tr>
     <tr>
         <td>8</td>
         <td>DEFAULT</td>
-        <td>7.01min</td>
-        <td>19362MiB</td>
-        <td>4.19M</td>
+        <td>4.31</td>
+        <td>27.74</td>
+        <td>4.19</td>
     </tr>
     <tr>
         <td>64</td>
         <td>DEFAULT</td>
-        <td>7.01min</td>
-        <td>20728MiB</td>
-        <td>33.55MB</td>
+        <td>4.19</td>
+        <td>27.85</td>
+        <td>33.55</td>
     </tr>
     <tr>
         <td>8</td>
         <td>ALL (all linear)</td>
-        <td>9.36min</td>
-        <td>19670MiB</td>
-        <td>17.89M</td>
+        <td>3.22</td>
+        <td>27.87</td>
+        <td>17.89</td>
     </tr>
 </table>
