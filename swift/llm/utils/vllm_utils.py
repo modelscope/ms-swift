@@ -1,7 +1,7 @@
 import inspect
 import os
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 from modelscope import GenerationConfig, snapshot_download
@@ -150,7 +150,7 @@ def inference_stream_vllm(
         *,
         generation_config: Optional[VllmGenerationConfig] = None,
         use_tqdm: bool = False,
-        **kwargs) -> List[Dict[str, Any]]:
+        **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
