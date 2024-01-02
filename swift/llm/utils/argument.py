@@ -107,7 +107,7 @@ class SftArguments:
     gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
-    lr_scheduler_type: str = 'cosine'
+    lr_scheduler_type: str = 'linear'
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
