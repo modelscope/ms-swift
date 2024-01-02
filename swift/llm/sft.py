@@ -18,12 +18,14 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything,
                          show_layers)
+from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
                     find_all_linear_for_lora, fix_fp16_trainable_bug,
                     get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, print_example,
-                    set_generation_config, sort_by_max_length, stat_dataset)
+                    get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length,
+                    stat_dataset)
 
 logger = get_logger()
 
@@ -67,75 +69,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         top_p=args.top_p,
         do_sample=args.do_sample,
         repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
 
     # Preparing LoRA
-    if args.sft_type in ('lora', 'qalora', 'longlora'):
-        if args.resume_from_checkpoint is None:
-            if 'ALL' in args.lora_target_modules:
-                assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linear_for_lora(
-                    model, args.quantization_bit, args.model_type)
-                logger.info(
-                    f'Setting lora_target_modules: {args.lora_target_modules}')
-            if args.sft_type == 'lora':
-                lora_kwargs = {}
-                if args.tuner_backend == 'swift':
-                    lora_config_cls = LoRAConfig
-                elif args.tuner_backend == 'peft':
-                    lora_config_cls = LoraConfig
-                    lora_kwargs['task_type'] = 'CAUSAL_LM'
-                lora_config = lora_config_cls(
-                    r=args.lora_rank,
-                    target_modules=args.lora_target_modules,
-                    lora_alpha=args.lora_alpha,
-                    lora_dropout=args.lora_dropout_p,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, lora_config)
-                logger.info(f'lora_config: {lora_config}')
-            elif args.sft_type == 'longlora':
-                assert args.tuner_backend != 'peft'
-                assert LongLoRAModelType.LLAMA in args.model_type
-                longlora_config = LongLoRAConfig(
-                    r=args.lora_rank,
-                    target_modules=args.lora_target_modules,
-                    lora_alpha=args.lora_alpha,
-                    lora_dropout=args.lora_dropout_p,
-                    model_type=LongLoRAModelType.LLAMA,
-                    use_flash_attn=args.use_flash_attn)
-                model = Swift.prepare_model(model, longlora_config)
-                logger.info(f'longlora_config: {longlora_config}')
-            elif args.sft_type == 'qalora':
-                assert getattr(
-                    model, 'quantization_method',
-                    None) == 'gptq', 'qalora must be used with auto_gptq'
-                lora_kwargs = {}
-                lora_config = LoRAConfig(
-                    r=args.lora_rank,
-                    target_modules=args.lora_target_modules,
-                    lora_alpha=args.lora_alpha,
-                    lora_dropout=args.lora_dropout_p,
-                    use_qa_lora=True,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, lora_config)
-                logger.info(f'lora_config: {lora_config}')
-        else:
-            model = Swift.from_pretrained(
-                model, args.resume_from_checkpoint, is_trainable=True)
-        fix_fp16_trainable_bug(model)
-    elif args.sft_type == 'full':
-        if args.freeze_parameters > 0:
-            freeze_model_parameters(model, args.freeze_parameters)
-    else:
-        raise ValueError(f'args.sft_type: {args.sft_type}')
-
-    if args.neftune_alpha > 0.001:
-        neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
-        model = Swift.prepare_model(model, neftune_config)
-        logger.info(f'neftune_config: {neftune_config}')
+    model = prepare_model(model, args)
 
     show_layers(model)
     model_info = get_model_info(model)
@@ -183,6 +124,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     if not args.lazy_tokenize:
+        dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode,
                                     args.preprocess_num_proc)
@@ -193,10 +135,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
         print_example(train_dataset[0], tokenizer)
-        stat_dataset(train_dataset)
+        dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
-            stat_dataset(val_dataset)
+            dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
+        dataset_info = None
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)
 
@@ -321,6 +264,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
+    train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
@@ -332,15 +276,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             trainer.push_to_hub()
     return {
         'memory': trainer.perf['memory'],
-        'train_info': {
-            'time': trainer.perf['train_time'],
-            'num_samples': len(train_dataset),
-            'samples/s': len(train_dataset) / trainer.perf['train_time']
-        },
+        'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
         'model_info': model_info,
+        'dataset_info': dataset_info,
     }

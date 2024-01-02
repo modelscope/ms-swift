@@ -97,11 +97,20 @@ class VllmGenerationConfig(SamplingParams):
         top_k: int = 50,  # -1: all
         top_p: float = 1.0,
         repetition_penalty: float = 1.,
+        num_beams: int = 1,
+        *,
         length_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
         **kwargs,
     ):
         # The parameter design is similar to transformers.GenerationConfig.
+        if num_beams:
+            top_k = -1
+            top_p = 1
+            temperature = 0
+            logger.warning(
+                'The output of num_beams in vllm may not be consistent with the output of num_beams in transformers.'
+            )
         if top_k == 0:
             top_k = -1
         self.max_new_tokens = max_new_tokens
@@ -110,6 +119,10 @@ class VllmGenerationConfig(SamplingParams):
         kwargs['top_k'] = top_k
         kwargs['top_p'] = top_p
         kwargs['repetition_penalty'] = repetition_penalty
+        if num_beams > 1:
+            assert 'use_beam_search' not in kwargs and 'best_of' not in kwargs
+            kwargs['use_beam_search'] = True
+            kwargs['best_of'] = num_beams
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
         parameters = inspect.signature(SamplingParams.__init__).parameters
@@ -136,7 +149,8 @@ def inference_stream_vllm(
         request_list: List[Dict[str, Any]],
         *,
         generation_config: Optional[VllmGenerationConfig] = None,
-        use_tqdm: bool = False) -> List[Dict[str, Any]]:
+        use_tqdm: bool = False,
+        **kwargs) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -150,6 +164,9 @@ def inference_stream_vllm(
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
+    if generation_config.use_beam_search is True:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
@@ -203,7 +220,8 @@ def inference_vllm(llm_engine: LLMEngine,
                    use_tqdm: bool = False,
                    verbose: bool = False,
                    prompt_prefix: str = '[PROMPT]',
-                   output_prefix: str = '[OUTPUT]') -> List[Dict[str, Any]]:
+                   output_prefix: str = '[OUTPUT]',
+                   **kwargs) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -291,6 +309,7 @@ def prepare_vllm_engine_template(
         top_k=args.top_k,
         top_p=args.top_p,
         repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
         stop=[tokenizer.eos_token])
     logger.info(f'generation_config: {generation_config}')
     llm_engine.generation_config = generation_config

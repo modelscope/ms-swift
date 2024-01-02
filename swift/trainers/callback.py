@@ -58,7 +58,8 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
         if state.global_step == state.max_steps:
             if args.evaluation_strategy != IntervalStrategy.NO:
                 control.should_evaluate = True
-            control.should_save = True
+            if args.save_strategy != IntervalStrategy.NO:
+                control.should_save = True
         return control
 
 

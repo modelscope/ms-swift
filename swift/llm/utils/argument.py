@@ -107,7 +107,7 @@ class SftArguments:
     gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
-    lr_scheduler_type: str = 'cosine'
+    lr_scheduler_type: str = 'linear'
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
@@ -165,6 +165,7 @@ class SftArguments:
     top_k: int = 20
     top_p: float = 0.7
     repetition_penalty: float = 1.05
+    num_beams: int = 1
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -219,7 +220,7 @@ class SftArguments:
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
             )
             if 'int4' in self.model_type or 'int8' in self.model_type:
-                assert self.quantization_bit == 0
+                assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -229,8 +230,11 @@ class SftArguments:
                     self.only_save_model = True
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters < 1
-            assert self.quantization_bit == 0, 'not supported'
-            assert self.dtype != 'fp16', 'please use bf16 or fp32'
+            assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
+            assert self.dtype != 'fp16', (
+                "Fine-tuning with dtype=='fp16' can lead to NaN issues. "
+                'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.'
+            )
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
             if self.only_save_model is None:
@@ -306,7 +310,7 @@ class SftArguments:
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
         elif not support_gradient_checkpointing:
-            assert self.gradient_checkpointing is False, 'not support gradient_checkpointing'
+            assert self.gradient_checkpointing is False, f'{self.model_type} not support gradient_checkpointing.'
 
 
 @dataclass
@@ -370,6 +374,7 @@ class InferArguments:
     top_k: int = 20
     top_p: float = 0.7
     repetition_penalty: float = 1.05
+    num_beams: int = 1
 
     # other
     use_flash_attn: Optional[bool] = None
@@ -377,7 +382,7 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     save_safetensors: bool = True
-    overwrite_generation_config: bool = False
+    overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
     # app-ui
     share: bool = False
@@ -405,7 +410,7 @@ class InferArguments:
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
         else:
-            assert self.load_dataset_config is False
+            assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
@@ -436,9 +441,14 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
-        if self.ckpt_dir is None and self.overwrite_generation_config:
-            self.overwrite_generation_config = False
-            logger.warning('Setting overwrite_generation_config: False')
+        if self.overwrite_generation_config is None:
+            if self.ckpt_dir is None:
+                self.overwrite_generation_config = False
+            else:
+                self.overwrite_generation_config = True
+            logger.info(
+                f'Setting overwrite_generation_config: {self.overwrite_generation_config}'
+            )
         if self.ckpt_dir is None:
             self.sft_type = 'full'
         model_info = MODEL_MAPPING[self.model_type]
@@ -452,10 +462,15 @@ class InferArguments:
                 else:
                     self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
-            assert self.quantization_bit == 0, 'not support bnb'
+            assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             assert support_vllm, f'vllm not support `{self.model_type}`'
             if self.sft_type == 'lora':
-                assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
+                assert self.merge_lora_and_save is True, (
+                    'To use VLLM, you need to provide the complete weight parameters. '
+                    'Please set --merge_lora_and_save true.')
+        if self.num_beams != 1:
+            self.stream = False
+            logger.info('Setting self.stream: False')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:

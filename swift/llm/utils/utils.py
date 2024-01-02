@@ -284,7 +284,7 @@ def dataset_map(dataset: HfDataset,
     return LLMDataset(data)
 
 
-def stat_dataset(llm_dataset: Dataset) -> None:
+def stat_dataset(llm_dataset: Dataset) -> str:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
     if isinstance(llm_dataset, HfDataset):
@@ -296,6 +296,7 @@ def stat_dataset(llm_dataset: Dataset) -> None:
             _token_len.append(len(d['input_ids']))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
+    return stat_str
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
@@ -483,6 +484,9 @@ def inference_stream(model: PreTrainedModel,
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
     generation_config = deepcopy(generation_config)
+    if generation_config.num_beams != 1:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
     model.__class__.generate_stream = NewGenerationMixin.generate
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
@@ -555,7 +559,8 @@ def inference(model: PreTrainedModel,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
-              output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+              output_prefix: str = '[OUTPUT]',
+              **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
@@ -699,6 +704,23 @@ def fix_fp16_trainable_bug(model: Module) -> None:
 
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
+
+
+def get_time_info(log_history: List[Dict[str, Any]],
+                  n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
+    time_info = None
+    try:
+        last_log_history = log_history[-1]
+        train_runtime = last_log_history['train_runtime']
+        train_samples_per_second = n_train_samples / train_runtime
+        time_info = {
+            'train_runtime': train_runtime,
+            'n_train_samples': n_train_samples,
+            'train_samples_per_second': train_samples_per_second,
+        }
+    except Exception:
+        pass
+    return time_info
 
 
 # monkey patching
