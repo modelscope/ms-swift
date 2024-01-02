@@ -200,6 +200,8 @@ def llm_infer(args: InferArguments) -> None:
             elif query.strip().lower() == 'clear':
                 history = []
                 continue
+            elif query.strip() == '':
+                continue
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
                 logger.info('End multi-line input with `#`.')
@@ -212,19 +214,24 @@ def llm_infer(args: InferArguments) -> None:
             if not template.support_multi_round:
                 history = []
             if args.infer_backend == 'vllm':
-                gen = inference_stream_vllm(llm_engine, template,
-                                            [{
-                                                'query': query,
-                                                'history': history
-                                            }])
-                print_idx = 0
-                for resp_list in gen:
+                request_list = [{'query': query, 'history': history}]
+                if args.stream:
+                    gen = inference_stream_vllm(llm_engine, template,
+                                                request_list)
+                    print_idx = 0
+                    for resp_list in gen:
+                        response = resp_list[0]['response']
+                        new_history = resp_list[0]['history']
+                        if len(response) > print_idx:
+                            print(response[print_idx:], end='', flush=True)
+                            print_idx = len(response)
+                    print()
+                else:
+                    resp_list = inference_vllm(llm_engine, template,
+                                               request_list)
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
-                    if len(response) > print_idx:
-                        print(response[print_idx:], end='', flush=True)
-                        print_idx = len(response)
-                print()
+                    print(response)
             else:
                 if args.stream:
                     gen = inference_stream(

@@ -108,7 +108,6 @@ swift sft \
         <td>1.36</td>
         <td>30.05</td>
     </tr>
-{"samples/s": "0.59", "memory": {"cuda:0": "73.71GiB", "cuda:1": "78.54GiB"}, "train_args": {"model_type": "qwen-72b-chat", "use_flash_attn": true}, "model_info": "SwiftModel: 72308.8916M Params (20.9715M Trainable [0.0290%]), 2.6215M Buffers.", "dataset_info": {"train_dataset": "843.897936±600.024344, min=91.000000, max=2048.000000, size=1793"}}
     <tr>
         <td rowspan="4">qwen-72b-chat</td>
         <td>bf16</td>
@@ -297,14 +296,34 @@ swift sft \
     </tr>
     <tr>
         <td>8192</td>
-        <td>-</td>
-        <td>OOM</td>
+        <td>1.11 (2*A100)</td>
+        <td>61.34+73.00</td>
     </tr>
     <tr>
-        <td rowspan="1">qwen-14b-chat</td>
+        <td rowspan="5">qwen-14b-chat (2*A100)</td>
         <td>512</td>
-        <td>-</td>
-        <td>OOM</td>
+        <td>3.66</td>
+        <td>60.42+72.31</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>2.98</td>
+        <td>60.61+74.37</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>1.93</td>
+        <td>60.70+78.22</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>0.92</td>
+        <td>75.59+78.64</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>0.62</td>
+        <td>76.59+77.68</td>
     </tr>
 </table>
 

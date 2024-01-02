@@ -39,7 +39,6 @@ from transformers import (GenerationConfig, PreTrainedModel,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
-from .model import MODEL_MAPPING
 from .template import (History, StopWords, StopWordsCriteria, Template,
                        get_audio_info)
 
@@ -482,16 +481,12 @@ def inference_stream(model: PreTrainedModel,
     else:
         attention_mask = inputs['attention_mask'].to(device)
     model.eval()
-    if model.generation_config.num_beams != 1:
-        model_info = MODEL_MAPPING[model.model_type]
-        support_vllm = model_info.get('support_vllm')
-        error_msg = 'Streaming generation does not support beam search.'
-        if support_vllm:
-            error_msg += ' You can try using VLLM streaming generation with support for beam search.'
-        raise ValueError(error_msg)
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
     generation_config = deepcopy(generation_config)
+    if generation_config.num_beams != 1:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
     model.__class__.generate_stream = NewGenerationMixin.generate
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
