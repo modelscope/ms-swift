@@ -573,6 +573,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     'ZhipuAI/codegeex2-6b',
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
+    requires=['transformers<4.34'],
     support_vllm=True)
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
