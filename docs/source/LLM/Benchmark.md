@@ -8,9 +8,6 @@
 - [LoRA Rank & LoRA Target Modules](#lora-rank--lora-target-modules)
 
 ## 参数设置
-
-测试参数对于训练速度和训练内存使用的影响. 后续会补充部分参数对训练效果的影响.
-
 实验环境:
 - A100
 - CUDA 11.8
@@ -22,15 +19,12 @@
 - bitsandbytes 0.41.3.post2
 
 
-实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
-
 以下为所有实验的相同命令行设置部分:
 ```bash
     --dataset_test_ratio 0 \
     --dataset cls-fudan-news-zh \
     --save_strategy no \
     --check_dataset_strategy warning \
-    --truncation_strategy truncation_left \
     --preprocess_num_proc 4 \
 ```
 
@@ -47,6 +41,7 @@
 
 对应测试数据集的token数统计量(由qwen的tokenizer获取): 3234.4±2547.5, min=91, max=19548
 
+实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
 
 ## 量化
 测试脚本为:
