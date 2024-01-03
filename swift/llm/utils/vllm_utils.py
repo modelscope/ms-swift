@@ -103,16 +103,17 @@ class VllmGenerationConfig(SamplingParams):
         max_new_tokens: int = 64,  # max_tokens
         temperature: float = 1.,
         top_k: int = 50,  # -1: all
-        top_p: float = 1.0,
+        top_p: float = 1.,
         repetition_penalty: float = 1.,
         num_beams: int = 1,
         *,
-        length_penalty: float = 1.0,
+        n: int = 1,
+        length_penalty: float = 1.,
         stop: Optional[List[str]] = None,
         **kwargs,
     ) -> None:
         # The parameter design is similar to transformers.GenerationConfig.
-        if num_beams:
+        if num_beams > 1:
             top_k = -1
             top_p = 1
             temperature = 0
@@ -121,6 +122,8 @@ class VllmGenerationConfig(SamplingParams):
             )
         if top_k == 0:
             top_k = -1
+        if stop is None:
+            stop = []
         kwargs['max_tokens'] = max_new_tokens
         kwargs['temperature'] = temperature
         kwargs['top_k'] = top_k
@@ -130,6 +133,7 @@ class VllmGenerationConfig(SamplingParams):
             assert 'use_beam_search' not in kwargs and 'best_of' not in kwargs
             kwargs['use_beam_search'] = True
             kwargs['best_of'] = num_beams
+        kwargs['n'] = n
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
         parameters = inspect.signature(SamplingParams.__init__).parameters
@@ -306,10 +310,11 @@ def prepare_vllm_engine_template(
         **kwargs)
     tokenizer = llm_engine.tokenizer
     if use_async:
-        model_config = asyncio.run(llm_engine.get_model_config()).hf_config
+        model_config = asyncio.run(llm_engine.get_model_config())
+        llm_engine.model_config = model_config
     else:
-        model_config = llm_engine.model_config.hf_config
-    logger.info(f'model_config: {model_config}')
+        model_config = llm_engine.model_config
+    logger.info(f'model_config: {model_config.hf_config}')
     if not args.do_sample:
         args.temperature = 0
     generation_config = VllmGenerationConfig(

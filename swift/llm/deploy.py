@@ -1,0 +1,284 @@
+import time
+import uuid
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from typing import Dict, List, Literal, Optional, Union
+
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response
+
+from swift.utils import seed_everything
+from .utils import (DeployArguments, VllmGenerationConfig, merge_lora,
+                    messages_to_history, prepare_model_template,
+                    prepare_vllm_engine_template)
+
+app = FastAPI()
+model = None
+llm_engine = None
+template = None
+
+
+def create_error_response(status_code: Union[int, str, HTTPStatus],
+                          message: str) -> JSONResponse:
+    status_code = int(status_code)
+    return JSONResponse({'message': message, 'object': 'error'}, status_code)
+
+
+def random_uuid() -> str:
+    return str(uuid.uuid4().hex)
+
+
+@dataclass
+class Model:
+    id: str  # model_type
+
+
+@dataclass
+class ModelList:
+    data: List[Model]
+    object: str = 'list'
+
+
+@dataclass
+class CompletionRequest:
+    model: str
+    prompt: str
+    #
+    n: int = 1
+    max_tokens: Optional[int] = None
+    temperature: float = 1.
+    top_k: int = -1
+    top_p: float = 1.
+    repetition_penalty: float = 1.
+    num_beams: int = 1
+    #
+    seed: Optional[int] = None
+    stop: Optional[List[str]] = None
+    stream: bool = False
+    #
+    best_of: Optional[int] = None
+    presence_penalty: float = 0.
+    frequency_penalty: float = 0.
+
+
+@dataclass
+class ChatCompletionRequest:
+    model: str
+    messages: List[Dict[str, str]]
+    #
+    n: int = 1
+    max_tokens: Optional[int] = None
+    temperature: float = 1.
+    top_k: int = -1
+    top_p: float = 1.
+    repetition_penalty: float = 1.
+    num_beams: int = 1
+    #
+    seed: Optional[int] = None
+    stop: List[str] = field(default_factory=list)
+    stream: bool = False
+    best_of: Optional[int] = None
+    presence_penalty: float = 0.
+    frequency_penalty: float = 0.
+
+
+@dataclass
+class UsageInfo:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+@dataclass
+class ChatMessage:
+    role: Literal['system', 'user', 'assistant']
+    content: str
+
+
+@dataclass
+class ChatCompletionResponseChoice:
+    index: int
+    message: ChatMessage
+    finish_reason: Literal['stop', 'length']
+
+
+@dataclass
+class CompletionResponseChoice:
+    index: int
+    text: str
+    finish_reason: Literal['stop', 'length']
+
+
+@dataclass
+class ChatCompletionResponse:
+    model: str
+    choices: List[ChatCompletionResponseChoice]
+    usage: UsageInfo
+    id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
+    object: str = 'chat.completion'
+    created: int = field(default_factory=lambda: int(time.time()))
+
+
+@dataclass
+class CompletionResponse:
+    model: str
+    choices: List[CompletionResponseChoice]
+    usage: UsageInfo
+    id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
+    object: str = 'text_completion'
+    created: int = field(default_factory=lambda: int(time.time()))
+
+
+@app.get('/v1/models')
+async def get_available_models():
+    global llm_engine
+    return ModelList(data=[Model(id=llm_engine.model_type)])
+
+
+async def check_length(request: Union[ChatCompletionRequest,
+                                      CompletionRequest],
+                       input_ids: List[int]) -> Optional[str]:
+    global llm_engine
+    max_model_len = llm_engine.model_config.max_model_len
+    num_tokens = len(input_ids)
+    max_tokens = request.max_tokens
+    error_msg = None
+    if max_tokens is None:
+        max_tokens = max_model_len - num_tokens
+        request.max_tokens = max_tokens
+    elif max_tokens + num_tokens > max_model_len:
+        error_msg = (
+            f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
+            f'but the maximum model length supported is {max_model_len}. '
+            'Please reduce the number of tokens in the prompt or the `max_tokens`.'
+        )
+    return error_msg
+
+
+async def inference_vllm_async(request: Union[ChatCompletionRequest,
+                                              CompletionRequest],
+                               raw_request: Request):
+    global llm_engine, template
+    if request.seed is not None:
+        seed_everything(request.seed)
+    if isinstance(request, ChatCompletionRequest):
+        if is_generation_template(template.template_type):
+            return create_error_response(
+                HTTPStatus.BAD_REQUEST,
+                f'The chat template `{template.template_type}` corresponding to '
+                f'the model `{llm_engine.model_type}` is in text generation format. '
+                'Please use the `completions` API.')
+        example = messages_to_history(request.messages)
+        input_ids = template.encode(example)['input_ids']
+        request_id = f'chatcmpl-{random_uuid()}'
+    else:
+        if not is_generation_template(template.template_type):
+            return create_error_response(
+                HTTPStatus.BAD_REQUEST,
+                f'The chat template `{template.template_type}` corresponding to '
+                f'the model `{llm_engine.model_type}` is in chat format. '
+                'Please use the `chat.completions` API.')
+        input_ids = template.encode({'query': request.prompt})['input_ids']
+        request_id = f'cmpl-{random_uuid()}'
+
+    error_msg = await check_length(request, input_ids)
+    if error_msg is not None:
+        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+    generation_config = VllmGenerationConfig(
+        max_new_tokens=request.max_tokens,
+        temperature=request.temperature,
+        top_k=request.top_k,
+        top_p=request.top_p,
+        repetition_penalty=request.repetition_penalty,
+        num_beams=request.num_beams,
+        n=request.n,
+        stop=request.stop,
+        best_of=request.best_of,
+        frequency_penalty=request.frequency_penalty,
+        presence_penalty=request.presence_penalty)
+    tokenizer = template.tokenizer
+    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
+        generation_config.stop.append(tokenizer.eos_token)
+    result_generator = llm_engine.generate(None, generation_config, request_id,
+                                           input_ids)
+    result = None
+    async for result in result_generator:
+        if await raw_request.is_disconnected():
+            await llm_engine.abort(request_id)
+            return create_error_response(HTTPStatus.BAD_REQUEST,
+                                         'Client disconnected')
+    assert result is not None
+    num_prompt_tokens = len(result.prompt_token_ids)
+    num_generated_tokens = sum(
+        len(output.token_ids) for output in result.outputs)
+    usage_info = UsageInfo(
+        prompt_tokens=num_prompt_tokens,
+        completion_tokens=num_generated_tokens,
+        total_tokens=num_prompt_tokens + num_generated_tokens,
+    )
+    if isinstance(request, ChatCompletionRequest):
+        choices = []
+        for output in result.outputs:
+            choice = ChatCompletionResponseChoice(
+                index=output.index,
+                message=ChatMessage(role='assistant', content=output.text),
+                finish_reason=output.finish_reason,
+            )
+            choices.append(choice)
+        return ChatCompletionResponse(
+            model=request.model,
+            choices=choices,
+            usage=usage_info,
+            id=request_id)
+    else:
+        choices = []
+        for output in result.outputs:
+            choice = CompletionResponseChoice(
+                index=output.index,
+                text=output.text,
+                finish_reason=output.finish_reason,
+            )
+            choices.append(choice)
+        return CompletionResponse(
+            model=request.model,
+            choices=choices,
+            usage=usage_info,
+            id=request_id)
+
+
+def is_generation_template(template_type: str) -> bool:
+    if 'generation' in template_type:
+        return True
+    else:
+        return False
+
+
+@app.post('/v1/chat/completions')
+async def create_chat_completion(
+        request: ChatCompletionRequest,
+        raw_request: Request) -> ChatCompletionResponse:
+    return await inference_vllm_async(request, raw_request)
+
+
+@app.post('/v1/completions')
+async def create_completion(request: CompletionRequest,
+                            raw_request: Request) -> CompletionResponse:
+    return await inference_vllm_async(request, raw_request)
+
+
+def llm_deploy(args: DeployArguments) -> None:
+    global llm_engine, model, template
+    if args.merge_lora_and_save:
+        merge_lora(args, device_map='cpu')
+    if args.infer_backend == 'vllm':
+        llm_engine, template = prepare_vllm_engine_template(
+            args, use_async=True)
+    else:
+        model, template = prepare_model_template(args)
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        ssl_keyfile=args.ssl_keyfile,
+        ssl_certfile=args.ssl_certfile)
