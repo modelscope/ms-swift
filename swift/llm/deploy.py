@@ -9,8 +9,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from swift.utils import seed_everything
-from .utils import (DeployArguments, VllmGenerationConfig, merge_lora,
-                    messages_to_history, prepare_model_template,
+from .infer import merge_lora, prepare_model_template
+from .utils import (DeployArguments, VllmGenerationConfig, messages_to_history,
                     prepare_vllm_engine_template)
 
 app = FastAPI()
