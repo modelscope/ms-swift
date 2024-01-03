@@ -486,6 +486,14 @@ class InferArguments:
 
 
 @dataclass
+class DeployArguments(InferArguments):
+    host: str = '127.0.0.1'
+    port: int = 8000
+    ssl_keyfile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+
+
+@dataclass
 class DPOArguments(SftArguments):
 
     ref_model_type: Optional[str] = field(

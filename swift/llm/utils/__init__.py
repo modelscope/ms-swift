@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import DPOArguments, InferArguments, RomeArguments, SftArguments
+from .argument import (DeployArguments, DPOArguments, InferArguments,
+                       RomeArguments, SftArguments)
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, add_self_cognition_dataset, get_dataset,
                       get_dataset_from_repo, load_dataset_from_local,

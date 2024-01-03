@@ -39,7 +39,7 @@
     --quantization_bit 0 \
 ```
 
-对应测试数据集的token数统计量(由qwen的tokenizer获取): 3234.4±2547.5, min=91, max=19548
+对应测试数据集的token数统计量(由qwen的tokenizer获取): 3234.4±2547.5, min=91, max=19548.
 
 实验使用脚本可以查看`scripts/benchmark/test_memory_time/`.
 
