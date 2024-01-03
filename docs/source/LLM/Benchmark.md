@@ -2,10 +2,9 @@
 ## 目录
 - [参数设置](#参数设置)
 - [量化](#量化)
-- [Max Length](#max-length)
+- [Model Type & Max Length](#model-type--max-length)
 - [Batch Size](#batch-size)
 - [Use Flash Attn & Gradient Checkpointing](#use-flash-attn--gradient-checkpointing)
-- [Model Type](#model-type)
 - [LoRA Rank & LoRA Target Modules](#lora-rank--lora-target-modules)
 
 ## 参数设置
@@ -131,7 +130,7 @@ swift sft \
     </tr>
 </table>
 
-## Max Length
+## Model Type & Max Length
 ### LoRA
 测试脚本为:
 ```bash
@@ -226,6 +225,188 @@ swift sft \
         <td>8192</td>
         <td>0.79</td>
         <td>60.74</td>
+    </tr>
+    <tr>
+        <td rowspan="5">qwen-72b-chat (2*A100)</td>
+        <td>512</td>
+        <td>1.41</td>
+        <td>67.68+73.07</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>1.02</td>
+        <td>70.25+77.11</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>0.59</td>
+        <td>73.71+78.54</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>-</td>
+        <td>OOM</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>-</td>
+        <td>OOM</td>
+    </tr>
+    <tr>
+        <td rowspan="5">chatglm3-6b</td>
+        <td>512</td>
+        <td>6.72</td>
+        <td>13.94</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>6.16</td>
+        <td>12.99</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>4.20</td>
+        <td>17.20</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>1.92</td>
+        <td>29.80</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>1.24</td>
+        <td>66.82</td>
+    </tr>
+    <tr>
+        <td rowspan="5">baichuan2-7b-chat</td>
+        <td>512</td>
+        <td>6.09</td>
+        <td>18.18</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>5.36</td>
+        <td>17.45</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>3.43</td>
+        <td>19.18</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>1.69</td>
+        <td>34.22</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>1.16</td>
+        <td>45.47</td>
+    </tr>
+    <tr>
+        <td rowspan="5">baichuan2-13b-chat</td>
+        <td>512</td>
+        <td>5.32</td>
+        <td>31.01</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>3.91</td>
+        <td>31.58</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>1.77</td>
+        <td>32.40</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>0.65</td>
+        <td>49.63</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>0.36</td>
+        <td>76.17</td>
+    </tr>
+    <tr>
+        <td rowspan="5">yi-6b-chat</td>
+        <td>512</td>
+        <td>5.27</td>
+        <td>13.72</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>5.07</td>
+        <td>15.44</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>3.84</td>
+        <td>16.95</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>1.99</td>
+        <td>28.25</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>1.35</td>
+        <td>43.81</td>
+    </tr>
+    <tr>
+        <td rowspan="5">yi-34b-chat</td>
+        <td>512</td>
+        <td>2.32</td>
+        <td>66.72</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>1.76</td>
+        <td>69.10</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>1.05</td>
+        <td>71.34</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>0.47</td>
+        <td>78.72</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>-</td>
+        <td>OOM</td>
+    </tr>
+    <tr>
+        <td rowspan="5">openbuddy-zephyr-7b-chat</td>
+        <td>512</td>
+        <td>5.17</td>
+        <td>14.99</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>3.92</td>
+        <td>16.57</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>3.08</td>
+        <td>19.89</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>1.85</td>
+        <td>23.29</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>0.92</td>
+        <td>52.14</td>
     </tr>
 </table>
 
@@ -414,77 +595,6 @@ swift sft \
     </tr>
 </table>
 
-## Model Type
-测试脚本为:
-```bash
-swift sft \
-    --model_type {MODEL_TYPE} \
-    --sft_type lora \
-    ...
-```
-
-<table>
-    <tr>
-        <td>Model Type [LoRA]</td>
-        <td>Training Speed (samples/s)</td>
-        <td>GPU Memory (GiB)</td>
-    </tr>
-    <tr>
-        <td>qwen-1_8b-chat</td>
-        <td>8.77</td>
-        <td>16.35</td>
-    </tr>
-    <tr>
-        <td>qwen-7b-chat</td>
-        <td>4.31</td>
-        <td>27.74</td>
-    </tr>
-    <tr>
-        <td>qwen-14b-chat</td>
-        <td>2.60</td>
-        <td>40.14</td>
-    </tr>
-    <tr>
-        <td>chatglm2-6b</td>
-        <td>4.26</td>
-        <td>20.43</td>
-    </tr>
-    <tr>
-        <td>chatglm3-6b</td>
-        <td>4.29</td>
-        <td>17.20</td>
-    </tr>
-    <tr>
-        <td>baichuan2-7b-chat</td>
-        <td>3.49</td>
-        <td>19.18</td>
-    </tr>
-    <tr>
-        <td>baichuan2-13b-chat</td>
-        <td>1.96</td>
-        <td>32.40</td>
-    </tr>
-    <tr>
-        <td>yi-6b-chat</td>
-        <td>3.98</td>
-        <td>16.28</td>
-    </tr>
-    <tr>
-        <td>yi-34b-chat</td>
-        <td>1.06</td>
-        <td>71.34</td>
-    </tr>
-    <tr>
-        <td>openbuddy-mistral-7b-chat</td>
-        <td>3.24</td>
-        <td>19.89</td>
-    </tr>
-    <tr>
-        <td>openbuddy-zephyr-7b-chat</td>
-        <td>3.25</td>
-        <td>19.89</td>
-    </tr>
-</table>
 
 ## LoRA Rank & LoRA Target Modules
 测试脚本为:
