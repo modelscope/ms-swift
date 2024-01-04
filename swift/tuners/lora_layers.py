@@ -298,7 +298,7 @@ class LoraModel(_LoraModel):
             torch_dtype = torch.bfloat16
         else:
             torch_dtype = None
-        
+
         if torch_dtype is not None:
             if hasattr(target, 'lora_A'):
                 target.lora_A.to(torch_dtype)
