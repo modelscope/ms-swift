@@ -60,6 +60,13 @@ class SideConfig(SwiftConfig):
             'The position of the hidden state output from the target module, can be int (args) or str (kwargs)'
         })
 
+    offload: str = field(
+        default=None,
+        metadata={
+            'help':
+            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.SIDE
@@ -121,8 +128,9 @@ class Side(SwiftAdapter):
                     setattr(tgt_module, f'forward_origin_{adapter_name}',
                             tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
-                side_module = SideModule(config.dim, adapter_name,
+                side_module = SideModule(config.dim, adapter_name, module_key,
                                          config.side_module_name)
+                tgt_module.add_offload(adapter_name, config.offload)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(
                     f'Side modules(module_key): {module_key}.side_{adapter_name}'
@@ -146,13 +154,13 @@ class Side(SwiftAdapter):
                          adapter_name: str,
                          activate: bool,
                          offload: str = None):
-        modules, module_keys = find_sub_module(module, f'side_{adapter_name}')
-        for _module_key, _module in zip(module_keys, modules):
+        modules = find_sub_module(module, f'side_{adapter_name}')
+        for _module in modules:
             _module: ActivationMixin
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
-            SwiftAdapter.save_memory(_module, adapter_name, _module_key,
-                                     activate, offload)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, _module.offloads.get(adapter_name))
 
 
 class SideModule(nn.Module, ActivationMixin):
@@ -168,9 +176,9 @@ class SideModule(nn.Module, ActivationMixin):
         side_module_name: The name of the additive side networks.
     """
 
-    def __init__(self, dim, adapter_name, side_module_name='fcn4'):
+    def __init__(self, dim, adapter_name, module_key, side_module_name='fcn4'):
         super(SideModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__(module_key)
         self.adapter_name = adapter_name
 
         side_module_name = side_module_name.lower()

@@ -67,6 +67,13 @@ class SCETuningConfig(SwiftConfig):
         default=1.0,
         metadata={'help': 'The dim down ratio of tuner hidden state'})
 
+    offload: str = field(
+        default=None,
+        metadata={
+            'help':
+            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
+        })
+
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
         self.swift_type = SwiftTuners.SCETUNING
@@ -203,6 +210,7 @@ class SCETuning(SwiftAdapter):
                 adapter_name=adapter_name,
                 dim=dims[tuner_id],
                 tuner_length=int(dims[tuner_id] * config.down_ratio))
+            tuner_op.add_offload(adapter_name, offload=config.offload)
             setattr(t_module, f'scetuner_{adapter_name}', tuner_op)
             if len(hint_module_ins_list) > 0:
                 setattr(t_module, 'hint', hint_module_ins_list[tuner_id])
@@ -223,12 +231,15 @@ class SCETuning(SwiftAdapter):
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
+                         activate: bool, offload: str = None):
+        modules = find_sub_module(
             module, f'scetuner_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, _module.offloads.get(adapter_name))
 
 
 class SCETunerModule(nn.Module, ActivationMixin):
@@ -244,7 +255,7 @@ class SCETunerModule(nn.Module, ActivationMixin):
                  zero_init_last=True,
                  use_bias=True):
         super(SCETunerModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__('')
         self.name = name
         self.adapter_name = adapter_name
         self.dim = dim

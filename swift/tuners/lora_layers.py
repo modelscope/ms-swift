@@ -43,14 +43,6 @@ peft.import_utils.is_auto_gptq_available = is_auto_gptq_available
 
 class LoRAActivationMixin(ActivationMixin):
 
-    def __init__(self, module_key):
-        self.module_key = module_key
-        self.offloads = {}
-        super().__init__()
-
-    def add_offload(self, adapter_name: str, offload=None):
-        self.offloads[adapter_name] = offload
-
     @property
     def active_adapters(self):
         return self.get_activated_adapters()
@@ -563,12 +555,13 @@ class LoRALayer(ActivationMixin):
     def __init__(
         self,
         adapter_name: str,
+        module_key: str,
         r: int,
         lora_alpha: int,
         lora_dropout: float,
         merge_weights: bool,
     ):
-        super().__init__()
+        super().__init__(module_key)
         self.adapter_name = adapter_name
         self.r = r
         self.lora_alpha = lora_alpha
@@ -588,6 +581,7 @@ class MergedLinear(nn.Linear, LoRALayer):
     # LoRA implemented in a dense layer
     def __init__(self,
                  adapter_name: str,
+                 module_key: str,
                  base_layer: nn.Linear,
                  r: int = 0,
                  lora_alpha: int = 1,
@@ -609,6 +603,7 @@ class MergedLinear(nn.Linear, LoRALayer):
         LoRALayer.__init__(
             self,
             adapter_name,
+            module_key,
             r=r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,

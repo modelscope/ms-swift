@@ -68,6 +68,13 @@ class AdapterConfig(SwiftConfig):
         default='gelu',
         metadata={'help': 'The activation layer of the adapter'})
 
+    offload: str = field(
+        default=None,
+        metadata={
+            'help':
+            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.ADAPTER
@@ -130,9 +137,10 @@ class Adapter(SwiftAdapter):
                 else:
                     setattr(module, config.method_name,
                             types.MethodType(_forward, module))
-                adapter_module = AdapterModule(config.dim, adapter_name,
+                adapter_module = AdapterModule(config.dim, adapter_name, module_key,
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
+                adapter_module.add_offload(adapter_name, config.offload)
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
                 logger.info(
                     f'Adapter modules(module_key): {module_key}.adapter_{adapter_name}'
@@ -156,14 +164,13 @@ class Adapter(SwiftAdapter):
                          adapter_name: str,
                          activate: bool,
                          offload: str = None):
-        modules, module_keys = find_sub_module(module,
-                                               f'adapter_{adapter_name}')
-        for _module_key, _module in zip(module_keys, modules):
+        modules = find_sub_module(module, f'adapter_{adapter_name}')
+        for _module in modules:
             _module: ActivationMixin
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
-            SwiftAdapter.save_memory(_module, adapter_name, _module_key,
-                                     activate, offload)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, _module.offloads.get(adapter_name))
 
 
 class AdapterModule(nn.Module, ActivationMixin):
@@ -182,11 +189,12 @@ class AdapterModule(nn.Module, ActivationMixin):
         self,
         dim,
         adapter_name,
+        module_key,
         adapter_length=None,
         act_layer=nn.GELU,
     ):
         super(AdapterModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__(module_key)
         self.dim = dim
         self.adapter_name = adapter_name
         self.adapter_length = adapter_length
@@ -216,7 +224,10 @@ class AdapterModule(nn.Module, ActivationMixin):
 
         x_dtype = x.dtype
         x = x.to(self.linear1.weight.dtype)
-        out = self.linear2(self.act(self.linear1(x)))
+        try:
+            out = self.linear2(self.act(self.linear1(x)))
+        except:
+            print()
         if identity is None:
             identity = x
         identity = identity.to(out.dtype)

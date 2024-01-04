@@ -118,6 +118,13 @@ class ResTuningConfig(SwiftConfig):
     use_bypass: bool = field(
         default=True, metadata={'help': 'Whether to use bypass'})
 
+    offload: str = field(
+        default=None,
+        metadata={
+            'help':
+            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.RESTUNING
@@ -253,6 +260,7 @@ class ResTuning(SwiftAdapter):
                 config.dims, depth, adapter_name, config.use_upsample,
                 config.upsample_out_channels, config.zero_init_last,
                 config.tuner_cfg)
+            restuning_module.add_offload(adapter_name, config.offload)
             setattr(top_module, f'restuning_{adapter_name}', restuning_module)
 
         # 4. Matching the target module
@@ -307,14 +315,13 @@ class ResTuning(SwiftAdapter):
                          adapter_name: str,
                          activate: bool,
                          offload: str = None):
-        modules, module_keys = find_sub_module(module,
-                                               f'restuning_{adapter_name}')
-        for _module_key, _module in zip(module_keys, modules):
+        modules = find_sub_module(module, f'restuning_{adapter_name}')
+        for _module in modules:
             _module: ActivationMixin
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
-            SwiftAdapter.save_memory(_module, adapter_name, _module_key,
-                                     activate, offload)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, _module.offloads.get(adapter_name))
 
 
 class ResTuningBypassModule(nn.Module, ActivationMixin):
@@ -332,7 +339,7 @@ class ResTuningBypassModule(nn.Module, ActivationMixin):
         tuner_cfg=None,
     ):
         super(ResTuningBypassModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__('')
         self.adapter_name = adapter_name
 
         self.bypass_blocks = nn.Sequential(*[

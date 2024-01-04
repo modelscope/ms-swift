@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import torch
 from packaging import version
+from peft.tuners.lora import LoraLayer
 
 from swift import LoraConfig
 from .lora_layers import *  # noqa
