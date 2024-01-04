@@ -269,7 +269,8 @@ print(f'response: {response}')
 messages.append({'role': 'assistant', 'content': response})
 query = '这有什么好吃的?'
 messages.append({'role': 'user', 'content': query})
-# 使用流式
+
+# 流式
 stream = client.chat.completions.create(
     model=model_type,
     messages=messages,
@@ -308,7 +309,6 @@ client = OpenAI(
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
 
-
 query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
 kwargs = {'model': model_type, 'prompt': query, 'seed': 42, 'temperature': 0., 'max_tokens': 32}
 
@@ -316,7 +316,6 @@ resp = client.completions.create(**kwargs)
 response = resp.choices[0].text
 print(f'query: {query}')
 print(f'response: {response}')
-
 
 # 流式
 query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
