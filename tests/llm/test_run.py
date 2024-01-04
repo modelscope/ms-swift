@@ -208,7 +208,7 @@ class TestRun(unittest.TestCase):
             print(f'last_model_checkpoint: {last_model_checkpoint}')
             print(f'best_model_checkpoint: {best_model_checkpoint}')
             ckpt_dir = best_model_checkpoint or last_model_checkpoint
-            if dataset is None:
+            if len(dataset) == 0:
                 continue
             infer_args = InferArguments(
                 ckpt_dir=ckpt_dir,
