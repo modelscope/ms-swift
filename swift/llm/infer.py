@@ -11,7 +11,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from swift.tuners import Swift
-from swift.utils import (append_to_jsonl, get_logger, get_model_info,
+from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_additional_saved_files,
                     get_dataset, get_model_tokenizer, get_template, inference,
@@ -337,3 +337,7 @@ def llm_infer(args: InferArguments) -> None:
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     return {'result': result}
+
+
+infer_main = get_main(InferArguments, llm_infer)
+merge_lora_main = get_main(InferArguments, merge_lora)

@@ -232,4 +232,132 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged
 ```
 
 ## 部署
-TODO
+swift使用VLLM作为推理后端, 并兼容openai的API样式.
+
+服务端的部署命令行参数可以参考[deploy命令行参数](命令行参数.md#deploy-命令行参数).
+
+客户端的openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction.
+
+### 原始模型
+**qwen-7b-chat**
+
+服务端:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
+```
+
+客户端:
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江的省会在哪里?'
+messages = [{
+    'role': 'user',
+    'content': query
+}]
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+messages.append({'role': 'assistant', 'content': response})
+query = '这有什么好吃的?'
+messages.append({'role': 'user', 'content': query})
+stream = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stream=True)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""Out[0]
+model_type: qwen-7b-chat
+query: 浙江的省会在哪里?
+response: 浙江省的省会是杭州市。
+query: 这有什么好吃的?
+response:
+浙江省是一个美食天堂，有着丰富多样的美食，如新鲜海鲜、麻糍、竹筒饭、西湖醋鱼、小吃等。至于具体哪个更好吃，可能还要看您个人的口味。
+"""
+```
+
+**qwen-7b**
+
+服务端:
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b
+```
+
+客户端:
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
+kwargs = {'model': model_type, 'prompt': query, 'seed': 42, 'temperature': 0., 'max_tokens': 32}
+
+resp = client.completions.create(**kwargs)
+response = resp.choices[0].text
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
+stream = client.completions.create(stream=True, **kwargs)
+response = resp.choices[0].text
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream:
+    print(chunk.choices[0].text, end='', flush=True)
+print()
+
+"""Out[0]
+model_type: qwen-7b
+query: 浙江 -> 杭州
+安徽 -> 合肥
+四川 ->
+response:  成都
+广东 -> 广州
+江苏 -> 南京
+浙江 -> 杭州
+安徽 -> 合肥
+四川 -> 成都
+
+query: 浙江 -> 杭州
+安徽 -> 合肥
+四川 ->
+response:  成都
+广东 -> 广州
+江苏 -> 南京
+浙江 -> 杭州
+安徽 -> 合肥
+四川 -> 成都
+"""
+```
+
+### 微调后模型
+服务端:
+```bash
+# merge LoRA增量权重并部署
+swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+```
+
+客户端代码示例同原始模型.

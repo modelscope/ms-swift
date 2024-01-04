@@ -455,6 +455,21 @@ class InferArguments:
 
 
 @dataclass
+class DeployArguments(InferArguments):
+    host: str = '127.0.0.1'
+    port: int = 8000
+    ssl_keyfile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+
+    def __post_init__(self):
+        assert self.infer_backend != 'pt', 'The deployment only supports VLLM currently.'
+        if self.infer_backend == 'AUTO':
+            self.infer_backend = 'vllm'
+            logger.info('Setting self.infer_backend: vllm')
+        super().__post_init__()
+
+
+@dataclass
 class DPOArguments(SftArguments):
 
     ref_model_type: Optional[str] = field(

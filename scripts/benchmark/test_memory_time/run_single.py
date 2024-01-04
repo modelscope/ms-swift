@@ -5,7 +5,8 @@ from typing import *
 import numpy as np
 import torch
 
-from swift.llm import *
+from swift.llm import sft_main
+from swift.llm.utils import *
 from swift.utils import *
 
 

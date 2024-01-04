@@ -33,7 +33,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger, push_to_hub
 from swift.aigc.utils import AnimateDiffArguments
-from swift.utils import get_dist_setting, is_dist
+from swift.utils import get_dist_setting, get_main, is_dist
 
 logger = get_logger()
 
@@ -596,3 +596,6 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
     if is_dist():
         dist.destroy_process_group()
+
+
+animatediff_main = get_main(AnimateDiffArguments, animatediff_sft)

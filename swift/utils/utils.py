@@ -100,19 +100,19 @@ def test_time(func: Callable[[], _T],
               timer: Optional[Callable[[], float]] = None) -> _T:
     # timer: e.g. time_synchronize
     timer = timer if timer is not None else time.perf_counter
-    #
+
     ts = []
     res = None
     # warmup
     for _ in range(warmup):
         res = func()
-    #
+
     for _ in range(number):
         t1 = timer()
         res = func()
         t2 = timer()
         ts.append(t2 - t1)
-    #
+
     ts = np.array(ts)
     _, stat_str = stat_array(ts)
     # print

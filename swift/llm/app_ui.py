@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Tuple
 
+from swift.utils import get_main
 from .infer import merge_lora, prepare_model_template
 from .utils import (History, InferArguments, inference_stream,
                     limit_history_length)
@@ -96,3 +97,6 @@ def llm_app_ui(args: InferArguments) -> None:
         gradio_generation_demo(args)
     else:
         gradio_chat_demo(args)
+
+
+app_ui_main = get_main(InferArguments, llm_app_ui)

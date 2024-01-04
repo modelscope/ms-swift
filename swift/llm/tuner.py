@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import torch
+
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import freeze_model_parameters, get_logger
@@ -19,19 +21,18 @@ def prepare_model(model, args: SftArguments):
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             if args.sft_type == 'lora':
-                lora_kwargs = {}
+                lora_kwargs = {
+                    'r': args.lora_rank,
+                    'target_modules': args.lora_target_modules,
+                    'lora_alpha': args.lora_alpha,
+                    'lora_dropout': args.lora_dropout_p
+                }
                 if args.tuner_backend == 'swift':
-                    lora_config_cls = LoRAConfig
+                    lora_config = LoRAConfig(
+                        lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
-                    lora_config_cls = LoraConfig
-                    lora_kwargs['task_type'] = 'CAUSAL_LM'
-                lora_config = lora_config_cls(
-                    r=args.lora_rank,
-                    target_modules=args.lora_target_modules,
-                    lora_alpha=args.lora_alpha,
-                    lora_dropout=args.lora_dropout_p,
-                    lora_dtype=args.lora_dtype,
-                    **lora_kwargs)
+                    lora_config = LoraConfig(
+                        task_type='CAUSAL_LM', **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
             elif args.sft_type == 'longlora':
@@ -67,6 +68,17 @@ def prepare_model(model, args: SftArguments):
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
+        if args.tuner_backend == 'peft':
+            # fix peft==0.7 bug
+            # https://github.com/huggingface/peft/issues/1249
+            is_logging = False
+            for p in model.parameters():
+                if p.requires_grad and p.dtype == torch.float16:
+                    if not is_logging:
+                        logger.info(
+                            'Convert trainable parameters from fp16 to fp32.')
+                        is_logging = True
+                    p.data = p.data.to(dtype=torch.float32)
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)

@@ -14,10 +14,10 @@ from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, freeze_model_parameters,
-                         get_dist_setting, get_logger, get_model_info,
-                         is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_metrics, seed_everything,
-                         show_layers)
+                         get_dist_setting, get_logger, get_main,
+                         get_model_info, is_ddp_plus_mp, is_dist, is_master,
+                         plot_images, preprocess_logits_for_metrics,
+                         seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
@@ -284,3 +284,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         'model_info': model_info,
         'dataset_info': dataset_info,
     }
+
+
+sft_main = get_main(SftArguments, llm_sft)

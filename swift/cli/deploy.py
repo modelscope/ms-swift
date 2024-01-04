@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
-from swift.aigc import animatediff_main
+from swift.llm import deploy_main
 
 if __name__ == '__main__':
-    animatediff_main()
+    deploy_main()

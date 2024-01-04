@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import os
 from copy import deepcopy
@@ -7,7 +8,8 @@ import torch
 from modelscope import GenerationConfig, snapshot_download
 from torch import dtype as Dtype
 from tqdm import tqdm
-from vllm import EngineArgs, LLMEngine, SamplingParams
+from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
+                  SamplingParams)
 
 from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
@@ -24,6 +26,7 @@ def get_vllm_engine(model_type: str,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
+                    use_async: bool = False,
                     **kwargs) -> LLMEngine:
     if engine_kwargs is None:
         engine_kwargs = {}
@@ -55,7 +58,13 @@ def get_vllm_engine(model_type: str,
     tokenizer = get_model_tokenizer(
         model_type, load_model=False, model_dir=model_dir)[1]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
-    engine_args = EngineArgs(
+    if use_async:
+        engine_args_cls = AsyncEngineArgs
+        llm_engine_cls = AsyncLLMEngine
+    else:
+        engine_args_cls = EngineArgs
+        llm_engine_cls = LLMEngine
+    engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
         dtype=dtype_mapping[torch_dtype],
@@ -68,7 +77,8 @@ def get_vllm_engine(model_type: str,
         destroy_model_parallel()
     except ImportError:
         pass
-    llm_engine = LLMEngine.from_engine_args(engine_args)
+    llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     llm_engine.tokenizer = tokenizer
@@ -278,7 +288,8 @@ def inference_vllm(llm_engine: LLMEngine,
 
 
 def prepare_vllm_engine_template(
-        args: InferArguments) -> Tuple[LLMEngine, Template]:
+        args: InferArguments,
+        use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
@@ -296,9 +307,15 @@ def prepare_vllm_engine_template(
         args.torch_dtype,
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
+        use_async=use_async,
         **kwargs)
     tokenizer = llm_engine.tokenizer
-    logger.info(f'model_config: {llm_engine.model_config.hf_config}')
+    if use_async:
+        model_config = asyncio.run(llm_engine.get_model_config())
+        llm_engine.model_config = model_config
+    else:
+        model_config = llm_engine.model_config
+    logger.info(f'model_config: {model_config.hf_config}')
     if not args.do_sample:
         args.temperature = 0
     generation_config = VllmGenerationConfig(
