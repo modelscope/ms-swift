@@ -91,6 +91,7 @@ class SftArguments:
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
+    lora_dtype: str = None
 
     neftune_alpha: float = 0.0
 

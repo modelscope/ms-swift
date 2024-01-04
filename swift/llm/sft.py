@@ -93,6 +93,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
@@ -105,6 +106,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
                     model_type=LongLoRAModelType.LLAMA,
+                    lora_dtype=args.lora_dtype,
                     use_flash_attn=args.use_flash_attn)
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
@@ -119,6 +121,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
                     use_qa_lora=True,
+                    lora_dtype=args.lora_dtype,
                     **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')

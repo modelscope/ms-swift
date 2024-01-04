@@ -41,7 +41,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The modules need to be turned on when using the merged linear layer'
         })
 
-    dtype: str = field(
+    lora_dtype: str = field(
         default=None,
         metadata={
             'help':
