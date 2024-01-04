@@ -312,31 +312,33 @@ class TestSwift(unittest.TestCase):
             model1,
             config={
                 'lora1':
-                LoRAConfig(target_modules=['query', 'key', 'value']),
+                LoRAConfig(target_modules=['query', 'key', 'value'], offload='meta'),
                 'adapter1':
                 AdapterConfig(
                     dim=model.config.hidden_size,
                     target_modules=r'.*layer\.\d+$',
                     method_name='feed_forward_chunk',
+                    offload='meta',
                     hidden_pos=0)
             })
         model2 = Swift.prepare_model(
             model2,
             config={
                 'lora2':
-                LoRAConfig(target_modules=['query', 'key', 'value']),
+                LoRAConfig(target_modules=['query', 'key', 'value'], offload='meta'),
                 'adapter2':
                 AdapterConfig(
                     dim=model.config.hidden_size,
                     target_modules=r'.*layer\.\d+$',
                     method_name='feed_forward_chunk',
+                    offload='meta',
                     hidden_pos=0)
             })
         model = Swift.prepare_model(
             model,
             config={
-                'lora1': LoRAConfig(target_modules=['query', 'key', 'value']),
-                'lora2': LoRAConfig(target_modules=['query', 'key', 'value']),
+                'lora1': LoRAConfig(target_modules=['query', 'key', 'value'], offload='meta'),
+                'lora2': LoRAConfig(target_modules=['query', 'key', 'value'], offload='meta'),
             })
 
         model = Swift.prepare_model(
@@ -347,12 +349,14 @@ class TestSwift(unittest.TestCase):
                     dim=model.config.hidden_size,
                     target_modules=r'.*layer\.\d+$',
                     method_name='feed_forward_chunk',
+                    offload='meta',
                     hidden_pos=0),
                 'adapter2':
                 AdapterConfig(
                     dim=model.config.hidden_size,
                     target_modules=r'.*layer\.\d+$',
                     method_name='feed_forward_chunk',
+                    offload='meta',
                     hidden_pos=0),
             })
 
