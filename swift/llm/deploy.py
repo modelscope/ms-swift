@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
+from copy import deepcopy
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
@@ -103,18 +104,22 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     error_msg = await check_length(request, input_ids)
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
-    generation_config = VllmGenerationConfig(
-        max_new_tokens=request.max_tokens,
-        temperature=request.temperature,
-        top_k=request.top_k,
-        top_p=request.top_p,
-        repetition_penalty=request.repetition_penalty,
-        num_beams=request.num_beams,
-        n=request.n,
-        stop=request.stop,
-        best_of=request.best_of,
-        frequency_penalty=request.frequency_penalty,
-        presence_penalty=request.presence_penalty)
+    kwargs = {'max_new_tokens': request.max_tokens}
+    for key in [
+            'n', 'stop', 'best_of', 'frequency_penalty', 'presence_penalty',
+            'num_beams'
+    ]:
+        kwargs[key] = getattr(request, key)
+    for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        new_value = getattr(request, key)
+        if new_value is None:
+            kwargs[key] = getattr(llm_engine.generation_config, key)
+        else:
+            kwargs[key] = new_value
+    generation_config = VllmGenerationConfig(**kwargs)
+    if generation_config.use_beam_search is True and request.stream is True:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)

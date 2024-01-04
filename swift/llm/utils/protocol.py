@@ -21,18 +21,22 @@ class ModelList:
 
 
 @dataclass
-class CompletionRequest:
+class XRequest:
+    """NOTE: The following behavior is inconsistent with the OpenAI API.
+    Default values for OpenAI:
+        temperature = 1.
+        top_k = -1
+        top_p = 1.
+        repetition_penalty = 1.
+    """
     model: str
-    prompt: str
+
+    max_tokens: Optional[int] = None  # None: max_model_len - num_tokens
+    temperature: Optional[float] = None  # None: use deploy_args
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
 
     n: int = 1
-    max_tokens: Optional[int] = None
-    temperature: float = 1.
-    top_k: int = -1
-    top_p: float = 1.
-    repetition_penalty: float = 1.
-    num_beams: int = 1
-
     seed: Optional[int] = None
     stop: List[str] = field(default_factory=list)
     stream: bool = False
@@ -40,28 +44,30 @@ class CompletionRequest:
     best_of: Optional[int] = None
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
+
+    # additional
+    num_beams: int = 1
+    top_k: Optional[int] = None  # None: use deploy_args
 
 
 @dataclass
-class ChatCompletionRequest:
-    model: str
+class CompletionRequestMixin:
+    prompt: str
+
+
+@dataclass
+class ChatCompletionRequestMixin:
     messages: List[Dict[str, str]]
 
-    n: int = 1
-    max_tokens: Optional[int] = None
-    temperature: float = 1.
-    top_k: int = -1
-    top_p: float = 1.
-    repetition_penalty: float = 1.
-    num_beams: int = 1
 
-    seed: Optional[int] = None
-    stop: List[str] = field(default_factory=list)
-    stream: bool = False
+@dataclass
+class CompletionRequest(XRequest, CompletionRequestMixin):
+    pass
 
-    best_of: Optional[int] = None
-    presence_penalty: float = 0.
-    frequency_penalty: float = 0.
+
+@dataclass
+class ChatCompletionRequest(XRequest, ChatCompletionRequestMixin):
+    pass
 
 
 @dataclass
