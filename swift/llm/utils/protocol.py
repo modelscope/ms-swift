@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -21,7 +22,6 @@ class ModelList:
 
 @dataclass
 class CompletionRequest:
-    model: str
     prompt: str
     #
     n: int = 1
@@ -33,7 +33,7 @@ class CompletionRequest:
     num_beams: int = 1
     #
     seed: Optional[int] = None
-    stop: Optional[List[str]] = None
+    stop: List[str] = field(default_factory=list)
     stream: bool = False
     #
     best_of: Optional[int] = None
@@ -106,4 +106,44 @@ class CompletionResponse:
     usage: UsageInfo
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion'
+    created: int = field(default_factory=lambda: int(time.time()))
+
+
+@dataclass
+class DeltaMessage:
+    role: Literal['system', 'user', 'assistant']
+    content: str
+
+
+@dataclass
+class ChatCompletionResponseStreamChoice:
+    index: int
+    delta: DeltaMessage
+    finish_reason: Literal['stop', 'length']
+
+
+@dataclass
+class ChatCompletionStreamResponse:
+    model: str
+    choices: List[ChatCompletionResponseStreamChoice]
+    usage: UsageInfo
+    id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
+    object: str = 'chat.completion.chunk'
+    created: int = field(default_factory=lambda: int(time.time()))
+
+
+@dataclass
+class CompletionResponseStreamChoice:
+    index: int
+    text: str
+    finish_reason: Literal['stop', 'length']
+
+
+@dataclass
+class CompletionStreamResponse:
+    model: str
+    choices: List[CompletionResponseStreamChoice]
+    usage: UsageInfo
+    id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
+    object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))

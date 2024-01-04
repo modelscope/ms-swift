@@ -15,6 +15,15 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, SwiftPreprocessor,
                          TextGenerationPreprocessor)
+from .protocol import ChatCompletionResponse  # noqa
+from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice,
+                       ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage,
+                       CompletionRequest, CompletionResponse,
+                       CompletionResponseChoice,
+                       CompletionResponseStreamChoice,
+                       CompletionStreamResponse, DeltaMessage, Model,
+                       ModelList, UsageInfo, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        Template, TemplateType, get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, data_collate_fn, dataset_map,

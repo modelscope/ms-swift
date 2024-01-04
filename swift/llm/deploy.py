@@ -1,19 +1,26 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+import time
+from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
 
+import json
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.utils import seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import (DeployArguments, VllmGenerationConfig, messages_to_history,
-                    prepare_vllm_engine_template)
-from .utils.protocol import (ChatCompletionRequest, ChatCompletionResponse,
-                             ChatCompletionResponseChoice, ChatMessage,
-                             CompletionRequest, CompletionResponse,
-                             CompletionResponseChoice, Model, ModelList,
-                             UsageInfo, random_uuid)
+from .utils import ChatCompletionResponse  # noqa
+from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
+                    ChatCompletionResponseStreamChoice,
+                    ChatCompletionStreamResponse, ChatMessage,
+                    CompletionRequest, CompletionResponse,
+                    CompletionResponseChoice, CompletionResponseStreamChoice,
+                    CompletionStreamResponse, DeltaMessage, DeployArguments,
+                    Model, ModelList, UsageInfo, VllmGenerationConfig,
+                    messages_to_history, prepare_vllm_engine_template,
+                    random_uuid)
 
 app = FastAPI()
 model = None
@@ -40,23 +47,37 @@ async def check_length(request: Union[ChatCompletionRequest,
     max_model_len = llm_engine.model_config.max_model_len
     num_tokens = len(input_ids)
     max_tokens = request.max_tokens
-    error_msg = None
     if max_tokens is None:
         max_tokens = max_model_len - num_tokens
         request.max_tokens = max_tokens
-    elif max_tokens + num_tokens > max_model_len:
+    if max_tokens + num_tokens > max_model_len:
         error_msg = (
             f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
             f'but the maximum model length supported is {max_model_len}. '
             'Please reduce the number of tokens in the prompt or the `max_tokens`.'
         )
-    return error_msg
+        return error_msg
+
+
+async def check_model(
+        request: Union[ChatCompletionRequest,
+                       CompletionRequest]) -> Optional[str]:
+    model_list = await get_available_models()
+    model_type_list = [model.id for model in model_list.data]
+    if request.model in model_type_list:
+        return
+    else:
+        return f'`{request.model}` is not in the model_list: `{model_type_list}`.'
 
 
 async def inference_vllm_async(request: Union[ChatCompletionRequest,
                                               CompletionRequest],
                                raw_request: Request):
     global llm_engine, template
+    error_msg = await check_model(request)
+    if error_msg is not None:
+        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+
     if request.seed is not None:
         seed_everything(request.seed)
     if isinstance(request, ChatCompletionRequest):
@@ -97,51 +118,108 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
+    created_time = int(time.time())
     result_generator = llm_engine.generate(None, generation_config, request_id,
                                            input_ids)
-    result = None
-    async for result in result_generator:
-        if await raw_request.is_disconnected():
-            await llm_engine.abort(request_id)
-            return create_error_response(HTTPStatus.BAD_REQUEST,
-                                         'Client disconnected')
-    assert result is not None
-    num_prompt_tokens = len(result.prompt_token_ids)
-    num_generated_tokens = sum(
-        len(output.token_ids) for output in result.outputs)
-    usage_info = UsageInfo(
-        prompt_tokens=num_prompt_tokens,
-        completion_tokens=num_generated_tokens,
-        total_tokens=num_prompt_tokens + num_generated_tokens,
-    )
-    if isinstance(request, ChatCompletionRequest):
-        choices = []
-        for output in result.outputs:
-            choice = ChatCompletionResponseChoice(
-                index=output.index,
-                message=ChatMessage(role='assistant', content=output.text),
-                finish_reason=output.finish_reason,
+
+    async def _generate_full():
+        result = None
+        async for result in result_generator:
+            if await raw_request.is_disconnected():
+                await llm_engine.abort(request_id)
+                return create_error_response(HTTPStatus.BAD_REQUEST,
+                                             'Client disconnected')
+        assert result is not None
+        num_prompt_tokens = len(result.prompt_token_ids)
+        num_generated_tokens = sum(
+            len(output.token_ids) for output in result.outputs)
+        usage_info = UsageInfo(
+            prompt_tokens=num_prompt_tokens,
+            completion_tokens=num_generated_tokens,
+            total_tokens=num_prompt_tokens + num_generated_tokens,
+        )
+        if isinstance(request, ChatCompletionRequest):
+            choices = []
+            for output in result.outputs:
+                choice = ChatCompletionResponseChoice(
+                    index=output.index,
+                    message=ChatMessage(role='assistant', content=output.text),
+                    finish_reason=output.finish_reason,
+                )
+                choices.append(choice)
+            return ChatCompletionResponse(
+                model=request.model,
+                choices=choices,
+                usage=usage_info,
+                id=request_id,
+                created=created_time)
+        else:
+            choices = []
+            for output in result.outputs:
+                choice = CompletionResponseChoice(
+                    index=output.index,
+                    text=output.text,
+                    finish_reason=output.finish_reason,
+                )
+                choices.append(choice)
+            return CompletionResponse(
+                model=request.model,
+                choices=choices,
+                usage=usage_info,
+                id=request_id,
+                created=created_time)
+
+    async def _generate_stream():
+        print_idx_list = [0] * request.n
+        async for result in result_generator:
+            num_prompt_tokens = len(result.prompt_token_ids)
+            num_generated_tokens = sum(
+                len(output.token_ids) for output in result.outputs)
+            usage_info = UsageInfo(
+                prompt_tokens=num_prompt_tokens,
+                completion_tokens=num_generated_tokens,
+                total_tokens=num_prompt_tokens + num_generated_tokens,
             )
-            choices.append(choice)
-        return ChatCompletionResponse(
-            model=request.model,
-            choices=choices,
-            usage=usage_info,
-            id=request_id)
+            if isinstance(request, ChatCompletionRequest):
+                choices = []
+                for output in result.outputs:
+                    delta_text = output.text[print_idx_list[output.index]:]
+                    print_idx_list[output.index] += len(delta_text)
+                    choice = ChatCompletionResponseStreamChoice(
+                        index=output.index,
+                        delta=DeltaMessage(
+                            role='assistant', content=delta_text),
+                        finish_reason=output.finish_reason)
+                    choices.append(choice)
+                response = ChatCompletionStreamResponse(
+                    model=request.model,
+                    choices=choices,
+                    usage=usage_info,
+                    id=request_id,
+                    created=created_time)
+            else:
+                choices = []
+                for output in result.outputs:
+                    delta_text = output.text[print_idx_list[output.index]:]
+                    print_idx_list[output.index] += len(delta_text)
+                    choice = CompletionResponseStreamChoice(
+                        index=output.index,
+                        text=output.text,
+                        finish_reason=output.finish_reason)
+                    choices.append(choice)
+                response = CompletionStreamResponse(
+                    model=request.model,
+                    choices=choices,
+                    usage=usage_info,
+                    id=request_id,
+                    created=created_time)
+            yield f'data:{json.dumps(asdict(response))}\n\n'
+        yield 'data:[DONE]\n\n'
+
+    if request.stream:
+        return StreamingResponse(_generate_stream())
     else:
-        choices = []
-        for output in result.outputs:
-            choice = CompletionResponseChoice(
-                index=output.index,
-                text=output.text,
-                finish_reason=output.finish_reason,
-            )
-            choices.append(choice)
-        return CompletionResponse(
-            model=request.model,
-            choices=choices,
-            usage=usage_info,
-            id=request_id)
+        return await _generate_full()
 
 
 def is_generation_template(template_type: str) -> bool:
