@@ -240,6 +240,7 @@ swift使用VLLM作为推理后端, 并兼容openai的API样式.
 
 ### 原始模型
 **qwen-7b-chat**
+
 服务端:
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
