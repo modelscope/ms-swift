@@ -30,6 +30,7 @@ def prepare_model(model, args):
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
@@ -41,6 +42,7 @@ def prepare_model(model, args):
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     model_type=LongLoRAModelType.LLAMA,
                     use_flash_attn=args.use_flash_attn)
                 model = Swift.prepare_model(model, longlora_config)
@@ -55,6 +57,7 @@ def prepare_model(model, args):
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     use_qa_lora=True,
                     **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
