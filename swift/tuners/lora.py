@@ -48,6 +48,13 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
+    offload: str = field(
+        default=None,
+        metadata={
+            'help':
+            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
