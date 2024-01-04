@@ -3,8 +3,7 @@
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import freeze_model_parameters, get_logger
-from .utils import (SftArguments, find_all_linear_for_lora,
-                    fix_fp16_trainable_bug)
+from .utils import SftArguments, find_all_linear_for_lora
 
 logger = get_logger()
 
@@ -31,6 +30,7 @@ def prepare_model(model, args: SftArguments):
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
@@ -44,6 +44,7 @@ def prepare_model(model, args: SftArguments):
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     model_type=LongLoRAModelType.LLAMA,
                     use_flash_attn=args.use_flash_attn)
                 model = Swift.prepare_model(model, longlora_config)
@@ -58,6 +59,7 @@ def prepare_model(model, args: SftArguments):
                     target_modules=args.lora_target_modules,
                     lora_alpha=args.lora_alpha,
                     lora_dropout=args.lora_dropout_p,
+                    lora_dtype=args.lora_dtype,
                     use_qa_lora=True,
                     **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
@@ -65,7 +67,6 @@ def prepare_model(model, args: SftArguments):
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
-        fix_fp16_trainable_bug(model)
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)

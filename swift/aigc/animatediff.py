@@ -241,6 +241,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
             r=args.lora_rank,
             target_modules=args.trainable_modules,
             lora_alpha=args.lora_alpha,
+            lora_dtype=args.lora_dtype,
             lora_dropout=args.lora_dropout_p)
         unet = Swift.prepare_model(unet, lora_config)
         logger.info(f'lora_config: {lora_config}')
