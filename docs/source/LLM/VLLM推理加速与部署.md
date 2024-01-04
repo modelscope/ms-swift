@@ -234,9 +234,9 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged
 ## 部署
 swift使用VLLM作为推理后端, 并兼容openai的API样式.
 
-openai的API超参数可以参考: https://platform.openai.com/docs/api-reference/introduction
+openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction
 
-对应的命令行参数可以参考[部署的命令行参数](命令行参数.md##deploy-命令行参数).
+对应的命令行参数可以参考[部署的命令行参数](命令行参数.md#deploy-命令行参数).
 
 ### 原始模型
 **qwen-7b-chat**
