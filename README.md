@@ -62,6 +62,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
+- 2023.1.4: Update [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) to facilitate viewing the training speed and GPU memory required for different models.
 - 🔥 2023.12.29: Support web-ui for training and inference, use `swift web-ui` after the installation of ms-swift.
 - 🔥 2023.12.29: Support DPO RLHF(Reinforcement Learning from Human Feedback) and two datasets: AI-ModelScope/stack-exchange-paired and AI-ModelScope/hh-rlhf for this task. Use [this script](https://github.com/modelscope/swift/blob/v1.5.0/examples/pytorch/llm/scripts/dpo/lora/dpo.sh) to start training!
 - 🔥 2023.12.28: Support SCEdit! This framework can easily reduce memory usage in training and inference, and replace ControlNet for controllable image generating scenarios, view the following chapter for details.
@@ -75,6 +76,8 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 2023.12.7: Support [Multi-Node DDP training](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md#%E4%BD%BF%E7%94%A8cli).
 - 2023.12.4: Supported models: zephyr-7b-beta-chat, openbuddy-zephyr-7b-chat. Supported datasets: hc3-zh, hc3-en.
 - 🔥 2023.12.2: [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), **10 minutes for self-cognition fine-tuning for LLM**, creating a LLM that is specific to oneself.
+<details><summary>More</summary>
+
 - 🔥 2023.11.30: Support for training and inference of the **qwen-1_8b**, **qwen-72b**, and **qwen-audio** model series. The corresponding shell scripts can be viewed at [qwen_1_8b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_1_8b_chat), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat), [qwen_audio_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_audio_chat).
 - 🔥 2023.11.29: Support the training and inference for **AnimateDiff**
 - 🔥 2023.11.24: Support for **yi-34b-chat**, **codefuse-codellama-34b-chat**: The corresponding shell script can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
@@ -86,8 +89,6 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 🔥 2023.11.10: Support for **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. The corresponding shell script can be found in [bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
 - 🔥 2023.11.08: Support the finetuning of **xverse-65b** model, scripts can be found at: [xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).
 - 🔥 2023.11.07: Support the finetuning of **yi-6b**, **yi-34b** model, scripts can be found at: [yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).
-<details><summary>More</summary>
-
 - 🔥 2023.10.30: Support **QA-LoRA** and **LongLoRA** to decrease memory usage in training.
 - 🔥 2023.10.30: Support **ROME**(Rank One Model Editing) to add/modify knowledges, training is not needed!
 - 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in [skywork_13b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/skywork_13b).

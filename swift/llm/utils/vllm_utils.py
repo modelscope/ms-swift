@@ -1,7 +1,7 @@
 import inspect
 import os
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 from modelscope import GenerationConfig, snapshot_download
@@ -91,20 +91,20 @@ class VllmGenerationConfig(SamplingParams):
 
     def __init__(
         self,
-        max_length: int = 20,
-        max_new_tokens: Optional[int] = None,
+        max_new_tokens: int = 64,  # max_tokens
         temperature: float = 1.,
         top_k: int = 50,  # -1: all
-        top_p: float = 1.0,
+        top_p: float = 1.,
         repetition_penalty: float = 1.,
         num_beams: int = 1,
         *,
-        length_penalty: float = 1.0,
+        n: int = 1,
+        length_penalty: float = 1.,
         stop: Optional[List[str]] = None,
         **kwargs,
-    ):
+    ) -> None:
         # The parameter design is similar to transformers.GenerationConfig.
-        if num_beams:
+        if num_beams > 1:
             top_k = -1
             top_p = 1
             temperature = 0
@@ -113,8 +113,9 @@ class VllmGenerationConfig(SamplingParams):
             )
         if top_k == 0:
             top_k = -1
-        self.max_new_tokens = max_new_tokens
-        kwargs['max_tokens'] = max_length
+        if stop is None:
+            stop = []
+        kwargs['max_tokens'] = max_new_tokens
         kwargs['temperature'] = temperature
         kwargs['top_k'] = top_k
         kwargs['top_p'] = top_p
@@ -123,6 +124,7 @@ class VllmGenerationConfig(SamplingParams):
             assert 'use_beam_search' not in kwargs and 'best_of' not in kwargs
             kwargs['use_beam_search'] = True
             kwargs['best_of'] = num_beams
+        kwargs['n'] = n
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
         parameters = inspect.signature(SamplingParams.__init__).parameters
@@ -134,13 +136,15 @@ class VllmGenerationConfig(SamplingParams):
                 kwargs.pop(k)
         super().__init__(**kwargs)
 
-    @property
-    def max_length(self) -> int:
-        return self.max_tokens
-
-    @max_length.setter
-    def max_length(self, value: int) -> None:
-        self.max_tokens = value
+    def __setattr__(self, key: str, value: str) -> None:
+        if key == 'max_new_tokens':
+            self.max_tokens = value
+        elif key == 'max_length':
+            raise ValueError(
+                '`max_length` is not supported, please use `max_new_tokens` for setting.'
+            )
+        else:
+            super().__setattr__(key, value)
 
 
 def inference_stream_vllm(
@@ -150,7 +154,7 @@ def inference_stream_vllm(
         *,
         generation_config: Optional[VllmGenerationConfig] = None,
         use_tqdm: bool = False,
-        **kwargs) -> List[Dict[str, Any]]:
+        **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -177,9 +181,6 @@ def inference_stream_vllm(
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
             generation_config.stop.append(tokenizer.eos_token)
-        if generation_config.max_new_tokens is not None:
-            generation_config.max_length = generation_config.max_new_tokens + len(
-                input_ids)
         llm_engine.add_request(str(i), None, generation_config, input_ids)
 
     batch_size = len(request_list)
@@ -245,9 +246,6 @@ def inference_vllm(llm_engine: LLMEngine,
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
             generation_config.stop.append(tokenizer.eos_token)
-        if generation_config.max_new_tokens is not None:
-            generation_config.max_length = generation_config.max_new_tokens + len(
-                input_ids)
         llm_engine.add_request(str(i), None, generation_config, input_ids)
 
     batch_size = len(request_list)
