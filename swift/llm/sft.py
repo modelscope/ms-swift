@@ -21,11 +21,10 @@ from swift.utils import (check_json_format, compute_acc_metrics,
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
-                    find_all_linear_for_lora, fix_fp16_trainable_bug,
-                    get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, get_time_info,
-                    print_example, set_generation_config, sort_by_max_length,
-                    stat_dataset)
+                    find_all_linear_for_lora, get_additional_saved_files,
+                    get_dataset, get_model_tokenizer, get_template,
+                    get_time_info, print_example, set_generation_config,
+                    sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 

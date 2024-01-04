@@ -691,17 +691,6 @@ def set_generation_config(model: Module,
     model.generation_config = generation_config
 
 
-def fix_fp16_trainable_bug(model: Module) -> None:
-    # fix peft==0.7 bug
-    is_logging = False
-    for p in model.parameters():
-        if p.requires_grad and p.dtype == torch.float16:
-            if not is_logging:
-                logger.info('Convert trainable parameters from fp16 to fp32.')
-                is_logging = True
-            p.data = p.data.to(dtype=torch.float32)
-
-
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
 
