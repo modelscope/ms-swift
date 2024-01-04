@@ -3,8 +3,7 @@
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import freeze_model_parameters, get_logger
-from .utils import (SftArguments, find_all_linear_for_lora,
-                    fix_fp16_trainable_bug)
+from .utils import SftArguments, find_all_linear_for_lora
 
 logger = get_logger()
 
@@ -68,7 +67,6 @@ def prepare_model(model, args: SftArguments):
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
-        fix_fp16_trainable_bug(model)
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)

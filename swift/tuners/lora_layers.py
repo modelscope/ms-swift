@@ -290,11 +290,11 @@ class LoraModel(_LoraModel):
                 model.modules_to_save.update(set(peft_config.modules_to_save))
 
     def _convert_dtype(self, target: nn.Module, lora_dtype: str):
-        if lora_dtype == 'float32':
+        if lora_dtype == 'fp32':
             torch_dtype = torch.float32
-        elif lora_dtype == 'float16':
+        elif lora_dtype == 'fp16':
             torch_dtype = torch.float16
-        elif lora_dtype == 'bfloat16':
+        elif lora_dtype == 'bf16':
             torch_dtype = torch.bfloat16
         else:
             torch_dtype = None
