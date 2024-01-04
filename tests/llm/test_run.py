@@ -188,7 +188,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        for dataset in [None, [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
+        for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
             sft_args = SftArguments(
                 model_type=ModelType.qwen_7b_chat,
                 dataset=dataset,  # no dataset
@@ -208,7 +208,7 @@ class TestRun(unittest.TestCase):
             print(f'last_model_checkpoint: {last_model_checkpoint}')
             print(f'best_model_checkpoint: {best_model_checkpoint}')
             ckpt_dir = best_model_checkpoint or last_model_checkpoint
-            if dataset is None:
+            if len(dataset) == 0:
                 continue
             infer_args = InferArguments(
                 ckpt_dir=ckpt_dir,

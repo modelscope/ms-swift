@@ -239,7 +239,7 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        elif isinstance(self.lora_target_modules, str):
+        if isinstance(self.lora_target_modules, str):
             self.lora_target_modules = [self.lora_target_modules]
         if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
@@ -723,7 +723,7 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         if (key in {
                 'dataset', 'custom_train_dataset_path',
                 'custom_val_dataset_path'
-        } and getattr(args, key) is not None):
+        } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
 
