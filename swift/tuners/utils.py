@@ -1,20 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
 
+import hashlib
 import os
+import shutil
 import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
-from typing import Dict, List, Optional
+from typing import Dict
 
 import json
-import peft.utils
 import torch
 from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
 from swift.hub.snapshot_download import snapshot_download
+from swift.hub.utils.utils import get_cache_dir
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
 
@@ -175,6 +177,43 @@ class ActivationMixin:
         ]
 
 
+class OffloadHelper:
+
+    sub_dir = 'offload_cache'
+    cache_dir = os.path.join(get_cache_dir(), sub_dir)
+    shutil.rmtree(cache_dir)
+    os.makedirs(cache_dir, exist_ok=True)
+
+    @staticmethod
+    def read_safe_tensors(safe_tensor_file):
+        if os.path.exists(safe_tensor_file):
+            from safetensors.torch import load_file as safe_load_file
+            return safe_load_file(
+                safe_tensor_file,
+                device='cuda' if torch.cuda.is_available() else 'cpu')
+
+    @staticmethod
+    def write_safe_tensors(state_dict, safe_tensor_file):
+        from safetensors.torch import save_file as safe_save_file
+        safe_save_file(state_dict, safe_tensor_file, metadata={'format': 'pt'})
+
+    @staticmethod
+    def offload_disk(module: torch.nn.Module, adapter_name, module_key):
+        key = adapter_name + ':' + module_key
+        md5 = hashlib.md5(key).hexdigest()
+        file = os.path.join(OffloadHelper.cache_dir, md5 + '.safetensors')
+        OffloadHelper.write_safe_tensors(module.state_dict(), file)
+
+    @staticmethod
+    def load_disk(module: torch.nn.Module, adapter_name, module_key):
+        key = adapter_name + ':' + module_key
+        md5 = hashlib.md5(key).hexdigest()
+        file = os.path.join(OffloadHelper.cache_dir, md5 + '.safetensors')
+        state_dict = OffloadHelper.read_safe_tensors(file)
+        module.load_state_dict(state_dict, assign=True)
+        shutil.rmtree(file)
+
+
 class SwiftAdapter:
 
     @staticmethod
@@ -183,9 +222,54 @@ class SwiftAdapter:
         raise NotImplementedError
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
         raise NotImplementedError
+
+    @staticmethod
+    def save_memory(module: torch.nn.Module,
+                    adapter_name: str,
+                    module_key: str,
+                    activate: bool,
+                    offload: str = None):
+        if offload is not None:
+            if activate:
+                SwiftAdapter.load(
+                    module, adapter_name, module_key, offload=offload)
+            else:
+                SwiftAdapter.offload(
+                    module, adapter_name, module_key, offload=offload)
+
+    @staticmethod
+    def offload(module: torch.nn.Module, adapter_name, module_key,
+                offload: str):
+        module.origin_device = str(module.device)
+        if offload == 'cpu' and str(module.device) != 'cpu':
+            module.to('cpu')
+        if offload == 'meta' and str(module.device) != 'meta':
+            OffloadHelper.offload_disk(
+                module, adapter_name=adapter_name, module_key=module_key)
+            module.to('meta')
+        else:
+            raise NotImplementedError
+
+    @staticmethod
+    def load(module: torch.nn.Module, adapter_name, module_key, offload: str):
+        if not hasattr(module, 'origin_device') or module.origin_device == str(
+                module.device):
+            return
+        if offload == 'cpu':
+            module.to(module.origin_device)
+            delattr(module, 'origin_device')
+        elif offload == 'meta':
+            OffloadHelper.load_disk(
+                module, adapter_name=adapter_name, module_key=module_key)
+            module.to(module.origin_device)
+            delattr(module, 'origin_device')
+        else:
+            raise NotImplementedError
 
     @staticmethod
     def freeze_model():
@@ -194,7 +278,9 @@ class SwiftAdapter:
 
 class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, module_key, **kwargs):
+        self.module_key = module_key
+        self.offloads = {}
         super(ModulesToSaveWrapper, self).__init__()
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
@@ -209,6 +295,9 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             )
         return active_adapters[0]
 
+    def add_offload(self, adapter_name: str, offload=None):
+        self.offloads[adapter_name] = offload
+
     def set_adapter(self, adapter_name: str):
         if adapter_name not in self.modules_to_save:
             raise ValueError(
@@ -216,11 +305,23 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             )
         self.modules_to_save[adapter_name].requires_grad_(True)
         self.set_activation(adapter_name, True)
+        SwiftAdapter.save_memory(
+            self.modules_to_save[adapter_name],
+            adapter_name,
+            self.module_key,
+            True,
+            offload=self.offloads.get(adapter_name))
 
     def deactivate_adapter(self, adapter_name: str):
         if adapter_name in self.modules_to_save and self.unique_thread:
             self.modules_to_save[adapter_name].requires_grad_(False)
         self.set_activation(adapter_name, False)
+        SwiftAdapter.save_memory(
+            self.modules_to_save[adapter_name],
+            adapter_name,
+            self.module_key,
+            False,
+            offload=self.offloads.get(adapter_name))
 
 
 def set_adapter(model, adapter_name, activate):

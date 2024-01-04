@@ -69,8 +69,10 @@ class LoRA(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
         set_adapter(module, adapter_name, activate)
         for sub_module in module.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):

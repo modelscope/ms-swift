@@ -456,7 +456,7 @@ class SwiftModel(nn.Module):
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
             .activate_adapter(self.base_model, adapter_name, True)
 
-    def deactivate_adapter(self, adapter_name):
+    def deactivate_adapter(self, adapter_name, offload='cpu'):
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -464,7 +464,7 @@ class SwiftModel(nn.Module):
 
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
-            .activate_adapter(self.base_model, adapter_name, False)
+            .activate_adapter(self.base_model, adapter_name, False, offload=offload)
 
     def get_trainable_parameters(self):
         """

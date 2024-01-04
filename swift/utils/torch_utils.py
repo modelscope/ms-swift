@@ -69,16 +69,22 @@ def get_model_info(model: Module, name: Optional[str] = None) -> str:
 
 
 def find_sub_module(module: torch.nn.Module,
-                    module_name: str) -> List[torch.nn.Module]:
+                    module_name: str,
+                    prefix='') -> Tuple[List[torch.nn.Module], List[str]]:
     _modules = list()
-    for name, sub_module in module.named_modules():
+    _module_keys = list()
+    for name, sub_module in module.named_modules(prefix=prefix):
         if not name:
             continue
         if module_name == name:
             _modules.append(sub_module)
+            _module_keys.append(name)
         else:
-            _modules.extend(find_sub_module(sub_module, module_name))
-    return _modules
+            _sub_modules, _sub_module_keys = find_sub_module(
+                sub_module, module_name, prefix=name)
+            _modules.extend(_sub_modules)
+            _module_keys.extend(_sub_module_keys)
+    return _modules, _module_keys
 
 
 def get_dist_setting() -> Tuple[int, int, int, int]:

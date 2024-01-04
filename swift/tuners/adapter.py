@@ -152,13 +152,18 @@ class Adapter(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'adapter_{adapter_name}')
-        for _module in modules:
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules, module_keys = find_sub_module(module,
+                                               f'adapter_{adapter_name}')
+        for _module_key, _module in zip(module_keys, modules):
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module_key,
+                                     activate, offload)
 
 
 class AdapterModule(nn.Module, ActivationMixin):
