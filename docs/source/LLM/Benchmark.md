@@ -6,6 +6,7 @@
 - [Batch Size](#batch-size)
 - [Use Flash Attn & Gradient Checkpointing](#use-flash-attn--gradient-checkpointing)
 - [LoRA Rank & LoRA Target Modules](#lora-rank--lora-target-modules)
+- [Gradient Accumulation Steps](#gradient-accumulation-steps)
 
 ## 参数设置
 实验环境:
@@ -37,6 +38,7 @@
     --lora_rank 8 \
     --lora_target_modules DEFAULT \
     --quantization_bit 0 \
+    --gradient_accumulation_steps 16 \
 ```
 
 对应测试数据集的token数统计量(由qwen的tokenizer获取): 3234.4±2547.5, min=91, max=19548.
@@ -374,8 +376,8 @@ swift sft \
     </tr>
     <tr>
         <td>8192</td>
-        <td>-</td>
-        <td>OOM</td>
+        <td>0.31 (2*A100)</td>
+        <td>47.01+65.03</td>
     </tr>
     <tr>
         <td rowspan="5">openbuddy-zephyr-7b-chat</td>
@@ -639,5 +641,61 @@ swift sft \
         <td>3.22</td>
         <td>27.87</td>
         <td>17.89</td>
+    </tr>
+</table>
+
+
+## Gradient Accumulation Steps
+测试脚本为:
+```bash
+swift sft \
+    --gradient_accumulation_steps {GRADIENT_ACCUMULATION_STEPS} \
+    --model_type qwen-7b-chat \
+    --sft_type lora \
+    ...
+```
+
+<table>
+    <tr>
+        <td>Model Type [LoRA]</td>
+        <td>Gradient Accumulation Steps</td>
+        <td>Training Speed (samples/s)</td>
+        <td>GPU Memory (GiB)</td>
+    </tr>
+    <tr>
+        <td rowspan="6">qwen-7b-chat</td>
+        <td>1</td>
+        <td>4.26</td>
+        <td>27.73</td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td>4.32</td>
+        <td>27.74</td>
+    </tr>
+    <tr>
+        <td>4</td>
+        <td>4.31</td>
+        <td>27.74</td>
+    </tr>
+    <tr>
+        <td>8</td>
+        <td>4.32</td>
+        <td>27.74</td>
+    </tr>
+    <tr>
+        <td>16</td>
+        <td>4.33</td>
+        <td>27.74</td>
+    </tr>
+    <tr>
+        <td>32</td>
+        <td>4.30</td>
+        <td>27.74</td>
+    </tr>
+    <tr>
+        <td>64</td>
+        <td>4.32</td>
+        <td>27.74</td>
     </tr>
 </table>

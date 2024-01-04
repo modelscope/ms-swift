@@ -137,9 +137,10 @@ class SftArguments:
     preprocess_num_proc: int = 1
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
+    check_model_is_latest: bool = True
+
     logging_dir: Optional[str] = None
     report_to: List[str] = field(default_factory=lambda: ['all'])
-    check_model_is_latest: bool = True
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
     save_strategy: Literal['steps', 'no'] = 'steps'
