@@ -2,7 +2,7 @@
 import math
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Set, Tuple, Union
 
 import json
 import torch
@@ -33,12 +33,9 @@ class SftArguments:
     model_revision: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    sft_type: str = field(
-        default='lora',
-        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
+    sft_type: Literal['lora', 'longlora', 'qalora', 'full'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
-    tuner_backend: str = field(
-        default='swift', metadata={'choices': ['swift', 'peft']})
+    tuner_backend: Literal['swift', 'peft'] = 'swift'
     template_type: str = field(
         default='AUTO',
         metadata={
@@ -47,17 +44,14 @@ class SftArguments:
         })
     output_dir: str = 'output'
     add_output_dir_suffix: bool = True
-    custom_output_dir_suffix: str = None
-    ddp_backend: str = field(
-        default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
+    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = 'nccl'
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
-    dtype: str = field(
-        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
+    dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
-    dataset: Optional[List[str]] = field(
-        default=None,
+    dataset: List[str] = field(
+        default_factory=list,
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
@@ -65,29 +59,28 @@ class SftArguments:
     val_dataset_sample: Optional[int] = None  # -1: all dataset
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
-    truncation_strategy: str = field(
-        default='delete', metadata={'choices': ['delete', 'truncation_left']})
-    check_dataset_strategy: str = field(
-        default='none',
-        metadata={'choices': ['none', 'discard', 'error', 'warning']})
-    custom_train_dataset_path: Optional[List[str]] = None
-    custom_val_dataset_path: Optional[List[str]] = None
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
+    check_dataset_strategy: Literal['none', 'discard', 'error',
+                                    'warning'] = 'none'
+    custom_train_dataset_path: List[str] = field(default_factory=list)
+    custom_val_dataset_path: List[str] = field(default_factory=list)
     self_cognition_sample: int = 0
     # Chinese name and English name
-    model_name: Optional[List[str]] = None  # e.g. ['小黄', 'Xiao Huang']
-    model_author: Optional[List[str]] = None  # e.g. ['魔搭', 'ModelScope']
-
+    model_name: List[str] = field(
+        default_factory=lambda: [None, None],
+        metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
+    model_author: List[str] = field(
+        default_factory=lambda: [None, None],
+        metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
     # note: bf16 and quantization have requirements for gpu architecture
-    quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
-    bnb_4bit_comp_dtype: str = field(
-        default='AUTO', metadata={'choices': ['fp16', 'bf16', 'fp32', 'AUTO']})
-    bnb_4bit_quant_type: str = field(
-        default='nf4', metadata={'choices': ['fp4', 'nf4']})
+    quantization_bit: Literal[0, 4, 8] = 0
+    bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
+    bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
 
-    lora_target_modules: Optional[List[str]] = None
+    lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
@@ -108,7 +101,7 @@ class SftArguments:
     gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
-    lr_scheduler_type: str = 'cosine'
+    lr_scheduler_type: str = 'linear'
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
@@ -122,12 +115,8 @@ class SftArguments:
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
     hub_private_repo: bool = True
-    push_hub_strategy: str = field(
-        default='push_best',
-        metadata={
-            'choices':
-            ['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints']
-        })
+    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint',
+                               'all_checkpoints'] = 'push_best'
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None,
@@ -149,14 +138,13 @@ class SftArguments:
     preprocess_num_proc: int = 1
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
-    logging_dir: Optional[str] = None
-    report_to: Optional[List[str]] = None
     check_model_is_latest: bool = True
-    acc_strategy: str = field(
-        default='token', metadata={'choices': ['token', 'sentence']})
+
+    logging_dir: Optional[str] = None
+    report_to: List[str] = field(default_factory=lambda: ['all'])
+    acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
-    save_strategy: str = field(
-        default='steps', metadata={'choices': ['steps', 'no']})
+    save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
 
     # generation config
@@ -166,6 +154,7 @@ class SftArguments:
     top_k: int = 20
     top_p: float = 0.7
     repetition_penalty: float = 1.05
+    num_beams: int = 1
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -208,11 +197,7 @@ class SftArguments:
 
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
-            if self.custom_output_dir_suffix is not None:
-                self.output_dir = os.path.join(self.output_dir,
-                                               self.custom_output_dir_suffix)
-            else:
-                self.output_dir = add_version_to_work_dir(self.output_dir)
+            self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
 
         if self.sft_type in ('lora', 'longlora', 'qalora'):
@@ -220,7 +205,7 @@ class SftArguments:
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
             )
             if 'int4' in self.model_type or 'int8' in self.model_type:
-                assert self.quantization_bit == 0
+                assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.only_save_model is None:
@@ -230,8 +215,11 @@ class SftArguments:
                     self.only_save_model = True
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters < 1
-            assert self.quantization_bit == 0, 'not supported'
-            assert self.dtype != 'fp16', 'please use bf16 or fp32'
+            assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
+            assert self.dtype != 'fp16', (
+                "Fine-tuning with dtype=='fp16' can lead to NaN issues. "
+                'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.'
+            )
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
             if self.only_save_model is None:
@@ -244,8 +232,6 @@ class SftArguments:
             logger.info(f'Setting template_type: {self.template_type}')
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
-        elif self.dataset is None:
-            self.dataset = []
         if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
                                        and len(
                                            self.custom_val_dataset_path) == 0
@@ -254,9 +240,7 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.lora_target_modules is None:
-            self.lora_target_modules = ['DEFAULT']
-        elif isinstance(self.lora_target_modules, str):
+        if isinstance(self.lora_target_modules, str):
             self.lora_target_modules = [self.lora_target_modules]
         if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
@@ -285,8 +269,6 @@ class SftArguments:
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
-        if self.report_to is None:
-            self.report_to = ['all']
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
@@ -307,7 +289,7 @@ class SftArguments:
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
         elif not support_gradient_checkpointing:
-            assert self.gradient_checkpointing is False, 'not support gradient_checkpointing'
+            assert self.gradient_checkpointing is False, f'{self.model_type} not support gradient_checkpointing.'
 
 
 @dataclass
@@ -320,17 +302,14 @@ class InferArguments:
     model_revision: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    sft_type: str = field(
-        default='lora',
-        metadata={'choices': ['lora', 'longlora', 'qalora', 'full']})
+    sft_type: Literal['lora', 'longlora', 'qalora', 'full'] = 'lora'
     template_type: str = field(
         default='AUTO',
         metadata={
             'help':
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
-    infer_backend: str = field(
-        default='AUTO', metadata={'choices': ['AUTO', 'vllm', 'pt']})
+    infer_backend: Literal['AUTO', 'vllm', 'pt'] = 'AUTO'
     ckpt_dir: Optional[str] = field(
         default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
@@ -338,11 +317,10 @@ class InferArguments:
     eval_human: Optional[bool] = None
 
     seed: int = 42
-    dtype: str = field(
-        default='AUTO', metadata={'choices': ['bf16', 'fp16', 'fp32', 'AUTO']})
+    dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
-    dataset: Optional[List[str]] = field(
-        default=None,
+    dataset: List[str] = field(
+        default_factory=list,
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
@@ -350,19 +328,15 @@ class InferArguments:
     save_result: bool = True
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
-    truncation_strategy: str = field(
-        default='delete', metadata={'choices': ['delete', 'truncation_left']})
-    check_dataset_strategy: str = field(
-        default='none',
-        metadata={'choices': ['none', 'discard', 'error', 'warning']})
-    custom_train_dataset_path: Optional[List[str]] = None
-    custom_val_dataset_path: Optional[List[str]] = None
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
+    check_dataset_strategy: Literal['none', 'discard', 'error',
+                                    'warning'] = 'none'
+    custom_train_dataset_path: List[str] = field(default_factory=list)
+    custom_val_dataset_path: List[str] = field(default_factory=list)
 
-    quantization_bit: int = field(default=0, metadata={'choices': [0, 4, 8]})
-    bnb_4bit_comp_dtype: str = field(
-        default='AUTO', metadata={'choices': ['fp16', 'bf16', 'fp32', 'AUTO']})
-    bnb_4bit_quant_type: str = field(
-        default='nf4', metadata={'choices': ['fp4', 'nf4']})
+    quantization_bit: Literal[0, 4, 8] = 0
+    bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
+    bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
 
     max_new_tokens: int = 2048
@@ -371,6 +345,7 @@ class InferArguments:
     top_k: int = 20
     top_p: float = 0.7
     repetition_penalty: float = 1.05
+    num_beams: int = 1
 
     # other
     use_flash_attn: Optional[bool] = None
@@ -378,7 +353,7 @@ class InferArguments:
     stream: bool = True
     merge_lora_and_save: bool = False
     save_safetensors: bool = True
-    overwrite_generation_config: bool = False
+    overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
     # app-ui
     share: bool = False
@@ -406,7 +381,7 @@ class InferArguments:
         if self.load_args_from_ckpt_dir:
             load_from_ckpt_dir(self)
         else:
-            assert self.load_dataset_config is False
+            assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
@@ -417,8 +392,6 @@ class InferArguments:
             logger.info(f'Setting template_type: {self.template_type}')
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
-        elif self.dataset is None:
-            self.dataset = []
         has_dataset = (
             len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
             or len(self.custom_val_dataset_path) > 0)
@@ -437,9 +410,14 @@ class InferArguments:
 
         if self.max_length == -1:
             self.max_length = None
-        if self.ckpt_dir is None and self.overwrite_generation_config:
-            self.overwrite_generation_config = False
-            logger.warning('Setting overwrite_generation_config: False')
+        if self.overwrite_generation_config is None:
+            if self.ckpt_dir is None:
+                self.overwrite_generation_config = False
+            else:
+                self.overwrite_generation_config = True
+            logger.info(
+                f'Setting overwrite_generation_config: {self.overwrite_generation_config}'
+            )
         if self.ckpt_dir is None:
             self.sft_type = 'full'
         model_info = MODEL_MAPPING[self.model_type]
@@ -453,10 +431,15 @@ class InferArguments:
                 else:
                     self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
-            assert self.quantization_bit == 0, 'not support bnb'
+            assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             assert support_vllm, f'vllm not support `{self.model_type}`'
             if self.sft_type == 'lora':
-                assert self.merge_lora_and_save is True, 'please set `--merge_lora_and_save true`'
+                assert self.merge_lora_and_save is True, (
+                    'To use VLLM, you need to provide the complete weight parameters. '
+                    'Please set --merge_lora_and_save true.')
+        if self.num_beams != 1:
+            self.stream = False
+            logger.info('Setting self.stream: False')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -692,9 +675,7 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
         value = getattr(args, key)
-        if value is None:
-            setattr(args, key, [])
-        elif isinstance(value, str):
+        if isinstance(value, str):
             setattr(args, key, [value])
     if len(args.custom_train_dataset_path) == 0 and len(
             args.custom_val_dataset_path) == 0:
@@ -735,7 +716,7 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         if (key in {
                 'dataset', 'custom_train_dataset_path',
                 'custom_val_dataset_path'
-        } and getattr(args, key) is not None):
+        } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
 

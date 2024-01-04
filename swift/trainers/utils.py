@@ -17,7 +17,7 @@ except ImportError:
     ShardedDDPOption = None
 
 
-def can_return_loss(model: Module) -> List[str]:
+def can_return_loss(model: Module) -> bool:
     """Check if a given model can return loss."""
     signature = inspect.signature(model.forward)
     for p in signature.parameters:

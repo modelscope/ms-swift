@@ -573,6 +573,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     'ZhipuAI/codegeex2-6b',
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
+    requires=['transformers<4.34'],
     support_vllm=True)
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
@@ -1461,7 +1462,7 @@ def get_model_tokenizer(
         fix_transformers_upgrade(model)
         fix_gradient_checkpointing_warning()
     tokenizer.model_type = model_type
-    assert tokenizer.eos_token is not None
+    assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     if model is not None and model_dir is not None:

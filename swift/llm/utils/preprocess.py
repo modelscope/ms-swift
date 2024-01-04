@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-from typing import Callable, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
@@ -56,7 +56,7 @@ class AlpacaPreprocessor:
         return dataset
 
 
-def _default_repair_conversations(s: str) -> Dict[str, str]:
+def _default_repair_conversations(s: Union[str, Any]) -> Any:
     if isinstance(s, str):
         return ast.literal_eval(s)
     return s

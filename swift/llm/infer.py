@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Literal, Tuple
+from typing import Literal, Optional, Tuple
 
 import json
 import torch
@@ -23,10 +23,10 @@ logger = get_logger()
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
                device_map: str = 'auto',
-               **kwargs) -> str:
+               **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
-    assert args.ckpt_dir is not None
-    assert args.sft_type == 'lora'
+    assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
+    assert args.sft_type == 'lora', "Only supports sft_type == 'lora'"
     assert 'int4' not in args.model_type, 'int4 model is not supported'
     assert 'int8' not in args.model_type, 'int8 model is not supported'
     if args.quantization_bit != 0:
@@ -132,6 +132,7 @@ def prepare_model_template(
         top_p=args.top_p,
         do_sample=args.do_sample,
         repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
@@ -165,7 +166,7 @@ def llm_infer(args: InferArguments) -> None:
     else:
         model, template = prepare_model_template(args)
         if args.overwrite_generation_config:
-            assert args.ckpt_dir is not None
+            assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)
     # Inference
     result = []
@@ -199,6 +200,8 @@ def llm_infer(args: InferArguments) -> None:
             elif query.strip().lower() == 'clear':
                 history = []
                 continue
+            elif query.strip() == '':
+                continue
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
                 logger.info('End multi-line input with `#`.')
@@ -210,27 +213,39 @@ def llm_infer(args: InferArguments) -> None:
                 continue
             if not template.support_multi_round:
                 history = []
-            print_idx = 0
             if args.infer_backend == 'vllm':
-                gen = inference_stream_vllm(llm_engine, template,
-                                            [{
-                                                'query': query,
-                                                'history': history
-                                            }])
-                for resp_list in gen:
+                request_list = [{'query': query, 'history': history}]
+                if args.stream:
+                    gen = inference_stream_vllm(llm_engine, template,
+                                                request_list)
+                    print_idx = 0
+                    for resp_list in gen:
+                        response = resp_list[0]['response']
+                        new_history = resp_list[0]['history']
+                        if len(response) > print_idx:
+                            print(response[print_idx:], end='', flush=True)
+                            print_idx = len(response)
+                    print()
+                else:
+                    resp_list = inference_vllm(llm_engine, template,
+                                               request_list)
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
-                    if len(response) > print_idx:
-                        print(response[print_idx:], end='', flush=True)
-                        print_idx = len(response)
+                    print(response)
             else:
-                gen = inference_stream(
-                    model, template, query, history, image=image)
-                for response, new_history in gen:
-                    if len(response) > print_idx:
-                        print(response[print_idx:], end='', flush=True)
-                        print_idx = len(response)
-            print()
+                if args.stream:
+                    gen = inference_stream(
+                        model, template, query, history, image=image)
+                    print_idx = 0
+                    for response, new_history in gen:
+                        if len(response) > print_idx:
+                            print(response[print_idx:], end='', flush=True)
+                            print_idx = len(response)
+                    print()
+                else:
+                    response, new_history = inference(
+                        model, template, query, history, image=image)
+                    print(response)
             print('-' * 50)
             obj = {
                 'query': query,
