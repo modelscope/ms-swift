@@ -249,7 +249,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
 
 **客户端:**
 
-使用swift客户端接口:
+使用swift:
 ```python
 from swift.llm import get_model_list_client, XRequest, inference_client
 
@@ -283,7 +283,7 @@ response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁�
 """
 ```
 
-使用openai接口:
+使用openai:
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -340,7 +340,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b
 
 **客户端:**
 
-使用swift客户端接口:
+使用swift:
 ```python
 from swift.llm import get_model_list_client, XRequest, inference_client
 
@@ -387,7 +387,7 @@ response:  成都
 """
 ```
 
-使用openai接口:
+使用openai:
 ```python
 from openai import OpenAI
 client = OpenAI(
