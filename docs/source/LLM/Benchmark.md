@@ -276,58 +276,6 @@ swift sft \
         <td>66.82</td>
     </tr>
     <tr>
-        <td rowspan="5">baichuan2-7b-chat</td>
-        <td>512</td>
-        <td>6.09</td>
-        <td>18.18</td>
-    </tr>
-    <tr>
-        <td>1024</td>
-        <td>5.36</td>
-        <td>17.45</td>
-    </tr>
-    <tr>
-        <td>2048</td>
-        <td>3.43</td>
-        <td>19.18</td>
-    </tr>
-    <tr>
-        <td>4096</td>
-        <td>1.69</td>
-        <td>34.22</td>
-    </tr>
-    <tr>
-        <td>8192</td>
-        <td>1.16</td>
-        <td>45.47</td>
-    </tr>
-    <tr>
-        <td rowspan="5">baichuan2-13b-chat</td>
-        <td>512</td>
-        <td>5.32</td>
-        <td>31.01</td>
-    </tr>
-    <tr>
-        <td>1024</td>
-        <td>3.91</td>
-        <td>31.58</td>
-    </tr>
-    <tr>
-        <td>2048</td>
-        <td>1.77</td>
-        <td>32.40</td>
-    </tr>
-    <tr>
-        <td>4096</td>
-        <td>0.65</td>
-        <td>49.63</td>
-    </tr>
-    <tr>
-        <td>8192</td>
-        <td>0.36</td>
-        <td>76.17</td>
-    </tr>
-    <tr>
         <td rowspan="5">yi-6b-chat</td>
         <td>512</td>
         <td>5.27</td>
@@ -404,6 +352,58 @@ swift sft \
         <td>8192</td>
         <td>0.92</td>
         <td>52.14</td>
+    </tr>
+    <tr>
+        <td rowspan="5">baichuan2-7b-chat</td>
+        <td>512</td>
+        <td>6.09</td>
+        <td>18.18</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>5.36</td>
+        <td>17.45</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>3.43</td>
+        <td>19.18</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>1.69</td>
+        <td>34.22</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>1.16</td>
+        <td>45.47</td>
+    </tr>
+    <tr>
+        <td rowspan="5">baichuan2-13b-chat</td>
+        <td>512</td>
+        <td>5.32</td>
+        <td>31.01</td>
+    </tr>
+    <tr>
+        <td>1024</td>
+        <td>3.91</td>
+        <td>31.58</td>
+    </tr>
+    <tr>
+        <td>2048</td>
+        <td>1.77</td>
+        <td>32.40</td>
+    </tr>
+    <tr>
+        <td>4096</td>
+        <td>0.65</td>
+        <td>49.63</td>
+    </tr>
+    <tr>
+        <td>8192</td>
+        <td>0.36</td>
+        <td>76.17</td>
     </tr>
 </table>
 
@@ -663,7 +663,7 @@ swift sft \
         <td>GPU Memory (GiB)</td>
     </tr>
     <tr>
-        <td rowspan="6">qwen-7b-chat</td>
+        <td rowspan="7">qwen-7b-chat</td>
         <td>1</td>
         <td>4.26</td>
         <td>27.73</td>
