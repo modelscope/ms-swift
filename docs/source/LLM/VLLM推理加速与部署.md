@@ -280,7 +280,7 @@ stream = client.chat.completions.create(
 print(f'query: {query}')
 print('response: ', end='')
 for chunk in stream:
-    print(chunk.choices[0].delta.content, end='')
+    print(chunk.choices[0].delta.content, end='', flush=True)
 print()
 
 """Out[0]
@@ -325,7 +325,7 @@ response = resp.choices[0].text
 print(f'query: {query}')
 print('response: ', end='')
 for chunk in stream:
-    print(chunk.choices[0].text, end='')
+    print(chunk.choices[0].text, end='', flush=True)
 print()
 
 """Out[0]
