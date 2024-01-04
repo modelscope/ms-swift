@@ -9,8 +9,8 @@ import unittest
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
-from swift.llm.run import infer_main, merge_lora_main, sft_main
+from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
+                       infer_main, merge_lora_main, sft_main)
 
 NO_EVAL_HUMAN = True
 

@@ -6,11 +6,10 @@ from http import HTTPStatus
 from typing import List, Optional, Union
 
 import json
-import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.utils import seed_everything
+from swift.utils import get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import ChatCompletionResponse  # noqa
 from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
@@ -248,6 +247,7 @@ async def create_completion(request: CompletionRequest,
 
 
 def llm_deploy(args: DeployArguments) -> None:
+    import uvicorn
     global llm_engine, model, template
     if args.merge_lora_and_save:
         merge_lora(args, device_map='cpu')
@@ -262,3 +262,6 @@ def llm_deploy(args: DeployArguments) -> None:
         port=args.port,
         ssl_keyfile=args.ssl_keyfile,
         ssl_certfile=args.ssl_certfile)
+
+
+deploy_main = get_main(DeployArguments, llm_deploy)
