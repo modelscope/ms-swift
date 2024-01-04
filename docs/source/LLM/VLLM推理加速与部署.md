@@ -255,6 +255,7 @@ client = OpenAI(
 )
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
+
 query = '浙江的省会在哪里?'
 messages = [{
     'role': 'user',
@@ -266,11 +267,11 @@ resp = client.chat.completions.create(
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
+
+# 流式
 messages.append({'role': 'assistant', 'content': response})
 query = '这有什么好吃的?'
 messages.append({'role': 'user', 'content': query})
-
-# 流式
 stream = client.chat.completions.create(
     model=model_type,
     messages=messages,
