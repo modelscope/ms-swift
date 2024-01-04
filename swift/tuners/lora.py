@@ -41,6 +41,13 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The modules need to be turned on when using the merged linear layer'
         })
 
+    dtype: str = field(
+        default=None,
+        metadata={
+            'help':
+            'The lora dtype, default None means following the original layer\'s dtype'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA

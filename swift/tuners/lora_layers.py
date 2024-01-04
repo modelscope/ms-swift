@@ -289,6 +289,16 @@ class LoraModel(_LoraModel):
             else:
                 model.modules_to_save.update(set(peft_config.modules_to_save))
 
+    def _convert_dtype(self, target: nn.Module, dtype: str):
+        if dtype == 'float32':
+            target.to(dtype=torch.float32)
+        elif dtype == 'float16':
+            target.to(dtype=torch.float16)
+        elif dtype == 'bfloat16':
+            target.to(dtype=torch.bfloat16)
+        elif dtype is None:
+            pass
+
     def _create_and_replace(
         self,
         lora_config,
@@ -346,6 +356,7 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
+            self._convert_dtype(target, lora_config.dtype)
         elif isinstance(target, Embedding):
             target.update_layer_embedding(
                 adapter_name,
@@ -354,6 +365,7 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
+            self._convert_dtype(target, lora_config.dtype)
         elif isinstance(target, linear_types):
             target.update_layer(
                 adapter_name,
@@ -362,6 +374,7 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
+            self._convert_dtype(target, lora_config.dtype)
         else:
             new_module = self._create_new_module(lora_config, adapter_name,
                                                  target, **kwargs)
@@ -370,6 +383,7 @@ class LoraModel(_LoraModel):
                     # adding an additional adapter: it is not automatically trainable
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
+                self._convert_dtype(new_module, lora_config.dtype)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
