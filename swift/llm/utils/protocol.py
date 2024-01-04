@@ -22,8 +22,9 @@ class ModelList:
 
 @dataclass
 class CompletionRequest:
+    model: str
     prompt: str
-    #
+
     n: int = 1
     max_tokens: Optional[int] = None
     temperature: float = 1.
@@ -31,11 +32,11 @@ class CompletionRequest:
     top_p: float = 1.
     repetition_penalty: float = 1.
     num_beams: int = 1
-    #
+
     seed: Optional[int] = None
     stop: List[str] = field(default_factory=list)
     stream: bool = False
-    #
+
     best_of: Optional[int] = None
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
@@ -45,7 +46,7 @@ class CompletionRequest:
 class ChatCompletionRequest:
     model: str
     messages: List[Dict[str, str]]
-    #
+
     n: int = 1
     max_tokens: Optional[int] = None
     temperature: float = 1.
@@ -53,10 +54,11 @@ class ChatCompletionRequest:
     top_p: float = 1.
     repetition_penalty: float = 1.
     num_beams: int = 1
-    #
+
     seed: Optional[int] = None
     stop: List[str] = field(default_factory=list)
     stream: bool = False
+
     best_of: Optional[int] = None
     presence_penalty: float = 0.
     frequency_penalty: float = 0.

@@ -204,7 +204,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                     print_idx_list[output.index] += len(delta_text)
                     choice = CompletionResponseStreamChoice(
                         index=output.index,
-                        text=output.text,
+                        text=delta_text,
                         finish_reason=output.finish_reason)
                     choices.append(choice)
                 response = CompletionStreamResponse(

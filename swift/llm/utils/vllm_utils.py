@@ -78,6 +78,7 @@ def get_vllm_engine(model_type: str,
     except ImportError:
         pass
     llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     llm_engine.tokenizer = tokenizer
