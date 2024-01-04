@@ -19,6 +19,7 @@ pip install -e .[llm]
 
 # vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
 pip install vllm -U
+pip install openai -U
 
 # 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -272,14 +273,14 @@ print(f'response: {response}')
 messages.append({'role': 'assistant', 'content': response})
 query = '这有什么好吃的?'
 messages.append({'role': 'user', 'content': query})
-stream = client.chat.completions.create(
+stream_resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
     stream=True)
 
 print(f'query: {query}')
 print('response: ', end='')
-for chunk in stream:
+for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
 
@@ -320,11 +321,11 @@ print(f'response: {response}')
 
 # 流式
 query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
-stream = client.completions.create(stream=True, **kwargs)
+stream_resp = client.completions.create(stream=True, **kwargs)
 response = resp.choices[0].text
 print(f'query: {query}')
 print('response: ', end='')
-for chunk in stream:
+for chunk in stream_resp:
     print(chunk.choices[0].text, end='', flush=True)
 print()
 

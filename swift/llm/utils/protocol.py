@@ -12,6 +12,9 @@ def random_uuid() -> str:
 @dataclass
 class Model:
     id: str  # model_type
+    object: str = 'model'
+    created: int = field(default_factory=lambda: int(time.time()))
+    owned_by: str = 'swift'
 
 
 @dataclass
@@ -87,7 +90,7 @@ class ChatMessage:
 class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
-    finish_reason: Literal['stop', 'length']
+    finish_reason: Literal['stop', 'length', None]
 
 
 @dataclass
@@ -127,7 +130,7 @@ class DeltaMessage:
 class ChatCompletionResponseStreamChoice:
     index: int
     delta: DeltaMessage
-    finish_reason: Literal['stop', 'length']
+    finish_reason: Literal['stop', 'length', None]
 
 
 @dataclass

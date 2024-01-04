@@ -217,7 +217,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                     usage=usage_info,
                     id=request_id,
                     created=created_time)
-            yield f'data:{json.dumps(asdict(response))}\n\n'
+            yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
         yield 'data:[DONE]\n\n'
 
     if request.stream:
