@@ -90,7 +90,7 @@ class ChatMessage:
 class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
-    finish_reason: Literal['stop', 'length', None]
+    finish_reason: Literal['stop', 'length']
 
 
 @dataclass
@@ -147,7 +147,7 @@ class ChatCompletionStreamResponse:
 class CompletionResponseStreamChoice:
     index: int
     text: str
-    finish_reason: Literal['stop', 'length']
+    finish_reason: Literal['stop', 'length', None]
 
 
 @dataclass
