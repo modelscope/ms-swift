@@ -188,7 +188,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        for dataset in [None, [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
+        for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
             sft_args = SftArguments(
                 model_type=ModelType.qwen_7b_chat,
                 dataset=dataset,  # no dataset
