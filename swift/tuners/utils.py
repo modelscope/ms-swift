@@ -350,12 +350,8 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             )
         self.modules_to_save[adapter_name].requires_grad_(True)
         self.set_activation(adapter_name, True)
-        SwiftAdapter.save_memory(
-            self.modules_to_save[adapter_name],
-            adapter_name,
-            self.module_key,
-            True,
-            offload=offload)
+        SwiftAdapter.save_memory(self.modules_to_save[adapter_name],
+                                 adapter_name, self.module_key, True)
 
     def deactivate_adapter(self, adapter_name: str, offload: str):
         if adapter_name in self.modules_to_save and self.unique_thread:
