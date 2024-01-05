@@ -432,7 +432,9 @@ class SwiftModel(nn.Module):
     def base_model(self):
         return self.model
 
-    def set_active_adapters(self, adapter_names: Union[List[str], str]):
+    def set_active_adapters(self,
+                            adapter_names: Union[List[str], str],
+                            offload=None):
         if not adapter_names:
             return
 
@@ -444,7 +446,7 @@ class SwiftModel(nn.Module):
             self.activate_adapter(adapter_name)
 
         for adapter_name in (set(self.adapters.keys()) - adapter_names):
-            self.deactivate_adapter(adapter_name)
+            self.deactivate_adapter(adapter_name, offload)
 
     def activate_adapter(self, adapter_name):
         if adapter_name not in self.adapters:
@@ -456,7 +458,7 @@ class SwiftModel(nn.Module):
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
             .activate_adapter(self.base_model, adapter_name, True)
 
-    def deactivate_adapter(self, adapter_name, offload='cpu'):
+    def deactivate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')

@@ -60,13 +60,6 @@ class SideConfig(SwiftConfig):
             'The position of the hidden state output from the target module, can be int (args) or str (kwargs)'
         })
 
-    offload: str = field(
-        default=None,
-        metadata={
-            'help':
-            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
-        })
-
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.SIDE
@@ -130,7 +123,6 @@ class Side(SwiftAdapter):
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
                 side_module = SideModule(config.dim, adapter_name, module_key,
                                          config.side_module_name)
-                tgt_module.add_offload(adapter_name, config.offload)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(
                     f'Side modules(module_key): {module_key}.side_{adapter_name}'
@@ -160,7 +152,7 @@ class Side(SwiftAdapter):
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
             SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
-                                     activate, _module.offloads.get(adapter_name))
+                                     activate, offload)
 
 
 class SideModule(nn.Module, ActivationMixin):

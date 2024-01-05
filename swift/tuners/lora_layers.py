@@ -51,7 +51,7 @@ class LoRAActivationMixin(ActivationMixin):
     def active_adapter(self) -> str:
         return self.get_activated_adapters()
 
-    def set_adapter(self, adapter_names):
+    def set_adapter(self, adapter_names, offload=None):
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]
 
@@ -62,21 +62,28 @@ class LoRAActivationMixin(ActivationMixin):
                 if key in adapter_names:
                     self.set_activation(key, True)
                     layer.requires_grad_(True)
-                    SwiftAdapter.save_memory(
-                        layer,
-                        key,
-                        self.module_key,
-                        True,
-                        offload=self.offloads.get(key))
+                    SwiftAdapter.save_memory(layer, key, self.module_key, True)
                 else:
                     self.set_activation(key, False)
                     layer.requires_grad_(False)
                     SwiftAdapter.save_memory(
-                        layer,
-                        key,
-                        self.module_key,
-                        False,
-                        offload=self.offloads.get(key))
+                        layer, key, self.module_key, False, offload=offload)
+
+    def save_memory(self, adapter_name, activate, offload=None):
+        for layer_name in self.adapter_layer_names:
+            module_dict = getattr(self, layer_name)
+            for key, layer in module_dict.items():
+                if key == adapter_name:
+                    if activate:
+                        SwiftAdapter.save_memory(layer, layer_name + '.' + key,
+                                                 self.module_key, True)
+                    else:
+                        SwiftAdapter.save_memory(
+                            layer,
+                            layer_name + '.' + key,
+                            self.module_key,
+                            False,
+                            offload=offload)
 
     def merge(self, *args, **kwargs):
         if not self.unique_thread:
@@ -269,7 +276,6 @@ class LoraModel(_LoraModel):
                     setattr(parent, target_name, new_module)
                 else:
                     target.update(adapter_name)
-                target.add_offload(adapter_name, peft_config.offload)
 
                 _has_modules_to_save = True
                 continue
@@ -381,7 +387,6 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
-            target.add_offload(adapter_name, lora_config.offload)
             self._convert_dtype(target, lora_config.lora_dtype)
         elif isinstance(target, Embedding):
             target.update_layer_embedding(
@@ -391,7 +396,6 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
-            target.add_offload(adapter_name, lora_config.offload)
             self._convert_dtype(target, lora_config.lora_dtype)
         elif isinstance(target, linear_types):
             target.update_layer(
@@ -401,7 +405,6 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
-            target.add_offload(adapter_name, lora_config.offload)
             self._convert_dtype(target, lora_config.lora_dtype)
         else:
             new_module = self._create_new_module(
@@ -416,7 +419,6 @@ class LoraModel(_LoraModel):
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
                 self._convert_dtype(new_module, lora_config.lora_dtype)
-                new_module.add_offload(adapter_name, lora_config.offload)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):

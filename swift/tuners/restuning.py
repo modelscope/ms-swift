@@ -118,13 +118,6 @@ class ResTuningConfig(SwiftConfig):
     use_bypass: bool = field(
         default=True, metadata={'help': 'Whether to use bypass'})
 
-    offload: str = field(
-        default=None,
-        metadata={
-            'help':
-            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
-        })
-
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.RESTUNING
@@ -260,7 +253,6 @@ class ResTuning(SwiftAdapter):
                 config.dims, depth, adapter_name, config.use_upsample,
                 config.upsample_out_channels, config.zero_init_last,
                 config.tuner_cfg)
-            restuning_module.add_offload(adapter_name, config.offload)
             setattr(top_module, f'restuning_{adapter_name}', restuning_module)
 
         # 4. Matching the target module
@@ -321,7 +313,7 @@ class ResTuning(SwiftAdapter):
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
             SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
-                                     activate, _module.offloads.get(adapter_name))
+                                     activate, offload)
 
 
 class ResTuningBypassModule(nn.Module, ActivationMixin):

@@ -74,13 +74,6 @@ class PromptConfig(SwiftConfig):
             'Whether the embedding is extracted at final stage to keep the same dims with inputs'
         })
 
-    offload: str = field(
-        default=None,
-        metadata={
-            'help':
-            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
-        })
-
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.PROMPT
@@ -159,12 +152,10 @@ class Prompt(SwiftAdapter):
                     input_dim = config.dim
                 prompt_module = PromptModule(input_dim,
                                              int(module_key.rsplit('.')[-1]),
-                                             adapter_name,
-                                             module_key,
+                                             adapter_name, module_key,
                                              config.prompt_length,
                                              config.attention_mask_value,
                                              config.attach_front)
-                prompt_module.add_offload(adapter_name, config.offload)
                 setattr(module, f'prompt_{adapter_name}', prompt_module)
                 logger.info(
                     f'Prompt modules(module_key): {module_key}.prompt_{adapter_name}'
@@ -195,7 +186,7 @@ class Prompt(SwiftAdapter):
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
             SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
-                                     activate, _module.offloads.get(adapter_name))
+                                     activate, offload)
 
 
 class PromptModule(nn.Module, ActivationMixin):

@@ -7,9 +7,10 @@ import shutil
 import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
-from typing import Dict
+from typing import Dict, OrderedDict
 
 import json
+import numpy as np
 import torch
 from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
@@ -142,19 +143,18 @@ class ActivationMixin:
 
     USE_UNIQUE_THREAD = 'USE_UNIQUE_THREAD'
 
+    REMINEDED = False
+
     def __init__(self, module_key):
         self.module_key = module_key
-        self.offloads = {}
         self._thread_inf: Dict[int, Dict[str, bool]] = {}
         self._unique_thread = bool(
             int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '1')))
-        if not self._unique_thread:
-            logger.info(
+        if not self._unique_thread and not ActivationMixin.REMINEDED:
+            ActivationMixin.REMINEDED = True
+            logger.warn(
                 'Using multiple thread mode, gradient checkpointing is not supported.'
             )
-
-    def add_offload(self, adapter_name: str, offload=None):
-        self.offloads[adapter_name] = offload
 
     @property
     def indent(self):
@@ -188,59 +188,44 @@ class OffloadHelper:
     cache_dir = os.path.join(get_cache_dir(), sub_dir)
     shutil.rmtree(cache_dir, ignore_errors=True)
     os.makedirs(cache_dir, exist_ok=True)
-
-    @staticmethod
-    def read_safe_tensors(safe_tensor_file):
-        if os.path.exists(safe_tensor_file):
-            from safetensors.torch import load_file as safe_load_file
-            return safe_load_file(
-                safe_tensor_file,
-                device='cuda' if torch.cuda.is_available() else 'cpu')
-
-    @staticmethod
-    def write_safe_tensors(state_dict, safe_tensor_file):
-        from safetensors.torch import save_file as safe_save_file
-        safe_save_file(state_dict, safe_tensor_file, metadata={'format': 'pt'})
+    index = {}
 
     @staticmethod
     def offload_weight(weight, weight_name, offload_folder, index=None):
         dtype = None
-        # Check the string instead of the dtype to be compatible with versions of PyTorch that don't have bfloat16.
-        if str(weight.dtype) == "torch.bfloat16":
-            # Need to reinterpret the underlined data as int16 since NumPy does not handle bfloat16s.
+        if str(weight.dtype) == 'torch.bfloat16':
             weight = weight.view(torch.int16)
-            dtype = "bfloat16"
+            dtype = 'bfloat16'
         array = weight.cpu().numpy()
-        tensor_file = os.path.join(offload_folder, f"{weight_name}.dat")
+        tensor_file = os.path.join(offload_folder, f'{weight_name}.dat')
         if index is not None:
             if dtype is None:
                 dtype = str(array.dtype)
-            index[weight_name] = {"dtype": dtype, "shape": list(array.shape)}
+            index[weight_name] = {'dtype': dtype, 'shape': list(array.shape)}
         if array.ndim == 0:
             array = array[None]
-        file_array = np.memmap(tensor_file, dtype=array.dtype, mode="w+", shape=array.shape)
+        file_array = np.memmap(
+            tensor_file, dtype=array.dtype, mode='w+', shape=array.shape)
         file_array[:] = array[:]
         file_array.flush()
         return index
 
     @staticmethod
     def load_offloaded_weight(weight_file, weight_info):
-        shape = tuple(weight_info["shape"])
+        shape = tuple(weight_info['shape'])
         if shape == ():
-            # NumPy memory-mapped arrays can't have 0 dims so it was saved as 1d tensor
-            shape = (1,)
+            shape = (1, )
 
-        dtype = weight_info["dtype"]
-        if dtype == "bfloat16":
-            # NumPy does not support bfloat16 so this was saved as a int16
-            dtype = "int16"
+        dtype = weight_info['dtype']
+        if dtype == 'bfloat16':
+            dtype = 'int16'
 
-        weight = np.memmap(weight_file, dtype=dtype, shape=shape, mode="r")
+        weight = np.memmap(weight_file, dtype=dtype, shape=shape, mode='r')
 
-        if len(weight_info["shape"]) == 0:
+        if len(weight_info['shape']) == 0:
             weight = weight[0]
         weight = torch.tensor(weight)
-        if weight_info["dtype"] == "bfloat16":
+        if weight_info['dtype'] == 'bfloat16':
             weight = weight.view(torch.bfloat16)
 
         return weight
@@ -249,23 +234,26 @@ class OffloadHelper:
     def offload_disk(module: torch.nn.Module, adapter_name, module_key):
         key = adapter_name + ':' + module_key
         md5 = hashlib.md5(key.encode('utf-8')).hexdigest()
-        file = os.path.join(OffloadHelper.cache_dir, md5 + '.safetensors')
-        OffloadHelper.write_safe_tensors(module.state_dict(), file)
+        sub_folder = os.path.join(OffloadHelper.cache_dir, md5)
+        os.makedirs(sub_folder, exist_ok=True)
+        state_dict = module.state_dict()
+        OffloadHelper.index[md5] = {}
+        for key, tensor in state_dict.items():
+            OffloadHelper.offload_weight(tensor, key, sub_folder,
+                                         OffloadHelper.index[md5])
 
     @staticmethod
     def load_disk(module: torch.nn.Module, adapter_name, module_key):
         key = adapter_name + ':' + module_key
         md5 = hashlib.md5(key.encode('utf-8')).hexdigest()
-        file = os.path.join(OffloadHelper.cache_dir, md5 + '.safetensors')
-        state_dict = OffloadHelper.read_safe_tensors(file)
-        print(module.load_state_dict(state_dict, assign=True))
-        shutil.rmtree(file, ignore_errors=True)
-        try:
-            print('here1!!!')
-            module.to(module.origin_device)
-            print('here2!!!')
-        except:
-            print()
+        sub_folder = os.path.join(OffloadHelper.cache_dir, md5)
+        state_dict = {}
+        for key, value in OffloadHelper.index[md5].items():
+            file = os.path.join(sub_folder, f'{key}.dat')
+            state_dict[key] = OffloadHelper.load_offloaded_weight(
+                file, OffloadHelper.index[md5][key])
+        module.load_state_dict(state_dict, assign=True)
+        shutil.rmtree(sub_folder, ignore_errors=True)
 
 
 class SwiftAdapter:
@@ -288,19 +276,20 @@ class SwiftAdapter:
                     module_key: str,
                     activate: bool,
                     offload: str = None):
-        if offload is not None:
-            if activate:
-                SwiftAdapter.load(
-                    module, adapter_name, module_key, offload=offload)
-            else:
-                SwiftAdapter.offload(
-                    module, adapter_name, module_key, offload=offload)
+        if activate:
+            SwiftAdapter.load(module, adapter_name, module_key)
+        else:
+            SwiftAdapter.offload(
+                module, adapter_name, module_key, offload=offload)
 
     @staticmethod
     def offload(module: torch.nn.Module, adapter_name, module_key,
                 offload: str):
+        if not offload:
+            return
         device = next(iter(module.parameters())).device
-        if hasattr(module, 'origin_device') and module.origin_device != str(device):
+        if hasattr(module,
+                   'origin_device') and module.origin_device != str(device):
             return
         module.origin_device = str(device)
         if offload == 'cpu':
@@ -315,20 +304,18 @@ class SwiftAdapter:
             raise NotImplementedError
 
     @staticmethod
-    def load(module: torch.nn.Module, adapter_name, module_key, offload: str):
+    def load(module: torch.nn.Module, adapter_name, module_key):
         device = next(iter(module.parameters())).device
-        if not hasattr(module, 'origin_device') or module.origin_device == str(device):
+        if not hasattr(module,
+                       'origin_device') or module.origin_device == str(device):
             return
-        if offload == 'cpu':
+        if str(device) == 'cpu':
             module.to(module.origin_device)
             delattr(module, 'origin_device')
-        elif offload == 'meta':
+        elif str(device) == 'meta':
             OffloadHelper.load_disk(
                 module, adapter_name=adapter_name, module_key=module_key)
-            try:
-                module.to(module.origin_device)
-            except:
-                print()
+            module.to(module.origin_device)
             delattr(module, 'origin_device')
         else:
             raise NotImplementedError
@@ -342,7 +329,6 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
 
     def __init__(self, *args, module_key, **kwargs):
         self.module_key = module_key
-        self.offloads = {}
         super(ModulesToSaveWrapper, self).__init__()
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
@@ -357,10 +343,7 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             )
         return active_adapters[0]
 
-    def add_offload(self, adapter_name: str, offload=None):
-        self.offloads[adapter_name] = offload
-
-    def set_adapter(self, adapter_name: str):
+    def set_adapter(self, adapter_name: str, offload: str):
         if adapter_name not in self.modules_to_save:
             raise ValueError(
                 f'Adapter {adapter_name} not found in {self.modules_to_save.keys()}'
@@ -372,9 +355,9 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             adapter_name,
             self.module_key,
             True,
-            offload=self.offloads.get(adapter_name))
+            offload=offload)
 
-    def deactivate_adapter(self, adapter_name: str):
+    def deactivate_adapter(self, adapter_name: str, offload: str):
         if adapter_name in self.modules_to_save and self.unique_thread:
             self.modules_to_save[adapter_name].requires_grad_(False)
         self.set_activation(adapter_name, False)
@@ -383,16 +366,16 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             adapter_name,
             self.module_key,
             False,
-            offload=self.offloads.get(adapter_name))
+            offload=offload)
 
 
-def set_adapter(model, adapter_name, activate):
+def set_adapter(model, adapter_name, activate, offload):
     for module in model.modules():
         if isinstance(module, ModulesToSaveWrapper):
             if activate:
-                module.set_adapter(adapter_name)
+                module.set_adapter(adapter_name, offload)
             else:
-                module.deactivate_adapter(adapter_name)
+                module.deactivate_adapter(adapter_name, offload)
 
 
 def set_trainable(model, adapter_name):

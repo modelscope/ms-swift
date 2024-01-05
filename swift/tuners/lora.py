@@ -49,13 +49,6 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
-    offload: str = field(
-        default=None,
-        metadata={
-            'help':
-            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
-        })
-
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
@@ -81,10 +74,11 @@ class LoRA(SwiftAdapter):
                          adapter_name: str,
                          activate: bool,
                          offload: str = None):
-        set_adapter(module, adapter_name, activate)
+        set_adapter(module, adapter_name, activate, offload)
         for sub_module in module.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.set_activation(adapter_name, activate)
+                sub_module.save_memory(adapter_name, activate, offload)
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig, adapter_name: str):

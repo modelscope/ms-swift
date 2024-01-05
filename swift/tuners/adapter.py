@@ -68,13 +68,6 @@ class AdapterConfig(SwiftConfig):
         default='gelu',
         metadata={'help': 'The activation layer of the adapter'})
 
-    offload: str = field(
-        default=None,
-        metadata={
-            'help':
-            'Offload deactivated adapters. Support None(no offloading), `cpu` or `meta`(meta device)'
-        })
-
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.ADAPTER
@@ -137,10 +130,10 @@ class Adapter(SwiftAdapter):
                 else:
                     setattr(module, config.method_name,
                             types.MethodType(_forward, module))
-                adapter_module = AdapterModule(config.dim, adapter_name, module_key,
+                adapter_module = AdapterModule(config.dim, adapter_name,
+                                               module_key,
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
-                adapter_module.add_offload(adapter_name, config.offload)
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
                 logger.info(
                     f'Adapter modules(module_key): {module_key}.adapter_{adapter_name}'
@@ -170,7 +163,7 @@ class Adapter(SwiftAdapter):
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
             SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
-                                     activate, _module.offloads.get(adapter_name))
+                                     activate, offload)
 
 
 class AdapterModule(nn.Module, ActivationMixin):
@@ -224,10 +217,7 @@ class AdapterModule(nn.Module, ActivationMixin):
 
         x_dtype = x.dtype
         x = x.to(self.linear1.weight.dtype)
-        try:
-            out = self.linear2(self.act(self.linear1(x)))
-        except:
-            print()
+        out = self.linear2(self.act(self.linear1(x)))
         if identity is None:
             identity = x
         identity = identity.to(out.dtype)
