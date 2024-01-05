@@ -302,6 +302,7 @@ class SwiftAdapter:
                 module.to('meta')
         else:
             raise NotImplementedError
+        torch.cuda.empty_cache()
 
     @staticmethod
     def load(module: torch.nn.Module, adapter_name, module_key):
