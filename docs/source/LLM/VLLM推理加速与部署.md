@@ -235,7 +235,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged
 ## 部署
 swift使用VLLM作为推理后端, 并兼容openai的API样式.
 
-服务端的部署命令行参数可以参考[deploy命令行参数](命令行参数.md#deploy-命令行参数).
+服务端的部署命令行参数可以参考: [deploy命令行参数](命令行参数.md#deploy-命令行参数).
 
 客户端的openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction.
 
@@ -251,23 +251,23 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
 
 使用swift:
 ```python
-from swift.llm import get_model_list_client, XRequest, inference_client
+from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
 model_list = get_model_list_client()
 model_type = model_list.data[0].id
 print(f'model_type: {model_type}')
 
 query = '浙江的省会在哪里?'
-request_kwargs = XRequest(model=model_type, seed=42)
-resp = inference_client(query, request_kwargs=request_kwargs)
+request_config = XRequestConfig(seed=42)
+resp = inference_client(model_type, query, request_config=request_config)
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
 
 history = [(query, response)]
 query = '这有什么好吃的?'
-request_kwargs = XRequest(model=model_type, stream=True, seed=42)
-stream_resp = inference_client(query, history, request_kwargs=request_kwargs)
+request_config = XRequestConfig(stream=True, seed=42)
+stream_resp = inference_client(model_type, query, history, request_config=request_config)
 print(f'query: {query}')
 print('response: ', end='')
 for chunk in stream_resp:
@@ -342,21 +342,21 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b
 
 使用swift:
 ```python
-from swift.llm import get_model_list_client, XRequest, inference_client
+from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
 model_list = get_model_list_client()
 model_type = model_list.data[0].id
 print(f'model_type: {model_type}')
 
 query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
-request_kwargs = XRequest(model=model_type, max_tokens=32, temperature=0.1, seed=42)
-resp = inference_client(query, request_kwargs=request_kwargs)
+request_config = XRequestConfig(max_tokens=32, temperature=0.1, seed=42)
+resp = inference_client(model_type, query, request_config=request_config)
 response = resp.choices[0].text
 print(f'query: {query}')
 print(f'response: {response}')
 
-request_kwargs.stream = True
-stream_resp = inference_client(query, request_kwargs=request_kwargs)
+request_config.stream = True
+stream_resp = inference_client(model_type, query, request_config=request_config)
 print(f'query: {query}')
 print('response: ', end='')
 for chunk in stream_resp:

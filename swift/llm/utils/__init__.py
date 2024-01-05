@@ -24,7 +24,7 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice,
                        CompletionResponseChoice,
                        CompletionResponseStreamChoice,
                        CompletionStreamResponse, DeltaMessage, Model,
-                       ModelList, UsageInfo, XRequest, random_uuid)
+                       ModelList, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        StopWords, Template, TemplateType, get_template,
                        register_template)
