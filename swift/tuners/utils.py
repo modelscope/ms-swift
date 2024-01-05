@@ -295,7 +295,7 @@ class SwiftAdapter:
         if offload == 'cpu':
             if str(device) != 'cpu':
                 module.to('cpu')
-        if offload == 'meta':
+        elif offload == 'meta':
             if str(device) != 'meta':
                 OffloadHelper.offload_disk(
                     module, adapter_name=adapter_name, module_key=module_key)
@@ -331,6 +331,12 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
     def __init__(self, *args, module_key, **kwargs):
         super(ModulesToSaveWrapper, self).__init__(module_key)
         super(ActivationMixin, self).__init__(*args, **kwargs)
+        SwiftAdapter.save_memory(
+            self.original_module,
+            'original_module',
+            self.module_key,
+            False,
+            offload='cpu')
 
     @property
     def active_adapter(self):
