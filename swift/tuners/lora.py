@@ -78,7 +78,8 @@ class LoRA(SwiftAdapter):
         for sub_module in module.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.set_activation(adapter_name, activate)
-                sub_module.save_memory(adapter_name, activate, offload)
+                if hasattr(sub_module, 'save_memory'):
+                    sub_module.save_memory(adapter_name, activate, offload)
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig, adapter_name: str):
