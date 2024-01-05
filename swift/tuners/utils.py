@@ -329,8 +329,7 @@ class SwiftAdapter:
 class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
 
     def __init__(self, *args, module_key, **kwargs):
-        self.module_key = module_key
-        super(ModulesToSaveWrapper, self).__init__()
+        super(ModulesToSaveWrapper, self).__init__(module_key)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
     @property
