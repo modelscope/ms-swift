@@ -489,6 +489,7 @@ class LoraModel(_LoraModel):
         elif lora_config.use_merged_linear:
             new_module = MergedLinear(
                 adapter_name,
+                current_key,
                 target,
                 bias=bias,
                 enable_lora=lora_config.enable_lora,

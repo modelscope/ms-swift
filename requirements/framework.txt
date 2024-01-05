@@ -13,6 +13,7 @@ requests
 rouge
 safetensors
 tensorboard
+torch>=2.0.0
 tqdm
 transformers>=4.33,<4.37
 trl>=0.7.7
