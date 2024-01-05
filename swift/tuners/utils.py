@@ -344,7 +344,7 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             )
         return active_adapters[0]
 
-    def set_adapter(self, adapter_name: str, offload: str):
+    def set_adapter(self, adapter_name: str, offload: str = None):
         if adapter_name not in self.modules_to_save:
             raise ValueError(
                 f'Adapter {adapter_name} not found in {self.modules_to_save.keys()}'
@@ -353,8 +353,14 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
         self.set_activation(adapter_name, True)
         SwiftAdapter.save_memory(self.modules_to_save[adapter_name],
                                  adapter_name, self.module_key, True)
+        SwiftAdapter.save_memory(
+            self.original_module,
+            'original_module',
+            self.module_key,
+            False,
+            offload=offload)
 
-    def deactivate_adapter(self, adapter_name: str, offload: str):
+    def deactivate_adapter(self, adapter_name: str, offload: str = None):
         if adapter_name in self.modules_to_save and self.unique_thread:
             self.modules_to_save[adapter_name].requires_grad_(False)
         self.set_activation(adapter_name, False)
@@ -364,6 +370,22 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             self.module_key,
             False,
             offload=offload)
+        if not self.get_activated_adapters():
+            SwiftAdapter.save_memory(self.original_module, 'original_module',
+                                     self.module_key, True)
+
+    def enable_adapters(self, enabled: bool):
+        super().enable_adapters(enabled)
+        if not enabled:
+            SwiftAdapter.save_memory(
+                self.original_module,
+                'original_module',
+                self.module_key,
+                False,
+                offload='meta')
+        else:
+            SwiftAdapter.save_memory(self.original_module, 'original_module',
+                                     self.module_key, True)
 
 
 def set_adapter(model, adapter_name, activate, offload):
