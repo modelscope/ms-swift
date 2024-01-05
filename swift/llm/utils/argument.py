@@ -89,9 +89,8 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
-    lora_modules_to_save: List[str] = field(
-        default_factory=list,
-        metadata={'help': "e.g. ['wte', 'ln1', 'ln_2', 'ln_f', 'lm_head']"})
+    # e.g. ['wte', 'ln1', 'ln_2', 'ln_f', 'lm_head']
+    lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
 
     neftune_alpha: float = 0.0
