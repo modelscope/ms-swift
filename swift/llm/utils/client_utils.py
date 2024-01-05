@@ -5,12 +5,15 @@ import requests
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
+from swift.utils import get_logger
 from .model import get_default_template_type
 from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse,
                        CompletionResponse, CompletionStreamResponse, ModelList,
                        XRequest)
 from .template import History
 from .utils import history_to_messages
+
+logger = get_logger()
 
 
 def get_model_list_client(host: str = '127.0.0.1',
@@ -34,13 +37,18 @@ def inference_client(
     history: Optional[History] = None,
     system: Optional[str] = None,
     *,
-    request_kwargs: Optional[XRequest],
+    request_kwargs: Optional[XRequest] = None,
     host: str = '127.0.0.1',
     port: str = '8000',
     is_chat_request: Optional[bool] = None,
 ) -> Union[ChatCompletionResponse, CompletionResponse,
            Iterator[ChatCompletionStreamResponse],
            Iterator[CompletionStreamResponse]]:
+    if request_kwargs is None:
+        model = get_model_list_client(host, port).data[0].id
+        request_kwargs = XRequest(model=model)
+        logger.info(f'Setting request_kwargs: {request_kwargs}')
+
     if is_chat_request is None:
         template_type = get_default_template_type(request_kwargs.model)
         is_chat_request = 'generation' not in template_type
