@@ -24,7 +24,7 @@ class ModelList:
 
 
 @dataclass
-class XRequest:
+class XRequestConfig:
     """NOTE: The following behavior is inconsistent with the OpenAI API.
     Default values for OpenAI:
         temperature = 1.
@@ -32,8 +32,6 @@ class XRequest:
         top_p = 1.
         repetition_penalty = 1.
     """
-    model: str
-
     max_tokens: Optional[int] = None  # None: max_model_len - num_tokens
     temperature: Optional[float] = None  # None: use deploy_args
     top_p: Optional[float] = None
@@ -55,21 +53,23 @@ class XRequest:
 
 @dataclass
 class CompletionRequestMixin:
+    model: str
     prompt: str
 
 
 @dataclass
 class ChatCompletionRequestMixin:
+    model: str
     messages: List[Dict[str, str]]
 
 
 @dataclass
-class CompletionRequest(XRequest, CompletionRequestMixin):
+class CompletionRequest(XRequestConfig, CompletionRequestMixin):
     pass
 
 
 @dataclass
-class ChatCompletionRequest(XRequest, ChatCompletionRequestMixin):
+class ChatCompletionRequest(XRequestConfig, ChatCompletionRequestMixin):
     pass
 
 

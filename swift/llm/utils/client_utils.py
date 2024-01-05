@@ -8,7 +8,7 @@ from requests.exceptions import HTTPError
 from .model import get_default_template_type
 from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse,
                        CompletionResponse, CompletionStreamResponse, ModelList,
-                       XRequest)
+                       XRequestConfig)
 from .template import History
 from .utils import history_to_messages
 
@@ -30,24 +30,28 @@ def _parse_stream_data(data: bytes) -> Optional[str]:
 
 
 def inference_client(
+    model_type: str,
     query: str,
     history: Optional[History] = None,
     system: Optional[str] = None,
     *,
-    request_kwargs: XRequest,
+    request_config: Optional[XRequestConfig] = None,
     host: str = '127.0.0.1',
     port: str = '8000',
     is_chat_request: Optional[bool] = None,
 ) -> Union[ChatCompletionResponse, CompletionResponse,
            Iterator[ChatCompletionStreamResponse],
            Iterator[CompletionStreamResponse]]:
+    if request_config is None:
+        request_config = XRequestConfig()
     if is_chat_request is None:
-        template_type = get_default_template_type(request_kwargs.model)
+        template_type = get_default_template_type(model_type)
         is_chat_request = 'generation' not in template_type
     data = {
         k: v
-        for k, v in request_kwargs.__dict__.items() if not k.startswith('__')
+        for k, v in request_config.__dict__.items() if not k.startswith('__')
     }
+    data['model'] = model_type
     if is_chat_request:
         data['messages'] = history_to_messages(history, query, system)
         url = f'http://{host}:{port}/v1/chat/completions'
@@ -57,7 +61,7 @@ def inference_client(
         )
         data['prompt'] = query
         url = f'http://{host}:{port}/v1/completions'
-    if request_kwargs.stream:
+    if request_config.stream:
         if is_chat_request:
             ret_cls = ChatCompletionStreamResponse
         else:
