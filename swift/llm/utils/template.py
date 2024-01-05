@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-DEFAULT_SYSTEM = 'You are a helpful assistant.'  # qwen system
+DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
 
 
@@ -17,8 +17,7 @@ class TemplateType:
     chatglm_generation = 'chatglm-generation'
     # chat
     default = 'default'
-    chatml = 'chatml'
-    qwen = chatml
+    qwen = 'qwen'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -36,6 +35,8 @@ class TemplateType:
     codefuse_codellama = 'codefuse-codellama'
     deepseek_coder = 'deepseek-coder'
     cogagent = 'cogagent'
+    # compatibility. (Deprecated)
+    chatml = 'chatml'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -586,12 +587,13 @@ register_template(TemplateType.default_generation,
 register_template(
     TemplateType.default_generation_bos,
     Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]))
-register_template(
-    TemplateType.chatml,
-    Template(
-        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|>'], 'You are a helpful assistant.',
-        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+qwen_template = Template(
+    [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+    ['<|im_end|>\n'], ['<|im_end|>'], DEFAULT_SYSTEM,
+    ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+register_template(TemplateType.qwen, qwen_template)
+register_template(TemplateType.chatml, deepcopy(qwen_template))
 
 register_template(
     TemplateType.yi,
