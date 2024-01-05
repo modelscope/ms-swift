@@ -19,6 +19,7 @@ pip install -e .[llm]
 
 # vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
 pip install vllm -U
+pip install openai -U
 
 # 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -239,14 +240,50 @@ swift使用VLLM作为推理后端, 并兼容openai的API样式.
 客户端的openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction.
 
 ### 原始模型
-**qwen-7b-chat**
+#### qwen-7b-chat
 
-服务端:
+**服务端:**
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
 ```
 
-客户端:
+**客户端:**
+
+使用swift:
+```python
+from swift.llm import get_model_list_client, XRequest, inference_client
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江的省会在哪里?'
+request_kwargs = XRequest(model=model_type, seed=42)
+resp = inference_client(query, request_kwargs=request_kwargs)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+history = [(query, response)]
+query = '这有什么好吃的?'
+request_kwargs = XRequest(model=model_type, stream=True, seed=42)
+stream_resp = inference_client(query, history, request_kwargs=request_kwargs)
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""Out[0]
+model_type: qwen-7b-chat
+query: 浙江的省会在哪里?
+response: 浙江省的省会是杭州市。
+query: 这有什么好吃的?
+response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁、叫化童子鸡等。此外，杭州还有许多特色小吃，如西湖藕粉、杭州小笼包、杭州油条等。
+"""
+```
+
+使用openai:
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -263,7 +300,8 @@ messages = [{
 }]
 resp = client.chat.completions.create(
     model=model_type,
-    messages=messages)
+    messages=messages,
+    seed=42)
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
@@ -272,14 +310,15 @@ print(f'response: {response}')
 messages.append({'role': 'assistant', 'content': response})
 query = '这有什么好吃的?'
 messages.append({'role': 'user', 'content': query})
-stream = client.chat.completions.create(
+stream_resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
-    stream=True)
+    stream=True,
+    seed=42)
 
 print(f'query: {query}')
 print('response: ', end='')
-for chunk in stream:
+for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
 
@@ -288,19 +327,67 @@ model_type: qwen-7b-chat
 query: 浙江的省会在哪里?
 response: 浙江省的省会是杭州市。
 query: 这有什么好吃的?
-response:
-浙江省是一个美食天堂，有着丰富多样的美食，如新鲜海鲜、麻糍、竹筒饭、西湖醋鱼、小吃等。至于具体哪个更好吃，可能还要看您个人的口味。
+response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁、叫化童子鸡等。此外，杭州还有许多特色小吃，如西湖藕粉、杭州小笼包、杭州油条等。
 """
 ```
 
-**qwen-7b**
+#### qwen-7b
 
-服务端:
+**服务端:**
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b
 ```
 
-客户端:
+**客户端:**
+
+使用swift:
+```python
+from swift.llm import get_model_list_client, XRequest, inference_client
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
+request_kwargs = XRequest(model=model_type, max_tokens=32, temperature=0.1, seed=42)
+resp = inference_client(query, request_kwargs=request_kwargs)
+response = resp.choices[0].text
+print(f'query: {query}')
+print(f'response: {response}')
+
+request_kwargs.stream = True
+stream_resp = inference_client(query, request_kwargs=request_kwargs)
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].text, end='', flush=True)
+print()
+
+"""Out[0]
+model_type: qwen-7b
+query: 浙江 -> 杭州
+安徽 -> 合肥
+四川 ->
+response:  成都
+广东 -> 广州
+江苏 -> 南京
+浙江 -> 杭州
+安徽 -> 合肥
+四川 -> 成都
+
+query: 浙江 -> 杭州
+安徽 -> 合肥
+四川 ->
+response:  成都
+广东 -> 广州
+江苏 -> 南京
+浙江 -> 杭州
+安徽 -> 合肥
+四川 -> 成都
+"""
+```
+
+使用openai:
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -311,7 +398,7 @@ model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
 
 query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
-kwargs = {'model': model_type, 'prompt': query, 'seed': 42, 'temperature': 0., 'max_tokens': 32}
+kwargs = {'model': model_type, 'prompt': query, 'seed': 42, 'temperature': 0.1, 'max_tokens': 32}
 
 resp = client.completions.create(**kwargs)
 response = resp.choices[0].text
@@ -319,12 +406,11 @@ print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
-query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
-stream = client.completions.create(stream=True, **kwargs)
+stream_resp = client.completions.create(stream=True, **kwargs)
 response = resp.choices[0].text
 print(f'query: {query}')
 print('response: ', end='')
-for chunk in stream:
+for chunk in stream_resp:
     print(chunk.choices[0].text, end='', flush=True)
 print()
 
@@ -360,4 +446,4 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
-客户端代码示例同原始模型.
+客户端示例代码同原始模型.

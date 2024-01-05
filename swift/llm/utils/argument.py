@@ -23,6 +23,10 @@ from .utils import is_vllm_available
 logger = get_logger()
 
 
+def is_lora(sft_type: str) -> bool:
+    return sft_type in {'lora', 'longlora', 'qalora'}
+
+
 @dataclass
 class SftArguments:
     # You can specify the model by either using the model_type or model_id_or_path.
@@ -33,7 +37,7 @@ class SftArguments:
     model_revision: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'qalora', 'full'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'qalora'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     tuner_backend: Literal['swift', 'peft'] = 'swift'
     template_type: str = field(
@@ -79,7 +83,7 @@ class SftArguments:
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
-
+    # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
     lora_alpha: int = 32
@@ -200,7 +204,7 @@ class SftArguments:
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
 
-        if self.sft_type in ('lora', 'longlora', 'qalora'):
+        if is_lora(self.sft_type):
             assert self.freeze_parameters == 0., (
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
             )

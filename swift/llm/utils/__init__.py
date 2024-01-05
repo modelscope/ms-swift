@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import (DeployArguments, DPOArguments, InferArguments,
-                       RomeArguments, SftArguments)
+                       RomeArguments, SftArguments, is_lora)
+from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, add_self_cognition_dataset, get_dataset,
                       get_dataset_from_repo, load_dataset_from_local,
@@ -23,9 +24,10 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice,
                        CompletionResponseChoice,
                        CompletionResponseStreamChoice,
                        CompletionStreamResponse, DeltaMessage, Model,
-                       ModelList, UsageInfo, random_uuid)
+                       ModelList, UsageInfo, XRequest, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
-                       Template, TemplateType, get_template, register_template)
+                       StopWords, Template, TemplateType, get_template,
+                       register_template)
 from .utils import (LazyLLMDataset, LLMDataset, data_collate_fn, dataset_map,
                     download_dataset, find_all_linear_for_lora, get_time_info,
                     history_to_messages, inference, inference_stream,
