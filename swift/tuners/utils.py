@@ -408,6 +408,7 @@ def set_trainable(model, adapter_name):
                 target.update(adapter_name)
                 target.set_adapter(target.active_adapter)
             else:
-                new_module = ModulesToSaveWrapper(target, adapter_name)
+                new_module = ModulesToSaveWrapper(
+                    target, module_key=key, adapter_name=adapter_name)
                 new_module.set_adapter(adapter_name)
                 setattr(parent, target_name, new_module)

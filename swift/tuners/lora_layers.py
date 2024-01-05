@@ -272,7 +272,7 @@ class LoraModel(_LoraModel):
 
                 if not isinstance(target, ModulesToSaveWrapper):
                     new_module = ModulesToSaveWrapper(
-                        target, adapter_name, module_key=key)
+                        target, adapter_name=adapter_name, module_key=key)
                     setattr(parent, target_name, new_module)
                 else:
                     target.update(adapter_name)

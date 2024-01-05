@@ -49,13 +49,21 @@ class SwiftModel(nn.Module):
             model = model.base_model
 
         if isinstance(config, SwiftConfig):
-            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
-                model, config, DEFAULT_ADAPTER)
+            if DEFAULT_ADAPTER not in self.adapters:
+                self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
+                    model, config, DEFAULT_ADAPTER)
+            else:
+                logger.warn(
+                    f'Adater {DEFAULT_ADAPTER} has been patched, skip.')
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, _config in config.items():
-                self.adapters[adapter_name] = self._prepare_model(
-                    model, _config, adapter_name)
+                if adapter_name not in self.adapters:
+                    self.adapters[adapter_name] = self._prepare_model(
+                        model, _config, adapter_name)
+                else:
+                    logger.warn(
+                        f'Adater {adapter_name} has been patched, skip.')
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
