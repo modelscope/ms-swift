@@ -34,7 +34,7 @@ def inference_client(
     history: Optional[History] = None,
     system: Optional[str] = None,
     *,
-    request_kwargs: Optional[XRequest],
+    request_kwargs: XRequest,
     host: str = '127.0.0.1',
     port: str = '8000',
     is_chat_request: Optional[bool] = None,
