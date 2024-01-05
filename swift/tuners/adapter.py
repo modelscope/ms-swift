@@ -131,6 +131,7 @@ class Adapter(SwiftAdapter):
                     setattr(module, config.method_name,
                             types.MethodType(_forward, module))
                 adapter_module = AdapterModule(config.dim, adapter_name,
+                                               module_key,
                                                config.adapter_length,
                                                ACT2CLS[config.act_layer])
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
@@ -152,13 +153,17 @@ class Adapter(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'adapter_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules = find_sub_module(module, f'adapter_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, offload)
 
 
 class AdapterModule(nn.Module, ActivationMixin):
@@ -177,11 +182,12 @@ class AdapterModule(nn.Module, ActivationMixin):
         self,
         dim,
         adapter_name,
+        module_key,
         adapter_length=None,
         act_layer=nn.GELU,
     ):
         super(AdapterModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__(module_key)
         self.dim = dim
         self.adapter_name = adapter_name
         self.adapter_length = adapter_length

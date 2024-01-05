@@ -200,6 +200,7 @@ class SCETuning(SwiftAdapter):
             setattr(t_module, 'forward', types.MethodType(_forward, t_module))
             tuner_op = SCETunerModule(
                 name=config.tuner_op,
+                adapter_name=adapter_name,
                 dim=dims[tuner_id],
                 tuner_length=int(dims[tuner_id] * config.down_ratio))
             setattr(t_module, f'scetuner_{adapter_name}', tuner_op)
@@ -221,19 +222,24 @@ class SCETuning(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'scetuner_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules = find_sub_module(module, f'scetuner_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, offload)
 
 
 class SCETunerModule(nn.Module, ActivationMixin):
 
     def __init__(self,
                  name,
+                 adapter_name,
                  dim,
                  tuner_length,
                  tuner_type=None,
@@ -242,8 +248,9 @@ class SCETunerModule(nn.Module, ActivationMixin):
                  zero_init_last=True,
                  use_bias=True):
         super(SCETunerModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__('')
         self.name = name
+        self.adapter_name = adapter_name
         self.dim = dim
         if name == 'SCEAdapter':
             from .scetuning_components import SCEAdapter
@@ -257,6 +264,8 @@ class SCETunerModule(nn.Module, ActivationMixin):
             raise Exception(f'Error tuner op {name}')
 
     def forward(self, x, x_shortcut=None, use_shortcut=True, **kwargs):
+        if not self.is_activated(self.adapter_name):
+            return x
         if self.name == 'SCEAdapter':
             out = self.tuner_op(x)
         else:
