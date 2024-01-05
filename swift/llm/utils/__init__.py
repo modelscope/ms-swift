@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import (DeployArguments, DPOArguments, InferArguments,
-                       RomeArguments, SftArguments)
+                       RomeArguments, SftArguments, is_lora)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, add_self_cognition_dataset, get_dataset,
