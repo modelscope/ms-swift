@@ -202,9 +202,12 @@ class TestSwift(unittest.TestCase):
             os.path.exists(
                 os.path.join(self.tmp_dir, 'default', WEIGHTS_NAME)))
 
-        model2 = Swift.from_pretrained(model2, self.tmp_dir)
+        model2 = Swift.from_pretrained(
+            model2, self.tmp_dir, adapter_name={'default': 'test'})
+        self.assertTrue('test' in model2.adapters)
         output2 = model2(**input)
         self.assertTrue(torch.allclose(output1.logits, output2.logits))
+        model2 = Swift.from_pretrained(model2, self.tmp_dir)
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:
