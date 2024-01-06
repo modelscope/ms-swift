@@ -961,9 +961,9 @@ def get_model_tokenizer_qwen(model_dir: str,
                 v = True
             setattr(model_config, k, v)
 
-    # fix bnb quantization bug
     if model_kwargs.get('quantization_config') is None or not isinstance(
             model_kwargs['quantization_config'], BitsAndBytesConfig):
+        # not (quantization + bnb)
         torch_dtype = None
     use_flash_attn = kwargs.pop('use_flash_attn', None)
     if use_flash_attn is None:
