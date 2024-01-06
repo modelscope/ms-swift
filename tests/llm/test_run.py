@@ -88,7 +88,7 @@ class TestRun(unittest.TestCase):
                 '--max_new_tokens', '100', '--use_flash_attn', 'true',
                 '--lora_target_modules', 'ALL', '--seed', '0',
                 '--lora_bias_trainable', 'all', '--lora_modules_to_save',
-                'wte', 'ln1', 'ln_2', 'ln_f', 'lm_head'
+                'wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
