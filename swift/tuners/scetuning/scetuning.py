@@ -205,6 +205,7 @@ class SCETuning(SwiftAdapter):
             tuner_op = SCETunerModule(
                 name=config.tuner_op,
                 adapter_name=adapter_name,
+                module_key=str(tuner_id),
                 dim=dims[tuner_id],
                 tuner_length=int(dims[tuner_id] * config.down_ratio))
             setattr(t_module, f'scetuner_{adapter_name}', tuner_op)
@@ -244,6 +245,7 @@ class SCETunerModule(nn.Module, ActivationMixin):
     def __init__(self,
                  name,
                  adapter_name,
+                 module_key,
                  dim,
                  tuner_length,
                  tuner_type=None,
@@ -252,7 +254,7 @@ class SCETunerModule(nn.Module, ActivationMixin):
                  zero_init_last=True,
                  use_bias=True):
         super(SCETunerModule, self).__init__()
-        super(nn.Module, self).__init__('')
+        super(nn.Module, self).__init__(module_key)
         self.name = name
         self.adapter_name = adapter_name
         self.dim = dim
@@ -271,6 +273,7 @@ class SCETunerModule(nn.Module, ActivationMixin):
         if not self.is_activated(self.adapter_name):
             return x
         if self.name == 'SCEAdapter':
+            self.tuner_op.to(x.device)
             out = self.tuner_op(x)
         else:
             raise Exception(f'Error tuner op {self.name}')
