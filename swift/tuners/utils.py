@@ -253,7 +253,7 @@ class OffloadHelper:
             file = os.path.join(sub_folder, f'{key}.dat')
             state_dict[key] = OffloadHelper.load_offloaded_weight(
                 file, OffloadHelper.index[md5][key])
-        if version.parse(torch.__version__) >= version.parse('2.0.0'):
+        if version.parse(torch.__version__) >= version.parse('2.1.0'):
             module.load_state_dict(state_dict, assign=True)
         else:
             for name, _module in module.named_modules():

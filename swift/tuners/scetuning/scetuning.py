@@ -154,7 +154,8 @@ class SCETuning(SwiftAdapter):
 
         # refactor forward function
         def _forward_encoder_mode(self, *args, **kwargs):
-            args = self.forward_origin(*args, **kwargs)
+            args = getattr(self, f'forward_origin_{adapter_name}')(*args,
+                                                                   **kwargs)
             args_type = type(args)
             if args_type is tuple:
                 args = args[0]
@@ -185,12 +186,15 @@ class SCETuning(SwiftAdapter):
             if args_type is tuple:
                 args_main = (args_sub_tuner_new, *args_sub_extra)
 
-            args_main = self.forward_origin(*args_main, **kwargs)
+            args_main = getattr(self,
+                                f'forward_origin_{adapter_name}')(*args_main,
+                                                                  **kwargs)
             return args_main
 
         # 3. inject the tuners
         for tuner_id, t_module in enumerate(target_module_ins_list):
-            t_module.forward_origin = getattr(t_module, 'forward')
+            setattr(module, f'forward_origin_{adapter_name}',
+                    getattr(t_module, 'forward'))
             if config.tuner_mode in ('encoder', 'identity'):
                 _forward = _forward_encoder_mode
             elif config.tuner_mode == 'decoder':
