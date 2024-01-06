@@ -12,6 +12,7 @@ from typing import Dict, OrderedDict
 import json
 import numpy as np
 import torch
+from packaging import version
 from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
@@ -252,7 +253,27 @@ class OffloadHelper:
             file = os.path.join(sub_folder, f'{key}.dat')
             state_dict[key] = OffloadHelper.load_offloaded_weight(
                 file, OffloadHelper.index[md5][key])
-        module.load_state_dict(state_dict, assign=True)
+        if version.parse(torch.__version__) >= version.parse('2.0.0'):
+            module.load_state_dict(state_dict, assign=True)
+        else:
+            for name, _module in module.named_modules():
+                if len(list(_module.modules())) > 1:
+                    continue
+
+                buffers = {}
+                prefix = name if not name else name + '.'
+                for sub_name, buffer in _module.named_buffers():
+                    buffer_cls = type(buffer)
+                    buffers[sub_name] = buffer_cls(state_dict[prefix
+                                                              + sub_name])
+                _module._buffers.update(buffers)
+                params = {}
+                for sub_name, param in _module.named_parameters():
+                    param_cls = type(param)
+                    params[sub_name] = param_cls(
+                        state_dict[prefix + sub_name],
+                        requires_grad=param.requires_grad)
+                _module._parameters.update(params)
         shutil.rmtree(sub_folder, ignore_errors=True)
 
 
