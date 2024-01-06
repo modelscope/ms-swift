@@ -7,7 +7,7 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-
+from transformers.trainer_callback import TrainerCallback
 from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
                             Seq2SeqTrainingArguments)
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
@@ -233,6 +233,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
+    
+
+    class TrainerAdapterCallback(TrainerCallback):
+
+        def on_train_begin(*args, **kwargs):
+            model.set_active_adapters(model.adapters.keys(), offload='meta')
+
 
     trainer = Seq2SeqTrainer(
         model=model,
@@ -241,6 +248,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
+        callbacks=[TrainerAdapterCallback()],
         **trainer_kwargs)
     trainer.sft_args = args
     if is_master():
