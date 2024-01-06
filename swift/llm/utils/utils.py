@@ -278,7 +278,7 @@ def dataset_map(dataset: HfDataset,
         data = _map_mp(dataset, single_map, num_proc)
     data = [d for d in data if d is not None]
     if len(data) == 0:
-        logger.info('len(dataset): 0')
+        logger.warning('len(dataset): 0')
         return None
     return LLMDataset(data)
 
