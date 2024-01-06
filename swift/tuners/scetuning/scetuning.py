@@ -193,7 +193,7 @@ class SCETuning(SwiftAdapter):
 
         # 3. inject the tuners
         for tuner_id, t_module in enumerate(target_module_ins_list):
-            setattr(module, f'forward_origin_{adapter_name}',
+            setattr(t_module, f'forward_origin_{adapter_name}',
                     getattr(t_module, 'forward'))
             if config.tuner_mode in ('encoder', 'identity'):
                 _forward = _forward_encoder_mode
