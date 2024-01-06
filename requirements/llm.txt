@@ -1,6 +1,8 @@
 charset_normalizer
 cpm_kernels
+fastapi
 gradio>=3.40.0
 sentencepiece
 tiktoken
 transformers_stream_generator
+uvicorn

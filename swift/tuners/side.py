@@ -121,7 +121,7 @@ class Side(SwiftAdapter):
                     setattr(tgt_module, f'forward_origin_{adapter_name}',
                             tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
-                side_module = SideModule(config.dim, adapter_name,
+                side_module = SideModule(config.dim, adapter_name, module_key,
                                          config.side_module_name)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(
@@ -142,13 +142,17 @@ class Side(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'side_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules = find_sub_module(module, f'side_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, offload)
 
 
 class SideModule(nn.Module, ActivationMixin):
@@ -164,9 +168,9 @@ class SideModule(nn.Module, ActivationMixin):
         side_module_name: The name of the additive side networks.
     """
 
-    def __init__(self, dim, adapter_name, side_module_name='fcn4'):
+    def __init__(self, dim, adapter_name, module_key, side_module_name='fcn4'):
         super(SideModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__(module_key)
         self.adapter_name = adapter_name
 
         side_module_name = side_module_name.lower()

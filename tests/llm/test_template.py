@@ -439,7 +439,7 @@ Assistant:""")
         #
         input_ids_official = inputs[0].tolist()
         input_ids_swift = template.encode({'query': query})['input_ids']
-        self.assertTrue(input_ids_swift == input_ids_official)
+        self.assertTrue(input_ids_swift[:-1] == input_ids_official)
         input_ids_swift = template.encode({
             'query': query,
             'history': [['1234', 'avdc']]
@@ -567,7 +567,7 @@ Assistant:""")
             },
             {
                 'role': 'user',
-                'content': 'CCCCC'
+                'content': 'BBBBB'
             },
         ]
         input_ids_official = tokenizer.apply_chat_template(

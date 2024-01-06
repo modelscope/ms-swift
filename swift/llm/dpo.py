@@ -11,8 +11,8 @@ from transformers import IntervalStrategy
 from swift.trainers.arguments import Seq2SeqTrainingArguments
 from swift.trainers.dpo_trainers import DPOTrainer
 from swift.utils import (check_json_format, get_dist_setting, get_logger,
-                         get_model_info, is_ddp_plus_mp, is_dist, is_master,
-                         plot_images, seed_everything, show_layers)
+                         get_main, get_model_info, is_ddp_plus_mp, is_dist,
+                         is_master, plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (DPOArguments, Template, get_additional_saved_files,
                     get_dataset, get_model_tokenizer, get_template,
@@ -245,3 +245,6 @@ def llm_dpo(args: DPOArguments) -> str:
         'log_history': trainer.state.log_history,
         'model_info': model_info,
     }
+
+
+dpo_main = get_main(DPOArguments, llm_dpo)

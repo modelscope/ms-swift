@@ -39,7 +39,7 @@ from swift.utils import seed_everything
 
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
-print(f'template_type: {template_type}')  # template_type: chatml
+print(f'template_type: {template_type}')  # template_type: qwen
 
 
 kwargs = {}
@@ -101,7 +101,7 @@ from swift.utils import seed_everything
 
 model_type = ModelType.qwen_7b_chat_int4
 template_type = get_default_template_type(model_type)
-print(f'template_type: {template_type}')  # template_type: chatml
+print(f'template_type: {template_type}')  # template_type: qwen
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
@@ -179,7 +179,7 @@ from swift.utils import seed_everything
 
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
-print(f'template_type: {template_type}')  # template_type: chatml
+print(f'template_type: {template_type}')  # template_type: qwen
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
@@ -220,7 +220,7 @@ from swift.utils import seed_everything
 
 model_type = ModelType.qwen_vl_chat
 template_type = get_default_template_type(model_type)
-print(f'template_type: {template_type}')  # template_type: chatml
+print(f'template_type: {template_type}')  # template_type: qwen
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
@@ -262,7 +262,7 @@ from swift.utils import seed_everything
 
 model_type = ModelType.qwen_audio_chat
 template_type = get_default_template_type(model_type)
-print(f'template_type: {template_type}')  # template_type: chatml
+print(f'template_type: {template_type}')  # template_type: qwen
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 

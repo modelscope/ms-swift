@@ -303,13 +303,17 @@ class ResTuning(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'restuning_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules = find_sub_module(module, f'restuning_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, offload)
 
 
 class ResTuningBypassModule(nn.Module, ActivationMixin):
@@ -327,7 +331,7 @@ class ResTuningBypassModule(nn.Module, ActivationMixin):
         tuner_cfg=None,
     ):
         super(ResTuningBypassModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__('')
         self.adapter_name = adapter_name
 
         self.bypass_blocks = nn.Sequential(*[

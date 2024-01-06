@@ -649,13 +649,16 @@ def limit_history_length(template: Template, query: str,
 Messages = List[Dict[str, str]]
 
 
-def history_to_messages(history: History,
+def history_to_messages(history: Optional[History],
                         query: Optional[str] = None,
                         system: Optional[str] = None) -> Messages:
+    if history is None:
+        history = []
     messages = []
     if system is not None:
         messages.append({'role': 'system', 'content': system})
     for h in history:
+        assert isinstance(h, (list, tuple))
         messages.append({'role': 'user', 'content': h[0]})
         messages.append({'role': 'assistant', 'content': h[1]})
     if query is not None:

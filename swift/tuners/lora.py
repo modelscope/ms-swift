@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import torch
 from packaging import version
+from peft.tuners.lora import LoraLayer
 
 from swift import LoraConfig
 from .lora_layers import *  # noqa
@@ -69,12 +70,16 @@ class LoRA(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        set_adapter(module, adapter_name, activate)
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        set_adapter(module, adapter_name, activate, offload)
         for sub_module in module.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.set_activation(adapter_name, activate)
+                if hasattr(sub_module, 'save_memory'):
+                    sub_module.save_memory(adapter_name, activate, offload)
 
     @staticmethod
     def unpatch_lora(model, config: LoRAConfig, adapter_name: str):

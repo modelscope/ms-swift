@@ -6,7 +6,7 @@ python llm_sft.py \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --model_revision master \
     --sft_type full \
-    --template_type chatml \
+    --template_type qwen \
     --dtype AUTO \
     --output_dir output \
     --dataset damo-agent-zh \

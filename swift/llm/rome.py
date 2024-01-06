@@ -4,9 +4,9 @@ import torch
 from modelscope import GenerationConfig
 
 from swift.tuners import Swift
-from swift.utils import (get_logger, get_model_info, seed_everything,
+from swift.tuners.rome import RomeConfig
+from swift.utils import (get_logger, get_main, get_model_info, seed_everything,
                          show_layers)
-from ..tuners.rome import RomeConfig
 from .utils import (RomeArguments, Template, get_dataset, get_model_tokenizer,
                     get_template, inference, set_generation_config)
 
@@ -99,3 +99,6 @@ def rome_infer(args: RomeArguments) -> None:
             print(f"[LABELS]{data.get('response')}")
             print('-' * 80)
             # input('next[ENTER]')
+
+
+rome_main = get_main(RomeArguments, rome_infer)

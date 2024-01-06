@@ -202,9 +202,12 @@ class TestSwift(unittest.TestCase):
             os.path.exists(
                 os.path.join(self.tmp_dir, 'default', WEIGHTS_NAME)))
 
-        model2 = Swift.from_pretrained(model2, self.tmp_dir)
+        model2 = Swift.from_pretrained(
+            model2, self.tmp_dir, adapter_name={'default': 'test'})
+        self.assertTrue('test' in model2.adapters)
         output2 = model2(**input)
         self.assertTrue(torch.allclose(output1.logits, output2.logits))
+        model2 = Swift.from_pretrained(model2, self.tmp_dir)
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:
@@ -356,15 +359,15 @@ class TestSwift(unittest.TestCase):
                     hidden_pos=0),
             })
 
-        model.deactivate_adapter('adapter2')
-        model.deactivate_adapter('lora2')
+        model.deactivate_adapter('adapter2', offload='meta')
+        model.deactivate_adapter('lora2', offload='meta')
         outputs1 = model(**inputs)
         outputs2 = model1(**inputs)
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
         model.activate_adapter('adapter2')
         model.activate_adapter('lora2')
-        model.deactivate_adapter('adapter1')
-        model.deactivate_adapter('lora1')
+        model.deactivate_adapter('adapter1', offload='meta')
+        model.deactivate_adapter('lora1', offload='meta')
         outputs1 = model(**inputs)
         outputs2 = model2(**inputs)
         self.assertTrue(torch.allclose(outputs1.logits, outputs2.logits))
@@ -372,16 +375,16 @@ class TestSwift(unittest.TestCase):
         if os.environ.get('USE_UNIQUE_THREAD') == '0':
 
             def thread_func1():
-                model1.set_active_adapters(['lora1', 'adapter1'])
-                model.set_active_adapters(['lora1', 'adapter1'])
+                model1.set_active_adapters(['lora1', 'adapter1'], offload=None)
+                model.set_active_adapters(['lora1', 'adapter1'], offload=None)
                 outputs_single = model1(**inputs)
                 outputs_t1 = model(**inputs)
                 self.assertTrue(
                     torch.allclose(outputs_single.logits, outputs_t1.logits))
 
             def thread_func2():
-                model2.set_active_adapters(['lora2', 'adapter2'])
-                model.set_active_adapters(['lora2', 'adapter2'])
+                model2.set_active_adapters(['lora2', 'adapter2'], offload=None)
+                model.set_active_adapters(['lora2', 'adapter2'], offload=None)
                 outputs_single = model2(**inputs)
                 outputs_t2 = model(**inputs)
                 self.assertTrue(

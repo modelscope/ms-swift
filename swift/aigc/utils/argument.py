@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 import torch.distributed as dist
@@ -45,7 +45,7 @@ class AnimateDiffArguments:
     weight_decay: float = 0.01
     gradient_accumulation_steps: int = 16
     max_grad_norm: float = 1.
-    lr_scheduler_type: str = 'linear'
+    lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50

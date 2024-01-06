@@ -6,6 +6,7 @@ from types import FunctionType, MethodType
 from typing import List, Union
 
 from torch.nn import Module
+from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
                                         HPSearchBackend, HubStrategy,
                                         IntervalStrategy, SchedulerType)
