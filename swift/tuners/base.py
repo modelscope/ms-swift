@@ -464,12 +464,12 @@ class SwiftModel(nn.Module):
 
         adapter_names = set(adapter_names)
         for adapter_name in (adapter_names & set(self.adapters.keys())):
-            self.activate_adapter(adapter_name)
+            self.activate_adapter(adapter_name, offload)
 
         for adapter_name in (set(self.adapters.keys()) - adapter_names):
             self.deactivate_adapter(adapter_name, offload)
 
-    def activate_adapter(self, adapter_name):
+    def activate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -477,7 +477,7 @@ class SwiftModel(nn.Module):
 
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
-            .activate_adapter(self.base_model, adapter_name, True)
+            .activate_adapter(self.base_model, adapter_name, True, offload)
 
     def deactivate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:

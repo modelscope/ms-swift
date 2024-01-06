@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .dpo_trainers import DPOTrainer
     from .trainers import Seq2SeqTrainer, Trainer
     from .utils import EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, \
-        IntervalStrategy, SchedulerType, ShardedDDPOption
+        IntervalStrategy, SchedulerType, ShardedDDPOption, TrainerCallback
 else:
     _import_structure = {
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
@@ -17,7 +17,7 @@ else:
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend',
             'HubStrategy', 'IntervalStrategy', 'SchedulerType',
-            'ShardedDDPOption'
+            'ShardedDDPOption', 'TrainerCallback'
         ]
     }
 
