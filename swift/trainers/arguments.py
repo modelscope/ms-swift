@@ -29,8 +29,9 @@ class SwiftArgumentsMixin:
     additional_saved_files: Optional[List[str]] = None
 
     def __post_init__(self):
-        if is_dist() and torch.cuda.is_available() and is_accelerate_available(
-        ):
+        if is_dist(
+        ) and self.ddp_backend == 'nccl' and torch.cuda.is_available(
+        ) and is_accelerate_available():
             try:
                 from accelerate.utils import check_cuda_p2p_ib_support
                 if not check_cuda_p2p_ib_support():
