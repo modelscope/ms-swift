@@ -589,8 +589,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.dataset = args.dataset[0].split(',')
     if args.template_type == 'chatglm2-generation':
         args.template_type = 'chatglm-generation'
-    if args.template_type == 'qwen':
-        args.template_type = TemplateType.chatml
+    if args.template_type == 'chatml':
+        args.template_type = TemplateType.qwen
     if (isinstance(args, InferArguments) and args.show_dataset_sample != 10
             and args.val_dataset_sample == 10):
         # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.

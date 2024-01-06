@@ -101,7 +101,7 @@ class VllmGenerationConfig(SamplingParams):
 
     def __init__(
         self,
-        max_new_tokens: int = 64,  # max_tokens
+        max_new_tokens: Optional[int] = 64,  # max_tokens
         temperature: float = 1.,
         top_k: int = 50,  # -1: all
         top_p: float = 1.,
@@ -114,6 +114,8 @@ class VllmGenerationConfig(SamplingParams):
         **kwargs,
     ) -> None:
         # The parameter design is similar to transformers.GenerationConfig.
+        if max_new_tokens is None:
+            max_new_tokens = 64
         if num_beams > 1:
             top_k = -1
             top_p = 1
