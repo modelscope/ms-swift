@@ -234,7 +234,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     class TrainerAdapterCallback(TrainerCallback):
 
         def on_train_begin(*args, **kwargs):
-            model.set_active_adapters(model.adapters.keys(), offload='meta')
+            if hasattr(model, 'set_active_adapters'):
+                model.set_active_adapters(
+                    model.adapters.keys(), offload='meta')
 
     trainer = Seq2SeqTrainer(
         model=model,

@@ -48,10 +48,12 @@ class SwiftModel(nn.Module):
             extra_state_keys.extend(model.extra_state_keys)
             model = model.base_model
 
+        new_adapters = []
         if isinstance(config, SwiftConfig):
             if DEFAULT_ADAPTER not in self.adapters:
                 self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
                     model, config, DEFAULT_ADAPTER)
+                new_adapters.append(DEFAULT_ADAPTER)
             else:
                 logger.warn(
                     f'Adater {DEFAULT_ADAPTER} has been patched, skip.')
@@ -61,6 +63,7 @@ class SwiftModel(nn.Module):
                 if adapter_name not in self.adapters:
                     self.adapters[adapter_name] = self._prepare_model(
                         model, _config, adapter_name)
+                    new_adapters.append(adapter_name)
                 else:
                     logger.warn(
                         f'Adater {adapter_name} has been patched, skip.')
@@ -76,14 +79,15 @@ class SwiftModel(nn.Module):
             signature(self.base_model.forward).parameters.values())
         forward.__signature__ = Signature(_parameters)
         self.forward = MethodType(forward, self)
-        for adapter_name in self.adapters:
+        for adapter_name in new_adapters:
             self.activate_adapter(adapter_name)
 
         if inference_mode:
             self.eval()
         else:
-            for output in self.adapters.values():
-                output.mark_trainable_callback(model)
+            for key, output in self.adapters.items():
+                if key in new_adapters:
+                    output.mark_trainable_callback(model)
             if self.extra_state_keys:
                 for n, p in model.named_parameters():
                     if any(
