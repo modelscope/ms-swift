@@ -525,7 +525,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                                **kwargs):
                     state_dict = self.state_dict_origin()
                     return {
-                        key: value
+                        key.replace('base_layer.', ''): value
                         for key, value in state_dict.items()
                         if 'lora' not in key
                     }
