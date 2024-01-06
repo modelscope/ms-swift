@@ -7,24 +7,21 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-from transformers.trainer_callback import TrainerCallback
+
 from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
-                            Seq2SeqTrainingArguments)
-from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, NEFTuneConfig, Swift)
+                            Seq2SeqTrainingArguments, TrainerCallback)
 from swift.utils import (check_json_format, compute_acc_metrics,
-                         compute_nlg_metrics, freeze_model_parameters,
-                         get_dist_setting, get_logger, get_main,
-                         get_model_info, is_ddp_plus_mp, is_dist, is_master,
-                         plot_images, preprocess_logits_for_metrics,
+                         compute_nlg_metrics, get_dist_setting, get_logger,
+                         get_main, get_model_info, is_ddp_plus_mp, is_dist,
+                         is_master, plot_images, preprocess_logits_for_metrics,
                          seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
-                    find_all_linear_for_lora, get_additional_saved_files,
-                    get_dataset, get_model_tokenizer, get_template,
-                    get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length,
+                    stat_dataset)
 
 logger = get_logger()
 
@@ -233,13 +230,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             'preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
-    
 
     class TrainerAdapterCallback(TrainerCallback):
 
         def on_train_begin(*args, **kwargs):
             model.set_active_adapters(model.adapters.keys(), offload='meta')
-
 
     trainer = Seq2SeqTrainer(
         model=model,
