@@ -74,7 +74,7 @@ def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
 
-    model = prepare_model(model, args)
+    model, _ = prepare_model(model, args)
 
     show_layers(model)
     model_info = get_model_info(model)
