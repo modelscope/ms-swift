@@ -2,6 +2,7 @@
 
 import torch
 
+from swift.trainers import TrainerCallback
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import freeze_model_parameters, get_logger
@@ -61,17 +62,17 @@ def prepare_model(model, args: SftArguments):
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
-        if args.tuner_backend == 'peft':
-            # fix peft==0.7 bug
-            # https://github.com/huggingface/peft/issues/1249
-            is_logging = False
-            for p in model.parameters():
-                if p.requires_grad and p.dtype == torch.float16:
-                    if not is_logging:
-                        logger.info(
-                            'Convert trainable parameters from fp16 to fp32.')
-                        is_logging = True
-                    p.data = p.data.to(dtype=torch.float32)
+        # fix bug: Attempting to unscale FP16 gradients.
+        #   peft: https://github.com/huggingface/peft/issues/1249
+        #   modules_to_save + fp16
+        is_logging = False
+        for p in model.parameters():
+            if p.requires_grad and p.dtype == torch.float16:
+                if not is_logging:
+                    logger.info(
+                        'Convert trainable parameters from fp16 to fp32.')
+                    is_logging = True
+                p.data = p.data.to(dtype=torch.float32)
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)
@@ -82,4 +83,14 @@ def prepare_model(model, args: SftArguments):
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
         model = Swift.prepare_model(model, neftune_config)
         logger.info(f'neftune_config: {neftune_config}')
-    return model
+
+    class TrainerAdapterCallback(TrainerCallback):
+        # offload original_modules to cpu, to save memory
+        def on_train_begin(*args, **kwargs):
+            if hasattr(model, 'set_active_adapters'):
+                model.set_active_adapters(model.adapters.keys(), offload='cpu')
+
+    callbacks = []
+    if is_lora(args.sft_type) and args.tuner_backend == 'swift':
+        callbacks.append(TrainerAdapterCallback())
+    return model, callbacks
