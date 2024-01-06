@@ -617,20 +617,22 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
                           InferArguments) and 'checkpoint' in model_id_or_path:
                 error_msg = 'Please use `--ckpt_dir vx_xxx/checkpoint-xxx` to use the checkpoint.'
             else:
-                error_msg = f"`model_id_or_path`: '{model_id_or_path}' is not registered."
+                error_msg = f"model_id_or_path: '{model_id_or_path}' is not registered."
                 if os.path.exists(model_id_or_path):
                     error_msg += (
-                        ' Please use `--model_id_or_path <model_id> --model_cache_dir <local_path>` '
+                        ' Please use `--model_type <model_type> --model_cache_dir <local_path>` '
+                        'or `--model_id_or_path <model_id> --model_cache_dir <local_path>`'
                         'to specify the local cache path for the model.')
             raise ValueError(error_msg)
         args.model_type = model_mapping_reversed[model_id_or_path_lower]
 
+    error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
     if args.model_type is None:
-        raise ValueError(
-            'please setting `--model_type <model_type>` or `--model_id_or_path <model_id>`'
-        )
+        raise ValueError('please setting `--model_type <model_type>`. '
+                         + error_msg)
     elif args.model_type not in MODEL_MAPPING:
-        raise ValueError(f'model_type: {args.model_type} is not registered.')
+        raise ValueError(f"model_type: '{args.model_type}' is not registered. "
+                         + error_msg)
     model_info = MODEL_MAPPING[args.model_type]
     if args.model_revision is None:
         args.model_revision = model_info['revision']
