@@ -104,7 +104,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         generate_inputs = inputs.copy()
         if has_labels:
             _labels = inputs['labels'][0]
-            n_mask = lower_bound(0, len(_labels), lambda i: _labels[i] != -100)
+            n_mask = 0
+            for i in range(len(_labels)):
+                if _labels[i] != -100:
+                    n_mask = i
+                    break
+
             for k in ['input_ids', 'attention_mask']:
                 generate_inputs[k] = generate_inputs[k][:, :n_mask]
             generate_inputs['labels'] = generate_inputs['labels'][:, n_mask:]

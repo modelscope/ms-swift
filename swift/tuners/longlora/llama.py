@@ -316,19 +316,12 @@ def forward_flashattn_inference(
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
 
-    if past_key_value is not None and len(past_key_value) > self.idx:
-        assert (flash_attn_version >=
-                '2.1.0'), 'past_key_value support requires flash-attn >= 2.1.0'
-        # reuse k, v
-        k = torch.cat([past_key_value[self.idx][0].transpose(1, 2), k], dim=1)
-        v = torch.cat([past_key_value[self.idx][1].transpose(1, 2), v], dim=1)
-
     if use_cache:
-        past_key_value.update(k.transpose(1, 2)[:, :, -1:, :], v.transpose(1, 2)[:, :, -1:, :], layer_idx=self.idx)
+        k, v = past_key_value.update(k.transpose(1, 2), v.transpose(1, 2), layer_idx=self.idx)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
     else:
         past_key_value = None
-    # past_key_value = (k.transpose(1, 2),
-    #                   v.transpose(1, 2)) if use_cache else None
 
     if attention_mask is None:
         output = flash_attn_func(
