@@ -49,13 +49,21 @@ class SwiftModel(nn.Module):
             model = model.base_model
 
         if isinstance(config, SwiftConfig):
-            self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
-                model, config, DEFAULT_ADAPTER)
+            if DEFAULT_ADAPTER not in self.adapters:
+                self.adapters[DEFAULT_ADAPTER] = self._prepare_model(
+                    model, config, DEFAULT_ADAPTER)
+            else:
+                logger.warn(
+                    f'Adater {DEFAULT_ADAPTER} has been patched, skip.')
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, _config in config.items():
-                self.adapters[adapter_name] = self._prepare_model(
-                    model, _config, adapter_name)
+                if adapter_name not in self.adapters:
+                    self.adapters[adapter_name] = self._prepare_model(
+                        model, _config, adapter_name)
+                else:
+                    logger.warn(
+                        f'Adater {adapter_name} has been patched, skip.')
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
@@ -195,7 +203,8 @@ class SwiftModel(nn.Module):
     def from_pretrained(cls,
                         model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
-                        adapter_name: Union[str, List[str]] = None,
+                        adapter_name: Union[str, List[str], Dict[str,
+                                                                 str]] = None,
                         inference_mode: bool = False,
                         revision: str = None,
                         **kwargs):
@@ -205,7 +214,7 @@ class SwiftModel(nn.Module):
             model (`Union[torch.nn.Module, 'SwiftModel']`): The model to be tuned,
                 if the model is already a `SwiftModel` it will be un-wrapped and re-wrapped..
             model_id (`str`): The model_id or a local model dir of tuners to use to tune the model.
-            adapter_name (`Union[str, List[str]]`): The adapter_names saved in the model repo to load.
+            adapter_name (`Union[str, List[str], Dict[str, str]]`): The adapter_names saved in the model repo to load.
                 Default `None`, means load all tuners saved in the model_id
             inference_mode (`bool`): Use in the inference mode or not.
             revision (`str`): The model revision to use.
@@ -236,7 +245,8 @@ class SwiftModel(nn.Module):
                 os.path.isfile(os.path.join(model_dir, sub_dir, CONFIG_NAME))
             ]
         for _name in adapter_name if isinstance(adapter_name,
-                                                list) else [adapter_name]:
+                                                list) else [adapter_name] \
+                if isinstance(adapter_name, str) else adapter_name.keys():
             sub_folder = os.path.join(model_dir, _name)
             config_file = os.path.join(sub_folder, CONFIG_NAME)
 
@@ -250,26 +260,31 @@ class SwiftModel(nn.Module):
             if SWIFT_TYPE_KEY not in json_object:
                 raise ValueError('Mixed using with peft is not allowed now.')
             else:
-                adapters[_name] = SwiftConfig.from_pretrained(sub_folder)
+                key = _name if not isinstance(adapter_name,
+                                              dict) else adapter_name[_name]
+                adapters[key] = SwiftConfig.from_pretrained(sub_folder)
 
         self = SwiftModel(model, adapters, extra_state_keys, inference_mode,
                           **kwargs)
         for _name in adapter_name if isinstance(adapter_name,
-                                                list) else [adapter_name]:
+                                                list) else [adapter_name] \
+                if isinstance(adapter_name, str) else adapter_name.keys():
             sub_folder = os.path.join(model_dir, _name)
             state_dict = cls.load_state_file(sub_folder)
+            _adapter = _name if not isinstance(adapter_name,
+                                               dict) else adapter_name[_name]
             if state_dict is not None:
                 model_is_qlora = len([
                     k for k in self.state_dict().keys()
-                    if k.endswith('.lora_A.default.weight')
-                    or k.endswith('.lora_B.default.weight')
+                    if k.endswith(f'.lora_A.{_adapter}.weight')
+                    or k.endswith(f'.lora_B.{_adapter}.weight')
                 ])
                 if not model_is_qlora:
                     # model is lora, state_dict: qlora->lora
                     state_dict = {
-                        k[:-len('.default.weight') if k.
-                          endswith('.lora_A.default.weight') or k.
-                          endswith('.lora_B.default.weight') else None]: v
+                        k[:-len(f'.{_name}.weight') if k.
+                          endswith(f'.lora_A.{_name}.weight') or k.
+                          endswith(f'.lora_B.{_name}.weight') else None]: v
                         for k, v in state_dict.items()
                     }
                 if any(['loramodule' in key for key in state_dict]):
@@ -288,7 +303,13 @@ class SwiftModel(nn.Module):
                                     f'lora_B.{_name}.weight'): value
                         for key, value in state_dict.items()
                     }
-                self.load_state_dict(state_dict, adapter_name=_name)
+                if isinstance(adapter_name, dict):
+                    # TODO this logic is fragile! replace `_name` may cause other parts replaced
+                    state_dict = {
+                        key.replace(_name, adapter_name[_name]): value
+                        for key, value in state_dict.items()
+                    }
+                self.load_state_dict(state_dict, adapter_name=_adapter)
         state_dict = cls.load_state_file(model_dir)
         if state_dict is not None:
             self.load_state_dict(state_dict)
@@ -443,12 +464,12 @@ class SwiftModel(nn.Module):
 
         adapter_names = set(adapter_names)
         for adapter_name in (adapter_names & set(self.adapters.keys())):
-            self.activate_adapter(adapter_name)
+            self.activate_adapter(adapter_name, offload)
 
         for adapter_name in (set(self.adapters.keys()) - adapter_names):
             self.deactivate_adapter(adapter_name, offload)
 
-    def activate_adapter(self, adapter_name):
+    def activate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -456,7 +477,7 @@ class SwiftModel(nn.Module):
 
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
-            .activate_adapter(self.base_model, adapter_name, True)
+            .activate_adapter(self.base_model, adapter_name, True, offload)
 
     def deactivate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:
@@ -569,7 +590,8 @@ class Swift:
     @staticmethod
     def from_pretrained(model: Union[nn.Module, SwiftModel],
                         model_id: str = None,
-                        adapter_name: Union[str, List[str]] = None,
+                        adapter_name: Union[str, List[str], Dict[str,
+                                                                 str]] = None,
                         revision: str = None,
                         **kwargs):
         """Prepare a model by a model_id in the ModelScope hub or a local dir.
@@ -593,7 +615,8 @@ class Swift:
             is_peft_model = SWIFT_TYPE_KEY not in _json
 
         _name = adapter_name if isinstance(
-            adapter_name, str) or adapter_name is None else adapter_name[0]
+            adapter_name, str) or adapter_name is None else adapter_name[0] \
+            if isinstance(adapter_name, list) else list(adapter_name.keys())[0]
         _name = _name or ''
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
             with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:

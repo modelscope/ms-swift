@@ -12,6 +12,7 @@ from typing import Dict, OrderedDict
 import json
 import numpy as np
 import torch
+from packaging import version
 from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
@@ -252,7 +253,27 @@ class OffloadHelper:
             file = os.path.join(sub_folder, f'{key}.dat')
             state_dict[key] = OffloadHelper.load_offloaded_weight(
                 file, OffloadHelper.index[md5][key])
-        module.load_state_dict(state_dict, assign=True)
+        if version.parse(torch.__version__) >= version.parse('2.1.0'):
+            module.load_state_dict(state_dict, assign=True)
+        else:
+            for name, _module in module.named_modules():
+                if len(list(_module.modules())) > 1:
+                    continue
+
+                buffers = {}
+                prefix = name if not name else name + '.'
+                for sub_name, buffer in _module.named_buffers():
+                    buffer_cls = type(buffer)
+                    buffers[sub_name] = buffer_cls(state_dict[prefix
+                                                              + sub_name])
+                _module._buffers.update(buffers)
+                params = {}
+                for sub_name, param in _module.named_parameters():
+                    param_cls = type(param)
+                    params[sub_name] = param_cls(
+                        state_dict[prefix + sub_name],
+                        requires_grad=param.requires_grad)
+                _module._parameters.update(params)
         shutil.rmtree(sub_folder, ignore_errors=True)
 
 
@@ -295,7 +316,7 @@ class SwiftAdapter:
         if offload == 'cpu':
             if str(device) != 'cpu':
                 module.to('cpu')
-        if offload == 'meta':
+        elif offload == 'meta':
             if str(device) != 'meta':
                 OffloadHelper.offload_disk(
                     module, adapter_name=adapter_name, module_key=module_key)
@@ -331,6 +352,12 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
     def __init__(self, *args, module_key, **kwargs):
         super(ModulesToSaveWrapper, self).__init__(module_key)
         super(ActivationMixin, self).__init__(*args, **kwargs)
+        SwiftAdapter.save_memory(
+            self.original_module,
+            'original_module',
+            self.module_key,
+            False,
+            offload='cpu')
 
     @property
     def active_adapter(self):
@@ -343,7 +370,7 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             )
         return active_adapters[0]
 
-    def set_adapter(self, adapter_name: str, offload: str):
+    def set_adapter(self, adapter_name: str, offload: str = None):
         if adapter_name not in self.modules_to_save:
             raise ValueError(
                 f'Adapter {adapter_name} not found in {self.modules_to_save.keys()}'
@@ -352,8 +379,14 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
         self.set_activation(adapter_name, True)
         SwiftAdapter.save_memory(self.modules_to_save[adapter_name],
                                  adapter_name, self.module_key, True)
+        SwiftAdapter.save_memory(
+            self.original_module,
+            'original_module',
+            self.module_key,
+            False,
+            offload=offload)
 
-    def deactivate_adapter(self, adapter_name: str, offload: str):
+    def deactivate_adapter(self, adapter_name: str, offload: str = None):
         if adapter_name in self.modules_to_save and self.unique_thread:
             self.modules_to_save[adapter_name].requires_grad_(False)
         self.set_activation(adapter_name, False)
@@ -363,6 +396,22 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
             self.module_key,
             False,
             offload=offload)
+        if not self.get_activated_adapters():
+            SwiftAdapter.save_memory(self.original_module, 'original_module',
+                                     self.module_key, True)
+
+    def enable_adapters(self, enabled: bool):
+        super().enable_adapters(enabled)
+        if not enabled:
+            SwiftAdapter.save_memory(
+                self.original_module,
+                'original_module',
+                self.module_key,
+                False,
+                offload='meta')
+        else:
+            SwiftAdapter.save_memory(self.original_module, 'original_module',
+                                     self.module_key, True)
 
 
 def set_adapter(model, adapter_name, activate, offload):
@@ -385,6 +434,7 @@ def set_trainable(model, adapter_name):
                 target.update(adapter_name)
                 target.set_adapter(target.active_adapter)
             else:
-                new_module = ModulesToSaveWrapper(target, adapter_name)
+                new_module = ModulesToSaveWrapper(
+                    target, module_key=key, adapter_name=adapter_name)
                 new_module.set_adapter(adapter_name)
                 setattr(parent, target_name, new_module)

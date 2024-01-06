@@ -16,6 +16,7 @@ from peft.import_utils import is_bnb_4bit_available, is_bnb_available
 from peft.tuners.lora import Conv2d as _Conv2d
 from peft.tuners.lora import Embedding as _Embedding
 from peft.tuners.lora import Linear as _Linear
+from peft.tuners.lora import LoraLayer
 from peft.tuners.lora import LoraModel as _LoraModel
 from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
@@ -272,7 +273,7 @@ class LoraModel(_LoraModel):
 
                 if not isinstance(target, ModulesToSaveWrapper):
                     new_module = ModulesToSaveWrapper(
-                        target, adapter_name, module_key=key)
+                        target, adapter_name=adapter_name, module_key=key)
                     setattr(parent, target_name, new_module)
                 else:
                     target.update(adapter_name)
@@ -489,6 +490,7 @@ class LoraModel(_LoraModel):
         elif lora_config.use_merged_linear:
             new_module = MergedLinear(
                 adapter_name,
+                current_key,
                 target,
                 bias=bias,
                 enable_lora=lora_config.enable_lora,
