@@ -4,10 +4,13 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import torch
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import \
     Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 from transformers.utils import is_accelerate_available
+
+from swift.utils import is_dist
 
 
 @dataclass
@@ -26,7 +29,8 @@ class SwiftArgumentsMixin:
     additional_saved_files: Optional[List[str]] = None
 
     def __post_init__(self):
-        if is_accelerate_available():
+        if is_dist() and torch.cuda.is_available() and is_accelerate_available(
+        ):
             try:
                 from accelerate.utils import check_cuda_p2p_ib_support
                 if not check_cuda_p2p_ib_support():
