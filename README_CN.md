@@ -68,7 +68,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.12.23: 支持[codegeex2-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codegeex2_6b).
 - 2023.12.19: 支持[phi2-3b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/phi2_3b).
 - 2023.12.18: 支持VLLM进行推理加速.
-- 2023.12.15: 支持**deepseek**, **deepseek-coder**系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, openbuddy-deepseek-67b-chat, deepseek-coder-1_3b, deepseek-coder-1_3b-chat, deepseek-coder-6_7b, deepseek-coder-6_7b-chat, deepseek-coder-33b, deepseek-coder-33b-chat.
+- 2023.12.15: 支持deepseek, deepseek-coder系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, openbuddy-deepseek-67b-chat, deepseek-coder-1_3b, deepseek-coder-1_3b-chat, deepseek-coder-6_7b, deepseek-coder-6_7b-chat, deepseek-coder-33b, deepseek-coder-33b-chat.
 - 2023.12.13: 支持mistral-7b-chat-v2, [mixtral-7b-moe](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/mixtral_7b_moe), [mixtral-7b-moe-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/mixtral_7b_moe_chat).
 - 2023.12.9: 支持`freeze_parameters`参数, 作为lora和全参数训练的折中方案. 对应的sh可以查看[full_freeze_ddp](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_freeze_ddp). 支持`disable_tqdm`, `lazy_tokenize`, `preprocess_num_proc`参数, 具体可以查看[命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
 - 2023.12.8: 支持[sus-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/sus_34b_chat), 支持yi-6b-200k, yi-34b-200k.
