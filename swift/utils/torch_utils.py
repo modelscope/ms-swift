@@ -143,7 +143,7 @@ def activate_model_parameters(
                 has_activate = True
     if not has_activate:
         logger.warning(
-            'len(additional_trainable_parameters) > 0 but no parameters are activated.'
+            'len(additional_trainable_parameters) > 0 but no parameters are activated. '
             f'additional_trainable_parameters: {additional_trainable_parameters}'
         )
 

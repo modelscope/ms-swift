@@ -48,17 +48,6 @@ class BertTrainer(Trainer):
         assert loss is not None
         return (loss, outputs) if return_outputs else loss
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        # If we are executing this function, we are the process zero, so we don't check for that.
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f'Saving model checkpoint to {output_dir}')
-        self.model.save_pretrained(output_dir, 'pytorch_model.bin')
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
-
-        torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
-
 
 class TestTrainer(unittest.TestCase):
 
@@ -71,12 +60,14 @@ class TestTrainer(unittest.TestCase):
         logger.info(f'self.hub_model_id: {self.hub_model_id}')
 
     def tearDown(self):
-        shutil.rmtree(self.tmp_dir)
+        if os.path.isdir(self.tmp_dir):
+            shutil.rmtree(self.tmp_dir)
         # api = HubApi()
         # api.delete_model(self.hub_model_id)
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
+        self.tmp_dir = 'output/damo/nlp_structbert_backbone_base_std'
         push_to_hub = True
         if not __name__ == '__main__':
             # ignore citest error in github
@@ -105,27 +96,29 @@ class TestTrainer(unittest.TestCase):
         val_dataset = val_dataset.map(tokenize_func)
 
         data_collator = partial(data_collate_fn, tokenizer=tokenizer)
-        trainer_args = TrainingArguments(
-            self.tmp_dir,
-            do_train=True,
-            do_eval=True,
-            num_train_epochs=1,
-            evaluation_strategy='steps',
-            save_strategy='steps',
-            per_device_train_batch_size=4,
-            per_device_eval_batch_size=4,
-            push_to_hub=push_to_hub,
-            hub_token=None,  # use env var
-            hub_private_repo=True,
-            push_hub_strategy='push_best',
-            hub_model_id=self.hub_model_id,
-            overwrite_output_dir=True,
-            save_steps=10,
-            save_total_limit=2,
-            metric_for_best_model='loss',
-            greater_is_better=False,
-            gradient_accumulation_steps=1,
-            eval_steps=10)
+        for save_only_model in [True, False]:
+            trainer_args = TrainingArguments(
+                self.tmp_dir,
+                do_train=True,
+                do_eval=True,
+                num_train_epochs=1,
+                evaluation_strategy='steps',
+                save_strategy='steps',
+                per_device_train_batch_size=4,
+                per_device_eval_batch_size=4,
+                push_to_hub=push_to_hub,
+                hub_token=None,  # use env var
+                hub_private_repo=True,
+                push_hub_strategy='push_best',
+                hub_model_id=self.hub_model_id,
+                overwrite_output_dir=True,
+                save_steps=10,
+                save_total_limit=2,
+                metric_for_best_model='loss',
+                greater_is_better=False,
+                gradient_accumulation_steps=1,
+                eval_steps=10,
+                save_only_model=save_only_model)
         trainer_args._n_gpu = 1
         trainer = BertTrainer(model, trainer_args, data_collator,
                               train_dataset, val_dataset, tokenizer)

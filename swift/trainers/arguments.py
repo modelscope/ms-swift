@@ -16,7 +16,7 @@ from swift.utils import is_dist
 @dataclass
 class SwiftArgumentsMixin:
     # ckpt only save model
-    only_save_model: bool = False
+    save_only_model: bool = False
     train_sampler_random: bool = True
     push_hub_strategy: str = field(
         default='push_best',

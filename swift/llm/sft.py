@@ -192,7 +192,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         predict_with_generate=args.predict_with_generate,
         generation_config=generation_config,
         local_rank=local_rank,
-        only_save_model=args.only_save_model,
+        save_only_model=args.save_only_model,
         train_sampler_random=args.train_sampler_random,
         report_to=args.report_to,
         deepspeed=args.deepspeed,
@@ -269,7 +269,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         tb_dir = os.path.join(args.output_dir, 'runs')
         plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
-            trainer._add_patterns_to_gitignores(['images/'])
+            trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
     return {
         'memory': trainer.perf['memory'],

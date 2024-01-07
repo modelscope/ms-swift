@@ -31,4 +31,4 @@ python llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --only_save_model true \
+    --save_only_model true \

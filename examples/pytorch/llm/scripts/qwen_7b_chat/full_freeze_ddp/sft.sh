@@ -12,7 +12,7 @@ swift sft \
     --max_length 4096 \
     --learning_rate 2e-5 \
     --use_flash_attn true \
-    --only_save_model true \
+    --save_only_model true \
     --dataset codefuse-evol-instruction-zh \
     --freeze_parameters 0.25 \
     --additional_trainable_parameters transformer.wte \

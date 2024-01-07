@@ -29,7 +29,7 @@ torchrun \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
     --save_steps 100 \
-    --only_save_model false \
+    --save_only_model false \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
