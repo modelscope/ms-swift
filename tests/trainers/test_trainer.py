@@ -48,17 +48,6 @@ class BertTrainer(Trainer):
         assert loss is not None
         return (loss, outputs) if return_outputs else loss
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        # If we are executing this function, we are the process zero, so we don't check for that.
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f'Saving model checkpoint to {output_dir}')
-        self.model.save_pretrained(output_dir, 'pytorch_model.bin')
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
-
-        torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
-
 
 class TestTrainer(unittest.TestCase):
 
@@ -77,6 +66,7 @@ class TestTrainer(unittest.TestCase):
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
+        self.tmp_dir = 'output/damo/nlp_structbert_backbone_base_std'
         push_to_hub = True
         if not __name__ == '__main__':
             # ignore citest error in github

@@ -24,7 +24,7 @@ from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME,
                                   TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
                                   WEIGHTS_NAME, IntervalStrategy,
-                                  is_peft_available)
+                                  TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
@@ -55,42 +55,61 @@ def _push_to_hub(self: Repository,
 class PushToMsHubMixin:
     repo: Repository
 
-    def _add_patterns_to_gitignores(
-            self,
-            patterns: List[str],
-            commit_message: Optional[str] = None) -> None:
+    def _add_patterns_to_file(self,
+                              file_name: str,
+                              patterns: List[str],
+                              commit_message: Optional[str] = None) -> None:
         # Make sure we only do this on the main process
         if not self.is_world_process_zero():
             return
         if isinstance(patterns, str):
             patterns = [patterns]
         if commit_message is None:
-            commit_message = f'Add `{patterns[0]}` patterns to .gitignore'
+            commit_message = f'Add `{patterns[0]}` patterns to {file_name}'
 
-        # Get current .gitignore content
+        # Get current file content
         repo_dir = self.repo.model_dir
-        gitignore_path = os.path.join(repo_dir, '.gitignore')
+        gitignore_path = os.path.join(repo_dir, file_name)
         if os.path.exists(gitignore_path):
             with open(gitignore_path, 'r', encoding='utf-8') as f:
                 current_content = f.read()
         else:
             current_content = ''
-
-        # Add the patterns to .gitignore
+        # Add the patterns to file
         content = current_content
         for pattern in patterns:
             if pattern not in content:
-                if content == '' or content.endswith('\n'):
-                    content += f'{pattern}\n'
-                else:
-                    content += f'\n{pattern}\n'
+                if len(content) > 0 and not content.endswith('\n'):
+                    content += '\n'
+                content += f'{pattern}\n'
 
-        # Write the .gitignore file if it has changed
+        # Write the file if it has changed
         if content != current_content:
             with open(gitignore_path, 'w', encoding='utf-8') as f:
-                logger.debug(f'Writing .gitignore file. Content: {content}')
+                logger.debug(f'Writing {file_name} file. Content: {content}')
                 f.write(content)
         self.repo.push(commit_message)
+
+    def _add_patterns_to_gitignore(
+            self,
+            patterns: List[str],
+            commit_message: Optional[str] = None) -> None:
+        self._add_patterns_to_file('.gitignore', patterns, commit_message)
+
+    def _add_patterns_to_gitattributes(
+            self,
+            patterns: List[str],
+            commit_message: Optional[str] = None) -> None:
+        new_patterns = []
+        suffix = 'filter=lfs diff=lfs merge=lfs -text'
+        for pattern in patterns:
+            if suffix not in pattern:
+                pattern = f'{pattern} {suffix}'
+            new_patterns.append(pattern)
+        file_name = '.gitattributes'
+        if commit_message is None:
+            commit_message = f'Add `{patterns[0]}` patterns to {file_name}'
+        self._add_patterns_to_file(file_name, new_patterns, commit_message)
 
     def init_hf_repo(self) -> None:
         """init ms repo. Compatible with transformers>=4.34"""
@@ -131,26 +150,24 @@ class PushToMsHubMixin:
             # directory not empty.
             shutil.rmtree(self.args.output_dir)
         self.repo = Repository(self.args.output_dir, hub_model_id)
+        self._add_patterns_to_gitattributes(['*.safetensors', '*.bin', '*.pt'])
         self.repo.push_to_hub = MethodType(_push_to_hub, self.repo)
         self.repo.local_dir = self.repo.model_dir  # hf compatibility
 
         # By default, ignore the checkpoint folders
-        _commit_message = 'Add `{}` patterns to .gitignore'
         if not os.path.exists(
                 os.path.join(self.args.output_dir, '.gitignore')
         ) and self.args.push_hub_strategy != 'all_checkpoints':
-            self._add_patterns_to_gitignores(
-                ['checkpoint-*/'], _commit_message.format('checkpoint-*/'))
+            self._add_patterns_to_gitignore(['checkpoint-*/'])
 
         # Add 'runs/' to .gitignore, ignore tensorboard files
-        self._add_patterns_to_gitignores(['runs/'],
-                                         _commit_message.format('runs/'))
+        self._add_patterns_to_gitignore(['runs/'])
 
         # Add '*.sagemaker' to .gitignore if using SageMaker
         if os.environ.get('SM_TRAINING_ENV'):
-            self._add_patterns_to_gitignores(
+            self._add_patterns_to_gitignore(
                 ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
-                _commit_message.format('*.sagemaker'))
+                'Add `*.sagemaker` patterns to .gitignore')
 
         self.push_in_progress = None
 
@@ -241,9 +258,25 @@ class PushToMsHubMixin:
 
 class SwiftMixin:
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self,
+                 model: Union[PreTrainedModel, Module] = None,
+                 args: TrainingArguments = None,
+                 data_collator: Optional[DataCollator] = None,
+                 train_dataset: Optional[HfDataset] = None,
+                 eval_dataset: Optional[Union[HfDataset,
+                                              Dict[str, HfDataset]]] = None,
+                 tokenizer: Optional[PreTrainedTokenizerBase] = None,
+                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
+                 compute_metrics: Optional[Callable[[EvalPrediction],
+                                                    Dict]] = None,
+                 callbacks: Optional[List[TrainerCallback]] = None,
+                 optimizers: Tuple[torch.optim.Optimizer,
+                                   torch.optim.lr_scheduler.LambdaLR] = (None,
+                                                                         None),
+                 preprocess_logits_for_metrics: Optional[Callable[
+                     [torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+                 **kwargs) -> None:
         check_model = kwargs.pop('check_model', True)
-        model = kwargs['model']
         if check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir,
@@ -263,7 +296,10 @@ class SwiftMixin:
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
         # mro
-        super().__init__(*args, **kwargs)
+        super().__init__(model, args, data_collator, train_dataset,
+                         eval_dataset, tokenizer, model_init, compute_metrics,
+                         callbacks, optimizers, preprocess_logits_for_metrics,
+                         **kwargs)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
 
