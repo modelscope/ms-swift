@@ -3,11 +3,12 @@
 import re
 from dataclasses import dataclass, field
 from typing import List, Tuple, Union
-from swift.tuners.lora_layers import LoraModel
+
 import torch.nn as nn
 
 from swift import LoRA, LoRAConfig, SwiftOutput
 from swift.tuners.lora import lora_state_dict, mark_lora_as_trainable
+from swift.tuners.lora_layers import LoraModel
 
 
 class LongLoRAModelType:

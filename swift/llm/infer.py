@@ -138,7 +138,8 @@ def prepare_model_template(
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
     # Preparing LoRA
-    if args.sft_type in ('lora', 'qalora', 'longlora') and args.ckpt_dir is not None:
+    if args.sft_type in ('lora', 'qalora',
+                         'longlora') and args.ckpt_dir is not None:
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
 
