@@ -5,7 +5,8 @@ import torch
 from swift.trainers import TrainerCallback
 from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift)
-from swift.utils import freeze_model_parameters, get_logger
+from swift.utils import (activate_model_parameters, freeze_model_parameters,
+                         get_logger)
 from .utils import SftArguments, find_all_linear_for_lora, is_lora
 
 logger = get_logger()
@@ -76,6 +77,9 @@ def prepare_model(model, args: SftArguments):
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)
+        if len(args.additional_trainable_parameters) > 0:
+            activate_model_parameters(model,
+                                      args.additional_trainable_parameters)
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
