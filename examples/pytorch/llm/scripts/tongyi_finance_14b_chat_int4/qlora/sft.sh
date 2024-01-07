@@ -6,7 +6,7 @@ python llm_sft.py \
     --model_type tongyi-finance-14b-chat-int4 \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type chatml \
+    --template_type qwen \
     --dtype fp16 \
     --output_dir output \
     --custom_train_dataset_path xxx.jsonl \

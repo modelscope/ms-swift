@@ -152,7 +152,7 @@ class Prompt(SwiftAdapter):
                     input_dim = config.dim
                 prompt_module = PromptModule(input_dim,
                                              int(module_key.rsplit('.')[-1]),
-                                             adapter_name,
+                                             adapter_name, module_key,
                                              config.prompt_length,
                                              config.attention_mask_value,
                                              config.attach_front)
@@ -176,13 +176,17 @@ class Prompt(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'prompt_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules = find_sub_module(module, f'prompt_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, offload)
 
 
 class PromptModule(nn.Module, ActivationMixin):
@@ -203,11 +207,12 @@ class PromptModule(nn.Module, ActivationMixin):
                  dim,
                  layer_num,
                  adapter_name,
+                 module_key,
                  prompt_length=None,
                  mask_values=0.,
                  attach_front=True):
         super(PromptModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__(module_key)
         self.dim = dim
         self.layer_num = layer_num
         self.adapter_name = adapter_name

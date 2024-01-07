@@ -9,8 +9,7 @@ from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
-from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
-                    TypeVar, Union)
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import accelerate
 import multiprocess
@@ -267,7 +266,7 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc,
 
 def dataset_map(dataset: HfDataset,
                 map_func: MapFunc,
-                num_proc: int = 1) -> LLMDataset:
+                num_proc: int = 1) -> Optional[LLMDataset]:
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []
@@ -279,12 +278,12 @@ def dataset_map(dataset: HfDataset,
         data = _map_mp(dataset, single_map, num_proc)
     data = [d for d in data if d is not None]
     if len(data) == 0:
-        logger.info('len(dataset): 0')
+        logger.warning('len(dataset): 0')
         return None
     return LLMDataset(data)
 
 
-def stat_dataset(llm_dataset: Dataset) -> None:
+def stat_dataset(llm_dataset: Dataset) -> str:
     """Statistical analysis was performed on the dataset"""
     _token_len = []
     if isinstance(llm_dataset, HfDataset):
@@ -296,6 +295,7 @@ def stat_dataset(llm_dataset: Dataset) -> None:
             _token_len.append(len(d['input_ids']))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
+    return stat_str
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
@@ -483,6 +483,9 @@ def inference_stream(model: PreTrainedModel,
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
     generation_config = deepcopy(generation_config)
+    if generation_config.num_beams != 1:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
     from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
     model.__class__.generate_stream = NewGenerationMixin.generate
     model.__class__.sample_stream = NewGenerationMixin.sample_stream
@@ -555,7 +558,8 @@ def inference(model: PreTrainedModel,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
-              output_prefix: str = '[OUTPUT]') -> Tuple[str, History]:
+              output_prefix: str = '[OUTPUT]',
+              **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
@@ -623,7 +627,8 @@ def inference(model: PreTrainedModel,
 
 
 def limit_history_length(template: Template, query: str,
-                         history: Optional[History], max_length: int) -> int:
+                         history: Optional[History],
+                         max_length: int) -> Tuple[History, History]:
     """binary search"""
     if history is None:
         history = []
@@ -644,13 +649,16 @@ def limit_history_length(template: Template, query: str,
 Messages = List[Dict[str, str]]
 
 
-def history_to_messages(history: History,
+def history_to_messages(history: Optional[History],
                         query: Optional[str] = None,
                         system: Optional[str] = None) -> Messages:
+    if history is None:
+        history = []
     messages = []
     if system is not None:
         messages.append({'role': 'system', 'content': system})
     for h in history:
+        assert isinstance(h, (list, tuple))
         messages.append({'role': 'user', 'content': h[0]})
         messages.append({'role': 'assistant', 'content': h[1]})
     if query is not None:
@@ -686,19 +694,25 @@ def set_generation_config(model: Module,
     model.generation_config = generation_config
 
 
-def fix_fp16_trainable_bug(model: Module) -> None:
-    # fix peft==0.7 bug
-    is_logging = False
-    for p in model.parameters():
-        if p.requires_grad and p.dtype == torch.float16:
-            if not is_logging:
-                logger.info('Convert trainable parameters from fp16 to fp32.')
-                is_logging = True
-            p.data = p.data.to(dtype=torch.float32)
-
-
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
+
+
+def get_time_info(log_history: List[Dict[str, Any]],
+                  n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
+    time_info = None
+    try:
+        last_log_history = log_history[-1]
+        train_runtime = last_log_history['train_runtime']
+        train_samples_per_second = n_train_samples / train_runtime
+        time_info = {
+            'train_runtime': train_runtime,
+            'n_train_samples': n_train_samples,
+            'train_samples_per_second': train_samples_per_second,
+        }
+    except Exception:
+        pass
+    return time_info
 
 
 # monkey patching

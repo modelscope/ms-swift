@@ -5,7 +5,8 @@ from typing import *
 import numpy as np
 import torch
 
-from swift.llm import *
+from swift.llm import sft_main
+from swift.llm.utils import *
 from swift.utils import *
 
 
@@ -36,28 +37,30 @@ def test_memory_time(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
     random_state = np.random.RandomState(train_args.global_seed)
     args_kwargs = get_non_default_args(train_args)
     print(f'args_kwargs: {args_kwargs}')
+    train_dataset_sample = 1000  # save time
+    if args_kwargs.get('max_length', 2048) <= 2048:
+        train_dataset_sample = -1
     for i in range(train_args.run_time):
         sft_args = SftArguments(
             dataset_test_ratio=0,
             dataset=DatasetName.cls_fudan_news_zh,
-            train_dataset_sample=-1,
+            train_dataset_sample=train_dataset_sample,
             save_strategy='no',
             check_dataset_strategy='warning',
-            truncation_strategy='truncation_left',
             seed=get_seed(random_state),
-            preprocess_num_proc=4,
             **args_kwargs)
         output = sft_main(sft_args)
         torch.cuda.empty_cache()
-    output = {
-        'samples/s': f"{output['train_info']['samples/s']:.2f}",
+    res = {
+        'samples/s': f"{output['train_time']['train_samples_per_second']:.2f}",
         'memory': output['memory'],
         'train_args': check_json_format(args_kwargs),
         'model_info': output['model_info'],
+        'dataset_info': output['dataset_info']
     }
-    append_to_jsonl('scripts/benchmark/test_memory_time/result.jsonl', output)
-    print(output)
-    return output
+    append_to_jsonl('scripts/benchmark/test_memory_time/result.jsonl', res)
+    print(res)
+    return res
 
 
 test_memory_time_main = get_main(TrainArguments, test_memory_time)

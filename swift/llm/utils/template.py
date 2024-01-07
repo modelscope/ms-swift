@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-DEFAULT_SYSTEM = 'You are a helpful assistant.'  # qwen system
+DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
 
 
@@ -17,8 +17,7 @@ class TemplateType:
     chatglm_generation = 'chatglm-generation'
     # chat
     default = 'default'
-    chatml = 'chatml'
-    qwen = chatml
+    qwen = 'qwen'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -36,6 +35,8 @@ class TemplateType:
     codefuse_codellama = 'codefuse-codellama'
     deepseek_coder = 'deepseek-coder'
     cogagent = 'cogagent'
+    # compatibility. (Deprecated)
+    chatml = 'chatml'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -331,12 +332,12 @@ class Template:
                  prefix_has_system: Optional[Prompt] = None) -> None:
         self.prefix = prefix
         if _has_system(prefix):
-            assert prefix_has_system is None
-            assert default_system is not None
+            assert prefix_has_system is None, 'The prefix already contains {{SYSTEM}}.'
+            assert default_system is not None, 'You need to provide the `default_system`.'
             prefix_has_system = prefix
         self.prefix_has_system = prefix_has_system
         if self.prefix_has_system is None:
-            assert default_system is None
+            assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
         self.support_multi_round = self.chat_sep is not None
@@ -352,11 +353,11 @@ class Template:
                        truncation_strategy: Literal[
                            'delete', 'truncation_left'] = 'delete',
                        **kwargs) -> None:
-        assert self._is_init is False
+        assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
         if default_system is not None:
-            assert self.prefix_has_system is not None
+            assert self.prefix_has_system is not None, 'The template does not support `system`.'
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
@@ -365,7 +366,7 @@ class Template:
                                    Any]) -> Dict[str, Optional[List[int]]]:
         if not self._is_init:
             raise ValueError(
-                'Template has not been initialized, please call init_template(...) first.'
+                'Template is not initialized, please use the `get_template` function to obtain the template.'
             )
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
@@ -378,12 +379,12 @@ class Template:
         if history is None:
             history = []
         if len(history) > 0:
-            assert self.support_multi_round, 'the template not support multi-round chat'
+            assert self.support_multi_round, 'The template does not support multi-round chat.'
         if system is None:
             if self.use_default_system:
                 system = self.default_system
         else:
-            assert self.prefix_has_system is not None, 'not support `system`'
+            assert self.prefix_has_system is not None, 'The template does not support `system`.'
         if rejected_response is None:
             return _encode(self, query, response, history, system,
                            self.truncation_strategy)
@@ -586,12 +587,13 @@ register_template(TemplateType.default_generation,
 register_template(
     TemplateType.default_generation_bos,
     Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]))
-register_template(
-    TemplateType.chatml,
-    Template(
-        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-        ['<|im_end|>\n'], ['<|im_end|>'], 'You are a helpful assistant.',
-        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+qwen_template = Template(
+    [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+    ['<|im_end|>\n'], ['<|im_end|>'], DEFAULT_SYSTEM,
+    ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+register_template(TemplateType.qwen, qwen_template)
+register_template(TemplateType.chatml, deepcopy(qwen_template))
 
 register_template(
     TemplateType.yi,

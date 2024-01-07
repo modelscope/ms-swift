@@ -573,6 +573,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     'ZhipuAI/codegeex2-6b',
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
+    requires=['transformers<4.34'],
     support_vllm=True)
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
@@ -960,7 +961,10 @@ def get_model_tokenizer_qwen(model_dir: str,
                 v = True
             setattr(model_config, k, v)
 
-    torch_dtype = None
+    if model_kwargs.get('quantization_config') is None or not isinstance(
+            model_kwargs['quantization_config'], BitsAndBytesConfig):
+        # not (quantization + bnb)
+        torch_dtype = None
     use_flash_attn = kwargs.pop('use_flash_attn', None)
     if use_flash_attn is None:
         use_flash_attn = 'auto'
@@ -1023,35 +1027,35 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     ModelType.qwen_1_8b_chat,
     'qwen/Qwen-1_8B-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
     ModelType.qwen_72b_chat,
     'qwen/Qwen-72B-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
     ModelType.tongyi_finance_14b_chat,
     'TongyiFinance/Tongyi-Finance-14B-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
     ModelType.qwen_14b_chat,
     'qwen/Qwen-14B-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
     ModelType.qwen_7b_chat,
     'qwen/Qwen-7B-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True)
 def get_model_tokenizer_qwen_chat(*args, **kwargs):
@@ -1093,7 +1097,7 @@ def _qwen_vl_audio_decode(self,
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True)
 @register_model(
     ModelType.qwen_vl,
@@ -1137,7 +1141,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     ModelType.qwen_audio_chat,
     'qwen/Qwen-Audio-Chat',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     support_flash_attn=True,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
 @register_model(
@@ -1175,7 +1179,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_1_8b_chat_int8,
     'qwen/Qwen-1_8B-Chat-Int8',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
@@ -1184,7 +1188,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_1_8b_chat_int4,
     'qwen/Qwen-1_8B-Chat-Int4',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
@@ -1193,7 +1197,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_72b_chat_int8,
     'qwen/Qwen-72B-Chat-Int8',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
@@ -1202,7 +1206,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_72b_chat_int4,
     'qwen/Qwen-72B-Chat-Int4',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
@@ -1211,7 +1215,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.tongyi_finance_14b_chat_int4,
     'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
@@ -1220,7 +1224,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_vl_chat_int4,
     'qwen/Qwen-VL-Chat-Int4',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={
@@ -1232,7 +1236,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_14b_chat_int8,
     'qwen/Qwen-14B-Chat-Int8',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
@@ -1241,7 +1245,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_7b_chat_int8,
     'qwen/Qwen-7B-Chat-Int8',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
@@ -1250,7 +1254,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_14b_chat_int4,
     'qwen/Qwen-14B-Chat-Int4',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
@@ -1259,7 +1263,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     ModelType.qwen_7b_chat_int4,
     'qwen/Qwen-7B-Chat-Int4',
     LoRATM.qwen,
-    TemplateType.chatml,
+    TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
@@ -1461,7 +1465,7 @@ def get_model_tokenizer(
         fix_transformers_upgrade(model)
         fix_gradient_checkpointing_warning()
     tokenizer.model_type = model_type
-    assert tokenizer.eos_token is not None
+    assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     if model is not None and model_dir is not None:

@@ -25,7 +25,7 @@ from peft.utils import (_get_submodules, get_auto_gptq_quant_linear,
 from transformers import Conv1D
 
 from swift import get_logger
-from .utils import ActivationMixin, ModulesToSaveWrapper
+from .utils import ActivationMixin, ModulesToSaveWrapper, SwiftAdapter
 
 logger = get_logger()
 
@@ -52,7 +52,7 @@ class LoRAActivationMixin(ActivationMixin):
     def active_adapter(self) -> str:
         return self.get_activated_adapters()
 
-    def set_adapter(self, adapter_names):
+    def set_adapter(self, adapter_names, offload=None):
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]
 
@@ -63,9 +63,28 @@ class LoRAActivationMixin(ActivationMixin):
                 if key in adapter_names:
                     self.set_activation(key, True)
                     layer.requires_grad_(True)
+                    SwiftAdapter.save_memory(layer, key, self.module_key, True)
                 else:
                     self.set_activation(key, False)
                     layer.requires_grad_(False)
+                    SwiftAdapter.save_memory(
+                        layer, key, self.module_key, False, offload=offload)
+
+    def save_memory(self, adapter_name, activate, offload=None):
+        for layer_name in self.adapter_layer_names:
+            module_dict = getattr(self, layer_name)
+            for key, layer in module_dict.items():
+                if key == adapter_name:
+                    if activate:
+                        SwiftAdapter.save_memory(layer, layer_name + '.' + key,
+                                                 self.module_key, True)
+                    else:
+                        SwiftAdapter.save_memory(
+                            layer,
+                            layer_name + '.' + key,
+                            self.module_key,
+                            False,
+                            offload=offload)
 
     def merge(self, *args, **kwargs):
         if not self.unique_thread:
@@ -85,9 +104,10 @@ if is_bnb_available():
         def __init__(
             self,
             *args,
+            module_key: str,
             **kwargs,
         ):
-            super(Linear8bitLt, self).__init__()
+            super(Linear8bitLt, self).__init__(module_key)
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
@@ -100,9 +120,10 @@ if is_bnb_4bit_available():
         def __init__(
             self,
             *args,
+            module_key: str,
             **kwargs,
         ):
-            super(Linear4bit, self).__init__()
+            super(Linear4bit, self).__init__(module_key)
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
@@ -117,9 +138,10 @@ if is_auto_gptq_available():
             *args,
             use_qa_lora=False,
             group_size=None,
+            module_key: str,
             **kwargs,
         ):
-            super(QuantLinear, self).__init__()
+            super(QuantLinear, self).__init__(module_key)
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
             self.group_size = group_size
@@ -166,33 +188,34 @@ class Embedding(LoRAActivationMixin, _Embedding):
     def __init__(
         self,
         *args,
+        module_key: str,
         **kwargs,
     ) -> None:
-        super(Embedding, self).__init__()
+        super(Embedding, self).__init__(module_key)
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
 class Linear(LoRAActivationMixin, _Linear):
 
-    def __init__(self, *args, **kwargs):
-        super(Linear, self).__init__()
+    def __init__(self, *args, module_key: str, **kwargs):
+        super(Linear, self).__init__(module_key)
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
 
-    def __init__(self, *args, **kwargs):
-        super(Conv2d, self).__init__()
+    def __init__(self, *args, module_key: str, **kwargs):
+        super(Conv2d, self).__init__(module_key)
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
 
 class LoraParallelLinear(LoRAActivationMixin, _LoraParallelLinear):
 
-    def __init__(self, *args, **kwargs):
-        super(LoraParallelLinear, self).__init__()
+    def __init__(self, *args, module_key: str, **kwargs):
+        super(LoraParallelLinear, self).__init__(module_key)
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
@@ -249,7 +272,8 @@ class LoraModel(_LoraModel):
                 parent, target, target_name = _get_submodules(model, key)
 
                 if not isinstance(target, ModulesToSaveWrapper):
-                    new_module = ModulesToSaveWrapper(target, adapter_name)
+                    new_module = ModulesToSaveWrapper(
+                        target, adapter_name=adapter_name, module_key=key)
                     setattr(parent, target_name, new_module)
                 else:
                     target.update(adapter_name)
@@ -288,6 +312,24 @@ class LoraModel(_LoraModel):
                 model.modules_to_save = set(peft_config.modules_to_save)
             else:
                 model.modules_to_save.update(set(peft_config.modules_to_save))
+
+    def _convert_dtype(self, target: nn.Module, lora_dtype: str):
+        if lora_dtype == 'fp32':
+            torch_dtype = torch.float32
+        elif lora_dtype == 'fp16':
+            torch_dtype = torch.float16
+        elif lora_dtype == 'bf16':
+            torch_dtype = torch.bfloat16
+        else:
+            torch_dtype = None
+
+        if torch_dtype is not None:
+            if hasattr(target, 'lora_A'):
+                target.lora_A.to(torch_dtype)
+                target.lora_B.to(torch_dtype)
+            if hasattr(target, 'lora_embedding_A'):
+                target.lora_embedding_A.to(torch_dtype)
+                target.lora_embedding_B.to(torch_dtype)
 
     def _create_and_replace(
         self,
@@ -346,6 +388,7 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
+            self._convert_dtype(target, lora_config.lora_dtype)
         elif isinstance(target, Embedding):
             target.update_layer_embedding(
                 adapter_name,
@@ -354,6 +397,7 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
+            self._convert_dtype(target, lora_config.lora_dtype)
         elif isinstance(target, linear_types):
             target.update_layer(
                 adapter_name,
@@ -362,17 +406,24 @@ class LoraModel(_LoraModel):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
+            self._convert_dtype(target, lora_config.lora_dtype)
         else:
-            new_module = self._create_new_module(lora_config, adapter_name,
-                                                 target, **kwargs)
+            new_module = self._create_new_module(
+                lora_config,
+                adapter_name,
+                target,
+                current_key=current_key,
+                **kwargs)
             if new_module is not None:
                 if adapter_name != self.active_adapter:
                     # adding an additional adapter: it is not automatically trainable
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
+                self._convert_dtype(new_module, lora_config.lora_dtype)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
+        current_key = kwargs.pop('current_key')
         gptq_quantization_config = kwargs.get('gptq_quantization_config', None)
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             gptq_quantization_config)
@@ -400,7 +451,11 @@ class LoraModel(_LoraModel):
                 'threshold': target.state.threshold,
                 'index': target.index,
             })
-            new_module = Linear8bitLt(target, adapter_name, **eightbit_kwargs)
+            new_module = Linear8bitLt(
+                target,
+                adapter_name,
+                module_key=current_key,
+                **eightbit_kwargs)
         elif loaded_in_4bit and is_bnb_4bit_available() and isinstance(
                 target_base_layer, bnb.nn.Linear4bit):
             fourbit_kwargs = kwargs.copy()
@@ -412,22 +467,30 @@ class LoraModel(_LoraModel):
                 'quant_type':
                 target_base_layer.weight.quant_type,
             })
-            new_module = Linear4bit(target, adapter_name, **fourbit_kwargs)
+            new_module = Linear4bit(
+                target, adapter_name, module_key=current_key, **fourbit_kwargs)
         elif AutoGPTQQuantLinear is not None and isinstance(
                 target_base_layer, AutoGPTQQuantLinear):
-            new_module = QuantLinear(target, adapter_name, **kwargs)
+            new_module = QuantLinear(
+                target, adapter_name, module_key=current_key, **kwargs)
             target.qweight = target_base_layer.qweight
         elif isinstance(target_base_layer, torch.nn.Embedding):
             embedding_kwargs = kwargs.copy()
             embedding_kwargs.pop('fan_in_fan_out', None)
             embedding_kwargs.update(lora_config.loftq_config)
-            new_module = Embedding(target, adapter_name, **embedding_kwargs)
+            new_module = Embedding(
+                target,
+                adapter_name,
+                module_key=current_key,
+                **embedding_kwargs)
         elif isinstance(target_base_layer, torch.nn.Conv2d):
             kwargs.update(lora_config.loftq_config)
-            new_module = Conv2d(target, adapter_name, **kwargs)
+            new_module = Conv2d(
+                target, adapter_name, module_key=current_key, **kwargs)
         elif lora_config.use_merged_linear:
             new_module = MergedLinear(
                 adapter_name,
+                current_key,
                 target,
                 bias=bias,
                 enable_lora=lora_config.enable_lora,
@@ -439,7 +502,8 @@ class LoraModel(_LoraModel):
                     'Setting fan_in_fan_out to False.')
                 kwargs['fan_in_fan_out'] = lora_config.fan_in_fan_out = False
             kwargs.update(lora_config.loftq_config)
-            new_module = Linear(target, adapter_name, **kwargs)
+            new_module = Linear(
+                target, adapter_name, module_key=current_key, **kwargs)
         elif megatron_core and isinstance(
                 target_base_layer,  # noqa
             (  # noqa
@@ -464,6 +528,7 @@ class LoraModel(_LoraModel):
             new_module = LoraParallelLinear(
                 base_layer=target,
                 adapter_name=adapter_name,
+                module_key=current_key,
                 backend=megatron_core.tensor_parallel,
                 **megatron_kwargs)
         elif isinstance(target_base_layer, Conv1D):
@@ -474,7 +539,11 @@ class LoraModel(_LoraModel):
                 kwargs['fan_in_fan_out'] = lora_config.fan_in_fan_out = True
             kwargs.update(lora_config.loftq_config)
             new_module = Linear(
-                target, adapter_name, is_target_conv_1d_layer=True, **kwargs)
+                target,
+                adapter_name,
+                module_key=current_key,
+                is_target_conv_1d_layer=True,
+                **kwargs)
         else:
             logger.debug(
                 f'Target module {target} is not supported. Currently, only the following modules are supported: '
@@ -490,12 +559,13 @@ class LoRALayer(ActivationMixin):
     def __init__(
         self,
         adapter_name: str,
+        module_key: str,
         r: int,
         lora_alpha: int,
         lora_dropout: float,
         merge_weights: bool,
     ):
-        super().__init__()
+        super().__init__(module_key)
         self.adapter_name = adapter_name
         self.r = r
         self.lora_alpha = lora_alpha
@@ -515,6 +585,7 @@ class MergedLinear(nn.Linear, LoRALayer):
     # LoRA implemented in a dense layer
     def __init__(self,
                  adapter_name: str,
+                 module_key: str,
                  base_layer: nn.Linear,
                  r: int = 0,
                  lora_alpha: int = 1,
@@ -536,6 +607,7 @@ class MergedLinear(nn.Linear, LoRALayer):
         LoRALayer.__init__(
             self,
             adapter_name,
+            module_key,
             r=r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,

@@ -940,7 +940,7 @@ register_dataset(
 def add_self_cognition_dataset(
         train_dataset: HfDataset, dataset_sample: int,
         model_name: Tuple[str, Optional[str]],
-        model_author: Tuple[str, Optional[str]]) -> None:
+        model_author: Tuple[str, Optional[str]]) -> HfDataset:
     assert model_name[0] is not None
     assert model_author[0] is not None
     if model_name[1] is None:

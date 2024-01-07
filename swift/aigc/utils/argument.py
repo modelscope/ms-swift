@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 import torch.distributed as dist
@@ -34,6 +34,7 @@ class AnimateDiffArguments:
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
+    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
 
     gradient_checkpointing: bool = False
     batch_size: int = 1

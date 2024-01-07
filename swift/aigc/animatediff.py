@@ -33,7 +33,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from swift import LoRAConfig, Swift, get_logger, push_to_hub
 from swift.aigc.utils import AnimateDiffArguments
-from swift.utils import get_dist_setting, is_dist
+from swift.utils import get_dist_setting, get_main, is_dist
 
 logger = get_logger()
 
@@ -241,6 +241,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
             r=args.lora_rank,
             target_modules=args.trainable_modules,
             lora_alpha=args.lora_alpha,
+            lora_dtype=args.lora_dtype,
             lora_dropout=args.lora_dropout_p)
         unet = Swift.prepare_model(unet, lora_config)
         logger.info(f'lora_config: {lora_config}')
@@ -524,7 +525,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                                **kwargs):
                     state_dict = self.state_dict_origin()
                     return {
-                        key: value
+                        key.replace('base_layer.', ''): value
                         for key, value in state_dict.items()
                         if 'lora' not in key
                     }
@@ -595,3 +596,6 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
     if is_dist():
         dist.destroy_process_group()
+
+
+animatediff_main = get_main(AnimateDiffArguments, animatediff_sft)

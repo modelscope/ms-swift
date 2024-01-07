@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from swift.llm import *
+from swift.llm.utils import *
 from swift.utils import lower_bound, seed_everything
 
 SKPT_TEST = True

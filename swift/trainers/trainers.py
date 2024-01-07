@@ -35,19 +35,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             'gen_len':
             0,
             'memory': {},
-            'train_time':
-            0.,
             'model':
             self.model.get_trainable_parameters() if hasattr(
                 self.model, 'get_trainable_parameters') else None,
         }
-
-    def training_step(self, *args, **kwargs) -> torch.Tensor:
-        train_time = time.time()
-        training_output = super().training_step(*args, **kwargs)
-        train_time = time.time() - train_time
-        self.perf['train_time'] = self.perf['train_time'] + train_time
-        return training_output
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         super().train(*args, **kwargs)
@@ -113,7 +104,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         generate_inputs = inputs.copy()
         if has_labels:
             _labels = inputs['labels'][0]
-            n_mask = lower_bound(0, len(_labels), lambda i: _labels[i] != -100)
+            n_mask = 0
+            for i in range(len(_labels)):
+                if _labels[i] != -100:
+                    n_mask = i
+                    break
+
             for k in ['input_ids', 'attention_mask']:
                 generate_inputs[k] = generate_inputs[k][:, :n_mask]
             generate_inputs['labels'] = generate_inputs['labels'][:, n_mask:]

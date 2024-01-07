@@ -8,7 +8,7 @@ python llm_sft.py \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type chatml \
+    --template_type qwen \
     --dtype AUTO \
     --output_dir output \
     --dataset damo-agent-mini-zh \

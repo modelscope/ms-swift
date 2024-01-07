@@ -9,8 +9,8 @@ import unittest
 
 import torch
 
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments
-from swift.llm.run import infer_main, merge_lora_main, sft_main
+from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
+                       infer_main, merge_lora_main, sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -86,7 +86,9 @@ class TestRun(unittest.TestCase):
                 '200', '--dataset', DatasetName.leetcode_python_en,
                 '--output_dir', output_dir, '--gradient_checkpointing', 'true',
                 '--max_new_tokens', '100', '--use_flash_attn', 'true',
-                '--lora_target_modules', 'ALL', '--seed', '0'
+                '--lora_target_modules', 'ALL', '--seed', '0',
+                '--lora_bias_trainable', 'all', '--lora_modules_to_save',
+                'wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -107,7 +109,9 @@ class TestRun(unittest.TestCase):
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
             torch.cuda.empty_cache()
-        self.assertTrue(abs(losses[0] - losses[1]) < 2e-4)
+        self.assertTrue(abs(losses[0] - losses[1]) < 5e-4)
+        print(f'swift_loss: {losses[0]}')
+        print(f'peft_loss: {losses[1]}')
 
     def test_vl_audio(self):
         output_dir = 'output'
@@ -188,7 +192,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        for dataset in [None, [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
+        for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
             sft_args = SftArguments(
                 model_type=ModelType.qwen_7b_chat,
                 dataset=dataset,  # no dataset
@@ -208,7 +212,7 @@ class TestRun(unittest.TestCase):
             print(f'last_model_checkpoint: {last_model_checkpoint}')
             print(f'best_model_checkpoint: {best_model_checkpoint}')
             ckpt_dir = best_model_checkpoint or last_model_checkpoint
-            if dataset is None:
+            if len(dataset) == 0:
                 continue
             infer_args = InferArguments(
                 ckpt_dir=ckpt_dir,

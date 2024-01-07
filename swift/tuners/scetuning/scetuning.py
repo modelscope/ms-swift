@@ -154,7 +154,8 @@ class SCETuning(SwiftAdapter):
 
         # refactor forward function
         def _forward_encoder_mode(self, *args, **kwargs):
-            args = self.forward_origin(*args, **kwargs)
+            args = getattr(self, f'forward_origin_{adapter_name}')(*args,
+                                                                   **kwargs)
             args_type = type(args)
             if args_type is tuple:
                 args = args[0]
@@ -185,12 +186,15 @@ class SCETuning(SwiftAdapter):
             if args_type is tuple:
                 args_main = (args_sub_tuner_new, *args_sub_extra)
 
-            args_main = self.forward_origin(*args_main, **kwargs)
+            args_main = getattr(self,
+                                f'forward_origin_{adapter_name}')(*args_main,
+                                                                  **kwargs)
             return args_main
 
         # 3. inject the tuners
         for tuner_id, t_module in enumerate(target_module_ins_list):
-            t_module.forward_origin = getattr(t_module, 'forward')
+            setattr(t_module, f'forward_origin_{adapter_name}',
+                    getattr(t_module, 'forward'))
             if config.tuner_mode in ('encoder', 'identity'):
                 _forward = _forward_encoder_mode
             elif config.tuner_mode == 'decoder':
@@ -200,6 +204,8 @@ class SCETuning(SwiftAdapter):
             setattr(t_module, 'forward', types.MethodType(_forward, t_module))
             tuner_op = SCETunerModule(
                 name=config.tuner_op,
+                adapter_name=adapter_name,
+                module_key=str(tuner_id),
                 dim=dims[tuner_id],
                 tuner_length=int(dims[tuner_id] * config.down_ratio))
             setattr(t_module, f'scetuner_{adapter_name}', tuner_op)
@@ -221,19 +227,25 @@ class SCETuning(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str,
-                         activate: bool):
-        modules: List[torch.nn.Module] = find_sub_module(
-            module, f'scetuner_{adapter_name}')
+    def activate_adapter(module: torch.nn.Module,
+                         adapter_name: str,
+                         activate: bool,
+                         offload: str = None):
+        modules = find_sub_module(module, f'scetuner_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
+            _module: nn.Module
             _module.set_activation(adapter_name, activate)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
+                                     activate, offload)
 
 
 class SCETunerModule(nn.Module, ActivationMixin):
 
     def __init__(self,
                  name,
+                 adapter_name,
+                 module_key,
                  dim,
                  tuner_length,
                  tuner_type=None,
@@ -242,8 +254,9 @@ class SCETunerModule(nn.Module, ActivationMixin):
                  zero_init_last=True,
                  use_bias=True):
         super(SCETunerModule, self).__init__()
-        super(nn.Module, self).__init__()
+        super(nn.Module, self).__init__(module_key)
         self.name = name
+        self.adapter_name = adapter_name
         self.dim = dim
         if name == 'SCEAdapter':
             from .scetuning_components import SCEAdapter
@@ -257,7 +270,10 @@ class SCETunerModule(nn.Module, ActivationMixin):
             raise Exception(f'Error tuner op {name}')
 
     def forward(self, x, x_shortcut=None, use_shortcut=True, **kwargs):
+        if not self.is_activated(self.adapter_name):
+            return x
         if self.name == 'SCEAdapter':
+            self.tuner_op.to(x.device)
             out = self.tuner_op(x)
         else:
             raise Exception(f'Error tuner op {self.name}')

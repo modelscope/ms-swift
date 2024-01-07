@@ -1,13 +1,15 @@
+import asyncio
 import inspect
 import os
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 from modelscope import GenerationConfig, snapshot_download
 from torch import dtype as Dtype
 from tqdm import tqdm
-from vllm import EngineArgs, LLMEngine, SamplingParams
+from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
+                  SamplingParams)
 
 from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
@@ -24,6 +26,7 @@ def get_vllm_engine(model_type: str,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
+                    use_async: bool = False,
                     **kwargs) -> LLMEngine:
     if engine_kwargs is None:
         engine_kwargs = {}
@@ -55,7 +58,13 @@ def get_vllm_engine(model_type: str,
     tokenizer = get_model_tokenizer(
         model_type, load_model=False, model_dir=model_dir)[1]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
-    engine_args = EngineArgs(
+    if use_async:
+        engine_args_cls = AsyncEngineArgs
+        llm_engine_cls = AsyncLLMEngine
+    else:
+        engine_args_cls = EngineArgs
+        llm_engine_cls = LLMEngine
+    engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
         dtype=dtype_mapping[torch_dtype],
@@ -68,7 +77,8 @@ def get_vllm_engine(model_type: str,
         destroy_model_parallel()
     except ImportError:
         pass
-    llm_engine = LLMEngine.from_engine_args(engine_args)
+    llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     llm_engine.tokenizer = tokenizer
@@ -91,25 +101,42 @@ class VllmGenerationConfig(SamplingParams):
 
     def __init__(
         self,
-        max_length: int = 20,
-        max_new_tokens: Optional[int] = None,
+        max_new_tokens: Optional[int] = 64,  # max_tokens
         temperature: float = 1.,
         top_k: int = 50,  # -1: all
-        top_p: float = 1.0,
+        top_p: float = 1.,
         repetition_penalty: float = 1.,
-        length_penalty: float = 1.0,
+        num_beams: int = 1,
+        *,
+        n: int = 1,
+        length_penalty: float = 1.,
         stop: Optional[List[str]] = None,
         **kwargs,
-    ):
+    ) -> None:
         # The parameter design is similar to transformers.GenerationConfig.
+        if max_new_tokens is None:
+            max_new_tokens = 64
+        if num_beams > 1:
+            top_k = -1
+            top_p = 1
+            temperature = 0
+            logger.warning(
+                'The output of num_beams in vllm may not be consistent with the output of num_beams in transformers.'
+            )
         if top_k == 0:
             top_k = -1
-        self.max_new_tokens = max_new_tokens
-        kwargs['max_tokens'] = max_length
+        if stop is None:
+            stop = []
+        kwargs['max_tokens'] = max_new_tokens
         kwargs['temperature'] = temperature
         kwargs['top_k'] = top_k
         kwargs['top_p'] = top_p
         kwargs['repetition_penalty'] = repetition_penalty
+        if num_beams > 1:
+            assert 'use_beam_search' not in kwargs and 'best_of' not in kwargs
+            kwargs['use_beam_search'] = True
+            kwargs['best_of'] = num_beams
+        kwargs['n'] = n
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
         parameters = inspect.signature(SamplingParams.__init__).parameters
@@ -121,13 +148,15 @@ class VllmGenerationConfig(SamplingParams):
                 kwargs.pop(k)
         super().__init__(**kwargs)
 
-    @property
-    def max_length(self) -> int:
-        return self.max_tokens
-
-    @max_length.setter
-    def max_length(self, value: int) -> None:
-        self.max_tokens = value
+    def __setattr__(self, key: str, value: str) -> None:
+        if key == 'max_new_tokens':
+            self.max_tokens = value
+        elif key == 'max_length':
+            raise ValueError(
+                '`max_length` is not supported, please use `max_new_tokens` for setting.'
+            )
+        else:
+            super().__setattr__(key, value)
 
 
 def inference_stream_vllm(
@@ -136,7 +165,8 @@ def inference_stream_vllm(
         request_list: List[Dict[str, Any]],
         *,
         generation_config: Optional[VllmGenerationConfig] = None,
-        use_tqdm: bool = False) -> List[Dict[str, Any]]:
+        use_tqdm: bool = False,
+        **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -150,6 +180,9 @@ def inference_stream_vllm(
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
+    if generation_config.use_beam_search is True:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
@@ -160,9 +193,6 @@ def inference_stream_vllm(
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
             generation_config.stop.append(tokenizer.eos_token)
-        if generation_config.max_new_tokens is not None:
-            generation_config.max_length = generation_config.max_new_tokens + len(
-                input_ids)
         llm_engine.add_request(str(i), None, generation_config, input_ids)
 
     batch_size = len(request_list)
@@ -203,7 +233,8 @@ def inference_vllm(llm_engine: LLMEngine,
                    use_tqdm: bool = False,
                    verbose: bool = False,
                    prompt_prefix: str = '[PROMPT]',
-                   output_prefix: str = '[OUTPUT]') -> List[Dict[str, Any]]:
+                   output_prefix: str = '[OUTPUT]',
+                   **kwargs) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -227,9 +258,6 @@ def inference_vllm(llm_engine: LLMEngine,
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
             generation_config.stop.append(tokenizer.eos_token)
-        if generation_config.max_new_tokens is not None:
-            generation_config.max_length = generation_config.max_new_tokens + len(
-                input_ids)
         llm_engine.add_request(str(i), None, generation_config, input_ids)
 
     batch_size = len(request_list)
@@ -262,7 +290,8 @@ def inference_vllm(llm_engine: LLMEngine,
 
 
 def prepare_vllm_engine_template(
-        args: InferArguments) -> Tuple[LLMEngine, Template]:
+        args: InferArguments,
+        use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
@@ -280,9 +309,15 @@ def prepare_vllm_engine_template(
         args.torch_dtype,
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
+        use_async=use_async,
         **kwargs)
     tokenizer = llm_engine.tokenizer
-    logger.info(f'model_config: {llm_engine.model_config.hf_config}')
+    if use_async:
+        model_config = asyncio.run(llm_engine.get_model_config())
+        llm_engine.model_config = model_config
+    else:
+        model_config = llm_engine.model_config
+    logger.info(f'model_config: {model_config.hf_config}')
     if not args.do_sample:
         args.temperature = 0
     generation_config = VllmGenerationConfig(
@@ -291,6 +326,7 @@ def prepare_vllm_engine_template(
         top_k=args.top_k,
         top_p=args.top_p,
         repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
         stop=[tokenizer.eos_token])
     logger.info(f'generation_config: {generation_config}')
     llm_engine.generation_config = generation_config

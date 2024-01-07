@@ -6,6 +6,7 @@ from types import FunctionType, MethodType
 from typing import List, Union
 
 from torch.nn import Module
+from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
                                         HPSearchBackend, HubStrategy,
                                         IntervalStrategy, SchedulerType)
@@ -17,7 +18,7 @@ except ImportError:
     ShardedDDPOption = None
 
 
-def can_return_loss(model: Module) -> List[str]:
+def can_return_loss(model: Module) -> bool:
     """Check if a given model can return loss."""
     signature = inspect.signature(model.forward)
     for p in signature.parameters:

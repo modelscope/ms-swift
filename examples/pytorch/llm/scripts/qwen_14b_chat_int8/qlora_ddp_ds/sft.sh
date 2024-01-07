@@ -12,7 +12,7 @@ torchrun \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type chatml \
+    --template_type qwen \
     --dtype fp16 \
     --output_dir output \
     --ddp_backend nccl \
