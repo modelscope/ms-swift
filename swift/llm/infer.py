@@ -15,7 +15,7 @@ from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
 from .utils import (InferArguments, Template, get_additional_saved_files,
                     get_dataset, get_model_tokenizer, get_template, inference,
-                    inference_stream, set_generation_config)
+                    inference_stream, is_lora, set_generation_config)
 
 logger = get_logger()
 
@@ -138,7 +138,7 @@ def prepare_model_template(
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
     # Preparing LoRA
-    if args.sft_type == 'lora' and args.ckpt_dir is not None:
+    if is_lora(args.sft_type) and args.ckpt_dir is not None:
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
 

@@ -14,6 +14,10 @@ from torch import nn
 from transformers.models.llama.modeling_llama import (apply_rotary_pos_emb,
                                                       repeat_kv, rotate_half)
 
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 def forward_flashattn(
     self,
@@ -306,8 +310,8 @@ def forward_flashattn_inference(
                ))  # noqa
 
     kv_seq_len = k.shape[1]
-    if past_key_value is not None:
-        past_kv_len = past_key_value[0].shape[2]
+    if past_key_value is not None and len(past_key_value):
+        past_kv_len = past_key_value.seen_tokens
         kv_seq_len += past_kv_len
 
     cos_sin = self.rotary_emb(v, seq_len=kv_seq_len)
@@ -316,15 +320,13 @@ def forward_flashattn_inference(
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
 
-    if past_key_value is not None:
-        assert (flash_attn_version >=
-                '2.1.0'), 'past_key_value support requires flash-attn >= 2.1.0'
-        # reuse k, v
-        k = torch.cat([past_key_value[0].transpose(1, 2), k], dim=1)
-        v = torch.cat([past_key_value[1].transpose(1, 2), v], dim=1)
-
-    past_key_value = (k.transpose(1, 2),
-                      v.transpose(1, 2)) if use_cache else None
+    if use_cache:
+        k, v = past_key_value.update(
+            k.transpose(1, 2), v.transpose(1, 2), layer_idx=self.idx)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+    else:
+        past_key_value = None
 
     if attention_mask is None:
         output = flash_attn_func(
@@ -405,12 +407,13 @@ def forward_flashattn_inference_s2_attn(
 
 def patch_llama_forward(model: nn.Module, forward_function) -> None:
     # Compatible with transformers device_map
-    for m in model.model.layers:
+    for idx, m in enumerate(model.model.layers):
         new_forward = MethodType(forward_function, m.self_attn)
         if hasattr(model, '_old_forward'):
             m.self_attn._old_forward = new_forward
         else:
             m.self_attn.forward = new_forward
+        m.self_attn.idx = idx
 
 
 def replace_llama_attn(model: nn.Module, use_flash_attn=True):
@@ -425,4 +428,7 @@ def replace_llama_attn(model: nn.Module, use_flash_attn=True):
             _prepare_decoder_attention_mask)
         patch_llama_forward(model, forward_flashattn_inference_s2_attn)
     else:
+        logger.warn(
+            'The source code of LongLoRA without flash '
+            'attention may has some problems, please use with careful.')
         patch_llama_forward(model, forward_noflashattn)
