@@ -225,7 +225,7 @@ class SftArguments:
                 else:
                     self.only_save_model = True
         elif self.sft_type == 'full':
-            assert 0 <= self.freeze_parameters < 1
+            assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', (
                 "Fine-tuning with dtype=='fp16' can lead to NaN issues. "
