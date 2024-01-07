@@ -69,9 +69,9 @@ class PushToMsHubMixin:
 
         # Get current file content
         repo_dir = self.repo.model_dir
-        gitignore_path = os.path.join(repo_dir, file_name)
-        if os.path.exists(gitignore_path):
-            with open(gitignore_path, 'r', encoding='utf-8') as f:
+        file_path = os.path.join(repo_dir, file_name)
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
                 current_content = f.read()
         else:
             current_content = ''
@@ -85,7 +85,7 @@ class PushToMsHubMixin:
 
         # Write the file if it has changed
         if content != current_content:
-            with open(gitignore_path, 'w', encoding='utf-8') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 logger.debug(f'Writing {file_name} file. Content: {content}')
                 f.write(content)
         self.repo.push(commit_message)
