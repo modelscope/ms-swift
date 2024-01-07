@@ -1,4 +1,6 @@
 import os
+import typing
+from dataclasses import fields
 from functools import partial, wraps
 from typing import Any, Dict, List, OrderedDict, Type
 
@@ -146,3 +148,23 @@ class BaseUI:
         cls.lang = lang
         for sub_ui in cls.sub_ui:
             sub_ui.lang = lang
+
+    @staticmethod
+    def get_choices_from_dataclass(dataclass):
+        choice_dict = {}
+        for f in fields(dataclass):
+            if 'choices' in f.metadata:
+                choice_dict[f.name] = f.metadata['choices']
+            if 'Literal' in type(f.type).__name__ and typing.get_args(f.type):
+                choice_dict[f.name] = typing.get_args(f.type)
+        return choice_dict
+
+    @staticmethod
+    def get_default_value_from_dataclass(dataclass):
+        default_dict = {}
+        for f in fields(dataclass):
+            if hasattr(dataclass, f.name):
+                default_dict[f.name] = getattr(dataclass, f.name)
+            else:
+                default_dict[f.name] = None
+        return default_dict

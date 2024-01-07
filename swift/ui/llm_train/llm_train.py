@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-from dataclasses import fields
 from typing import Dict, Type
 
 import gradio as gr
@@ -147,12 +146,8 @@ class LLMTrain(BaseUI):
         }
     }
 
-    choice_dict = {}
-    default_dict = {}
-    for f in fields(SftArguments):
-        if 'choices' in f.metadata:
-            choice_dict[f.name] = f.metadata['choices']
-        default_dict[f.name] = getattr(SftArguments, f.name)
+    choice_dict = BaseUI.get_choices_from_dataclass(SftArguments)
+    default_dict = BaseUI.get_default_value_from_dataclass(SftArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -210,11 +205,7 @@ class LLMTrain(BaseUI):
     @classmethod
     def train(cls, *args):
         ignore_elements = ('model_type', 'logging_dir', 'more_params')
-        sft_args = fields(SftArguments)
-        sft_args = {
-            arg.name: getattr(SftArguments, arg.name)
-            for arg in sft_args
-        }
+        sft_args = cls.get_default_value_from_dataclass(SftArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
@@ -244,7 +235,7 @@ class LLMTrain(BaseUI):
         params = ''
 
         for e in kwargs:
-            if kwargs_is_list[e]:
+            if e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
