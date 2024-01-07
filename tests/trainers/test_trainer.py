@@ -96,27 +96,29 @@ class TestTrainer(unittest.TestCase):
         val_dataset = val_dataset.map(tokenize_func)
 
         data_collator = partial(data_collate_fn, tokenizer=tokenizer)
-        trainer_args = TrainingArguments(
-            self.tmp_dir,
-            do_train=True,
-            do_eval=True,
-            num_train_epochs=1,
-            evaluation_strategy='steps',
-            save_strategy='steps',
-            per_device_train_batch_size=4,
-            per_device_eval_batch_size=4,
-            push_to_hub=push_to_hub,
-            hub_token=None,  # use env var
-            hub_private_repo=True,
-            push_hub_strategy='push_best',
-            hub_model_id=self.hub_model_id,
-            overwrite_output_dir=True,
-            save_steps=10,
-            save_total_limit=2,
-            metric_for_best_model='loss',
-            greater_is_better=False,
-            gradient_accumulation_steps=1,
-            eval_steps=10)
+        for save_only_model in [True, False]:
+            trainer_args = TrainingArguments(
+                self.tmp_dir,
+                do_train=True,
+                do_eval=True,
+                num_train_epochs=1,
+                evaluation_strategy='steps',
+                save_strategy='steps',
+                per_device_train_batch_size=4,
+                per_device_eval_batch_size=4,
+                push_to_hub=push_to_hub,
+                hub_token=None,  # use env var
+                hub_private_repo=True,
+                push_hub_strategy='push_best',
+                hub_model_id=self.hub_model_id,
+                overwrite_output_dir=True,
+                save_steps=10,
+                save_total_limit=2,
+                metric_for_best_model='loss',
+                greater_is_better=False,
+                gradient_accumulation_steps=1,
+                eval_steps=10,
+                save_only_model=save_only_model)
         trainer_args._n_gpu = 1
         trainer = BertTrainer(model, trainer_args, data_collator,
                               train_dataset, val_dataset, tokenizer)

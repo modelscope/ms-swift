@@ -11,7 +11,9 @@ import json
 import numpy as np
 import safetensors
 import torch
+import transformers
 from datasets import Dataset as HfDataset
+from packaging import version
 from peft import PeftModel
 from requests.exceptions import HTTPError
 from torch.nn import Module
@@ -448,11 +450,17 @@ class SwiftMixin:
                     shutil.copy(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
-        # transformers>=4.36 support save_only_model
-        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
-        # want to save except FullyShardedDDP.
-        # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model"
+        self.state.last_model_checkpoint = os.path.join(
+            self.args.output_dir, f'checkpoint-{self.state.global_step}')
+        logger.info(
+            f'Saving model checkpoint to {self.state.last_model_checkpoint}')
+        if version.parse(transformers.__version__) >= version.parse(
+                '4.36') or not self.args.save_only_model:
+            return super()._save_checkpoint(model, trial, metrics)
+        else:
+            return self._save_only_model(model, trial, metrics)
 
+    def _save_only_model(self, model, trial, metrics=None):
         # Save model checkpoint
         checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
 
@@ -461,21 +469,7 @@ class SwiftMixin:
 
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
-        if os.path.exists(output_dir) and len(os.listdir(output_dir)) > 0:
-            logger.warning(
-                f'Checkpoint destination directory {output_dir} already exists and is non-empty.'
-                'Saving will proceed but saved results may be invalid.')
-            staging_output_dir = output_dir
-        else:
-            staging_output_dir = os.path.join(run_dir,
-                                              f'tmp-{checkpoint_folder}')
-        self.save_model(staging_output_dir, _internal_call=True)
-
-        if not self.args.save_only_model:
-            # Save optimizer and scheduler
-            self._save_optimizer_and_scheduler(staging_output_dir)
-            # Save RNG state
-            self._save_rng_state(staging_output_dir)
+        self.save_model(output_dir, _internal_call=True)
 
         # Determine the new best metric / best model checkpoint
         if metrics is not None and self.args.metric_for_best_model is not None:
@@ -494,26 +488,12 @@ class SwiftMixin:
         # Save the Trainer state
         if self.args.should_save:
             self.state.save_to_json(
-                os.path.join(staging_output_dir, TRAINER_STATE_NAME))
+                os.path.join(output_dir, TRAINER_STATE_NAME))
 
+        # push to hub
         if self.args.push_to_hub:
-            self._push_from_checkpoint(staging_output_dir)
+            self._push_from_checkpoint(output_dir)
 
-        # Place checkpoint in final location after all saving is finished.
-        # First wait for everyone to finish writing
-        self.args.distributed_state.wait_for_everyone()
-        # Then go through the rewriting process starting on process 0
-        if staging_output_dir != output_dir:
-            with self.args.main_process_first(
-                    desc='Renaming model checkpoint folder to true location',
-                    local=self.args.save_on_each_node):
-                if os.path.exists(staging_output_dir):
-                    os.rename(staging_output_dir, output_dir)
-
-        # last_model_checkpoint
-        self.state.last_model_checkpoint = output_dir
-        logger.info(
-            f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         # Maybe delete some older checkpoints.
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
