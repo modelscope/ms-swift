@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 78GB GPU memory
+# 2 * 80GB GPU memory
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
@@ -12,7 +12,8 @@ swift sft \
     --max_length 4096 \
     --learning_rate 2e-5 \
     --use_flash_attn true \
-    --only_save_model true \
+    --save_only_model true \
     --dataset codefuse-evol-instruction-zh \
-    --freeze_parameters 0.2 \
+    --freeze_parameters 0.25 \
+    --additional_trainable_parameters transformer.wte \
     --preprocess_num_proc 4 \

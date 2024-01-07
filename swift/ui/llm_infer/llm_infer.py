@@ -78,10 +78,7 @@ class LLMInfer(BaseUI):
         },
     }
 
-    choice_dict = {}
-    for f in fields(InferArguments):
-        if 'choices' in f.metadata:
-            choice_dict[f.name] = f.metadata['choices']
+    choice_dict = BaseUI.get_choices_from_dataclass(InferArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -143,11 +140,7 @@ class LLMInfer(BaseUI):
     def prepare_checkpoint(cls, *args):
         global model, tokenizer, template
         torch.cuda.empty_cache()
-        infer_args = fields(InferArguments)
-        infer_args = {
-            arg.name: getattr(InferArguments, arg.name)
-            for arg in infer_args
-        }
+        infer_args = cls.get_default_value_from_dataclass(InferArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}

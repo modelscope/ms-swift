@@ -11,6 +11,6 @@ swift sft \
     --max_length 2048 \
     --learning_rate 2e-5 \
     --use_flash_attn true \
-    --only_save_model true \
+    --save_only_model true \
     --dataset aishell1-mini-zh \
     --lazy_tokenize true \

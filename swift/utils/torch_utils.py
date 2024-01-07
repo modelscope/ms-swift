@@ -131,6 +131,23 @@ def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
         p.requires_grad = False
 
 
+def activate_model_parameters(
+        model: Module, additional_trainable_parameters: List[int]) -> None:
+    if len(additional_trainable_parameters) == 0:
+        return
+    has_activate = False
+    for n, p in model.named_parameters():
+        for additional_tp in additional_trainable_parameters:
+            if n.startswith(additional_tp):
+                p.requires_grad = True
+                has_activate = True
+    if not has_activate:
+        logger.warning(
+            'len(additional_trainable_parameters) > 0 but no parameters are activated. '
+            f'additional_trainable_parameters: {additional_trainable_parameters}'
+        )
+
+
 def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     """String broadcasting in case of DDP
     string: main rank: str

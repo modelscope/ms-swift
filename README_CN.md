@@ -126,7 +126,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 多模态:
     - qwen-vl 系列: [qwen-vl](https://modelscope.cn/models/qwen/Qwen-VL/summary), [qwen-vl-chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary), [qwen-vl-chat-int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)
     - qwen-audio 系列: [qwen-audio](https://modelscope.cn/models/qwen/Qwen-Audio/summary), [qwen-audio-chat](https://modelscope.cn/models/qwen/Qwen-Audio-Chat/summary)
-    - Zhipu多模态模型:[cogagent-chat](https://www.modelscope.cn/models/ZhipuAI/cogagent-chat/summary),[cogagent-vqa](https://www.modelscope.cn/models/ZhipuAI/cogagent-vqa/summary)
+    - Zhipu多模态模型: [cogagent-chat](https://www.modelscope.cn/models/ZhipuAI/cogagent-chat/summary), [cogagent-vqa](https://www.modelscope.cn/models/ZhipuAI/cogagent-vqa/summary)
   - 通用:
     - qwen 系列: [qwen-1_8b-chat](https://modelscope.cn/models/qwen/Qwen-1_8B/summary), [qwen-1_8b-chat-int4](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat-Int4/summary), [qwen-1_8b-chat-int8](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat-Int8/summary), [qwen-7b](https://modelscope.cn/models/qwen/Qwen-7B/summary), [qwen-7b-chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary), [qwen-7b-chat-int4](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int4/summary), [qwen-7b-chat-int8](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int8/summary), [qwen-14b](https://modelscope.cn/models/qwen/Qwen-14B/summary), [qwen-14b-chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary), [qwen-14b-chat-int4](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int4/summary), [qwen-14b-chat-int8](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int8/summary), [qwen-72b](https://modelscope.cn/models/qwen/Qwen-72B/summary), [qwen-72b-chat](https://modelscope.cn/models/qwen/Qwen-72B-Chat/summary), [qwen-72b-chat-int4](https://modelscope.cn/models/qwen/Qwen-72B-Chat-Int4/summary), [qwen-72b-chat-int8](https://modelscope.cn/models/qwen/Qwen-72B-Chat-Int8/summary)
     - chatglm 系列: [chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary), [chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary), [chatglm3-6b-base](https://modelscope.cn/models/ZhipuAI/chatglm3-6b-base/summary), [chatglm3-6b](https://modelscope.cn/models/ZhipuAI/chatglm3-6b/summary), [chatglm3-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm3-6b-32k/summary)
@@ -169,7 +169,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation
-  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek
+  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, codefuse-codellama, deepseek-coder, cogagent
 
 ## 🔥SCEdit
 
