@@ -296,10 +296,19 @@ class SwiftMixin:
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
         # mro
-        super().__init__(model, args, data_collator, train_dataset,
-                         eval_dataset, tokenizer, model_init, compute_metrics,
-                         callbacks, optimizers, preprocess_logits_for_metrics,
-                         **kwargs)
+        super().__init__(
+            model=model,
+            args=args,
+            data_collator=data_collator,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            model_init=model_init,
+            compute_metrics=compute_metrics,
+            callbacks=callbacks,
+            optimizers=optimizers,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            **kwargs)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
 
