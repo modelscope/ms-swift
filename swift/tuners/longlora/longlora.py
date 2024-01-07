@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from swift import LoRA, LoRAConfig, SwiftOutput
 from swift.tuners.lora import lora_state_dict, mark_lora_as_trainable
+from swift.tuners.lora_layers import LoraModel
 
 
 class LongLoRAModelType:
@@ -59,17 +60,7 @@ class LongLoRA(LoRA):
     def prepare_model(model: nn.Module, config: LongLoRAConfig,
                       adapter_name: str):
         """Prepare a model with `LongLoRAConfig`"""
-        LoRA._dynamic_patch_lora(
-            model,
-            target_modules=config.target_modules,
-            r=config.r,
-            adapter_name=adapter_name,
-            lora_alpha=config.lora_alpha,
-            lora_dropout=config.lora_dropout,
-            merge_weights=config.merge_weights,
-            use_merged_linear=config.use_merged_linear,
-            enable_lora=config.enable_lora,
-            fan_in_fan_out=config.fan_in_fan_out)
+        LoraModel(model, config, adapter_name)
 
         def state_dict_callback(state_dict, adapter_name):
             _state_dict = lora_state_dict(state_dict, adapter_name,
