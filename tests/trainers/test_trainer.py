@@ -60,7 +60,8 @@ class TestTrainer(unittest.TestCase):
         logger.info(f'self.hub_model_id: {self.hub_model_id}')
 
     def tearDown(self):
-        shutil.rmtree(self.tmp_dir)
+        if os.path.isdir(self.tmp_dir):
+            shutil.rmtree(self.tmp_dir)
         # api = HubApi()
         # api.delete_model(self.hub_model_id)
         # logger.info(f'delete model: {self.hub_model_id}')

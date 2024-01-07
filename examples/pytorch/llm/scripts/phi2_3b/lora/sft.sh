@@ -12,7 +12,7 @@ swift sft \
     --max_length 2048 \
     --learning_rate 1e-4 \
     --use_flash_attn true \
-    --only_save_model true \
+    --save_only_model true \
     --lora_target_modules ALL \
     --dataset codefuse-python-en \
     --gradient_checkpointing false \

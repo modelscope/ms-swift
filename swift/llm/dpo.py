@@ -165,7 +165,7 @@ def llm_dpo(args: DPOArguments) -> str:
         predict_with_generate=args.predict_with_generate,
         generation_config=generation_config,
         local_rank=local_rank,
-        only_save_model=args.only_save_model,
+        save_only_model=args.save_only_model,
         train_sampler_random=args.train_sampler_random,
         report_to=args.report_to,
         deepspeed=args.deepspeed,

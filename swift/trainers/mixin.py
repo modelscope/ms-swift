@@ -155,10 +155,9 @@ class PushToMsHubMixin:
         self.repo.local_dir = self.repo.model_dir  # hf compatibility
 
         # By default, ignore the checkpoint folders
-        if not os.path.exists(
-                os.path.join(self.args.output_dir, '.gitignore')
-        ) and self.args.push_hub_strategy != 'all_checkpoints':
-            self._add_patterns_to_gitignore(['checkpoint-*/'])
+        if self.args.push_hub_strategy != 'all_checkpoints':
+            self._add_patterns_to_gitignore(
+                ['checkpoint-*/', 'tmp-checkpoint-*/'])
 
         # Add 'runs/' to .gitignore, ignore tensorboard files
         self._add_patterns_to_gitignore(['runs/'])
@@ -238,7 +237,11 @@ class PushToMsHubMixin:
             else:
                 commit_message = f'Training in progress, epoch {int(self.state.epoch)}'
             if self.args.push_hub_strategy == 'push_best':
-                if checkpoint_folder == self.state.best_model_checkpoint:
+                folder, checkpoint_name = os.path.split(checkpoint_folder)
+                checkpoint_name = checkpoint_name.replace(
+                    'tmp-checkpoint-', 'checkpoint-')
+                last_model_checkpoint = os.path.join(folder, checkpoint_name)
+                if last_model_checkpoint == self.state.best_model_checkpoint:
                     self.repo.push_to_hub(
                         commit_message=commit_message,
                         blocking=False,
@@ -445,17 +448,11 @@ class SwiftMixin:
                     shutil.copy(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
-        self.state.last_model_checkpoint = os.path.join(
-            self.args.output_dir, f'checkpoint-{self.state.global_step}')
-        logger.info(
-            f'Saving model checkpoint to {self.state.last_model_checkpoint}')
-        only_save_model = self.args.only_save_model
-        if only_save_model:
-            return self._only_save_model(model, trial, metrics)
-        else:
-            return super()._save_checkpoint(model, trial, metrics)
+        # transformers>=4.36 support save_only_model
+        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
+        # want to save except FullyShardedDDP.
+        # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model"
 
-    def _only_save_model(self, model, trial, metrics=None):
         # Save model checkpoint
         checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
 
@@ -464,7 +461,21 @@ class SwiftMixin:
 
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
-        self.save_model(output_dir, _internal_call=True)
+        if os.path.exists(output_dir) and len(os.listdir(output_dir)) > 0:
+            logger.warning(
+                f'Checkpoint destination directory {output_dir} already exists and is non-empty.'
+                'Saving will proceed but saved results may be invalid.')
+            staging_output_dir = output_dir
+        else:
+            staging_output_dir = os.path.join(run_dir,
+                                              f'tmp-{checkpoint_folder}')
+        self.save_model(staging_output_dir, _internal_call=True)
+
+        if not self.args.save_only_model:
+            # Save optimizer and scheduler
+            self._save_optimizer_and_scheduler(staging_output_dir)
+            # Save RNG state
+            self._save_rng_state(staging_output_dir)
 
         # Determine the new best metric / best model checkpoint
         if metrics is not None and self.args.metric_for_best_model is not None:
@@ -483,12 +494,26 @@ class SwiftMixin:
         # Save the Trainer state
         if self.args.should_save:
             self.state.save_to_json(
-                os.path.join(output_dir, TRAINER_STATE_NAME))
+                os.path.join(staging_output_dir, TRAINER_STATE_NAME))
 
-        # push to hub
         if self.args.push_to_hub:
-            self._push_from_checkpoint(output_dir)
+            self._push_from_checkpoint(staging_output_dir)
 
+        # Place checkpoint in final location after all saving is finished.
+        # First wait for everyone to finish writing
+        self.args.distributed_state.wait_for_everyone()
+        # Then go through the rewriting process starting on process 0
+        if staging_output_dir != output_dir:
+            with self.args.main_process_first(
+                    desc='Renaming model checkpoint folder to true location',
+                    local=self.args.save_on_each_node):
+                if os.path.exists(staging_output_dir):
+                    os.rename(staging_output_dir, output_dir)
+
+        # last_model_checkpoint
+        self.state.last_model_checkpoint = output_dir
+        logger.info(
+            f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         # Maybe delete some older checkpoints.
         if self.args.should_save:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
@@ -536,8 +561,7 @@ class SwiftMixin:
             checkpoint[1] for checkpoint in checkpoints_sorted
         ]
         # Make sure we don't delete the best model.
-        # fix resume_from_checkpointing bug
-        if self.state.best_model_checkpoint is not None and (str(
+        if (self.state.best_model_checkpoint is not None and str(
                 Path(self.state.best_model_checkpoint)) in checkpoints_sorted):
             best_model_index = checkpoints_sorted.index(
                 str(Path(self.state.best_model_checkpoint)))
