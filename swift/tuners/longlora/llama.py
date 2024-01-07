@@ -13,6 +13,9 @@ from einops import rearrange
 from torch import nn
 from transformers.models.llama.modeling_llama import (apply_rotary_pos_emb,
                                                       repeat_kv, rotate_half)
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 def forward_flashattn(
@@ -423,4 +426,6 @@ def replace_llama_attn(model: nn.Module, use_flash_attn=True):
             _prepare_decoder_attention_mask)
         patch_llama_forward(model, forward_flashattn_inference_s2_attn)
     else:
+        logger.warn('The source code of LongLoRA without flash '
+                    'attention may has some problems, please use with careful.')
         patch_llama_forward(model, forward_noflashattn)
