@@ -39,6 +39,7 @@ class SftArguments:
 
     sft_type: Literal['lora', 'full', 'longlora', 'qalora'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
+    additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft'] = 'swift'
     template_type: str = field(
         default='AUTO',
@@ -211,6 +212,9 @@ class SftArguments:
             assert self.freeze_parameters == 0., (
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
             )
+            assert len(self.additional_trainable_parameters) == 0, (
+                'lora does not support `additional_trainable_parameters`, please set `--sft_type full`'
+            )
             if 'int4' in self.model_type or 'int8' in self.model_type:
                 assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
             if self.learning_rate is None:
@@ -221,12 +225,16 @@ class SftArguments:
                 else:
                     self.only_save_model = True
         elif self.sft_type == 'full':
-            assert 0 <= self.freeze_parameters < 1
+            assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', (
                 "Fine-tuning with dtype=='fp16' can lead to NaN issues. "
                 'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.'
             )
+            if isinstance(self.additional_trainable_parameters, str):
+                self.additional_trainable_parameters = [
+                    self.additional_trainable_parameters
+                ]
             if self.learning_rate is None:
                 self.learning_rate = 2e-5
             if self.only_save_model is None:
