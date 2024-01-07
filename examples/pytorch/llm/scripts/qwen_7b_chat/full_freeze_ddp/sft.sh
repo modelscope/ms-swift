@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 78GB GPU memory
+# 2 * 80GB GPU memory
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
