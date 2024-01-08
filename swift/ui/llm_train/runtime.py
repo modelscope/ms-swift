@@ -108,6 +108,9 @@ class Runtime(BaseUI):
                         max_lines=1)
                     gr.Button(elem_id='start_tb', scale=2, variant='primary')
                     gr.Button(elem_id='close_tb', scale=2)
+                with gr.Row():
+                    gr.Textbox(
+                        elem_id='log', lines=6)
 
                 base_tab.element('show_log').click(
                     Runtime.show_log,

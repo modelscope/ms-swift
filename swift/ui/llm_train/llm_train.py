@@ -1,13 +1,14 @@
+import json
 import os
 import sys
 import time
 from typing import Dict, Type
+from uuid import UUID
 
 import gradio as gr
-import json
 import torch
 from gradio import Accordion, Tab
-
+import psutil
 from swift.llm import SftArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
@@ -198,9 +199,37 @@ class LLMTrain(BaseUI):
                     ], [
                         cls.element('running_cmd'),
                         cls.element('logging_dir'),
-                        cls.element('runtime_tab')
+                        cls.element('runtime_tab'),
                     ],
-                    show_progress=True)
+                    queue=True).then(cls.wait, [cls.element('logging_dir')],
+                                     [cls.element('log')], show_progress=True, queue=True)
+
+    @classmethod
+    def wait(cls, logging_dir):
+        import time
+        import subprocess
+        import select
+
+        f = subprocess.Popen(['tail', '-F', os.path.join(logging_dir, 'run.log')],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = select.poll()
+        p.register(f.stdout)
+        i = 0
+        while True:
+            i += 1
+            if p.poll(1):
+                yield f.stdout.readline()
+            time.sleep(0.1)
+            if i % 100 == 0:
+                i = 0
+                process_name = "swift sft"
+                process_find = False
+                for proc in psutil.process_iter():
+                    if proc.name() == process_name:
+                        process_find = proc.pid
+                if not process_find:
+                    break
+
 
     @classmethod
     def train(cls, *args):
