@@ -978,6 +978,9 @@ def add_self_cognition_dataset(
         return concatenate_datasets([train_dataset, dataset])
 
 
+NoneType = type(None)
+
+
 def _check_dataset(
     dataset: Optional[None],
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']
@@ -1003,7 +1006,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['response']: {d['response']}, i: {i}")
-        if has_query and not isinstance(d['response'], str):
+        if has_query and not isinstance(d['query'], (str, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1012,7 +1015,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['query']: {d['query']}, i: {i}")
-        if has_history and not isinstance(d['history'], (list, type(None))):
+        if has_history and not isinstance(d['history'], (list, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1021,7 +1024,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['history']: {d['history']}, i: {i}")
-        if has_system and not isinstance(d['system'], str):
+        if has_system and not isinstance(d['system'], (str, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue

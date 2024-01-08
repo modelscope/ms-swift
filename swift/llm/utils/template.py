@@ -618,7 +618,7 @@ register_template(
 
 register_template(
     TemplateType.chatglm3,
-    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n '], [],
+    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n'], [],
              [['eos_token_id']], None,
              [[64790, 64792, 64794], '\n {{SYSTEM}}']))
 
