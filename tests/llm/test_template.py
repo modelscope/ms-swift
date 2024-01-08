@@ -85,7 +85,7 @@ you are a helpful assistant!<|im_end|>
             64790, 64792, 64794, 30910, 13, 344, 383, 260, 6483, 9319, 30992,
             64795, 30910, 13, 30910, 30939, 30943, 30966, 30972, 30970, 31011,
             30943, 30966, 30972, 30980, 31514, 64796
-        ] + [30910, 13, 30910]
+        ] + [30910, 13]
         input_ids_swift = template.encode({
             'query': query,
             'system': system
@@ -439,7 +439,7 @@ Assistant:""")
         #
         input_ids_official = inputs[0].tolist()
         input_ids_swift = template.encode({'query': query})['input_ids']
-        self.assertTrue(input_ids_swift[:-1] == input_ids_official)
+        self.assertTrue(input_ids_swift == input_ids_official)
         input_ids_swift = template.encode({
             'query': query,
             'history': [['1234', 'avdc']]
@@ -577,7 +577,7 @@ Assistant:""")
         response = tokenizer.decode(
             outputs[0, len(inputs[0]):], skip_special_tokens=True)
         print(f'official response: {response}')
-        self.assertTrue(input_ids_swift[:-1] == input_ids_official)
+        self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
         SKPT_TEST,
