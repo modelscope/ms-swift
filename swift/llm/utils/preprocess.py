@@ -232,7 +232,7 @@ class ClsPreprocessor:
         self.prompt = f"""Task: {task_name}
 {inputs}
 Category: {category}
-Output: """
+Output:"""
         self.task_name = task_name
         self.is_pair_seq = is_pair_seq
 

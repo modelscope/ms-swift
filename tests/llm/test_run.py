@@ -42,6 +42,7 @@ class TestRun(unittest.TestCase):
                 quantization_bit=quantization_bit,
                 batch_size=2,
                 eval_steps=5,
+                adam_beta2=0.95,
                 check_dataset_strategy='warning',
                 train_dataset_sample=200,
                 predict_with_generate=predict_with_generate,

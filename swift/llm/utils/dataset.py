@@ -409,7 +409,7 @@ register_dataset(
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
-Advertisements: """
+Advertisements:"""
 register_dataset(
     DatasetName.advertise_gen_zh,
     'lvjianjin/AdvertiseGen', ['train'], ['validation'],
@@ -513,7 +513,7 @@ def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
     prompt = """Task: Question Generation
 Context: {context}
 Answer: {answer}
-Question: """
+Question:"""
     query = []
     response = []
     for d in dataset:
@@ -850,7 +850,7 @@ def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
 Question: {question}
 Answer: {answer}
 Category: Human, ChatGPT
-Output: """
+Output:"""
     query = []
     response = []
     for d in dataset:
@@ -978,6 +978,9 @@ def add_self_cognition_dataset(
         return concatenate_datasets([train_dataset, dataset])
 
 
+NoneType = type(None)
+
+
 def _check_dataset(
     dataset: Optional[None],
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']
@@ -1003,7 +1006,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['response']: {d['response']}, i: {i}")
-        if has_query and not isinstance(d['response'], str):
+        if has_query and not isinstance(d['query'], (str, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1012,7 +1015,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['query']: {d['query']}, i: {i}")
-        if has_history and not isinstance(d['history'], (list, type(None))):
+        if has_history and not isinstance(d['history'], (list, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1021,7 +1024,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['history']: {d['history']}, i: {i}")
-        if has_system and not isinstance(d['system'], str):
+        if has_system and not isinstance(d['system'], (str, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue

@@ -181,6 +181,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         greater_is_better=args.predict_with_generate,
         sortish_sampler=True,
         optim=args.optim,
+        adam_beta1=args.adam_beta1,
+        adam_beta2=args.adam_beta2,
         hub_model_id=args.hub_model_id,
         hub_private_repo=args.hub_private_repo,
         push_hub_strategy=args.push_hub_strategy,
@@ -200,7 +202,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         disable_tqdm=args.disable_tqdm,
         save_on_each_node=args.save_on_each_node,
         acc_strategy=args.acc_strategy,
-        save_safetensors=args.save_safetensors)
+        save_safetensors=args.save_safetensors,
+        logging_first_step=True)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
