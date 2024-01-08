@@ -409,7 +409,7 @@ register_dataset(
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
-Advertisements: """
+Advertisements:"""
 register_dataset(
     DatasetName.advertise_gen_zh,
     'lvjianjin/AdvertiseGen', ['train'], ['validation'],
@@ -513,7 +513,7 @@ def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
     prompt = """Task: Question Generation
 Context: {context}
 Answer: {answer}
-Question: """
+Question:"""
     query = []
     response = []
     for d in dataset:
@@ -850,7 +850,7 @@ def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
 Question: {question}
 Answer: {answer}
 Category: Human, ChatGPT
-Output: """
+Output:"""
     query = []
     response = []
     for d in dataset:
