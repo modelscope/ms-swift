@@ -624,7 +624,7 @@ register_template(
 
 register_template(
     TemplateType.deepseek,
-    Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant: '],
+    Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'],
              [['eos_token_id']], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
@@ -660,7 +660,7 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant: '], ['\n'],
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
