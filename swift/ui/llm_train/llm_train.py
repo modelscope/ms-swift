@@ -1,3 +1,4 @@
+import collections
 import os
 import sys
 import time
@@ -197,14 +198,14 @@ class LLMTrain(BaseUI):
                         cls.update_runtime, [],
                         [cls.element('runtime_tab'),
                          cls.element('log')]).then(
-                             cls.train, [
+                             cls.train_studio, [
                                  value for value in cls.elements().values()
                                  if not isinstance(value, (Tab, Accordion))
                              ], [cls.element('log')],
                              queue=True)
                 else:
                     submit.click(
-                        cls.train, [
+                        cls.train_local, [
                             value for value in cls.elements().values()
                             if not isinstance(value, (Tab, Accordion))
                         ], [
@@ -282,9 +283,12 @@ class LLMTrain(BaseUI):
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
+        return run_command, sft_args, other_kwargs
 
+    @classmethod
+    def train_studio(cls, *args):
+        run_command, sft_args, other_kwargs = cls.train(*args)
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            import collections
             lines = collections.deque(
                 maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
             process = Popen(
@@ -294,7 +298,11 @@ class LLMTrain(BaseUI):
                     line = line.decode('utf-8')
                     lines.append(line)
                     yield '\n'.join(lines)
-        elif not other_kwargs['dry_run']:
+
+    @classmethod
+    def train_local(cls, *args):
+        run_command, sft_args, other_kwargs = cls.train(*args)
+        if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.

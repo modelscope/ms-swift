@@ -1,3 +1,4 @@
+import collections
 import os.path
 import time
 import webbrowser
@@ -144,7 +145,6 @@ class Runtime(BaseUI):
         log_file = os.path.join(logging_dir, 'run.log')
         offset = 0
         latest_data = ''
-        import collections
         lines = collections.deque(
             maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         while True:
