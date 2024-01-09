@@ -461,7 +461,7 @@ class SwiftModel(nn.Module):
                             adapter_names: Union[List[str], str],
                             offload=None):
         if not adapter_names:
-            return
+            adapter_names = []
 
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]
