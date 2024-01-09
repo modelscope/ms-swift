@@ -196,11 +196,11 @@ class LLMTrain(BaseUI):
                     submit.click(
                         cls.update_runtime, [],
                         [cls.element('runtime_tab'),
-                         cls.element('show_log')]).then(
+                         cls.element('log')]).then(
                              cls.train, [
                                  value for value in cls.elements().values()
                                  if not isinstance(value, (Tab, Accordion))
-                             ], [cls.element('show_log')],
+                             ], [cls.element('log')],
                              queue=True)
                 else:
                     submit.click(
@@ -284,10 +284,16 @@ class LLMTrain(BaseUI):
         logger.info(f'Run training: {run_command}')
 
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            process = Popen(run_command, stdout=PIPE, stderr=STDOUT)
+            import collections
+            lines = collections.deque(
+                maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+            process = Popen(
+                run_command, shell=True, stdout=PIPE, stderr=STDOUT)
             with process.stdout:
                 for line in iter(process.stdout.readline, b''):
-                    yield line.decode('utf-8')
+                    line = line.decode('utf-8')
+                    lines.append(line)
+                    yield '\n'.join(lines)
         elif not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
