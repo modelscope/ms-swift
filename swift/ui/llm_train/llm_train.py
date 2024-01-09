@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sys
@@ -204,21 +205,52 @@ class LLMTrain(BaseUI):
                     queue=True).then(cls.wait, [cls.element('logging_dir')],
                                      [cls.element('log')], show_progress=True, queue=True)
 
+    # @staticmethod
+    # def tail_F(some_file):
+    #
+
     @classmethod
     def wait(cls, logging_dir):
         import time
         import subprocess
         import select
 
-        f = subprocess.Popen(['tail', '-F', os.path.join(logging_dir, 'run.log')],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        p = select.poll()
-        p.register(f.stdout)
+        # f = subprocess.Popen(['tail', '-F', os.path.join(logging_dir, 'run.log')],
+        #                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # p = select.poll()
+        # p.register(f.stdout)
         i = 0
         while True:
             i += 1
-            if p.poll(1):
-                yield f.stdout.readline()
+
+            first_call = True
+            while True:
+                try:
+                    with open(some_file) as input:
+                        if first_call:
+                            input.seek(0, 2)
+                            first_call = False
+                        latest_data = input.read()
+                        while True:
+                            if '\n' not in latest_data:
+                                latest_data += input.read()
+                                if '\n' not in latest_data:
+                                    yield ''
+                                    if not os.path.isfile(some_file):
+                                        break
+                                    continue
+                            latest_lines = latest_data.split('\n')
+                            if latest_data[-1] != '\n':
+                                latest_data = latest_lines[-1]
+                            else:
+                                latest_data = input.read()
+                            for line in latest_lines[:-1]:
+                                yield line + '\n'
+                except IOError:
+                    yield ''
+
+            # if p.poll(1):
+            #     yield f.stdout.readline()
             time.sleep(0.1)
             if i % 100 == 0:
                 i = 0
