@@ -4,7 +4,7 @@ import sys
 import time
 from typing import Dict, Type
 from uuid import UUID
-
+import asyncio
 import gradio as gr
 import torch
 from gradio import Accordion, Tab
@@ -21,6 +21,7 @@ from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
 from swift.utils import get_logger
+from .utils import TailContext
 
 logger = get_logger()
 
@@ -204,31 +205,35 @@ class LLMTrain(BaseUI):
                     queue=True).then(cls.wait, [cls.element('logging_dir')],
                                      [cls.element('log')], show_progress=True, queue=True)
 
+
+
     @classmethod
     def wait(cls, logging_dir):
         import time
         import subprocess
-        import select
-
-        f = subprocess.Popen(['tail', '-F', os.path.join(logging_dir, 'run.log')],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        p = select.poll()
-        p.register(f.stdout)
-        i = 0
-        while True:
-            i += 1
-            if p.poll(1):
-                yield f.stdout.readline()
-            time.sleep(0.1)
-            if i % 100 == 0:
-                i = 0
-                process_name = "swift sft"
-                process_find = False
-                for proc in psutil.process_iter():
-                    if proc.name() == process_name:
-                        process_find = proc.pid
-                if not process_find:
-                    break
+        import collections
+        with TailContext() as tc:
+            tc.run_tail(os.path.join(logging_dir, 'run.log'))
+            lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+            i = 0
+            cnt_down = 3
+            while True:
+                _lines = tc.tail(1)
+                lines.extend(_lines)
+                yield '\n'.join(lines)
+                time.sleep(0.1)
+                i += 1
+                if i % 50 == 0:
+                    i = 0
+                    process_name = "swift"
+                    process_find = False
+                    for proc in psutil.process_iter():
+                        if proc.name() == process_name:
+                            process_find = proc.pid
+                    if not process_find:
+                        cnt_down -= 1
+                        if cnt_down <= 0:
+                            break
 
 
     @classmethod
