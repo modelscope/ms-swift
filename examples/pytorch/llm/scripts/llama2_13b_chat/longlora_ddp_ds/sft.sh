@@ -37,7 +37,7 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --push_to_hub false \
-    --hub_model_id llama2-13b-chat-qlora \
+    --hub_model_id llama2-13b-chat-longlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
     --deepspeed_config_path 'ds_config/zero2.json' \
