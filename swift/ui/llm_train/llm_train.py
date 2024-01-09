@@ -205,62 +205,40 @@ class LLMTrain(BaseUI):
                     queue=True).then(cls.wait, [cls.element('logging_dir')],
                                      [cls.element('log')], show_progress=True, queue=True)
 
-    # @staticmethod
-    # def tail_F(some_file):
-    #
-
     @classmethod
     def wait(cls, logging_dir):
-        import time
-        import subprocess
-        import select
-
-        # f = subprocess.Popen(['tail', '-F', os.path.join(logging_dir, 'run.log')],
-        #                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # p = select.poll()
-        # p.register(f.stdout)
         i = 0
+        log_file = os.path.join(logging_dir, 'run.log')
+        offset = 0
+        latest_data = ''
         while True:
             i += 1
+            try:
+                with open(log_file) as input:
+                    input.seek(offset)
+                    while True:
+                        latest_data += input.read()
+                        offset = input.tell()
+                        if '\n' not in latest_data:
+                            continue
+                        latest_lines = latest_data.split('\n')
+                        if latest_data[-1] != '\n':
+                            latest_data = latest_lines[-1]
+                            latest_lines = latest_lines[:-1]
+                        else:
+                            latest_data = ''
+                        for line in latest_lines:
+                            yield line + '\n'
+            except IOError:
+                pass
 
-            first_call = True
-            while True:
-                try:
-                    with open(some_file) as input:
-                        if first_call:
-                            input.seek(0, 2)
-                            first_call = False
-                        latest_data = input.read()
-                        while True:
-                            if '\n' not in latest_data:
-                                latest_data += input.read()
-                                if '\n' not in latest_data:
-                                    yield ''
-                                    if not os.path.isfile(some_file):
-                                        break
-                                    continue
-                            latest_lines = latest_data.split('\n')
-                            if latest_data[-1] != '\n':
-                                latest_data = latest_lines[-1]
-                            else:
-                                latest_data = input.read()
-                            for line in latest_lines[:-1]:
-                                yield line + '\n'
-                except IOError:
-                    yield ''
-
-            # if p.poll(1):
-            #     yield f.stdout.readline()
-            time.sleep(0.1)
-            if i % 100 == 0:
-                i = 0
-                process_name = "swift sft"
-                process_find = False
-                for proc in psutil.process_iter():
-                    if proc.name() == process_name:
-                        process_find = proc.pid
-                if not process_find:
-                    break
+            process_name = "swift"
+            process_find = False
+            for proc in psutil.process_iter():
+                if proc.name() == process_name:
+                    process_find = proc.pid
+            if not process_find:
+                break
 
 
     @classmethod
