@@ -207,18 +207,25 @@ class LLMTrain(BaseUI):
 
     @classmethod
     def wait(cls, logging_dir):
-        i = 0
         log_file = os.path.join(logging_dir, 'run.log')
         offset = 0
         latest_data = ''
+        import collections
+        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         while True:
-            i += 1
             try:
                 with open(log_file) as input:
                     input.seek(offset)
+                    fail_cnt = 0
                     while True:
                         latest_data += input.read()
                         offset = input.tell()
+                        if not latest_data:
+                            time.sleep(0.5)
+                            fail_cnt += 1
+                            if fail_cnt > 5:
+                                break
+                        
                         if '\n' not in latest_data:
                             continue
                         latest_lines = latest_data.split('\n')
@@ -227,8 +234,8 @@ class LLMTrain(BaseUI):
                             latest_lines = latest_lines[:-1]
                         else:
                             latest_data = ''
-                        for line in latest_lines:
-                            yield line + '\n'
+                        lines.extend(latest_lines)
+                        yield '\n'.join(lines)
             except IOError:
                 pass
 
