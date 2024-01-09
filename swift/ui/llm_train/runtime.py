@@ -62,7 +62,7 @@ class Runtime(BaseUI):
                 'en': 'Support fill custom path in'
             }
         },
-        'logging_content': {
+        'log': {
             'label': {
                 'zh': '日志输出',
                 'en': 'Logging content'
