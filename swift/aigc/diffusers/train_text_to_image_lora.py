@@ -568,7 +568,7 @@ def main():
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     unet = Swift.prepare_model(unet, unet_lora_config)
-    if args.mixed_precision == "fp16":
+    if args.mixed_precision == 'fp16':
         for param in unet.parameters():
             # only upcast trainable parameters (LoRA) into fp32
             if param.requires_grad:

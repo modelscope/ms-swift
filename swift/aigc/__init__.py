@@ -14,8 +14,10 @@ else:
     _import_structure = {
         'animatediff': ['animatediff_sft', 'animatediff_main'],
         'animatediff_infer': ['animatediff_infer', 'animatediff_infer_main'],
-        'diffusers': ['train_text_to_image', 'train_text_to_image_lora', 'train_text_to_image_lora_sdxl',
-                      'train_text_to_image_sdxl'],
+        'diffusers': [
+            'train_text_to_image', 'train_text_to_image_lora',
+            'train_text_to_image_lora_sdxl', 'train_text_to_image_sdxl'
+        ],
         'utils': ['AnimateDiffArguments', 'AnimateDiffInferArguments'],
     }
 
