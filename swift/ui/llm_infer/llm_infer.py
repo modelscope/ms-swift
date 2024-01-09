@@ -1,9 +1,9 @@
-import json
 import os
 import re
 from typing import Type
 
 import gradio as gr
+import json
 import torch
 from gradio import Accordion, Tab
 

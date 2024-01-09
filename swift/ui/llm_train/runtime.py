@@ -1,8 +1,10 @@
 import os.path
+import time
 import webbrowser
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
+import psutil
 from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
@@ -109,14 +111,14 @@ class Runtime(BaseUI):
                     gr.Button(elem_id='start_tb', scale=2, variant='primary')
                     gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
-                    gr.Textbox(
-                        elem_id='log', lines=6)
+                    gr.Textbox(elem_id='log', lines=6, visible=False)
 
                 base_tab.element('show_log').click(
-                    Runtime.show_log,
-                    [base_tab.element('logging_dir')],
-                    [],
-                )
+                    Runtime.update_log, [cls.element('log')]).then(
+                        Runtime.wait, [base_tab.element('logging_dir')],
+                        [cls.element('log')],
+                        show_progress=True,
+                        queue=True)
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -129,6 +131,53 @@ class Runtime(BaseUI):
                     [base_tab.element('logging_dir')],
                     [],
                 )
+
+    @classmethod
+    def update_log(cls):
+        return gr.update(visible=True)
+
+    @classmethod
+    def wait(cls, logging_dir):
+        log_file = os.path.join(logging_dir, 'run.log')
+        offset = 0
+        latest_data = ''
+        import collections
+        lines = collections.deque(
+            maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        while True:
+            try:
+                with open(log_file) as input:
+                    input.seek(offset)
+                    fail_cnt = 0
+                    while True:
+                        latest_data += input.read()
+                        offset = input.tell()
+                        if not latest_data:
+                            time.sleep(0.5)
+                            fail_cnt += 1
+                            if fail_cnt > 5:
+                                break
+
+                        if '\n' not in latest_data:
+                            continue
+                        latest_lines = latest_data.split('\n')
+                        if latest_data[-1] != '\n':
+                            latest_data = latest_lines[-1]
+                            latest_lines = latest_lines[:-1]
+                        else:
+                            latest_data = ''
+                        lines.extend(latest_lines)
+                        yield '\n'.join(lines)
+            except IOError:
+                pass
+
+            process_name = 'swift'
+            process_find = False
+            for proc in psutil.process_iter():
+                if proc.name() == process_name:
+                    process_find = proc.pid
+            if not process_find:
+                break
 
     @classmethod
     def show_log(cls, logging_dir):

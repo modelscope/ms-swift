@@ -1,15 +1,13 @@
-import asyncio
-import json
 import os
 import sys
 import time
 from typing import Dict, Type
-from uuid import UUID
 
 import gradio as gr
+import json
 import torch
 from gradio import Accordion, Tab
-import psutil
+
 from swift.llm import SftArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
@@ -202,51 +200,7 @@ class LLMTrain(BaseUI):
                         cls.element('logging_dir'),
                         cls.element('runtime_tab'),
                     ],
-                    queue=True).then(cls.wait, [cls.element('logging_dir')],
-                                     [cls.element('log')], show_progress=True, queue=True)
-
-    @classmethod
-    def wait(cls, logging_dir):
-        log_file = os.path.join(logging_dir, 'run.log')
-        offset = 0
-        latest_data = ''
-        import collections
-        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-        while True:
-            try:
-                with open(log_file) as input:
-                    input.seek(offset)
-                    fail_cnt = 0
-                    while True:
-                        latest_data += input.read()
-                        offset = input.tell()
-                        if not latest_data:
-                            time.sleep(0.5)
-                            fail_cnt += 1
-                            if fail_cnt > 5:
-                                break
-                        
-                        if '\n' not in latest_data:
-                            continue
-                        latest_lines = latest_data.split('\n')
-                        if latest_data[-1] != '\n':
-                            latest_data = latest_lines[-1]
-                            latest_lines = latest_lines[:-1]
-                        else:
-                            latest_data = ''
-                        lines.extend(latest_lines)
-                        yield '\n'.join(lines)
-            except IOError:
-                pass
-
-            process_name = "swift"
-            process_find = False
-            for proc in psutil.process_iter():
-                if proc.name() == process_name:
-                    process_find = proc.pid
-            if not process_find:
-                break
-
+                    queue=True)
 
     @classmethod
     def train(cls, *args):
