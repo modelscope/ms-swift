@@ -1,4 +1,4 @@
-# Experimental environment: A100
+# Experimental environment: V100, A10, 3090
 # 14GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
