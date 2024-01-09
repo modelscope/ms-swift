@@ -7,6 +7,8 @@ from typing import Any, Dict, List, OrderedDict, Type
 from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
                     TabItem, Textbox)
 
+from swift.llm.utils.model import MODEL_MAPPING, ModelType
+
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
 base_builder: Type['BaseUI'] = None
@@ -168,3 +170,8 @@ class BaseUI:
             else:
                 default_dict[f.name] = None
         return default_dict
+
+    @staticmethod
+    def get_custom_name_list():
+        return list(
+            set(MODEL_MAPPING.keys()) - set(ModelType.get_model_name_list()))
