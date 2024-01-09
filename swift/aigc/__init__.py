@@ -7,11 +7,17 @@ if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .animatediff import animatediff_sft, animatediff_main
     from .animatediff_infer import animatediff_infer, animatediff_infer_main
+    from .diffusers import train_text_to_image, train_text_to_image_lora, train_text_to_image_lora_sdxl, \
+        train_text_to_image_sdxl
     from .utils import AnimateDiffArguments, AnimateDiffInferArguments
 else:
     _import_structure = {
         'animatediff': ['animatediff_sft', 'animatediff_main'],
         'animatediff_infer': ['animatediff_infer', 'animatediff_infer_main'],
+        'diffusers': [
+            'train_text_to_image', 'train_text_to_image_lora',
+            'train_text_to_image_lora_sdxl', 'train_text_to_image_sdxl'
+        ],
         'utils': ['AnimateDiffArguments', 'AnimateDiffInferArguments'],
     }
 

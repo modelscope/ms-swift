@@ -1,0 +1,7 @@
+accelerate>=0.16.0
+datasets
+ftfy
+Jinja2
+tensorboard
+torchvision
+transformers>=4.25.1
