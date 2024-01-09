@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
 import gradio as gr
@@ -191,16 +192,31 @@ class LLMTrain(BaseUI):
                 Quantization.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
-                submit.click(
-                    cls.train, [
-                        value for value in cls.elements().values()
-                        if not isinstance(value, (Tab, Accordion))
-                    ], [
-                        cls.element('running_cmd'),
-                        cls.element('logging_dir'),
-                        cls.element('runtime_tab'),
-                    ],
-                    queue=True)
+                if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+                    submit.click(
+                        cls.update_runtime, [],
+                        [cls.element('runtime_tab'),
+                         cls.element('show_log')]).then(
+                             cls.train, [
+                                 value for value in cls.elements().values()
+                                 if not isinstance(value, (Tab, Accordion))
+                             ], [cls.element('show_log')],
+                             queue=True)
+                else:
+                    submit.click(
+                        cls.train, [
+                            value for value in cls.elements().values()
+                            if not isinstance(value, (Tab, Accordion))
+                        ], [
+                            cls.element('running_cmd'),
+                            cls.element('logging_dir'),
+                            cls.element('runtime_tab'),
+                        ],
+                        queue=True)
+
+    @classmethod
+    def update_runtime(cls):
+        return gr.update(visible=True), gr.update(visible=True)
 
     @classmethod
     def train(cls, *args):
@@ -261,10 +277,18 @@ class LLMTrain(BaseUI):
             if ddp_param:
                 ddp_param = f'set {ddp_param} && '
             run_command = f'{cuda_param}{ddp_param}start /b swift sft {params} > {log_file} 2>&1'
+        elif os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            run_command = f'{cuda_param} {ddp_param} swift sft {params}'
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
-        if not other_kwargs['dry_run']:
+
+        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            process = Popen(run_command, stdout=PIPE, stderr=STDOUT)
+            with process.stdout:
+                for line in iter(process.stdout.readline, b''):
+                    yield line.decode('utf-8')
+        elif not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
