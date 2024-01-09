@@ -104,6 +104,8 @@ class SftArguments:
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
     optim: str = 'adamw_torch'
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.999
     learning_rate: Optional[float] = None
     weight_decay: float = 0.01
     gradient_accumulation_steps: Optional[int] = None

@@ -618,13 +618,13 @@ register_template(
 
 register_template(
     TemplateType.chatglm3,
-    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n '], [],
+    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n'], [],
              [['eos_token_id']], None,
              [[64790, 64792, 64794], '\n {{SYSTEM}}']))
 
 register_template(
     TemplateType.deepseek,
-    Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant: '],
+    Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'],
              [['eos_token_id']], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
@@ -660,7 +660,7 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant: '], ['\n'],
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
@@ -674,7 +674,7 @@ register_template(
              [['eos_token_id']], [['eos_token_id']], ''))
 register_template(
     TemplateType.ziya,
-    Template([['bos_token_id', '{{SYSTEM}}']], ['<human>:{{QUERY}}\n<bot>:'],
+    Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],
              ['\n'], [['eos_token_id']], ''))
 
 register_template(

@@ -339,8 +339,6 @@ class SwiftAdapter:
                 module, adapter_name=adapter_name, module_key=module_key)
             module.to(module.origin_device)
             delattr(module, 'origin_device')
-        else:
-            raise NotImplementedError
 
     @staticmethod
     def freeze_model():
