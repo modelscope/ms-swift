@@ -1,6 +1,9 @@
 import asyncio
 import sys
 from asyncio.subprocess import PIPE, STDOUT
+from dataclasses import fields
+import subprocess
+from swift.llm import SftArguments
 
 
 async def run_and_get_log(*args, timeout=None):
@@ -18,6 +21,22 @@ async def run_and_get_log(*args, timeout=None):
             else:
                 lines.append(str(line))
     return process, lines
+
+
+async def run_and_yield_log(*args, timeout=None):
+    process = await asyncio.create_subprocess_exec(
+        *args, stdout=PIPE, stderr=STDOUT)
+    while True:
+        try:
+            line = await asyncio.wait_for(process.stdout.readline(), timeout)
+        except asyncio.TimeoutError:
+            break
+        else:
+            if not line:
+                break
+            else:
+                async yield line
+    close_loop(handler)
 
 
 def run_command_in_subprocess(*args, timeout):
@@ -46,23 +65,14 @@ class TailContext:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
         return self
-
-    async def run_and_yield_log(self, *args, timeout=None):
-        self.process = await asyncio.create_subprocess_exec(
-            *args, stdout=PIPE, stderr=STDOUT)
-        while True:
-            try:
-                line = await asyncio.wait_for(self.process.stdout.readline(), timeout)
-            except asyncio.TimeoutError:
-                break
-            else:
-                if not line:
-                    break
-                else:
-                    async yield line
-
-    def tail(self, filename, timeout):
-        self.loop.run_until_complete(self.run_and_yield_log(['tail', '-F', filename], timeout=timeout))
+    
+    def run_tail(self, filename, timeout):
+        run_command_in_subprocess(['tail', '-F', filename], timeout)
+        self.process = await asyncio.create_subprocess_exec(['tail', '-F', filename], 
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+    def tail(self, timeout):
+        return self.loop.run_until_complete(tail_log(self.process.stdout, timeout=timeout))
 
     def __exit__(self, type, value, traceback):
         self.process.kill()
