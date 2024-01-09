@@ -9,6 +9,9 @@ from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class Runtime(BaseUI):
@@ -114,7 +117,7 @@ class Runtime(BaseUI):
                     gr.Textbox(elem_id='log', lines=6, visible=False)
 
                 base_tab.element('show_log').click(
-                    Runtime.update_log, [cls.element('log')]).then(
+                    Runtime.update_log, [], [cls.element('log')]).then(
                         Runtime.wait, [base_tab.element('logging_dir')],
                         [cls.element('log')],
                         show_progress=True,
@@ -204,6 +207,8 @@ class Runtime(BaseUI):
                 line = line[line.index('http://localhost:'):]
                 localhost_addr = line[:line.index(' ')]
         cls.handlers[logging_dir] = (handler, localhost_addr)
+        logger.info('===========Tensorboard Log============')
+        logger.info('\n'.join(lines))
         webbrowser.open(localhost_addr, new=2)
         return localhost_addr
 
