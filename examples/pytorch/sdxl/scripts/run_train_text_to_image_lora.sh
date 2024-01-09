@@ -1,5 +1,5 @@
 PYTHONPATH=../../../ \
-accelerate launch --mixed_precision="fp16" train_text_to_image_lora.py \
+accelerate launch train_text_to_image_lora.py \
   --pretrained_model_name_or_path="AI-ModelScope/stable-diffusion-v1-5" \
   --dataset_name="AI-ModelScope/pokemon-blip-captions" \
   --caption_column="text" \
@@ -11,6 +11,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_lora.py \
   --learning_rate=1e-04 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
+  --mixed_precision="fp16" \
   --seed=42 \
   --output_dir="train_text_to_image_lora" \
   --validation_prompt="cute dragon creature" \
