@@ -1,5 +1,6 @@
 accelerate>=0.16.0
 datasets
+diffusers==0.25.0
 ftfy
 Jinja2
 tensorboard
