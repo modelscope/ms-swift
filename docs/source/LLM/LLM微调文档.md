@@ -4,7 +4,7 @@
 - [微调](#微调)
 - [Merge LoRA](#merge-lora)
 - [推理](#推理)
-- [Web-UI](#web-ui)
+- [界面运行](#界面运行)
 
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
@@ -308,7 +308,7 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
-## 界面
+## 界面运行
 
 目前界面化展示分为两个部分，分别是：
 
