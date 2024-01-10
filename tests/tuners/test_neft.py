@@ -102,9 +102,13 @@ class TestNEFT(unittest.TestCase):
         model_new = Swift.from_pretrained(model_new, self.tmp_dir)
         model_new.train()
         t2 = model_new.embeddings.word_embeddings(inputs['input_ids'])
+        model_new.eval()
+        t4 = model_new.embeddings.word_embeddings(inputs['input_ids'])
+        model_new.train()
         model_new.deactivate_adapter('c1')
         t3 = model_new.embeddings.word_embeddings(inputs['input_ids'])
         self.assertTrue(torch.allclose(t1, t3))
+        self.assertTrue(torch.allclose(t1, t4))
         self.assertFalse(torch.allclose(t1, t2))
 
         state_dict = model.state_dict()
