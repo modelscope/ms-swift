@@ -674,7 +674,7 @@ register_template(
              [['eos_token_id']], [['eos_token_id']], ''))
 register_template(
     TemplateType.ziya,
-    Template([['bos_token_id', '{{SYSTEM}}']], ['<human>:{{QUERY}}\n<bot>:'],
+    Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],
              ['\n'], [['eos_token_id']], ''))
 
 register_template(
