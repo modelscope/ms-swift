@@ -1,7 +1,13 @@
-# Experimental environment: 2*A100
-# Memory usage: 2 * 20G
+# Experimental environment: 4*A100
+# Memory usage: 4 * 20G
+nproc_per_node=2
+
 PYTHONPATH=../../.. \
-python llm_dpo.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    llm_dpo.py \
     --model_type  mistral-7b \
     --ref_model_type  mistral-7b \
     --model_revision  master \
@@ -25,7 +31,7 @@ python llm_dpo.py \
     --batch_size  1  \
     --weight_decay  0.01  \
     --learning_rate  5e-5  \
-    --gradient_accumulation_steps  16  \
+    --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
     --max_grad_norm  1.0  \
     --warmup_ratio  0.03  \
     --eval_steps  2000  \

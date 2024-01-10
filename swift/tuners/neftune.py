@@ -55,7 +55,7 @@ class NEFTune(SwiftAdapter):
                 sub_module.nef_activated = True
 
         def state_dict_callback(state_dict, adapter_name):
-            return state_dict
+            return {}
 
         def mark_trainable_callback(model):
             return
