@@ -2,6 +2,7 @@
 ## 目录
 - [环境准备](#环境准备)
 - [微调](#微调)
+- [DPO](#dpo)
 - [Merge LoRA](#merge-lora)
 - [推理](#推理)
 - [Web-UI](#web-ui)
@@ -33,6 +34,8 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 微调
+如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
+
 ### 使用python
 ```python
 # Experimental environment: A10, 3090, V100, ...
@@ -214,6 +217,9 @@ bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
 bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
 bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
+
+## DPO
+如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](./LLM人类对齐训练文档)
 
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
