@@ -341,7 +341,7 @@ class SwiftAdapter:
             delattr(module, 'origin_device')
 
     @staticmethod
-    def freeze_model():
+    def has_additional_modules():
         return True
 
 
