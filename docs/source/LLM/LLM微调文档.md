@@ -34,7 +34,7 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 微调
-如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
+如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理文档](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
 
 ### 使用python
 ```python
