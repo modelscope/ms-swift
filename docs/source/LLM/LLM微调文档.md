@@ -68,7 +68,63 @@ torch.cuda.empty_cache()
 app_ui_main(infer_args)
 ```
 
+## DPO（人类对齐训练）
+
+下面的shell脚本运行了一个人类对齐训练。首先需要切换到运行目录：
+
+```shell
+cd examples/pytorch/llm
+```
+
+运行下面的命令：
+
+```shell
+# Experimental environment: 4*A100
+# Memory usage: 4 * 20G
+nproc_per_node=2
+
+PYTHONPATH=../../.. \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    llm_dpo.py \
+    --model_type  mistral-7b \
+    --ref_model_type  mistral-7b \
+    --model_revision  master \
+    --sft_type  lora \
+    --tuner_backend  swift \
+    --dtype  AUTO  \
+    --output_dir  output  \
+    --dataset  hh-rlhf  \
+    --train_dataset_sample  -1  \
+    --truncation_strategy  truncation_left  \
+    --val_dataset_sample  2000  \
+    --num_train_epochs  3  \
+    --max_length  1024  \
+    --max_prompt_length  512  \
+    --check_dataset_strategy  none  \
+    --lora_rank  8  \
+    --lora_alpha  32  \
+    --lora_dropout_p  0.05  \
+    --lora_target_modules  ALL  \
+    --gradient_checkpointing  true  \
+    --batch_size  1  \
+    --weight_decay  0.01  \
+    --learning_rate  5e-5  \
+    --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
+    --max_grad_norm  1.0  \
+    --warmup_ratio  0.03  \
+    --eval_steps  2000  \
+    --save_steps  2000  \
+    --save_total_limit  2  \
+    --logging_steps  10 \
+```
+
+DPO训练需要在一张显卡上加载两个模型，因此推荐显存至少24G以上。DPO训练后的模型推理和SFT的推理流程相同。
+
 ### 使用CLI
+
 ```bash
 # Experimental environment: A10, 3090, V100, ...
 # 20GB GPU memory
@@ -307,13 +363,36 @@ swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
-## Web-UI
+## 界面
+
+目前界面化展示分为两个部分，分别是：
+
+```shell
+swift web-ui
+swift app-ui
+```
+
+其中，web-ui用于构建训练参数和训练后本地推理实验，app-ui用于将训练后模型发布创空间等。
+
+### web-ui
+
+web-ui没有传入参数，所有可控部分都在界面中。但是有几个环境变量可以使用：
+
+```text
+WEBUI_SHARE=1 控制gradio是否是share状态
+SWIFT_UI_LANG=en/zh 控制web-ui界面语言
+```
+
+### app-ui
+
 如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#部署)
 
-### 原始模型
+#### 原始模型
+
 使用原始模型的web-ui可以查看[LLM推理文档](./LLM推理文档.md#-Web-UI)
 
-### 微调后模型
+#### 微调后模型
+
 ```bash
 # 直接使用app-ui
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'

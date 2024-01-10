@@ -401,8 +401,29 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat
 如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](./LLM微调文档.md#微调后模型)
 
 
-## Web-UI
+## 界面
+目前界面化展示分为两个部分，分别是：
+
+```shell
+swift web-ui
+swift app-ui
+```
+
+其中，web-ui用于构建训练参数和训练后本地推理实验，app-ui用于将训练后模型发布创空间等。
+
+## web-ui
+
+web-ui没有传入参数，所有可控部分都在界面中。但是有几个环境变量可以使用：
+
+```text
+WEBUI_SHARE=1 控制gradio是否是share状态
+SWIFT_UI_LANG=en/zh 控制web-ui界面语言
+```
+
+## app-ui
+
 ### qwen-7b-chat
+
 使用CLI:
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b-chat
