@@ -1,5 +1,5 @@
-# Experimental environment: 4*A100
-# Memory usage: 4 * 20G
+# Experimental environment: 2*A100
+# Memory usage: 2 * 20G
 PYTHONPATH=../../.. \
 python llm_dpo.py \
     --model_type  mistral-7b \

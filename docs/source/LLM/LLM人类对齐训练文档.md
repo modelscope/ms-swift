@@ -95,4 +95,3 @@ bash scripts/dpo/lora_ddp_mp/infer.sh
 ```
 
 由于DPO训练后会得到一个完整模型或者adapter的weights，因此LoRA合并、推理的步骤和微调步骤相同，因此请参考[微调文档](./LLM微调文档#Merge LoRA)对应的步骤。
-
