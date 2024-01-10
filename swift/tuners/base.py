@@ -56,7 +56,7 @@ class SwiftModel(nn.Module):
                 new_adapters.append(DEFAULT_ADAPTER)
             else:
                 logger.warn(
-                    f'Adater {DEFAULT_ADAPTER} has been patched, skip.')
+                    f'Adapter {DEFAULT_ADAPTER} has been patched, skip.')
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, _config in config.items():
@@ -66,7 +66,7 @@ class SwiftModel(nn.Module):
                     new_adapters.append(adapter_name)
                 else:
                     logger.warn(
-                        f'Adater {adapter_name} has been patched, skip.')
+                        f'Adapter {adapter_name} has been patched, skip.')
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
