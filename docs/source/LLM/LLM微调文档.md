@@ -219,7 +219,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```
 
 ## DPO
-如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](./LLM人类对齐训练文档)
+如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](./LLM人类对齐训练文档.md)
 
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
