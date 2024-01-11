@@ -75,3 +75,7 @@ class NEFTune(SwiftAdapter):
     @staticmethod
     def freeze_model():
         return False
+
+    @staticmethod
+    def has_additional_modules():
+        return False

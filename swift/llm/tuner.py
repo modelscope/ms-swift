@@ -85,7 +85,7 @@ def prepare_model(model, args: SftArguments):
 
     if args.neftune_alpha > 0.001:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_alpha)
-        model = Swift.prepare_model(model, neftune_config)
+        model = Swift.prepare_model(model, {'neftune': neftune_config})
         logger.info(f'neftune_config: {neftune_config}')
 
     class TrainerAdapterCallback(TrainerCallback):
