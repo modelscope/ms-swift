@@ -1,10 +1,5 @@
-import torch
-from diffusers import DiffusionPipeline
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from swift.aigc import infer_text_to_image_sdxl
 
-model_path = '/mnt/workspace/swift/examples/pytorch/sdxl/sdxl-pokemon-model'
-pipe = DiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
-pipe.to('cuda')
-
-prompt = 'A pokemon with green eyes and red legs.'
-image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-image.save('sdxl_pokemon.png')
+if __name__ == '__main__':
+    infer_text_to_image_sdxl()

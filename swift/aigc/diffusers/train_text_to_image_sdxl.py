@@ -128,7 +128,7 @@ def parse_args(input_args=None):
         default=None,
         required=True,
         help=
-        'Path to pretrained model or model identifier from huggingface.co/models.',
+        'Path to pretrained model or model identifier from huggingface.co/models or modelscope.cn/models.',
     )
     parser.add_argument(
         '--pretrained_vae_model_name_or_path',
@@ -143,7 +143,7 @@ def parse_args(input_args=None):
         default=None,
         required=False,
         help=
-        'Revision of pretrained model identifier from huggingface.co/models.',
+        'Revision of pretrained model identifier from huggingface.co/models or modelscope.cn/models.',
     )
     parser.add_argument(
         '--variant',

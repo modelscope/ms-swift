@@ -209,7 +209,7 @@ def parse_args():
         default=None,
         required=True,
         help=
-        'Path to pretrained model or model identifier from huggingface.co/models.',
+        'Path to pretrained model or model identifier from huggingface.co/models or modelscope.cn/models.',
     )
     parser.add_argument(
         '--revision',
@@ -217,7 +217,7 @@ def parse_args():
         default=None,
         required=False,
         help=
-        'Revision of pretrained model identifier from huggingface.co/models.',
+        'Revision of pretrained model identifier from huggingface.co/models or modelscope.cn/models.',
     )
     parser.add_argument(
         '--variant',
