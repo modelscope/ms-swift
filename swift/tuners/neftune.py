@@ -55,7 +55,7 @@ class NEFTune(SwiftAdapter):
                 sub_module.nef_activated = True
 
         def state_dict_callback(state_dict, adapter_name):
-            return {}
+            return state_dict
 
         def mark_trainable_callback(model):
             return
@@ -74,4 +74,8 @@ class NEFTune(SwiftAdapter):
 
     @staticmethod
     def freeze_model():
+        return False
+
+    @staticmethod
+    def has_additional_modules():
         return False
