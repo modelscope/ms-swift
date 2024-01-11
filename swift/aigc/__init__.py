@@ -8,7 +8,8 @@ if TYPE_CHECKING:
     from .animatediff import animatediff_sft, animatediff_main
     from .animatediff_infer import animatediff_infer, animatediff_infer_main
     from .diffusers import train_text_to_image, train_text_to_image_lora, train_text_to_image_lora_sdxl, \
-        train_text_to_image_sdxl
+        train_text_to_image_sdxl, infer_text_to_image, infer_text_to_image_lora, infer_text_to_image_sdxl, \
+        infer_text_to_image_lora_sdxl
     from .utils import AnimateDiffArguments, AnimateDiffInferArguments
 else:
     _import_structure = {
@@ -16,7 +17,9 @@ else:
         'animatediff_infer': ['animatediff_infer', 'animatediff_infer_main'],
         'diffusers': [
             'train_text_to_image', 'train_text_to_image_lora',
-            'train_text_to_image_lora_sdxl', 'train_text_to_image_sdxl'
+            'train_text_to_image_lora_sdxl', 'train_text_to_image_sdxl',
+            'infer_text_to_image', 'infer_text_to_image_lora',
+            'infer_text_to_image_sdxl', 'infer_text_to_image_lora_sdxl'
         ],
         'utils': ['AnimateDiffArguments', 'AnimateDiffInferArguments'],
     }
