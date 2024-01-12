@@ -81,8 +81,8 @@ class ModelType:
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
-    deepseek_16b_moe = 'deepseek-16b-moe'
-    deepseek_16b_moe_chat = 'deepseek-16b-moe-chat'
+    deepseek_moe_16b = 'deepseek-moe-16b'
+    deepseek_moe_16b_chat = 'deepseek-moe-16b-chat'
     deepseek_67b = 'deepseek-67b'
     deepseek_67b_chat = 'deepseek-67b-chat'
     # openbuddy
@@ -96,8 +96,8 @@ class ModelType:
     mistral_7b = 'mistral-7b'
     mistral_7b_chat = 'mistral-7b-chat'
     mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
-    mixtral_7b_moe = 'mixtral-7b-moe'
-    mixtral_7b_moe_chat = 'mixtral-7b-moe-chat'
+    mixtral_moe_7b = 'mixtral-moe-7b'
+    mixtral_moe_7b_chat = 'mixtral-moe-7b-chat'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -826,7 +826,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.mixtral_7b_moe,
+    ModelType.mixtral_moe_7b,
     'AI-ModelScope/Mixtral-8x7B-v0.1',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
@@ -835,7 +835,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     support_gradient_checkpointing=False)
 @register_model(
-    ModelType.mixtral_7b_moe_chat,
+    ModelType.mixtral_moe_7b_chat,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
     LoRATM.llama2,
     TemplateType.llama,
@@ -1374,13 +1374,13 @@ def get_model_tokenizer_phi(model_dir: str,
 
 
 @register_model(
-    ModelType.deepseek_16b_moe_chat,
+    ModelType.deepseek_moe_16b_chat,
     'deepseek-ai/deepseek-moe-16b-chat',
     LoRATM.llama2,
     TemplateType.deepseek,
     support_flash_attn=True)
 @register_model(
-    ModelType.deepseek_16b_moe,
+    ModelType.deepseek_moe_16b,
     'deepseek-ai/deepseek-moe-16b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
