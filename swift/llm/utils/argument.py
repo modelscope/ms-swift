@@ -309,8 +309,9 @@ class SftArguments:
             'support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
-        elif not support_gradient_checkpointing:
-            assert self.gradient_checkpointing is False, f'{self.model_type} not support gradient_checkpointing.'
+        elif not support_gradient_checkpointing and self.gradient_checkpointing is True:
+            logger.warning(
+                f'{self.model_type} not support gradient_checkpointing.')
 
 
 @dataclass
