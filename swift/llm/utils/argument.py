@@ -167,6 +167,8 @@ class SftArguments:
     num_beams: int = 1
     # compatibility. (Deprecated)
     only_save_model: Optional[bool] = None
+    per_device_train_batch_size: Optional[int] = None
+    per_device_eval_batch_size: Optional[int] = None
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -608,17 +610,21 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = 'chatglm-generation'
     if args.template_type == 'chatml':
         args.template_type = TemplateType.qwen
-    if (isinstance(args, InferArguments) and args.show_dataset_sample != 10
-            and args.val_dataset_sample == 10):
-        # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
-        args.val_dataset_sample = args.show_dataset_sample
     if args.truncation_strategy == 'ignore':
         args.truncation_strategy = 'delete'
-    if isinstance(args,
-                  InferArguments) and args.safe_serialization is not None:
-        args.save_safetensors = args.safe_serialization
-    if isinstance(args, SftArguments) and args.only_save_model is not None:
-        args.save_only_model = args.only_save_model
+    if isinstance(args, InferArguments):
+        if args.show_dataset_sample != 10 and args.val_dataset_sample == 10:
+            # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
+            args.val_dataset_sample = args.show_dataset_sample
+        if args.safe_serialization is not None:
+            args.save_safetensors = args.safe_serialization
+    if isinstance(args, SftArguments):
+        if args.only_save_model is not None:
+            args.save_only_model = args.only_save_model
+        if args.per_device_train_batch_size is not None:
+            args.batch_size = args.per_device_train_batch_size
+        if args.per_device_eval_batch_size is not None:
+            args.eval_batch_size = args.per_device_eval_batch_size
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
