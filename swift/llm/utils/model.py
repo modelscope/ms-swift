@@ -81,6 +81,8 @@ class ModelType:
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
+    deepseek_16b_moe = 'deepseek-16b-moe'
+    deepseek_16b_moe_chat = 'deepseek-16b-moe-chat'
     deepseek_67b = 'deepseek-67b'
     deepseek_67b_chat = 'deepseek-67b-chat'
     # openbuddy
@@ -1369,6 +1371,44 @@ def get_model_tokenizer_phi(model_dir: str,
     model_config.flash_attn = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
+
+
+@register_model(
+    ModelType.deepseek_16b_moe_chat,
+    'deepseek-ai/deepseek-moe-16b-chat',
+    LoRATM.llama2,
+    TemplateType.deepseek,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_16b_moe,
+    'deepseek-ai/deepseek-moe-16b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+def get_model_tokenizer_deepseek_moe(model_dir: str,
+                                     torch_dtype: Dtype,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    if model is not None:
+        # fix dtype bug
+        mlp_cls = model.model.layers[1].mlp.__class__
+        if not hasattr(mlp_cls, '__old_forward'):  # Avoid double patching
+            __old_forward = mlp_cls._old_forward if hasattr(
+                mlp_cls, '_old_forward') else mlp_cls.forward
+
+            def _new_forward(self, hidden_states) -> Tensor:
+                dtype = hidden_states.dtype
+                return __old_forward(self, hidden_states).to(dtype)
+
+            if hasattr(mlp_cls, '_old_forward'):  # device_map
+                mlp_cls._old_forward = _new_forward
+            else:
+                mlp_cls.forward = _new_forward
+            mlp_cls.__old_forward = __old_forward
+    return model, tokenizer
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
