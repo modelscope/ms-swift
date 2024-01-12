@@ -374,8 +374,6 @@ class InferArguments:
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
-    # app-ui
-    share: bool = False
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
@@ -471,6 +469,13 @@ class InferArguments:
         if not os.path.exists(ckpt_dir):
             return False
         return os.path.isfile(os.path.join(ckpt_dir, 'configuration.json'))
+
+
+@dataclass
+class AppUIArguments(InferArguments):
+    server_name: str = '127.0.0.1'
+    server_port: int = 7860
+    share: bool = False
 
 
 @dataclass

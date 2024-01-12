@@ -413,10 +413,10 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b-chat
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import InferArguments, ModelType, app_ui_main
+from swift.llm import AppUIArguments, ModelType, app_ui_main
 
-infer_args = InferArguments(model_type=ModelType.qwen_7b_chat)
-app_ui_main(infer_args)
+app_ui_args = AppUIArguments(model_type=ModelType.qwen_7b_chat)
+app_ui_main(app_ui_args)
 ```
 
 使用bnb量化:
@@ -424,10 +424,10 @@ app_ui_main(infer_args)
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import InferArguments, ModelType, app_ui_main
+from swift.llm import AppUIArguments, ModelType, app_ui_main
 
-infer_args = InferArguments(model_type=ModelType.qwen_7b_chat, quantization_bit=4)
-app_ui_main(infer_args)
+app_ui_args = AppUIArguments(model_type=ModelType.qwen_7b_chat, quantization_bit=4)
+app_ui_main(app_ui_args)
 ```
 
 ### qwen-7b
@@ -441,10 +441,10 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import InferArguments, ModelType, app_ui_main
+from swift.llm import AppUIArguments, ModelType, app_ui_main
 
-infer_args = InferArguments(model_type=ModelType.qwen_7b)
-app_ui_main(infer_args)
+app_ui_args = AppUIArguments(model_type=ModelType.qwen_7b)
+app_ui_main(app_ui_args)
 ```
 
 ### 微调后模型
