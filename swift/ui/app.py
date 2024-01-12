@@ -35,4 +35,4 @@ def run_ui():
             LLMInfer.build_ui(LLMInfer)
 
     app.queue().launch(
-        height=800, share=bool(os.environ.get('WEBUI_SHARE', '0')))
+        height=800, share=bool(int(os.environ.get('WEBUI_SHARE', '0'))))

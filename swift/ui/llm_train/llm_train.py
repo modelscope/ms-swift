@@ -58,6 +58,12 @@ class LLMTrain(BaseUI):
                 'closing this page does not affect training'
             }
         },
+        'dataset_alert': {
+            'value': {
+                'zh': '请选择或填入一个数据集',
+                'en': 'Please input or select a dataset'
+            }
+        },
         'submit': {
             'value': {
                 'zh': '🚀 开始训练',
@@ -248,7 +254,14 @@ class LLMTrain(BaseUI):
                 more_params = json.loads(value)
 
         kwargs.update(more_params)
-        sft_args = SftArguments(**kwargs)
+        if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
+            raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
+        sft_args = SftArguments(
+            **{
+                key: value.split(' ')
+                if key in kwargs_is_list and kwargs_is_list[key] else value
+                for key, value in kwargs.items()
+            })
         params = ''
 
         for e in kwargs:
