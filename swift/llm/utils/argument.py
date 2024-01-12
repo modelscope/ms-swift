@@ -165,10 +165,11 @@ class SftArguments:
     top_p: float = 0.7
     repetition_penalty: float = 1.05
     num_beams: int = 1
-    # compatibility. (Deprecated)
-    only_save_model: Optional[bool] = None
+    # compatibility hf
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
+    # compatibility. (Deprecated)
+    only_save_model: Optional[bool] = None
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
