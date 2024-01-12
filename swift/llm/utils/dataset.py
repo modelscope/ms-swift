@@ -581,7 +581,7 @@ register_dataset(
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise'])
+    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
 
 register_dataset(
     DatasetName.medical_zh,
@@ -668,7 +668,7 @@ register_dataset(
     [('default', 'validation')],
     _preprocess_capcha_images,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', 'vision', '🔥'])
+    tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
     DatasetName.cls_fudan_news_zh,

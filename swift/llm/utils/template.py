@@ -32,8 +32,8 @@ class TemplateType:
     zephyr = 'zephyr'
     sus = 'sus'
     deepseek = 'deepseek'
-    codefuse_codellama = 'codefuse-codellama'
     deepseek_coder = 'deepseek-coder'
+    codefuse_codellama = 'codefuse-codellama'
     cogagent = 'cogagent'
     # compatibility. (Deprecated)
     chatml = 'chatml'

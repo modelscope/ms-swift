@@ -165,6 +165,9 @@ class SftArguments:
     top_p: float = 0.7
     repetition_penalty: float = 1.05
     num_beams: int = 1
+    # compatibility hf
+    per_device_train_batch_size: Optional[int] = None
+    per_device_eval_batch_size: Optional[int] = None
     # compatibility. (Deprecated)
     only_save_model: Optional[bool] = None
 
@@ -307,8 +310,9 @@ class SftArguments:
             'support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
-        elif not support_gradient_checkpointing:
-            assert self.gradient_checkpointing is False, f'{self.model_type} not support gradient_checkpointing.'
+        elif not support_gradient_checkpointing and self.gradient_checkpointing is True:
+            logger.warning(
+                f'{self.model_type} not support gradient_checkpointing.')
 
 
 @dataclass
@@ -374,8 +378,6 @@ class InferArguments:
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
-    # app-ui
-    share: bool = False
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
@@ -471,6 +473,13 @@ class InferArguments:
         if not os.path.exists(ckpt_dir):
             return False
         return os.path.isfile(os.path.join(ckpt_dir, 'configuration.json'))
+
+
+@dataclass
+class AppUIArguments(InferArguments):
+    server_name: str = '127.0.0.1'
+    server_port: int = 7860
+    share: bool = False
 
 
 @dataclass
@@ -603,17 +612,21 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = 'chatglm-generation'
     if args.template_type == 'chatml':
         args.template_type = TemplateType.qwen
-    if (isinstance(args, InferArguments) and args.show_dataset_sample != 10
-            and args.val_dataset_sample == 10):
-        # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
-        args.val_dataset_sample = args.show_dataset_sample
     if args.truncation_strategy == 'ignore':
         args.truncation_strategy = 'delete'
-    if isinstance(args,
-                  InferArguments) and args.safe_serialization is not None:
-        args.save_safetensors = args.safe_serialization
-    if isinstance(args, SftArguments) and args.only_save_model is not None:
-        args.save_only_model = args.only_save_model
+    if isinstance(args, InferArguments):
+        if args.show_dataset_sample != 10 and args.val_dataset_sample == 10:
+            # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
+            args.val_dataset_sample = args.show_dataset_sample
+        if args.safe_serialization is not None:
+            args.save_safetensors = args.safe_serialization
+    if isinstance(args, SftArguments):
+        if args.only_save_model is not None:
+            args.save_only_model = args.only_save_model
+        if args.per_device_train_batch_size is not None:
+            args.batch_size = args.per_device_train_batch_size
+        if args.per_device_eval_batch_size is not None:
+            args.eval_batch_size = args.per_device_eval_batch_size
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:

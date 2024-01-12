@@ -81,6 +81,8 @@ class ModelType:
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
+    deepseek_moe_16b = 'deepseek-moe-16b'
+    deepseek_moe_16b_chat = 'deepseek-moe-16b-chat'
     deepseek_67b = 'deepseek-67b'
     deepseek_67b_chat = 'deepseek-67b-chat'
     # openbuddy
@@ -92,10 +94,10 @@ class ModelType:
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
-    mistral_7b_chat = 'mistral-7b-chat'
-    mistral_7b_chat_v2 = 'mistral-7b-chat-v2'
-    mixtral_7b_moe = 'mixtral-7b-moe'
-    mixtral_7b_moe_chat = 'mixtral-7b-moe-chat'
+    mistral_7b_instruct = 'mistral-7b-instruct'
+    mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
+    mixtral_moe_7b = 'mixtral-moe-7b'
+    mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -147,11 +149,11 @@ class ModelType:
     codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
     # deepseek-coder
     deepseek_coder_1_3b = 'deepseek-coder-1_3b'
-    deepseek_coder_1_3b_chat = 'deepseek-coder-1_3b-chat'
+    deepseek_coder_1_3b_instruct = 'deepseek-coder-1_3b-instruct'
     deepseek_coder_6_7b = 'deepseek-coder-6_7b'
-    deepseek_coder_6_7b_chat = 'deepseek-coder-6_7b-chat'
+    deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
     deepseek_coder_33b = 'deepseek-coder-33b'
-    deepseek_coder_33b_chat = 'deepseek-coder-33b-chat'
+    deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
     # phi
     phi2_3b = 'phi2-3b'
 
@@ -631,7 +633,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.deepseek_coder_1_3b_chat,
+    ModelType.deepseek_coder_1_3b_instruct,
     'deepseek-ai/deepseek-coder-1.3b-instruct',
     LoRATM.llama2,
     TemplateType.deepseek_coder,
@@ -639,7 +641,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.deepseek_coder_6_7b_chat,
+    ModelType.deepseek_coder_6_7b_instruct,
     'deepseek-ai/deepseek-coder-6.7b-instruct',
     LoRATM.llama2,
     TemplateType.deepseek_coder,
@@ -647,7 +649,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.deepseek_coder_33b_chat,
+    ModelType.deepseek_coder_33b_instruct,
     'deepseek-ai/deepseek-coder-33b-instruct',
     LoRATM.llama2,
     TemplateType.deepseek_coder,
@@ -800,7 +802,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.mistral_7b_chat,
+    ModelType.mistral_7b_instruct,
     'AI-ModelScope/Mistral-7B-Instruct-v0.1',
     LoRATM.llama2,
     TemplateType.llama,
@@ -808,7 +810,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.mistral_7b_chat_v2,
+    ModelType.mistral_7b_instruct_v2,
     'AI-ModelScope/Mistral-7B-Instruct-v0.2',
     LoRATM.llama2,
     TemplateType.llama,
@@ -824,7 +826,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.mixtral_7b_moe,
+    ModelType.mixtral_moe_7b,
     'AI-ModelScope/Mixtral-8x7B-v0.1',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
@@ -833,7 +835,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     support_gradient_checkpointing=False)
 @register_model(
-    ModelType.mixtral_7b_moe_chat,
+    ModelType.mixtral_moe_7b_instruct,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
     LoRATM.llama2,
     TemplateType.llama,
@@ -1369,6 +1371,44 @@ def get_model_tokenizer_phi(model_dir: str,
     model_config.flash_attn = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
+
+
+@register_model(
+    ModelType.deepseek_moe_16b_chat,
+    'deepseek-ai/deepseek-moe-16b-chat',
+    LoRATM.llama2,
+    TemplateType.deepseek,
+    support_flash_attn=True)
+@register_model(
+    ModelType.deepseek_moe_16b,
+    'deepseek-ai/deepseek-moe-16b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+def get_model_tokenizer_deepseek_moe(model_dir: str,
+                                     torch_dtype: Dtype,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    if model is not None:
+        # fix dtype bug
+        mlp_cls = model.model.layers[1].mlp.__class__
+        if not hasattr(mlp_cls, '__old_forward'):  # Avoid double patching
+            __old_forward = mlp_cls._old_forward if hasattr(
+                mlp_cls, '_old_forward') else mlp_cls.forward
+
+            def _new_forward(self, hidden_states) -> Tensor:
+                dtype = hidden_states.dtype
+                return __old_forward(self, hidden_states).to(dtype)
+
+            if hasattr(mlp_cls, '_old_forward'):  # device_map
+                mlp_cls._old_forward = _new_forward
+            else:
+                mlp_cls.forward = _new_forward
+            mlp_cls.__old_forward = __old_forward
+    return model, tokenizer
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
