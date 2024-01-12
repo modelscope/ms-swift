@@ -564,7 +564,10 @@ class SwiftMixin:
                                               adapter_name)
                     state_dict = SwiftModel.load_state_file(sub_folder)
                     if state_dict is not None:
-                        self.model.load_state_dict(state_dict, strict=False)
+                        self.model.load_state_dict(
+                            state_dict,
+                            strict=False,
+                            adapter_name=adapter_name)
                 state_dict = SwiftModel.load_state_file(
                     self.state.best_model_checkpoint)
                 if state_dict is not None:
