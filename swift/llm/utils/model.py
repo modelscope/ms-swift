@@ -114,17 +114,17 @@ class ModelType:
     internlm_7b_chat_8k = 'internlm-7b-chat-8k'
     internlm_20b = 'internlm-20b'
     internlm_20b_chat = 'internlm-20b-chat'
+    # yuan
+    yuan_2b_instruct = 'yuan-2b-instruct'
+    yuan_2b_janus_instruct = 'yuan-2b-janus-instruct'
+    yuan_51b_instruct = 'yuan-51b-instruct'
+    yuan_102b_instruct = 'yuan-102b-instruct'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
     xverse_13b = 'xverse-13b'
     xverse_13b_chat = 'xverse-13b-chat'
     xverse_65b = 'xverse-65b'
-    # yuan
-    yuan_2b_instruct = 'yuan-2b-instruct'
-    yuan_2b_janus_instruct = 'yuan-2b-janus-instruct'
-    yuan_51b_instruct = 'yuan-51b-instruct'
-    yuan_102b_instruct = 'yuan-102b-instruct'
     # vivo
     bluelm_7b = 'bluelm-7b'
     bluelm_7b_32k = 'bluelm-7b-32k'
