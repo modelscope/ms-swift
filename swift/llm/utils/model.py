@@ -1424,25 +1424,25 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     ModelType.yuan_2b_instruct,
     'YuanLLM/Yuan2.0-2B-hf',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.yuan,
     support_flash_attn=True)
 @register_model(
     ModelType.yuan_51b_instruct,
     'YuanLLM/Yuan2.0-51B-hf',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.yuan,
     support_flash_attn=True)
 @register_model(
     ModelType.yuan_102b_instruct,
     'YuanLLM/Yuan2.0-102B-hf',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.yuan,
     support_flash_attn=True)
 @register_model(
     ModelType.yuan_2b_janus_instruct,
     'YuanLLM/Yuan2-2B-Janus-hf',
     LoRATM.llama2,
-    TemplateType.default_generation,
+    TemplateType.yuan,
     support_flash_attn=True)
 def get_model_tokenizer_yuan(model_dir: str,
                              torch_dtype: Dtype,

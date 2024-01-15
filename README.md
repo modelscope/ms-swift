@@ -174,7 +174,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, default-generation-bos, chatglm-generation
-  - Chat: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, codefuse-codellama, deepseek-coder, cogagent
+  - Chat: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, xverse, yuan, ziya, skywork, bluelm, zephyr, sus, deepseek, codefuse-codellama, deepseek-coder, cogagent
 
 ## 🔥SCEdit
 

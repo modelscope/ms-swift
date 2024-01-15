@@ -26,6 +26,7 @@ class TemplateType:
     internlm = 'internlm'
     yi = 'yi'
     xverse = 'xverse'
+    yuan = 'yuan'
     ziya = 'ziya'
     skywork = 'skywork'
     bluelm = 'bluelm'
@@ -672,6 +673,8 @@ register_template(
     TemplateType.xverse,
     Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
              [['eos_token_id']], [['eos_token_id']], ''))
+register_template(TemplateType.yuan,
+                  Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
 register_template(
     TemplateType.ziya,
     Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],
