@@ -121,10 +121,10 @@ class ModelType:
     xverse_13b_chat = 'xverse-13b-chat'
     xverse_65b = 'xverse-65b'
     # yuan
-    yuan_2b = 'yuan-2b'
-    yuan_2b_janus = 'yuan-2b-janus'
-    yuan_51b = 'yuan-51b'
-    yuan_102b = 'yuan-102b'
+    yuan_2b_instruct = 'yuan-2b-instruct'
+    yuan_2b_janus_instruct = 'yuan-2b-janus-instruct'
+    yuan_51b_instruct = 'yuan-51b-instruct'
+    yuan_102b_instruct = 'yuan-102b-instruct'
     # vivo
     bluelm_7b = 'bluelm-7b'
     bluelm_7b_32k = 'bluelm-7b-32k'
@@ -1421,25 +1421,25 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
 
 @register_model(
-    ModelType.yuan_2b,
+    ModelType.yuan_2b_instruct,
     'YuanLLM/Yuan2.0-2B-hf',
     LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
-    ModelType.yuan_51b,
+    ModelType.yuan_51b_instruct,
     'YuanLLM/Yuan2.0-51B-hf',
     LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
-    ModelType.yuan_102b,
+    ModelType.yuan_102b_instruct,
     'YuanLLM/Yuan2.0-102B-hf',
     LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True)
 @register_model(
-    ModelType.yuan_2b_janus,
+    ModelType.yuan_2b_janus_instruct,
     'YuanLLM/Yuan2-2B-Janus-hf',
     LoRATM.llama2,
     TemplateType.default_generation,
