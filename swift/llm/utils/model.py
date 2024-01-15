@@ -120,6 +120,11 @@ class ModelType:
     xverse_13b = 'xverse-13b'
     xverse_13b_chat = 'xverse-13b-chat'
     xverse_65b = 'xverse-65b'
+    # yuan
+    yuan_2b = 'yuan-2b'
+    yuan_2b_janus = 'yuan-2b-janus'
+    yuan_51b = 'yuan-51b'
+    yuan_102b = 'yuan-102b'
     # vivo
     bluelm_7b = 'bluelm-7b'
     bluelm_7b_32k = 'bluelm-7b-32k'
@@ -1412,6 +1417,72 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
             else:
                 mlp_cls.forward = _new_forward
             mlp_cls.__old_forward = __old_forward
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.yuan_2b,
+    'YuanLLM/Yuan2.0-2B-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yuan_51b,
+    'YuanLLM/Yuan2.0-51B-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yuan_102b,
+    'YuanLLM/Yuan2.0-102B-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yuan_2b_janus,
+    'YuanLLM/Yuan2-2B-Janus-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+def get_model_tokenizer_yuan(model_dir: str,
+                             torch_dtype: Dtype,
+                             model_kwargs: Dict[str, Any],
+                             load_model: bool = True,
+                             **kwargs):
+    model_folder, model_name = os.path.split(model_dir)
+    need_rename = '.' in model_name
+    if need_rename:
+        model_name = model_name.replace('.', '_')  # fix transformers_modules
+        new_model_dir = os.path.join(model_folder, model_name)
+        logger.info(f'Using new_model_dir: {new_model_dir}')
+        os.rename(model_dir, new_model_dir)
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attention = kwargs.get('use_flash_attn', False)
+    model_config.use_flash_attention = use_flash_attention
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir,
+        add_eos_token=False,
+        add_bos_token=False,
+        eos_token='<eod>',
+        legacy=True)
+    addi_tokens = [
+        '<sep>', '<pad>', '<mask>', '<predict>', '<FIM_SUFFIX>',
+        '<FIM_PREFIX>', '<FIM_MIDDLE>', '<commit_before>', '<commit_msg>',
+        '<commit_after>', '<jupyter_start>', '<jupyter_text>',
+        '<jupyter_code>', '<jupyter_output>', '<empty_output>'
+    ]
+    tokenizer.add_tokens(addi_tokens, special_tokens=True)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        tokenizer=tokenizer,
+        **kwargs)
+    if need_rename:
+        os.rename(new_model_dir, model_dir)
     return model, tokenizer
 
 
