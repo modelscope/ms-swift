@@ -94,7 +94,7 @@ class SftArguments:
     lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
 
-    neftune_alpha: float = 0.0
+    neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
 
     gradient_checkpointing: Optional[bool] = None
     deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
@@ -170,6 +170,7 @@ class SftArguments:
     per_device_eval_batch_size: Optional[int] = None
     # compatibility. (Deprecated)
     only_save_model: Optional[bool] = None
+    neftune_alpha: Optional[float] = None
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -623,6 +624,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
     if isinstance(args, SftArguments):
         if args.only_save_model is not None:
             args.save_only_model = args.only_save_model
+        if args.neftune_alpha is not None:
+            args.neftune_noise_alpha = args.neftune_alpha
         if args.per_device_train_batch_size is not None:
             args.batch_size = args.per_device_train_batch_size
         if args.per_device_eval_batch_size is not None:
