@@ -263,7 +263,8 @@ class BertTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         outputs = model(**inputs)
         loss = outputs.loss
-        assert loss is not None
+        if loss is None:
+            logits, loss = list(outputs.logits)
         return (loss, outputs) if return_outputs else loss
 
 
