@@ -388,7 +388,7 @@ class InferArguments:
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
                 self.ckpt_dir):
-            raise ValueError(
+            logger.warning(
                 f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                 'the dir contains a `configuration.json` file.')
         handle_compatibility(self)

@@ -200,7 +200,8 @@ def register_model(
     requires: Optional[List[str]] = None,
     torch_dtype: Optional[Dtype] = None,
     automodel_class: Type[_BaseAutoModelClass] = AutoModelForCausalLM,
-    revision: str = 'master',
+    use_hf: bool = False,
+    revision: Optional[str] = None,
     ignore_file_pattern: Optional[List[str]] = None,
     function_kwargs: Optional[Dict[str, Any]] = None,
     exists_ok: bool = False,
@@ -216,6 +217,8 @@ def register_model(
         requires = []
     if function_kwargs is None:
         function_kwargs = {}
+    if revision is None:
+        revision = 'main' if use_hf else 'master'
     model_info = {
         'model_id_or_path': model_id_or_path,
         'lora_target_modules': lora_target_modules,
@@ -224,6 +227,7 @@ def register_model(
         'torch_dtype': torch_dtype,
         'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
+        'use_hf': use_hf,
         'revision': revision,
         'eos_token': eos_token,
         **kwargs
@@ -1473,10 +1477,19 @@ def get_model_tokenizer(
         if model_id_or_path is not None and not os.path.exists(
                 model_id_or_path):
             revision = model_info['revision']
-            model_dir = snapshot_download(
-                model_id_or_path,
-                revision,
-                ignore_file_pattern=ignore_file_pattern)
+            use_hf = model_info['use_hf']
+            if use_hf:
+                from huggingface_hub import snapshot_download as hf_snapshot_download
+                model_dir = hf_snapshot_download(
+                    model_id_or_path,
+                    repo_type='model',
+                    revision=revision,
+                    ignore_patterns=ignore_file_pattern)
+            else:
+                model_dir = snapshot_download(
+                    model_id_or_path,
+                    revision,
+                    ignore_file_pattern=ignore_file_pattern)
         if is_dist() and is_local_master():
             dist.barrier()
     model_dir = os.path.expanduser(model_dir)
