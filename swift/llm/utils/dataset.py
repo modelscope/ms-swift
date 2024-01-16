@@ -1133,7 +1133,7 @@ def load_dataset_from_local(
 
     if 'image' in dataset.features and isinstance(dataset[0]['image'], str):
         dataset = HfDataset.from_list(
-            dataset_map(dataset, load_image, num_proc=10).data)
+            dataset_map(dataset, load_image, num_proc=4).data)
     return dataset
 
 
