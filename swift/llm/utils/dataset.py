@@ -1124,15 +1124,16 @@ def load_dataset_from_local(
     dataset = concatenate_datasets(dataset_list)
 
     def load_image(row):
-        if 'image' in row and isinstance(row['image'], str):
-            from PIL import Image
-            import requests
-            if not os.path.exists(row['image']):
-                row['image'] = requests.get(row['image'], stream=True).raw
-            row['image'] = Image.open(row['image'])
+        from PIL import Image
+        import requests
+        if not os.path.exists(row['image']):
+            row['image'] = requests.get(row['image'], stream=True).raw
+        row['image'] = Image.open(row['image'])
         return row
 
-    dataset = HfDataset.from_list(dataset_map(dataset, load_image).data)
+    if 'image' in dataset.features and isinstance(dataset[0]['image'], str):
+        dataset = HfDataset.from_list(
+            dataset_map(dataset, load_image, num_proc=10).data)
     return dataset
 
 
