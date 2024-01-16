@@ -1,4 +1,4 @@
-# **一、模型的训练推理**
+# 模型的训练推理
 
 深度学习领域所谓的“模型”，是一个复杂的数学公式构成的计算步骤。为了便于理解，我们以一元一次方程为例子解释：
 
@@ -41,7 +41,7 @@ y=σ(ax+b)
 
 模型需要先进行训练，找到尽量符合要求的a和b，之后用a和b输入真实场景的x来获得y，也就是推理。
 
-# 二、预训练范式
+# 预训练范式
 
 在熟悉预训练之前，先来看几组数据：
 
@@ -72,9 +72,9 @@ y=σ(ax+b)
 
 第一组数据是没有问题答案的（未标注），这类数据在互联网上比比皆是
 
-第二组数据包含了问题和答案（已标注），是互联网上存在比例较少的数据
+第二组数据包含了问题和答案（已标注），是互联网上存在比例偏少的数据
 
-第三组数据不仅包含了正确答案，还包含了错误答案，互联网上几乎很难找到
+第三组数据不仅包含了正确答案，还包含了错误答案，互联网上较难找到
 
 这三类数据都可以用于模型训练。如果将模型训练类似比语文考试：
 
@@ -100,7 +100,7 @@ y=σ(ax+b)
 
 人类对齐过程耗费几十张到几百张显卡不等，技术门槛比微调更高一些，一般由模型提供方进行。
 
-# 三、如何确定自己的模型需要做什么训练？
+# 如何确定自己的模型需要做什么训练？
 
 Case1：你有大量的显卡，希望从0训一个模型出来刷榜
 
@@ -110,7 +110,7 @@ Case2：有大量未标注数据，但这些数据的知识并没有包含在预
 
 选择继续训练（和预训练过程相同，但不会耗费那么多显卡和时间）
 
-Case3：有一定的已标注数据，希望模型具备数据中提到的问答能力
+Case3：有一定的已标注数据，希望模型具备数据中提到的问答能力，如根据行业特有的txt进行大纲提炼
 
 选择微调
 
@@ -118,19 +118,20 @@ Case4：回答的问题需要相对严格的按照已有的知识进行，比如
 
 用自己的数据微调后使用RAG（知识增强）进行检索召回，或者不经过训练直接进行检索召回
 
-Case5：希望训练自己领域的问答机器人，希望机器人的回答满足一定条件
+Case5：希望训练自己领域的问答机器人，希望机器人的回答满足一定条件或范式
 
 微调+对齐训练
 
 在下面的章节中，我们分具体场景介绍训练的不同步骤。
 
 - 数据的预处理
-- 选择合适的模型
-- 继续训练
-- 微调
-- 对齐训练
+- 选择合适的方法和模型
+- Transformer结构
+- 模型的量化
+- 指令微调
+- 快速部署
 
-# 四、 模型推理的一般过程
+# 模型推理的一般过程
 
 现在有一个句子，如何将它输入模型得到另一个句子呢？
 
@@ -167,4 +168,207 @@ Case5：希望训练自己领域的问答机器人，希望机器人的回答满
    下面，我们把“我爱张学友”重新输入模型，让模型计算下一个文字的概率，这种方式叫做**自回归**。即用生成的文字递归地计算下一个文字。推理的结束标志是**结束字符**，也就是**eos_token**，遇到这个token表示生成结束了。
 
    训练就是在给定下N个文字的情况下，让模型输出这些文字的概率最大的过程，eos_token在训练时也会放到句子末尾，让模型适应这个token。
+
+# PyTorch框架
+
+用于进行向量相乘、反向求导等操作的框架被称为深度学习框架。高维度的向量被称为张量（Tensor），后面我们也会用Tensor代指高维度向量或矩阵。
+
+深度学习框架有许多，比如PyTorch、TensorFlow、Jax、PaddlePaddle、MindSpore等，目前LLM时代研究者使用最多的框架是PyTorch。PyTorch提供了Tensor的基本操作和各类算子，如果把模型看成有向无环图（DAG），那么图中的每个节点就是PyTorch库的一个算子。
+
+安装PyTorch之前请安装python。在这里我们推荐使用conda（一个python包管理软件）来安装python:https://conda.io/projects/conda/en/latest/user-guide/install/index.html
+
+conda配置好后，新建一个虚拟环境（一个独立的python包环境，所做的操作不会污染其它虚拟环境）:
+
+```shell
+# 配置一个python3.9的虚拟环境
+conda create -n py39 python==3.9
+# 激活这个环境
+conda activate py39
+```
+
+之后：
+
+```python
+# 假设已经安装了python，没有安装python
+pip install torch
+```
+
+打开python命令行：
+
+```shell
+python
+```
+
+```python
+import torch
+# 两个tensor，可以累计梯度信息
+a = torch.tensor([1.], requires_grad=True)
+b = torch.tensor([2.], requires_grad=True)
+c = a * b
+# 计算梯度
+c.backward()
+print(a.grad, b.grad)
+# tensor([2.]) tensor([1.])
+```
+
+可以看到，a的梯度是2.0，b的梯度是1.0，这是因为c对a的偏导数是b，对b的偏导数是a的缘故。backward方法非常重要，模型参数更新依赖的就是backward计算出来的梯度值。
+
+torch.nn.Module基类：所有的模型和它们的子结构都是该类的子类。一个完整的torch模型分为两部分，一部分是代码，用来描述模型结构：
+
+```python
+import torch
+from torch.nn import Linear
+
+class SubModule(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        # 有时候会传入一个config，下面的Linear就变成：
+        # self.a = Linear(config.hidden_size, config.hidden_size)
+        self.a = Linear(4, 4)
+
+class Module(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.sub =SubModule()
+
+
+module = Module()
+
+state_dict = module.state_dict() # 实际上是一个key value对
+
+# OrderedDict([('sub.a.weight', tensor([[-0.4148, -0.2303, -0.3650, -0.4019],
+#        [-0.2495,  0.1113,  0.3846,  0.3645],
+#        [ 0.0395, -0.0490, -0.1738,  0.0820],
+#        [ 0.4187,  0.4697, -0.4100, -0.4685]])), ('sub.a.bias', tensor([ 0.4756, -0.4298, -0.4380,  0.3344]))])
+
+# 如果我想把SubModule替换为别的结构能不能做呢？
+setattr(module, 'sub', Linear(4, 4))
+# 这样模型的结构就被动态的改变了
+# 这个就是轻量调优生效的基本原理：新增或改变原有的模型结构，具体可以查看选型或训练章节
+```
+
+state_dict存下来就是pytorch_model.bin，也就是存在于[modelhub](https://www.modelscope.cn/models)中的文件
+
+config.json：用于描述模型结构的信息，如上面的Linear的尺寸`4`
+
+tokenizer.json: tokenizer的构造信息
+
+vocab.txt: nlp模型和多模态模型特有，描述词表信息。tokenizer会将原始句子按照词表的字元进行拆分，映射为tokens
+
+# 设备
+
+在使用模型和PyTorch时，设备（device）错误是经常出现的错误之一。
+
+```text
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!
+```
+
+tensor和tensor的操作（比如相乘、相加等）只能在两个tensor在同一个设备上才能进行。要不然tensor都被存放在同一个显卡上，要不然都放在cpu上。一般最常见的错误就是模型的输入tensor还在cpu上，而模型本身已经被放在了显卡上。PyTorch驱动显卡进行tensor操作的计算框架是cuda，PyTorch同样也支持用非常方便的方式把模型和tensor放在显卡上：
+
+```python
+from modelscope import AutoModelForCausalLM
+import torch
+model = AutoModelForCausalLM.from_pretrained("qwen/Qwen-1_8B-Chat", trust_remote_code=True)
+model.to(0)
+# model.to('cuda:0') 同样也可以
+a = torch.tensor([1.])
+a = a.to(0)
+# 注意！model.to操作不需要承接返回值，这是因为torch.nn.Module(模型基类)的这个操作是in-place(替换)的
+# 而tensor的操作不是in-place的，需要承接返回值
+```
+
+# PyTorch基本训练代码范例
+
+```python
+import os
+import random
+
+import numpy as np
+import torch
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.dataloader import default_collate
+from torch.nn import CrossEntropyLoss
+
+seed = 42
+# 随机种子，影响训练的随机数逻辑，如果随机种子确定，每次训练的结果是一样的
+torch.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
+
+# 确定化cuda、cublas、cudnn的底层随机逻辑
+# 否则CUDA会提前优化一些算子，产生不确定性
+# 这些处理在训练时也可以不使用
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+torch.use_deterministic_algorithms(True)
+# Enable CUDNN deterministic mode
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+
+# torch模型都继承于torch.nn.Module
+class MyModule(torch.nn.Module):
+
+    def __init__(self, n_classes=2):
+        # 优先调用基类构造
+        super().__init__()
+        # 单个神经元，一个linear加上一个relu激活
+        self.linear = torch.nn.Linear(16, n_classes)
+        self.relu = torch.nn.ReLU()
+
+    def forward(self, tensor, label):
+        # 前向过程
+        output  = {'logits': self.relu(self.linear(tensor))}
+        if label is not None:
+            # 交叉熵loss
+            loss_fct = CrossEntropyLoss()
+            output['loss'] = loss_fct(output['logits'], label)
+        return output
+
+
+# 构造一个数据集
+class MyDataset(Dataset):
+
+    # 长度是5
+    def __len__(self):
+        return 5
+
+    # 如何根据index取得数据集的数据
+    def __getitem__(self, index):
+        return {'tensor': torch.rand(16), 'label': torch.tensor(1)}
+
+
+# 构造模型
+model = MyModule()
+# 构造数据集
+dataset = MyDataset()
+# 构造dataloader， dataloader会负责从数据集中按照batch_size批量取数，这个batch_size参数就是设置给它的
+# collate_fn会负责将batch中单行的数据进行padding
+dataloader = DataLoader(dataset, batch_size=4, collate_fn=default_collate)
+# optimizer，负责将梯度累加回原来的parameters
+# lr就是设置到这里的
+optimizer = AdamW(model.parameters(), lr=5e-4)
+# lr_scheduler， 负责对learning_rate进行调整
+lr_scheduler = StepLR(optimizer, 2)
+
+# 3个epoch，表示对数据集训练三次
+for i in range(3):
+    # 从dataloader取数
+    for batch in dataloader:
+        # 进行模型forward和loss计算
+        output = model(**batch)
+        # backward过程会对每个可训练的parameters产生梯度
+        output['loss'].backward()
+        # 建议此时看下model中linear的grad值
+        # 也就是model.linear.weight.grad
+      
+        # 将梯度累加回parameters
+        optimizer.step()
+        # 清理使用完的grad
+        optimizer.zero_grad()
+        # 调整lr
+        lr_scheduler.step()
+```
 
