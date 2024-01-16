@@ -363,7 +363,7 @@ for i in range(3):
         output['loss'].backward()
         # 建议此时看下model中linear的grad值
         # 也就是model.linear.weight.grad
-      
+
         # 将梯度累加回parameters
         optimizer.step()
         # 清理使用完的grad
@@ -371,4 +371,3 @@ for i in range(3):
         # 调整lr
         lr_scheduler.step()
 ```
-

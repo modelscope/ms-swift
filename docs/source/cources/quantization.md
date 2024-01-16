@@ -129,4 +129,3 @@ GGML库的github可以访问：https://github.com/ggerganov/ggml
 AWQ量化方式假设不是所有权重都影响模型性能，因此在量化过程中会跳过一部分重要权重以减轻量化过程中的精度损失。因此在和GPTQ量化保持类似推理速度的同时可以具备更好的精度。
 
 目前VLLM对AWQ的支持较好，可以参考：https://docs.vllm.ai/en/latest/quantization/auto_awq.html
-

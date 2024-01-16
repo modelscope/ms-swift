@@ -45,7 +45,7 @@
 
 LayerNorm的公式是：
 $$
-y=\frac{x-E(x)}{\sqrt{\operatorname{Var}(x)+\epsilon}} * \gamma+\beta 
+y=\frac{x-E(x)}{\sqrt{\operatorname{Var}(x)+\epsilon}} * \gamma+\beta
 $$
 
 
@@ -105,7 +105,7 @@ $$
 
 其中
 $$
-\text{Swish}_{1} 
+\text{Swish}_{1}
 $$
 
 
