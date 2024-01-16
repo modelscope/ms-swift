@@ -114,6 +114,11 @@ class ModelType:
     internlm_7b_chat_8k = 'internlm-7b-chat-8k'
     internlm_20b = 'internlm-20b'
     internlm_20b_chat = 'internlm-20b-chat'
+    # yuan
+    yuan_2b_instruct = 'yuan-2b-instruct'
+    yuan_2b_janus_instruct = 'yuan-2b-janus-instruct'
+    yuan_51b_instruct = 'yuan-51b-instruct'
+    yuan_102b_instruct = 'yuan-102b-instruct'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
@@ -200,7 +205,8 @@ def register_model(
     requires: Optional[List[str]] = None,
     torch_dtype: Optional[Dtype] = None,
     automodel_class: Type[_BaseAutoModelClass] = AutoModelForCausalLM,
-    revision: str = 'master',
+    use_hf: bool = False,
+    revision: Optional[str] = None,
     ignore_file_pattern: Optional[List[str]] = None,
     function_kwargs: Optional[Dict[str, Any]] = None,
     exists_ok: bool = False,
@@ -216,6 +222,8 @@ def register_model(
         requires = []
     if function_kwargs is None:
         function_kwargs = {}
+    if revision is None:
+        revision = 'main' if use_hf else 'master'
     model_info = {
         'model_id_or_path': model_id_or_path,
         'lora_target_modules': lora_target_modules,
@@ -224,6 +232,7 @@ def register_model(
         'torch_dtype': torch_dtype,
         'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
+        'use_hf': use_hf,
         'revision': revision,
         'eos_token': eos_token,
         **kwargs
@@ -1411,6 +1420,72 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.yuan_2b_instruct,
+    'YuanLLM/Yuan2.0-2B-hf',
+    LoRATM.llama2,
+    TemplateType.yuan,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yuan_51b_instruct,
+    'YuanLLM/Yuan2.0-51B-hf',
+    LoRATM.llama2,
+    TemplateType.yuan,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yuan_102b_instruct,
+    'YuanLLM/Yuan2.0-102B-hf',
+    LoRATM.llama2,
+    TemplateType.yuan,
+    support_flash_attn=True)
+@register_model(
+    ModelType.yuan_2b_janus_instruct,
+    'YuanLLM/Yuan2-2B-Janus-hf',
+    LoRATM.llama2,
+    TemplateType.yuan,
+    support_flash_attn=True)
+def get_model_tokenizer_yuan(model_dir: str,
+                             torch_dtype: Dtype,
+                             model_kwargs: Dict[str, Any],
+                             load_model: bool = True,
+                             **kwargs):
+    model_folder, model_name = os.path.split(model_dir)
+    need_rename = '.' in model_name
+    if need_rename:
+        model_name = model_name.replace('.', '_')  # fix transformers_modules
+        new_model_dir = os.path.join(model_folder, model_name)
+        logger.info(f'Using new_model_dir: {new_model_dir}')
+        os.rename(model_dir, new_model_dir)
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attention = kwargs.get('use_flash_attn', False)
+    model_config.use_flash_attention = use_flash_attention
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dir,
+        add_eos_token=False,
+        add_bos_token=False,
+        eos_token='<eod>',
+        legacy=True)
+    addi_tokens = [
+        '<sep>', '<pad>', '<mask>', '<predict>', '<FIM_SUFFIX>',
+        '<FIM_PREFIX>', '<FIM_MIDDLE>', '<commit_before>', '<commit_msg>',
+        '<commit_after>', '<jupyter_start>', '<jupyter_text>',
+        '<jupyter_code>', '<jupyter_output>', '<empty_output>'
+    ]
+    tokenizer.add_tokens(addi_tokens, special_tokens=True)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        tokenizer=tokenizer,
+        **kwargs)
+    if need_rename:
+        os.rename(new_model_dir, model_dir)
+    return model, tokenizer
+
+
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
     if version.parse(transformers.__version__) >= version.parse('4.35'):
@@ -1473,10 +1548,19 @@ def get_model_tokenizer(
         if model_id_or_path is not None and not os.path.exists(
                 model_id_or_path):
             revision = model_info['revision']
-            model_dir = snapshot_download(
-                model_id_or_path,
-                revision,
-                ignore_file_pattern=ignore_file_pattern)
+            use_hf = model_info['use_hf']
+            if use_hf:
+                from huggingface_hub import snapshot_download as hf_snapshot_download
+                model_dir = hf_snapshot_download(
+                    model_id_or_path,
+                    repo_type='model',
+                    revision=revision,
+                    ignore_patterns=ignore_file_pattern)
+            else:
+                model_dir = snapshot_download(
+                    model_id_or_path,
+                    revision,
+                    ignore_file_pattern=ignore_file_pattern)
         if is_dist() and is_local_master():
             dist.barrier()
     model_dir = os.path.expanduser(model_dir)

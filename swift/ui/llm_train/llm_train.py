@@ -142,10 +142,10 @@ class LLMTrain(BaseUI):
                 'en': 'Use Distributed Data Parallel to train'
             }
         },
-        'neftune_alpha': {
+        'neftune_noise_alpha': {
             'label': {
-                'zh': 'neftune_alpha',
-                'en': 'neftune_alpha'
+                'zh': 'neftune_noise_alpha',
+                'en': 'neftune_noise_alpha'
             },
             'info': {
                 'zh': '使用neftune提升训练效果',
@@ -175,7 +175,7 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Slider(
-                        elem_id='neftune_alpha',
+                        elem_id='neftune_noise_alpha',
                         minimum=0.0,
                         maximum=1.0,
                         step=0.05,
