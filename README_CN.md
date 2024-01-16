@@ -174,6 +174,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
   - 文本生成: default-generation, default-generation-bos, chatglm-generation
   - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, cogagent
 
+
 ## 🔥SCEdit
 
 SCEdit由阿里巴巴通义实验室视觉智能团队(Alibaba TongYi Vision Intelligence Lab)所提出，是一个高效的生成式微调框架。该框架不仅支持文生图下游任务的微调能力，**相比LoRA节省30%-50%的训练显存开销**，实现快速迁移到特定的生成场景中；而且还可以**直接扩展到可控图像生成任务中，仅需ControlNet条件生成7.9%的参数量并节省30%的显存开销**，支持边缘图、深度图、分割图、姿态、颜色图、图像补全等条件生成任务。

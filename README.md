@@ -176,6 +176,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
   - Text Generation: default-generation, default-generation-bos, chatglm-generation
   - Chat: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, cogagent
 
+
 ## 🔥SCEdit
 
 SCEdit is an efficient generative fine-tuning framework proposed by Alibaba TongYi Vision Intelligence Lab. This framework enhances the fine-tuning capabilities for text-to-image generation downstream tasks and enables quick adaptation to specific generative scenarios, **saving 30%-50% of training memory costs compared to LoRA**. Furthermore, it can be directly extended to controllable image generation tasks, **requiring only 7.9% of the parameters that ControlNet needs for conditional generation and saving 30% of memory usage**. It supports various conditional generation tasks including edge maps, depth maps, segmentation maps, poses, color maps, and image completion.
