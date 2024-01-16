@@ -1120,7 +1120,16 @@ def load_dataset_from_local(
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
-    return concatenate_datasets(dataset_list)
+    dataset = concatenate_datasets(dataset_list)
+
+    def load_image(row):
+        if 'image' in row and isinstance(row['image'], str):
+            from PIL import Image
+            row['image'] = Image.open(row['image'])
+        return row
+
+    dataset = dataset.map(load_image)
+    return dataset
 
 
 def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
