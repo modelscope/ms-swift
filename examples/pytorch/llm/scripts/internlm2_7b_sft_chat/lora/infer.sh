@@ -7,7 +7,6 @@ swift infer \
     --max_new_tokens 2048 \
     --temperature 0.5 \
     --top_p 0.7 \
-    --repetition_penalty 1.0 \
     --stream false \
     --do_sample true \
     --merge_lora_and_save false \

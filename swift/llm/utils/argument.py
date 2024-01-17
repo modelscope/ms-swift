@@ -369,7 +369,7 @@ class InferArguments:
     temperature: float = 0.3
     top_k: int = 20
     top_p: float = 0.7
-    repetition_penalty: float = 1.05
+    repetition_penalty: float = 1.
     num_beams: int = 1
 
     # other
