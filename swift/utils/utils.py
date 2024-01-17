@@ -2,6 +2,7 @@
 import datetime as dt
 import os
 import re
+import sys
 import time
 from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Type, TypeVar)
@@ -67,8 +68,12 @@ _T = TypeVar('_T')
 def parse_args(class_type: Type[_T],
                argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
     parser = HfArgumentParser([class_type])
-    args, remaining_args = parser.parse_args_into_dataclasses(
-        argv, return_remaining_strings=True)
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        args, = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        remaining_args = []
+    else:
+        args, remaining_args = parser.parse_args_into_dataclasses(
+            argv, return_remaining_strings=True)
     return args, remaining_args
 
 
