@@ -14,4 +14,5 @@ from .torch_utils import (activate_model_parameters, broadcast_string,
                           is_local_master, is_master, is_on_same_device,
                           seed_everything, show_layers, time_synchronize)
 from .utils import (add_version_to_work_dir, check_json_format, lower_bound,
-                    parse_args, read_multi_line, test_time, upper_bound)
+                    parse_args, read_multi_line, test_time, upper_bound, is_pai_training_job,
+                    get_pai_tensorboard_dir)

@@ -13,7 +13,8 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master)
+                         get_dist_setting, is_dist, is_master,
+                         is_pai_training_job, get_pai_tensorboard_dir)
 from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset
 from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
@@ -48,7 +49,14 @@ class SftArguments:
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     output_dir: str = 'output'
-    add_output_dir_suffix: bool = True
+    add_output_dir_suffix: Optional[bool] = field(
+        default=None,
+        metadata={
+            'help':
+            "Defaults to True, indicating that the output_dir directory will be appended "
+            " with a suffix consisting of model_type and the task version number."
+        }
+    )
     ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = 'nccl'
 
     seed: int = 42
@@ -212,6 +220,9 @@ class SftArguments:
             if not dist.is_initialized():
                 dist.init_process_group(backend=self.ddp_backend)
 
+        if self.add_output_dir_suffix is None:
+            self.add_output_dir_suffix = False if is_pai_training_job() else True
+
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
@@ -292,7 +303,10 @@ class SftArguments:
                 self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
-            self.logging_dir = f'{self.output_dir}/runs'
+            if is_pai_training_job() and get_pai_tensorboard_dir():
+                self.logging_dir = get_pai_tensorboard_dir()
+            else:
+                self.logging_dir = f'{self.output_dir}/runs'
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)

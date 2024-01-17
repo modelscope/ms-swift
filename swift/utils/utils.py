@@ -136,3 +136,11 @@ def read_multi_line() -> str:
             res[-1] = text[:-2]
             break
     return ''.join(res)
+
+
+def is_pai_training_job():
+    return "PAI_TRAINING_JOB_ID" in os.environ
+
+
+def get_pai_tensorboard_dir():
+    return os.environ.get("PAI_OUTPUT_TENSORBOARD")
