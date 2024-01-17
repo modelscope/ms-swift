@@ -163,7 +163,7 @@ class SftArguments:
     temperature: float = 0.3
     top_k: int = 20
     top_p: float = 0.7
-    repetition_penalty: float = 1.05
+    repetition_penalty: float = 1.
     num_beams: int = 1
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
