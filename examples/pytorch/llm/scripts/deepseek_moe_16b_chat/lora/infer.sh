@@ -8,5 +8,5 @@ swift infer \
     --max_new_tokens 2048 \
     --temperature 0.1 \
     --top_p 0.7 \
-    --repetition_penalty 1.05 \
+    --repetition_penalty 1. \
     --do_sample true \

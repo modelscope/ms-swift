@@ -1,13 +1,13 @@
-# Experimental environment: 3090
-PYTHONPATH=../../.. \
+# Experimental environment: A10
 CUDA_VISIBLE_DEVICES=0 \
-python llm_infer.py \
-    --ckpt_dir "output/chatglm2-6b/vx_xxx/checkpoint-xxx" \
+swift infer \
+    --ckpt_dir "output/internlm2-7b-sft-chat/vx_xxx/checkpoint-xxx" \
     --load_dataset_config true \
-    --max_length 4096 \
+    --max_length 2048 \
     --max_new_tokens 2048 \
-    --temperature 0.1 \
+    --temperature 0.5 \
     --top_p 0.7 \
     --repetition_penalty 1. \
+    --stream false \
     --do_sample true \
     --merge_lora_and_save false \
