@@ -178,6 +178,7 @@ class SftArguments:
         set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
+        handle_generation_config(self)
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
@@ -311,7 +312,7 @@ class SftArguments:
             'support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
-        elif not support_gradient_checkpointing and self.gradient_checkpointing is True:
+        elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(
                 f'{self.model_type} not support gradient_checkpointing.')
 
@@ -407,6 +408,7 @@ class InferArguments:
             set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
+        handle_generation_config(self)
 
         self.torch_dtype, _, _ = select_dtype(self)
         if self.template_type == 'AUTO':
@@ -781,3 +783,16 @@ def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
     if args.use_flash_attn and not support_flash_attn:
         logger.warning(f'use_flash_attn: {args.use_flash_attn}, '
                        f'but support_flash_attn: {support_flash_attn}')
+
+
+def handle_generation_config(
+        args: Union[SftArguments, InferArguments]) -> None:
+    if args.do_sample is False:
+        # fix warning
+        args.temperature = 1.
+        args.top_p = 1.
+        args.top_k = 50
+        logger.info(
+            'Due to do_sample=False, the following settings are applied: args.temperature: '
+            f'{args.temperature}, args.top_p: {args.top_p}, args.top_k: {args.top_k}.'
+        )
