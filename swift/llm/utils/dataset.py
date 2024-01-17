@@ -22,7 +22,7 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
-from .utils import download_dataset
+from .utils import dataset_map, download_dataset
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -1120,7 +1120,21 @@ def load_dataset_from_local(
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
-    return concatenate_datasets(dataset_list)
+
+    dataset = concatenate_datasets(dataset_list)
+
+    def load_image(row):
+        from PIL import Image
+        import requests
+        if not os.path.exists(row['image']):
+            row['image'] = requests.get(row['image'], stream=True).raw
+        row['image'] = Image.open(row['image'])
+        return row
+
+    if 'image' in dataset.features and isinstance(dataset[0]['image'], str):
+        dataset = HfDataset.from_list(
+            dataset_map(dataset, load_image, num_proc=4).data)
+    return dataset
 
 
 def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],

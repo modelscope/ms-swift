@@ -123,10 +123,10 @@ class ModelType:
     baichuan2_13b_chat = 'baichuan2-13b-chat'
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
     # yuan
-    yuan_2b_instruct = 'yuan-2b-instruct'
-    yuan_2b_janus_instruct = 'yuan-2b-janus-instruct'
-    yuan_51b_instruct = 'yuan-51b-instruct'
-    yuan_102b_instruct = 'yuan-102b-instruct'
+    yuan2_2b_instruct = 'yuan2-2b-instruct'
+    yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
+    yuan2_51b_instruct = 'yuan2-51b-instruct'
+    yuan2_102b_instruct = 'yuan2-102b-instruct'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
@@ -1512,25 +1512,25 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
 
 @register_model(
-    ModelType.yuan_2b_instruct,
+    ModelType.yuan2_2b_instruct,
     'YuanLLM/Yuan2.0-2B-hf',
     LoRATM.llama2,
     TemplateType.yuan,
     support_flash_attn=True)
 @register_model(
-    ModelType.yuan_51b_instruct,
+    ModelType.yuan2_51b_instruct,
     'YuanLLM/Yuan2.0-51B-hf',
     LoRATM.llama2,
     TemplateType.yuan,
     support_flash_attn=True)
 @register_model(
-    ModelType.yuan_102b_instruct,
+    ModelType.yuan2_102b_instruct,
     'YuanLLM/Yuan2.0-102B-hf',
     LoRATM.llama2,
     TemplateType.yuan,
     support_flash_attn=True)
 @register_model(
-    ModelType.yuan_2b_janus_instruct,
+    ModelType.yuan2_2b_janus_instruct,
     'YuanLLM/Yuan2-2B-Janus-hf',
     LoRATM.llama2,
     TemplateType.yuan,
