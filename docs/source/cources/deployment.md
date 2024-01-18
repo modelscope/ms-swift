@@ -1,6 +1,32 @@
 # 推理及部署
 
-训练后的模型会用于推理或者部署。推理即使用模型用输入获得输出的过程，部署是将模型运行到恒定运行的环境中推理的过程。一般来说，LLM的推理可以直接使用PyTorch代码、使用VLLM/XInference/FastChat等框架，也可以使用llama.cpp/chatglm.cpp/qwen.cpp等c++推理框架。
+训练后的模型会用于推理或者部署。推理即使用模型用输入获得输出的过程，部署是将模型发布到恒定运行的环境中推理的过程。一般来说，LLM的推理可以直接使用PyTorch代码、使用[VLLM](https://docs.vllm.ai/en/latest/getting_started/quickstart.html)/[XInference](https://github.com/xorbitsai/inference)/[FastChat](https://github.com/lm-sys/FastChat)等框架，也可以使用[llama.cpp](https://github.com/ggerganov/llama.cpp)/[chatglm.cpp](https://github.com/li-plus/chatglm.cpp)/[qwen.cpp](https://github.com/QwenLM/qwen.cpp)等c++推理框架。
+
+# 一些推理方法
+
+- Greedy Search **贪婪搜索方式**。按照前面的讲解，模型会按照词表尺寸生成概率。贪婪方式会不断选择生成概率最大的token。该方法由于无脑选择了最大概率，因此模型会倾向于生成重复的文字，一般实际应用中很少使用
+- Beam Search 和贪婪方式的区别在于，beam search会选择概率最大的k个。在生成下一个token时，每个前序token都会生成k个，这样整体序列就有k^2个，从这些序列中选择组合概率最大的k个，并递归地执行下去。k在beam search算法中被称为beam_size
+- Sample 随机采样方式。按照词表每个token的概率采样一个token出来。这个方式多样性更强，是目前主流的生成方式。
+
+# 重要推理超参数
+
+- do_sample：布尔类型。是否使用随机采样方式运行推理，如果设置为False，则使用beam_search方式
+
+- temperature：大于等于零的浮点数。公式为：
+  $$
+  q_i=\frac{\exp(z_i/T)}{\sum_{j}\exp(z_j/T)}\\
+  $$
+  从公式可以看出，如果T取值为0，则效果类似argmax，此时推理几乎没有随机性；取值为正无穷时接近于取平均。一般temperature取值介于[0, 1]之间。取值越高输出效果越随机。
+
+  **如果该问答只存在确定性答案，则T值设置为0。反之设置为大于0。**
+
+- top_k：大于0的正整数。从k个概率最大的结果中进行采样。k越大多样性越强，越小确定性越强。一般设置为20~100之间。
+  - 实际实验中可以先从100开始尝试，逐步降低top_k直到效果达到最佳。
+
+- top_p：大于0的浮点数。使所有被考虑的结果的概率和大于p值，p值越大多样性越强，越小确定性越强。一般设置0.7~0.95之间。
+  - 实际实验中可以先从0.95开始降低，直到效果达到最佳。
+  - top_p比top_k更有效，应优先调节这个参数。
+- repetition_penalty： 大于等于1.0的浮点数。如何惩罚重复token，默认1.0代表没有惩罚。
 
 # KVCache
 
@@ -10,7 +36,7 @@
 
 推理时的Q是单token tensor，但K和V都是包含了所有历史token tensor的长序列，因此KV是可以使用前序计算的中间结果的，这部分的缓存就是KVCache，其显存占用非常巨大。
 
-# VLLM推理
+# VLLM
 
 VLLM支持绝大多数LLM模型的推理加速。它使用如下的方案大幅提升推理速度：
 
@@ -31,10 +57,15 @@ VLLM支持绝大多数LLM模型的推理加速。它使用如下的方案大幅�
 
 值得注意的是，VLLM会默认将显卡的全部显存预先申请以提高缓存大小和推理速度，用户可以通过参数`gpu_memory_utilization`控制缓存大小。
 
-用VLLM部署模型：
+首先安装VLLM：
 
 ```shell
 pip install vllm
+```
+
+之后直接运行即可：
+
+```shell
 VLLM_USE_MODELSCOPE=True python -m vllm.entrypoints.openai.api_server --model qwen/Qwen-1_8B-Chat --trust-remote-code
 ```
 
@@ -51,9 +82,64 @@ curl http://localhost:8000/v1/completions \
 }'
 ```
 
+# SWIFT
+
+在SWIFT中，我们支持了VLLM的推理加速手段。
+
+```shell
+pip install ms-swift[llm] openai
+```
+
+只需要运行下面的命令就可以使用VLLM加速推理：
+
+```shell
+swift infer --model_id_or_path qwen/Qwen-1_8B-Chat --max_new_tokens 128 --temperature 0.3 --top_p 0.7 --repetition_penalty 1.05 --do_sample true
+```
+
+也支持在部署中使用VLLM：
+
+```shell
+swift deploy --model_id_or_path qwen/Qwen-1_8B-Chat --max_new_tokens 128 --temperature 0.3 --top_p 0.7 --repetition_penalty 1.05 --do_sample true
+```
+
+调用：
+
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
+kwargs = {'model': model_type, 'messages': query, 'seed': 42, 'temperature': 0.1, 'max_tokens': 32}
+
+resp = client.chat.completions.create(**kwargs)
+response = resp.choices[0].text
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+stream_resp = client.completions.create(stream=True, **kwargs)
+response = resp.choices[0].text
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].text, end='', flush=True)
+print()
+```
+
 # llama.cpp
 
 llama.cpp是使用c++语言编写的对llama系列模型进行高效推理或量化推理的开源库。该库使用了ggml底层计算库进行推理。在使用之前需要额外将python的weights转为ggml格式或gguf格式方可使用。和llama.cpp类似，还有兼容ChatGLM模型的chatglm.cpp和兼容qwen模型的qwen.cpp和mistral的mistral.cpp。
+
+安装依赖：
+
+```shell
+pip install modelscope
+```
 
 ```python
 git clone --recursive https://github.com/QwenLM/qwen.cpp && cd qwen.cpp
@@ -61,12 +147,20 @@ cmake -B build
 cmake --build build -j --config Release
 ```
 
+下载模型：
+
+```python
+from modelscope import snapshot_download
+print(snapshot_download('qwen/Qwen-1_8B-Chat'))
+# /mnt/workspace/.cache/modelscope/qwen/Qwen-1_8B-Chat
+```
+
 将原始模型转换为ggml支持的格式：
 
 ```shell
-python3 qwen_cpp/convert.py -i Qwen/Qwen-7B-Chat -t q4_0 -o qwen7b-ggml.bin
-./build/bin/main -m qwen7b-ggml.bin --tiktoken Qwen-7B-Chat/qwen.tiktoken -p 你好
-# 你好！很高兴为你提供帮助。
+python3 qwen_cpp/convert.py -i /mnt/workspace/.cache/modelscope/qwen/Qwen-1_8B-Chat -t q4_0 -o qwen1_8b-ggml.bin
+./build/bin/main -m qwen1_8b-ggml.bin --tiktoken /mnt/workspace/.cache/modelscope/qwen/Qwen-1_8B-Chat/qwen.tiktoken -p 你好
+# 你好！有什么我可以帮助你的吗？
 ```
 
 量化章节中我们介绍，GGML库适合于CPU运行，因此推荐用户在CPU环境中或边缘计算中考虑cpp库进行推理。
@@ -83,7 +177,7 @@ python3 -m fastchat.serve.controller
 在新的terminal中启动：
 
 ```shell
-python3 -m fastchat.serve.model_worker --model-path lmsys/vicuna-7b-v1.5
+FASTCHAT_USE_MODELSCOPE=true python3 -m fastchat.serve.model_worker --model-path qwen/Qwen-1_8B-Chat --revision v1.0.0
 ```
 
 之后在新的terminal中可以运行界面进行推理:
@@ -92,11 +186,4 @@ python3 -m fastchat.serve.model_worker --model-path lmsys/vicuna-7b-v1.5
 python3 -m fastchat.serve.gradio_web_server
 ```
 
-# SWIFT
-
-在魔搭官方的SWIFT库中，我们也提供了一个简易的部署命令，供用户在训练完成后进行模型验证和单实例DEMO。
-
-```shell
-pip install ms-swift -U
-CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-1_8b-chat
-```
+![image-20240118204046417](resources/image-20240118204046417.png)

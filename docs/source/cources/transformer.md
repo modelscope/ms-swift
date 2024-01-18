@@ -4,6 +4,8 @@
 
 <img src="resources/image-20240116205728780.png" alt="image-20240116205728780" style="zoom:50%;" />
 
+这是LLaMA2的模型结构。
+
 介绍下基本结构和流程：
 
 1. Input是原始句子，经过Tokenizer转变为tokens
@@ -13,13 +15,13 @@
 5. 进入FeedForward（MLP），重新进入下一layer
 6. 所有的layers计算过后，经过一个linear求出对vocab每个位置的概率
 
-可以看出，Transformer模型的基本原理是让每个文字的Tensor和其他文字的Tensor做内积（也就是cosine投影值，可以理解为文字的相关程度）。之后把这些相关程度放一块计算各自占比，再用占比值分别乘以对应文字的Tensor并相加起来，得到了一个新的Tensor（这个Tensor是之前所有Tensor的概率混合）。每个文字都可以进行如上动作，因此生成的新的Tensor和之前输入的Tensor长度相同（比如输入十个字，计算得到的Tensor还是十个），在层数不断堆叠的情况下，最后的Tensor会越来越抽象出文字的深层次意义，用最后输出的Tensor去计算输出一个新的文字或分类。
+可以看出，Transformer模型的基本原理是让每个文字的Tensor和其他文字的Tensor做内积（也就是cosine投影值，可以理解为文字的相关程度）。之后把这些相关程度放在一起计算各自占比，再用占比比例分别乘以对应文字的Tensor并相加起来，得到了一个新的Tensor（这个Tensor是之前所有Tensor的概率混合，可以理解为对句子所有文字的抽象）。每个文字都进行如上动作，因此生成的新的Tensor和之前输入的Tensor长度相同（比如输入十个字，计算得到的Tensor还是十个），在层数不断堆叠的情况下，最后的Tensor会越来越抽象出文字的深层次意义，用最后输出的Tensor去计算输出一个新的文字或分类。
 
 # Transformer对比CNN和LSTM
 
-- CNN有局部性和平移不变性，促使模型关注局部信息。CNN预设了归纳偏差，这使得小样本训练可以取得较好效果，但在充分数据下这一效果也被transformer所掩盖。并且局部性会忽略全局关系，导致某些条件下效果不佳
+- CNN有局部性和平移不变性，促使模型关注局部信息。CNN预设了归纳偏差，这使得小样本训练可以取得较好效果，但在充分数据训练下这一效果也被transformer所掩盖。并且局部性会忽略全局关系，导致某些条件下效果不佳
 - LSTM的长距离记忆会导致最早的token被加速遗忘，并且其只能注意单侧信息导致了对句子的理解存在偏差。后来虽然引入了双向LSTM，但其大规模分布式训练仍然存在技术问题
-- Transformer结构并不预设归纳偏差，因此需要大数据量训练才有较好效果。但其对于token的同时计算大大加速了推理速度，并且对分布式训练支持较好，因此在目前数据量充足的情况下反而异军突起。由于内置了positional-embedding，因此较好地解决了attention结构中的位置不敏感性
+- Transformer结构并不预设归纳偏差，因此需要大数据量训练才有较好效果。但其对于token的并行计算大大加速了推理速度，并且对分布式训练支持较好，因此在目前数据量充足的情况下反而异军突起。由于内置了positional-embedding，因此较好地解决了attention结构中的位置不敏感性
 
 # Encoder和Decoder
 
@@ -39,7 +41,7 @@
 1. 没有使用LayerNorm，而是使用了RMSNorm进行预归一化
 2. 使用了RoPE（Rotary Positional Embedding）
 3. MLP使用了SwiGLU作为激活函数
-4. Llama2的大模型版本使用了Group Query Attention（GQA）
+4. LLaMA2的大模型版本使用了Group Query Attention（GQA）
 
 ## **RMSNorm**
 
@@ -82,17 +84,17 @@ ALiBi的好处在于：
 
 RoPE的全称是旋转位置编码(Rotary Positional Embedding)，该编码的推导过程和Sinusoidal Position Encoding的推导过程比较类似，不同之处在于后者是加性的，而前者是乘性的，因此得到的位置编码类似于：
 
-![img](resources/aed18027-66e6-46f6-9649-911564f6886e.png)
+<img src="resources/aed18027-66e6-46f6-9649-911564f6886e.png" alt="image-20240116212517161" style="zoom:50%;" />
 
 或者也可以简化为：
 
-![img](resources/4e8e8ce0-84bb-463a-b28f-e1d6df3c6b4a.png)
+<img src="resources/4e8e8ce0-84bb-463a-b28f-e1d6df3c6b4a.png" alt="image-20240116212517161" style="zoom:50%;" />
 
 该位置编码表示相对位置的几何意义比较明显，也就是两个向量的角度差。
 
 该位置编码的优势在于：
 
-1. 位置编码矩阵是正交阵，因此乘上位置编码后不会改变原向量模长
+1. 位置编码矩阵是单位正交阵，因此乘上位置编码后不会改变原向量模长
 2. 相较于Sinusoidal Position Encoding具备了更好的外推特性
 
 ## **SwiGLU**
