@@ -1,4 +1,4 @@
-# 指令微调（Supervised Finetuning）
+# 指令微调（Instruction Finetuning）
 
 指令微调阶段使用了**已标注数据**。这个阶段训练的数据集数量不会像预训练阶段那么大，最多可以达到几千万条，最少可以达到几百条到几千条。指令微调可以将预训练的知识“涌现”出来，进行其他类型的任务，如问答类型的任务。一般指令微调阶段对于在具体行业上的应用是必要的，但指令微调阶段一般不能灌注进去新知识，而是将已有知识的能力以某类任务的形式展现出来。
 
@@ -159,3 +159,5 @@ app_ui_main(infer_args)
 ```
 
 上面我们构建了一个最小的训练和推理流程。注意SftArguments具有很多可调节参数，可以[查看文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md )来查看这些参数的具体意义。也可以[自定义自己的数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md)进行训练。
+
+# 自定义数据集行业模型训练案例/自我认知训练案例
