@@ -120,9 +120,7 @@ class Runtime(BaseUI):
                 base_tab.element('show_log').click(
                     Runtime.update_log, [], [cls.element('log')]).then(
                         Runtime.wait, [base_tab.element('logging_dir')],
-                        [cls.element('log')],
-                        show_progress=True,
-                        queue=True)
+                        [cls.element('log')])
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -147,40 +145,34 @@ class Runtime(BaseUI):
         latest_data = ''
         lines = collections.deque(
             maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-        while True:
-            try:
-                with open(log_file) as input:
-                    input.seek(offset)
-                    fail_cnt = 0
-                    while True:
+        try:
+            with open(log_file, 'r') as input:
+                input.seek(offset)
+                fail_cnt = 0
+                while True:
+                    try:
                         latest_data += input.read()
-                        offset = input.tell()
-                        if not latest_data:
-                            time.sleep(0.5)
-                            fail_cnt += 1
-                            if fail_cnt > 5:
-                                break
+                    except UnicodeDecodeError:
+                        continue
+                    offset = input.tell()
+                    if not latest_data:
+                        time.sleep(0.5)
+                        fail_cnt += 1
+                        if fail_cnt > 20:
+                            break
 
-                        if '\n' not in latest_data:
-                            continue
-                        latest_lines = latest_data.split('\n')
-                        if latest_data[-1] != '\n':
-                            latest_data = latest_lines[-1]
-                            latest_lines = latest_lines[:-1]
-                        else:
-                            latest_data = ''
-                        lines.extend(latest_lines)
-                        yield '\n'.join(lines)
-            except IOError:
-                pass
-
-            process_name = 'swift'
-            process_find = False
-            for proc in psutil.process_iter():
-                if proc.name() == process_name:
-                    process_find = proc.pid
-            if not process_find:
-                break
+                    if '\n' not in latest_data:
+                        continue
+                    latest_lines = latest_data.split('\n')
+                    if latest_data[-1] != '\n':
+                        latest_data = latest_lines[-1]
+                        latest_lines = latest_lines[:-1]
+                    else:
+                        latest_data = ''
+                    lines.extend(latest_lines)
+                    yield '\n'.join(lines)
+        except IOError:
+            pass
 
     @classmethod
     def show_log(cls, logging_dir):
