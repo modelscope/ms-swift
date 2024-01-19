@@ -121,7 +121,7 @@ pip install ms-swift -U
 swift web-ui
 ```
 
-<video controls>     <source src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4" type="video/mp4">     </video>
+[![Watch the video](resources/20240119160942.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4)
 
 在框架中，一个最小的训练过程代码如下：
 
