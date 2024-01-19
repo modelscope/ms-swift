@@ -171,7 +171,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     data_collator = partial(
         data_collate_fn,
         tokenizer=tokenizer,
-        padding_to=args.max_length)
+        padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
