@@ -260,7 +260,9 @@ class SftArguments:
                                        and len(
                                            self.custom_val_dataset_path) == 0
                                        and self.self_cognition_sample == 0):
-            raise ValueError(f'self.dataset: {self.dataset}')
+            raise ValueError(
+                f'self.dataset: {self.dataset}, Please input the training dataset.'
+            )
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps

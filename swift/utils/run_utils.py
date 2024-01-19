@@ -15,7 +15,7 @@ def get_main(
 
     def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
                **kwargs) -> _T:
-        if isinstance(argv, args_class):
+        if not isinstance(argv, (list, tuple, NoneType)):
             args, remaining_argv = argv, []
         else:
             args, remaining_argv = parse_args(args_class, argv)

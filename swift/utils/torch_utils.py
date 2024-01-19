@@ -123,7 +123,8 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
 
 
 def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
-    n_parameters = np.array([p.numel() for p in model.parameters()])
+    n_parameters = np.array([p.numel() for p in model.parameters()],
+                            dtype=np.int64)
     n_freeze_parameters = int(np.sum(n_parameters) * freeze_parameters)
     n_parameters_cs = np.cumsum(n_parameters)
     idx = bisect_right(n_parameters_cs, n_freeze_parameters)
