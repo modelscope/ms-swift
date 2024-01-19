@@ -67,6 +67,8 @@
 
 10. gradient_checkpointing 梯度检查点。该方法的原理是将训练时的中间变量在前向过程中暂时丢弃，并在后向过程中重新计算。该方法可以有效节省训练显存，但属于时间换空间的做法，因此训练时间会变长。对显存的节省可以达到30%-70%不等。训练速度会减慢20%-40%不等。
 
+训练有很多超参数，它们的含义和设置技巧可以[参考这里](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md)。
+
 # 分布式训练（Distributed Training）
 
 由于较大模型可能在单张显卡上显存溢出，或者训练速度不够，因此单机多卡或多机多卡训练是必要的。在训练过程中的分布式训练有以下几种模式：
@@ -159,6 +161,43 @@ torch.cuda.empty_cache()
 app_ui_main(infer_args)
 ```
 
-上面我们构建了一个最小的训练和推理流程。注意SftArguments具有很多可调节参数，可以[查看文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md )来查看这些参数的具体意义。也可以[自定义自己的数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md)进行训练。
+# 自定义一个训练过程
 
-# 训练案例
+上面我们构建了一个最小的训练和推理流程。大多数时候开发者需要自定义一个训练流程和对应的数据集。在这种情况可以参考下面的步骤：
+
+1. 选择一个启动训练的方式，界面方式可以使用上述的web-ui命令（swift web-ui），命令行方式可以参考：
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset blossom-math-zh \
+    --output_dir output \
+```
+
+注意命令行具有很多可调节参数，可以[查看文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md )来查看这些参数的具体意义。
+
+​	如果想要了解训练流程可以查看[训练代码](https://github.com/modelscope/swift/blob/main/swift/llm/sft.py)
+
+​	了解超参数的拼接和处理可以查看[超参数的处理代码](https://github.com/modelscope/swift/blob/main/swift/llm/utils/argument.py)
+
+​	了解所有支持的模板可以查看[模板的拼接](https://github.com/modelscope/swift/blob/main/swift/llm/utils/template.py)
+
+2. 选择一个需要参与训练的模型，可以参考[支持的模型列表](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md)。
+3. 选择一个或若干个自己的数据集参与训练，注意这些数据集有一定的[格式要求](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md)。或者也可以使用一个自己的模型训练，只需要[注册自定义模型](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%A8%A1%E5%9E%8B)即可。
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset blossom-math-zh \
+    --output_dir output \
+    --custom_train_dataset_path xxx.jsonl zzz.jsonl \
+    --custom_val_dataset_path yyy.jsonl aaa.jsonl \
+```
+
+4. 我们准备了很多模型的可运行脚本，可以查看[脚本的参数](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts)来确定每个模型推荐的训练参数。
+5. 训练结束后，可以按照[推理加速和部署方案](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md)一键启动。
+
+6. 一个比较具体的实践方案是[自我认知任务的训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md)。
+
