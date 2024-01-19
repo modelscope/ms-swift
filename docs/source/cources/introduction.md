@@ -124,11 +124,11 @@ Case5：希望训练自己领域的问答机器人，希望机器人的回答满
 
 在下面的章节中，我们分具体场景介绍训练的不同步骤。
 
+- [Transformer结构](./transformer.md)
 - [数据的预处理](./data_processing.md)
 - [选择适合自己的方法和模型](./how_to_select.md)
-- [Transformer结构](./transformer.md)
-- [模型的量化](./quantization.md)
 - [指令微调](./sft.md)
+- [模型的量化](./quantization.md)
 - [推理部署](./deployment.md)
 
 # 模型推理的一般过程
