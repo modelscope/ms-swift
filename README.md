@@ -111,7 +111,27 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM Training and Inference
+### WEB UI training and inference
+
+After installation, you can use web-ui training/inference like:
+
+```shell
+SWIFT_UI_LANG=en swift web-ui
+```
+
+> Supported environment variables:
+>
+> WEBUI_SHARE=1 Share the gradio or not
+> SWIFT_UI_LANG=en/zh The language of radio
+> WEBUI_SERVER server_name， web-ui host ip，0.0.0.0 means all routes are allowed，127.0.0.1 means only localhost can visit the web
+> WEBUI_PORT The port of web-ui
+
+Here is a simple introduction of web-ui:
+
+<video controls>     <source src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4" type="video/mp4">     </video>
+
 ### Simple Usage
+
 - **Self-cognition fine-tuning** for large models in **10 minutes**, creating a personalized large model, please refer to [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
 - Quickly perform **inference** on LLM and build a **Web-UI**, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - Rapidly **fine-tune** and perform inference on LLM, and build a Web-UI, see the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
