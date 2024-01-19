@@ -34,5 +34,9 @@ def run_ui():
             LLMTrain.build_ui(LLMTrain)
             LLMInfer.build_ui(LLMInfer)
 
+    port = os.environ.get('WEBUI_PORT', None)
     app.queue().launch(
-        height=800, share=bool(int(os.environ.get('WEBUI_SHARE', '0'))))
+        server_name=os.environ.get('WEBUI_SERVER', None),
+        server_port=port if port is None else int(port),
+        height=800,
+        share=bool(int(os.environ.get('WEBUI_SHARE', '0'))))
