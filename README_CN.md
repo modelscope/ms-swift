@@ -109,7 +109,27 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型训练推理
+### WEB UI训练推理
+
+安装SWIFT之后，用如下方式启动界面训练推理：
+
+```shell
+swift web-ui
+```
+
+> 支持的环境变量：
+>
+> WEBUI_SHARE=1 控制gradio是否是share状态
+> SWIFT_UI_LANG=en/zh 控制web-ui界面语言
+> WEBUI_SERVER server_name参数， web-ui host ip，0.0.0.0代表所有ip均可访问，127.0.0.1代表只允许本机访问
+> WEBUI_PORT web-ui的端口号
+
+下面是一个web-ui的简单视频介绍：
+
+<video controls>     <source src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4" type="video/mp4">     </video>
+
 ### 简单使用
+
 - **10分钟**对大模型进行**自我认知微调**, 创建专属于自己的大模型, 可以查看[自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
 - 快速对LLM进行**推理**, 搭建**Web-UI**, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
 - 快速对LLM进行**微调**, 推理并搭建Web-UI, 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
