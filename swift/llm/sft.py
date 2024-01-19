@@ -14,8 +14,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers, torchacc_patch_accelerate,
-                         torchacc_patch_transformers, use_torchacc)
+                         seed_everything, show_layers, use_torchacc)
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
@@ -38,10 +37,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     if use_torchacc():
         import torchacc as ta
-        torchacc_patch_accelerate()
-        torchacc_patch_transformers()
-        ## patch qwen for torchacc flash_attention
-        os.system('cp modeling_qwen.py /root/.cache/modelscope/hub/qwen/Qwen-72B-Chat/modeling_qwen.py')
+        ta.accelerate_hf_trainer()
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
@@ -80,6 +76,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
 
+    if use_torchacc():
+        import torchacc as ta
+        model = ta.patch_qwen_model(model)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -102,7 +101,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
             config.dist.fsdp.size = 2
             config.dist.fsdp.wrap_layer_cls = {"QWenBlock"}
-            config.dist.fsdp.flatten_parameters = True
+            config.dist.fsdp.flatten_parameters = False
 
             return config
 
@@ -172,7 +171,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     data_collator = partial(
         data_collate_fn,
         tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
+        padding_to=args.max_length)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
