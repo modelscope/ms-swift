@@ -94,7 +94,7 @@ class Rome(SwiftAdapter):
                            mark_trainable_callback)
 
     @staticmethod
-    def freeze_model():
+    def has_additional_modules():
         return False
 
 

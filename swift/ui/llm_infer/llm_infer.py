@@ -1,6 +1,5 @@
 import os
 import re
-from dataclasses import fields
 from typing import Type
 
 import gradio as gr
@@ -40,6 +39,12 @@ class LLMInfer(BaseUI):
             'value': {
                 'zh': '加载模型中，请等待',
                 'en': 'Start to load model, please wait'
+            }
+        },
+        'loaded_alert': {
+            'value': {
+                'zh': '模型加载完成',
+                'en': 'Model loaded'
             }
         },
         'chatbot': {
@@ -118,19 +123,27 @@ class LLMInfer(BaseUI):
                 clear_history.click(
                     fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
                 cls.element('load_checkpoint').click(
-                    cls.reset_memory, [], [model_and_template],
-                    show_progress=False).then(
+                    cls.reset_memory, [], [model_and_template])\
+                    .then(cls.reset_loading_button, [], [cls.element('load_checkpoint')]).then(
                         cls.prepare_checkpoint, [
                             value for value in cls.elements().values()
                             if not isinstance(value, (Tab, Accordion))
-                        ], [model_and_template],
-                        show_progress=True).then(cls.change_interactive, [],
-                                                 [prompt])
-                cls.element('load_checkpoint').click(
+                        ], [model_and_template]).then(cls.change_interactive, [],
+                                                 [prompt]).then( # noqa
                     cls.clear_session,
                     inputs=[],
                     outputs=[prompt, chatbot],
-                    queue=True)
+                    queue=True).then(cls.reset_load_button, [], [cls.element('load_checkpoint')])
+
+    @classmethod
+    def reset_load_button(cls):
+        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
+        return gr.update(
+            value=cls.locale('load_checkpoint', cls.lang)['value'])
+
+    @classmethod
+    def reset_loading_button(cls):
+        return gr.update(value=cls.locale('load_alert', cls.lang)['value'])
 
     @classmethod
     def reset_memory(cls):
@@ -138,7 +151,6 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def prepare_checkpoint(cls, *args):
-        global model, tokenizer, template
         torch.cuda.empty_cache()
         infer_args = cls.get_default_value_from_dataclass(InferArguments)
         kwargs = {}
@@ -201,6 +213,8 @@ class LLMInfer(BaseUI):
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
         model, template = model_and_template
+        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            model.cuda()
         if not template_type.endswith('generation'):
             old_history, history = limit_history_length(
                 template, prompt, history, int(max_new_tokens))
@@ -211,3 +225,5 @@ class LLMInfer(BaseUI):
         for _, history in gen:
             total_history = old_history + history
             yield '', total_history
+        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            model.cpu()

@@ -22,7 +22,7 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
-from .utils import download_dataset
+from .utils import dataset_map, download_dataset
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -409,7 +409,7 @@ register_dataset(
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
-Advertisements: """
+Advertisements:"""
 register_dataset(
     DatasetName.advertise_gen_zh,
     'lvjianjin/AdvertiseGen', ['train'], ['validation'],
@@ -513,7 +513,7 @@ def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
     prompt = """Task: Question Generation
 Context: {context}
 Answer: {answer}
-Question: """
+Question:"""
     query = []
     response = []
     for d in dataset:
@@ -581,7 +581,7 @@ register_dataset(
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise'])
+    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
 
 register_dataset(
     DatasetName.medical_zh,
@@ -668,7 +668,7 @@ register_dataset(
     [('default', 'validation')],
     _preprocess_capcha_images,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', 'vision', '🔥'])
+    tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
     DatasetName.cls_fudan_news_zh,
@@ -850,7 +850,7 @@ def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
 Question: {question}
 Answer: {answer}
 Category: Human, ChatGPT
-Output: """
+Output:"""
     query = []
     response = []
     for d in dataset:
@@ -978,6 +978,9 @@ def add_self_cognition_dataset(
         return concatenate_datasets([train_dataset, dataset])
 
 
+NoneType = type(None)
+
+
 def _check_dataset(
     dataset: Optional[None],
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']
@@ -1003,7 +1006,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['response']: {d['response']}, i: {i}")
-        if has_query and not isinstance(d['response'], str):
+        if has_query and not isinstance(d['query'], (str, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1012,7 +1015,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['query']: {d['query']}, i: {i}")
-        if has_history and not isinstance(d['history'], (list, type(None))):
+        if has_history and not isinstance(d['history'], (list, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1021,7 +1024,7 @@ def _check_dataset(
                 continue
             else:
                 raise ValueError(f"d['history']: {d['history']}, i: {i}")
-        if has_system and not isinstance(d['system'], str):
+        if has_system and not isinstance(d['system'], (str, NoneType)):
             is_modified = True
             if check_dataset_strategy == 'discard':
                 continue
@@ -1103,7 +1106,7 @@ def load_dataset_from_local(
         assert isinstance(dataset_path, str)
         df: DataFrame
         if dataset_path.endswith('.csv'):
-            df = pd.read_csv(dataset_path)
+            df = pd.read_csv(dataset_path, na_filter=False)
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
         elif dataset_path.endswith('.json'):
@@ -1117,7 +1120,21 @@ def load_dataset_from_local(
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
-    return concatenate_datasets(dataset_list)
+
+    dataset = concatenate_datasets(dataset_list)
+
+    def load_image(row):
+        from PIL import Image
+        import requests
+        if not os.path.exists(row['image']):
+            row['image'] = requests.get(row['image'], stream=True).raw
+        row['image'] = Image.open(row['image'])
+        return row
+
+    if 'image' in dataset.features and isinstance(dataset[0]['image'], str):
+        dataset = HfDataset.from_list(
+            dataset_map(dataset, load_image, num_proc=4).data)
+    return dataset
 
 
 def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],

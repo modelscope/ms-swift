@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 from functools import partial
 from typing import Any, Dict, Union
@@ -152,6 +153,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     additional_saved_files = []
     if args.sft_type == 'full':
         additional_saved_files = get_additional_saved_files(args.model_type)
+
+    kwargs = {}
+    parameters = inspect.signature(
+        Seq2SeqTrainingArguments.__init__).parameters
+    for key in ['neftune_noise_alpha']:
+        if key in parameters:
+            kwargs[key] = getattr(args, key)
+
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
         evaluation_strategy=evaluation_strategy,
@@ -181,6 +190,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         greater_is_better=args.predict_with_generate,
         sortish_sampler=True,
         optim=args.optim,
+        adam_beta1=args.adam_beta1,
+        adam_beta2=args.adam_beta2,
         hub_model_id=args.hub_model_id,
         hub_private_repo=args.hub_private_repo,
         push_hub_strategy=args.push_hub_strategy,
@@ -200,7 +211,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         disable_tqdm=args.disable_tqdm,
         save_on_each_node=args.save_on_each_node,
         acc_strategy=args.acc_strategy,
-        save_safetensors=args.save_safetensors)
+        save_safetensors=args.save_safetensors,
+        logging_first_step=True,
+        **kwargs)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36

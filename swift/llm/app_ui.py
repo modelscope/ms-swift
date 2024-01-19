@@ -3,7 +3,7 @@ from typing import Tuple
 
 from swift.utils import get_main
 from .infer import merge_lora, prepare_model_template
-from .utils import (History, InferArguments, inference_stream,
+from .utils import (AppUIArguments, History, inference_stream,
                     limit_history_length)
 
 
@@ -11,7 +11,7 @@ def clear_session() -> History:
     return []
 
 
-def gradio_generation_demo(args: InferArguments) -> None:
+def gradio_generation_demo(args: AppUIArguments) -> None:
     import gradio as gr
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
@@ -43,10 +43,18 @@ def gradio_generation_demo(args: InferArguments) -> None:
                 output_box = gr.Textbox(lines=16, label='Output', max_lines=16)
         send = gr.Button('🚀 发送')
         send.click(model_generation, inputs=[input_box], outputs=[output_box])
-    demo.queue().launch(height=1000, share=args.share)
+    # Compatible with InferArguments
+    share = getattr(args, 'share', False)
+    server_name = getattr(args, 'server_name', '127.0.0.1')
+    server_port = getattr(args, 'server_port', 7860)
+    demo.queue().launch(
+        height=1000,
+        share=share,
+        server_name=server_name,
+        server_port=server_port)
 
 
-def gradio_chat_demo(args: InferArguments) -> None:
+def gradio_chat_demo(args: AppUIArguments) -> None:
     import gradio as gr
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
@@ -86,10 +94,18 @@ def gradio_chat_demo(args: InferArguments) -> None:
             model_chat, inputs=[message, chatbot], outputs=[message, chatbot])
         clear_history.click(
             fn=clear_session, inputs=[], outputs=[chatbot], queue=False)
-    demo.queue().launch(height=1000, share=args.share)
+    # Compatible with InferArguments
+    share = getattr(args, 'share', False)
+    server_name = getattr(args, 'server_name', '127.0.0.1')
+    server_port = getattr(args, 'server_port', 7860)
+    demo.queue().launch(
+        height=1000,
+        share=share,
+        server_name=server_name,
+        server_port=server_port)
 
 
-def llm_app_ui(args: InferArguments) -> None:
+def llm_app_ui(args: AppUIArguments) -> None:
     args.eval_human = True
     if args.merge_lora_and_save:
         merge_lora(args, device_map='cpu')
@@ -99,4 +115,4 @@ def llm_app_ui(args: InferArguments) -> None:
         gradio_chat_demo(args)
 
 
-app_ui_main = get_main(InferArguments, llm_app_ui)
+app_ui_main = get_main(AppUIArguments, llm_app_ui)

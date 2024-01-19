@@ -56,7 +56,7 @@ class SwiftModel(nn.Module):
                 new_adapters.append(DEFAULT_ADAPTER)
             else:
                 logger.warn(
-                    f'Adater {DEFAULT_ADAPTER} has been patched, skip.')
+                    f'Adapter {DEFAULT_ADAPTER} has been patched, skip.')
         elif isinstance(config, dict):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, _config in config.items():
@@ -66,10 +66,12 @@ class SwiftModel(nn.Module):
                     new_adapters.append(adapter_name)
                 else:
                     logger.warn(
-                        f'Adater {adapter_name} has been patched, skip.')
+                        f'Adapter {adapter_name} has been patched, skip.')
         self.model = model
 
         self.extra_state_keys = extra_state_keys or []
+        self.has_additional_modules = any(
+            [c.config.has_additional_modules for c in self.adapters.values()])
 
         def forward(self, *args, **kwargs):
             return self.base_model(*args, **kwargs)
@@ -147,16 +149,20 @@ class SwiftModel(nn.Module):
         """
         state_dict = self.model.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
+        if not self.has_additional_modules:
+            return state_dict
+
         state_dicts = {}
         if kwargs.get('save_adapter', True):
             for name, output in self.adapters.items():
-                if adapter_name == name or adapter_name is None:
+                if (adapter_name == name or adapter_name is None
+                    ) and output.config.has_additional_modules:  # noqa
                     state_dicts.update(
                         output.state_dict_callback(state_dict, name))
                     modules_to_save_names = [
                         sub_name
                         for sub_name, _ in self.model.named_parameters()
-                        if 'modules_to_save' in sub_name
+                        if f'modules_to_save.{name}' in sub_name
                     ]
                     for module_name in modules_to_save_names:
                         if f'modules_to_save.{name}' in module_name:
@@ -330,11 +336,12 @@ class SwiftModel(nn.Module):
         from .mapping import SWIFT_MAPPING
 
         adatper_cls = SWIFT_MAPPING[config.swift_type][1]
-        if adatper_cls.freeze_model() and not getattr(model, 'model_freezed',
-                                                      False):
+        if adatper_cls.has_additional_modules() and not getattr(
+                model, 'model_frozen', False):
             for _, p in model.named_parameters():
                 p.requires_grad = False
-            model.model_freezed = True
+            model.model_frozen = True
+        config.has_additional_modules = adatper_cls.has_additional_modules()
         return adatper_cls.prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
@@ -407,10 +414,20 @@ class SwiftModel(nn.Module):
                 f'Provided path ({save_directory}) should be a directory, not a file'
             )
         os.makedirs(save_directory, exist_ok=True)
-        self.create_or_update_model_card(save_directory)
+        if not self.has_additional_modules:
+            if hasattr(self.base_model, 'save_pretrained'):
+                self.base_model.save_pretrained(
+                    save_directory, safe_serialization=safe_serialization)
+            else:
+                self._save_state_dict(self.base_model.state_dict(),
+                                      save_directory, safe_serialization)
+                self.create_or_update_model_card(save_directory)
+        else:
+            self.create_or_update_model_card(save_directory)
 
         adapter_names = adapter_name if isinstance(
             adapter_name, list) or adapter_name is None else [adapter_name]
+
         for adapter_name, output in self.adapters.items():
             if adapter_names is not None and adapter_name not in adapter_names:
                 continue
@@ -420,38 +437,44 @@ class SwiftModel(nn.Module):
                 adapter_name=adapter_name, save_extra_states=False)
             output_dir = os.path.join(save_directory, adapter_name)
             os.makedirs(output_dir, exist_ok=True)
-
-            if safe_serialization:
-                from safetensors.torch import save_file as safe_save_file
-                safe_save_file(
-                    output_state_dict,
-                    os.path.join(output_dir, SAFETENSORS_WEIGHTS_NAME),
-                    metadata={'format': 'pt'})
-            else:
-                torch.save(output_state_dict,
-                           os.path.join(output_dir, WEIGHTS_NAME))
+            if output_state_dict and output.config.has_additional_modules:
+                self._save_state_dict(output_state_dict, output_dir,
+                                      safe_serialization)
             output.config.save_pretrained(output_dir)
 
         output_state_dict = self.state_dict(
             save_extra_states=True, save_adapter=False)
         if len(output_state_dict) > 0:
-            if safe_serialization:
-                from safetensors.torch import save_file as safe_save_file
-                safe_save_file(
-                    output_state_dict,
-                    os.path.join(save_directory, SAFETENSORS_WEIGHTS_NAME),
-                    metadata={'format': 'pt'})
+            if self.has_additional_modules:
+                self._save_state_dict(output_state_dict, save_directory,
+                                      safe_serialization)
+                with open(os.path.join(save_directory, CONFIG_NAME),
+                          'w') as file:
+                    json.dump({'extra_state_keys': self.extra_state_keys},
+                              file)
             else:
-                torch.save(output_state_dict,
-                           os.path.join(save_directory, WEIGHTS_NAME))
-            with open(os.path.join(save_directory, CONFIG_NAME), 'w') as file:
-                json.dump({'extra_state_keys': self.extra_state_keys}, file)
+                logger.error(
+                    'Full parameter training, save_extra_states will be ignored'
+                )
 
         if not os.path.exists(
                 os.path.join(save_directory, 'configuration.json')):
             with open(os.path.join(save_directory, 'configuration.json'),
                       'w') as f:
                 f.write('{}')
+
+    @staticmethod
+    def _save_state_dict(output_state_dict, save_directory,
+                         safe_serialization):
+        if safe_serialization:
+            from safetensors.torch import save_file as safe_save_file
+            safe_save_file(
+                output_state_dict,
+                os.path.join(save_directory, SAFETENSORS_WEIGHTS_NAME),
+                metadata={'format': 'pt'})
+        else:
+            torch.save(output_state_dict,
+                       os.path.join(save_directory, WEIGHTS_NAME))
 
     @property
     def base_model(self):
@@ -461,7 +484,7 @@ class SwiftModel(nn.Module):
                             adapter_names: Union[List[str], str],
                             offload=None):
         if not adapter_names:
-            return
+            adapter_names = []
 
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]

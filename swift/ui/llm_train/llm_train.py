@@ -1,6 +1,8 @@
+import collections
 import os
 import sys
 import time
+from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
 import gradio as gr
@@ -54,6 +56,12 @@ class LLMTrain(BaseUI):
                 'en':
                 'Task started, please check the tensorboard or log file, '
                 'closing this page does not affect training'
+            }
+        },
+        'dataset_alert': {
+            'value': {
+                'zh': '请选择或填入一个数据集',
+                'en': 'Please input or select a dataset'
             }
         },
         'submit': {
@@ -134,10 +142,10 @@ class LLMTrain(BaseUI):
                 'en': 'Use Distributed Data Parallel to train'
             }
         },
-        'neftune_alpha': {
+        'neftune_noise_alpha': {
             'label': {
-                'zh': 'neftune_alpha',
-                'en': 'neftune_alpha'
+                'zh': 'neftune_noise_alpha',
+                'en': 'neftune_noise_alpha'
             },
             'info': {
                 'zh': '使用neftune提升训练效果',
@@ -167,7 +175,7 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Slider(
-                        elem_id='neftune_alpha',
+                        elem_id='neftune_noise_alpha',
                         minimum=0.0,
                         maximum=1.0,
                         step=0.05,
@@ -191,16 +199,31 @@ class LLMTrain(BaseUI):
                 Quantization.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
-                submit.click(
-                    cls.train, [
-                        value for value in cls.elements().values()
-                        if not isinstance(value, (Tab, Accordion))
-                    ], [
-                        cls.element('running_cmd'),
-                        cls.element('logging_dir'),
-                        cls.element('runtime_tab')
-                    ],
-                    show_progress=True)
+                if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+                    submit.click(
+                        cls.update_runtime, [],
+                        [cls.element('runtime_tab'),
+                         cls.element('log')]).then(
+                             cls.train_studio, [
+                                 value for value in cls.elements().values()
+                                 if not isinstance(value, (Tab, Accordion))
+                             ], [cls.element('log')],
+                             queue=True)
+                else:
+                    submit.click(
+                        cls.train_local, [
+                            value for value in cls.elements().values()
+                            if not isinstance(value, (Tab, Accordion))
+                        ], [
+                            cls.element('running_cmd'),
+                            cls.element('logging_dir'),
+                            cls.element('runtime_tab'),
+                        ],
+                        queue=True)
+
+    @classmethod
+    def update_runtime(cls):
+        return gr.update(visible=True), gr.update(visible=True)
 
     @classmethod
     def train(cls, *args):
@@ -231,7 +254,14 @@ class LLMTrain(BaseUI):
                 more_params = json.loads(value)
 
         kwargs.update(more_params)
-        sft_args = SftArguments(**kwargs)
+        if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
+            raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
+        sft_args = SftArguments(
+            **{
+                key: value.split(' ')
+                if key in kwargs_is_list and kwargs_is_list[key] else value
+                for key, value in kwargs.items()
+            })
         params = ''
 
         for e in kwargs:
@@ -239,7 +269,8 @@ class LLMTrain(BaseUI):
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
-        params += '--add_output_dir_suffix False '
+        params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
+                  f'--logging_dir {sft_args.logging_dir}'
         for key, param in more_params.items():
             params += f'--{key} "{param}" '
         ddp_param = ''
@@ -260,9 +291,30 @@ class LLMTrain(BaseUI):
             if ddp_param:
                 ddp_param = f'set {ddp_param} && '
             run_command = f'{cuda_param}{ddp_param}start /b swift sft {params} > {log_file} 2>&1'
+        elif os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            run_command = f'{cuda_param} {ddp_param} swift sft {params}'
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
+        return run_command, sft_args, other_kwargs
+
+    @classmethod
+    def train_studio(cls, *args):
+        run_command, sft_args, other_kwargs = cls.train(*args)
+        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            lines = collections.deque(
+                maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+            process = Popen(
+                run_command, shell=True, stdout=PIPE, stderr=STDOUT)
+            with process.stdout:
+                for line in iter(process.stdout.readline, b''):
+                    line = line.decode('utf-8')
+                    lines.append(line)
+                    yield '\n'.join(lines)
+
+    @classmethod
+    def train_local(cls, *args):
+        run_command, sft_args, other_kwargs = cls.train(*args)
         if not other_kwargs['dry_run']:
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             os.system(run_command)
