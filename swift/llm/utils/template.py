@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -554,6 +555,13 @@ class CogAgentTemplate(Template):
 
     def encode(self, example: Dict[str,
                                    Any]) -> Dict[str, Optional[List[int]]]:
+        if 'image' in example and isinstance(example['image'], str):
+            from PIL import Image
+            import requests
+            if not os.path.exists(example['image']):
+                example['image'] = requests.get(
+                    example['image'], stream=True).raw
+            example['image'] = Image.open(example['image'])
         return self.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
