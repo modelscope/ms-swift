@@ -63,24 +63,62 @@ VLLM支持绝大多数LLM模型的推理加速。它使用如下的方案大幅�
 pip install vllm
 ```
 
-之后直接运行即可：
-
 ```shell
-VLLM_USE_MODELSCOPE=True python -m vllm.entrypoints.openai.api_server --model qwen/Qwen-1_8B-Chat --trust-remote-code
+import os
+os.environ['VLLM_USE_MODELSCOPE'] = 'True'
+from vllm import LLM, SamplingParams
+prompts = [
+    "Hello, my name is",
+    "The president of the United States is",
+    "The capital of France is",
+    "The future of AI is",
+]
+sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
+llm = LLM(model="qwen/Qwen-1_8B", trust_remote_code=True)
+outputs = llm.generate(prompts, sampling_params)
+
+# Print the outputs.
+for output in outputs:
+    prompt = output.prompt
+    generated_text = output.outputs[0].text
+    print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 ```
 
-之后就可以调用服务：
+注意，截止到本文档编写完成，VLLM对Chat模型的推理支持（模板和结束符）存在问题，在实际进行部署时请考虑使用SWIFT或者FastChat。
 
-```shell
-curl http://localhost:8000/v1/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "qwen/Qwen-1_8B-Chat",
-"prompt": "San Francisco is a",
-"max_tokens": 7,
-"temperature": 0
-}'
+> LLM的generate方法支持直接输入拼接好的tokens(prompt_token_ids参数，此时不要传入prompts参数)，所以外部可以按照自己的模板进行拼接后传入VLLM，SWIFT就是使用了这种方法
+
+在量化章节中我们讲解了[AWQ量化](https://docs.vllm.ai/en/latest/quantization/auto_awq.html)，VLLM直接支持传入量化后的模型进行推理：
+
+```python
+from vllm import LLM, SamplingParams
+import os
+import torch
+os.environ['VLLM_USE_MODELSCOPE'] = 'True'
+
+# Sample prompts.
+prompts = [
+    "Hello, my name is",
+    "The president of the United States is",
+    "The capital of France is",
+    "The future of AI is",
+]
+# Create a sampling params object.
+sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
+
+# Create an LLM.
+llm = LLM(model="ticoAg/Qwen-1_8B-Chat-Int4-awq", quantization="AWQ", dtype=torch.float16, trust_remote_code=True)
+# Generate texts from the prompts. The output is a list of RequestOutput objects
+# that contain the prompt, generated text, and other information.
+outputs = llm.generate(prompts, sampling_params)
+# Print the outputs.
+for output in outputs:
+    prompt = output.prompt
+    generated_text = output.outputs[0].text
+    print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 ```
+
+VLLM官方文档可以查看[这里](https://docs.vllm.ai/en/latest/getting_started/quickstart.html)。
 
 # SWIFT
 
