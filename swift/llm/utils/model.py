@@ -133,6 +133,9 @@ class ModelType:
     xverse_13b = 'xverse-13b'
     xverse_13b_chat = 'xverse-13b-chat'
     xverse_65b = 'xverse-65b'
+    xverse_65b_v2 = 'xverse-65b-v2'
+    xverse_65b_chat = 'xverse-65b-chat'
+    xverse_13b_256k = 'xverse-13b-256k'
     # vivo
     bluelm_7b = 'bluelm-7b'
     bluelm_7b_32k = 'bluelm-7b-32k'
@@ -299,6 +302,16 @@ def register_model(
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_65b, 'xverse/XVERSE-65B', LoRATM.llama2,
                 TemplateType.default_generation)
+@register_model(ModelType.xverse_65b_v2, 'xverse/XVERSE-65B-2', LoRATM.llama2,
+                TemplateType.default_generation)
+@register_model(ModelType.xverse_65b_chat, 'xverse/XVERSE-65B-Chat',
+                LoRATM.llama2, TemplateType.xverse)
+@register_model(
+    ModelType.xverse_13b_256k,
+    'xverse/XVERSE-13B-256K',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    revision='v1.0.0')
 @register_model(ModelType.xverse_7b_chat, 'xverse/XVERSE-7B-Chat',
                 LoRATM.llama2, TemplateType.xverse)
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,

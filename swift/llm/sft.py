@@ -9,8 +9,7 @@ import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
-from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
-                            Seq2SeqTrainingArguments)
+from swift.trainers import (Seq2SeqTrainer, Seq2SeqTrainingArguments)
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -145,10 +144,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         tokenizer=tokenizer,
         padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args
-    evaluation_strategy = IntervalStrategy.STEPS
+    evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
     if val_dataset is None:
-        evaluation_strategy = IntervalStrategy.NO
+        evaluation_strategy = 'no'
+    if evaluation_strategy == 'no':
         load_best_model_at_end = False
     additional_saved_files = []
     if args.sft_type == 'full':
