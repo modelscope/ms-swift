@@ -13,6 +13,12 @@ from swift.trainers import TrainingArguments
 
 class ProgressCallbackNew(ProgressCallback):
 
+    def on_train_begin(self, args, state, control, **kwargs):
+        if state.is_local_process_zero:
+            self.training_bar = tqdm(
+                desc='Train', total=state.max_steps, dynamic_ncols=True)
+        self.current_step = 0
+
     def on_prediction_step(self,
                            args,
                            state: TrainerState,
@@ -24,6 +30,7 @@ class ProgressCallbackNew(ProgressCallback):
                 if self.training_bar is not None:
                     self.training_bar.fp.write('\n')
                 self.prediction_bar = tqdm(
+                    desc='Val',
                     total=len(eval_dataloader),
                     leave=True,
                     dynamic_ncols=True,
