@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
-from swift.trainers import (Seq2SeqTrainer, Seq2SeqTrainingArguments)
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
