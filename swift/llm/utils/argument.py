@@ -23,8 +23,8 @@ from .utils import is_vllm_available
 logger = get_logger()
 
 
-def is_lora(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'qalora'}
+def is_adapter(sft_type: str) -> bool:
+    return sft_type in {'lora', 'longlora', 'qalora', 'adalora', 'ia3'}
 
 
 @dataclass
@@ -37,7 +37,7 @@ class SftArguments:
     model_revision: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    sft_type: Literal['lora', 'full', 'longlora', 'qalora'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft'] = 'swift'
@@ -90,9 +90,31 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
+    use_rslora: bool = False
+    lora_layers_to_transform: Optional[Union[List[int], int]] = None
+    lora_layers_pattern: Optional[Union[List[str], str]] = None
+    lora_rank_pattern: Optional[dict] = None
+    lora_alpha_pattern: Optional[dict] = None
+    lora_loftq_config: Optional[str] = None
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
+    modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
+
+    adalora_target_r: int = 8
+    adalora_init_r: int = 12
+    adalora_tinit: int = 0
+    adalora_tfinal: int = 0
+    adalora_deltaT: int = 1
+    adalora_beta1: float = 0.85
+    adalora_beta2: float = 0.85
+    adalora_orth_reg_weight: float = 0.5
+    adalora_total_step: Optional[int] = None
+    adalora_rank_pattern: Optional[dict] = None
+
+    ia3_target_modules: Optional[Union[List[str], str]] = None
+    ia3_feedforward_modules: Optional[Union[List[str], str]] = None
+    ia3_modules_to_save: List[str] = field(default_factory=list)
 
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
 
@@ -217,7 +239,7 @@ class SftArguments:
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
 
-        if is_lora(self.sft_type):
+        if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
             )
