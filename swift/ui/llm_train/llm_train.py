@@ -1,5 +1,6 @@
 import collections
 import os
+import re
 import sys
 import time
 from subprocess import PIPE, STDOUT, Popen
@@ -243,6 +244,13 @@ class LLMTrain(BaseUI):
                 compare_value, (list, dict)) else compare_value
             compare_value_ui = str(value) if not isinstance(
                 value, (list, dict)) else value
+
+            if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
+                value = int(value)
+            elif isinstance(value, str) and re.fullmatch(
+                    cls.float_regex, value):
+                value = float(value)
+
             if key not in ignore_elements and key in sft_args and compare_value_ui != compare_value_arg and value:
                 kwargs[key] = value if not isinstance(
                     value, list) else ' '.join(value)
