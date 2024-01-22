@@ -10,7 +10,7 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
-from swift.trainers.utils import find_labels
+from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -80,6 +80,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if use_torchacc():
         import torchacc as ta
         label_names = find_labels(model)
+        return_loss = can_return_loss(model)
         model = ta.patch_qwen_model(model)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
@@ -175,7 +176,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     data_collator = partial(
         data_collate_fn,
         tokenizer=tokenizer,
-        padding_to=args.max_length,
+        padding_to=args.max_length if args.sft_type == 'longlora' else None,
         bucket_sizes=bucket_sizes)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
@@ -291,6 +292,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     trainer.sft_args = args
     if use_torchacc():
         trainer.label_names = label_names
+        trainer.can_return_loss = return_loss
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
