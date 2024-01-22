@@ -187,9 +187,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 acc_list = []
                 for i, m in enumerate(masks):
                     acc_list.append(
-                        torch.all(preds[i, m] == labels[i,
-                                                        m]).to(torch.int64).item())
-                acc = torch.tensor(acc_list, device=preds.device).float().mean()
+                        torch.all(preds[i, m] == labels[i, m]).to(
+                            torch.int64).item())
+                acc = torch.tensor(
+                    acc_list, device=preds.device).float().mean()
             else:
                 acc = (preds[masks] == labels[masks]).float().mean()
             if model.training:

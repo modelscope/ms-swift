@@ -299,28 +299,36 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
+
+def get_bucket_sizes(max_length: int) -> List[int]:
+    return [max_length // 4 * (i + 1) for i in range(4)]
+
+
 def _get_bucket(bucket_sizes, data_length):
-  cloest_length = sys.maxsize
-  for b in bucket_sizes:
-    if b == data_length \
-      or cloest_length > b > data_length:
-      cloest_length = b
+    cloest_length = sys.maxsize
+    for b in bucket_sizes:
+        if b == data_length or ((b < cloest_length) and (b > data_length)):
+            cloest_length = b
 
-  if cloest_length == sys.maxsize:
-    bucket_sizes.append(data_length)
-    cloest_length = data_length
+    if cloest_length == sys.maxsize:
+        bucket_sizes.append(data_length)
+        cloest_length = data_length
 
-  return cloest_length
+    return cloest_length
 
-def data_collate_fn(batch: List[Dict[str, Any]],
-                    tokenizer: PreTrainedTokenizerBase,
-                    padding_to: Optional[int] = None) -> Dict[str, Any]:
+
+def data_collate_fn(
+        batch: List[Dict[str, Any]],
+        tokenizer: PreTrainedTokenizerBase,
+        padding_to: Optional[int] = None,
+        bucket_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
     """
     Args:
         batch(`List[Dict[str, Any]]`): The input data in batch
         tokenizer(`PreTrainedTokenizerBase`): The tokenizer of the model
         padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
             will be padded to the `longest`
+        bucket_sizes(`List[int]`, optional): Bucket sizes of sequence for TorchAcc.
     """
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
@@ -346,16 +354,15 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         attention_mask, batch_first=True, padding_value=0)
     labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
-    if use_torchacc():
+    if padding_to is None and use_torchacc():
         longest_len = input_ids.shape[-1]
-        bucket_data_length = _get_bucket([256, 512, 768, 1024], longest_len)
+        bucket_data_length = _get_bucket(bucket_sizes, longest_len)
         padding_length = bucket_data_length - input_ids.shape[1]
-        input_ids = F.pad(input_ids, (0, padding_length),
-                          'constant', tokenizer.pad_token_id)
-        attention_mask = F.pad(attention_mask, (0, padding_length),
-                              'constant', 0)
-        labels = F.pad(labels, (0, padding_length),
-                      'constant', -100)
+        input_ids = F.pad(input_ids, (0, padding_length), 'constant',
+                          tokenizer.pad_token_id)
+        attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
+                               0)
+        labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
     res = {
         'input_ids': input_ids,

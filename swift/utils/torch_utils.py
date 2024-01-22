@@ -92,8 +92,10 @@ def is_local_master():
     local_rank = get_dist_setting()[1]
     return local_rank in {-1, 0}
 
+
 def use_torchacc() -> bool:
-    return os.getenv("USE_TORCHACC", "0") == "1"
+    return os.getenv('USE_TORCHACC', '0') == '1'
+
 
 def is_dist():
     """Determine if the training is distributed"""
@@ -101,6 +103,7 @@ def is_dist():
         return False
     rank, local_rank, _, _ = get_dist_setting()
     return rank >= 0 and local_rank >= 0
+
 
 def is_ddp_plus_mp() -> bool:
     if use_torchacc():

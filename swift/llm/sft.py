@@ -10,6 +10,7 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from swift.trainers.utils import find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -18,13 +19,13 @@ from swift.utils import (check_json_format, compute_acc_metrics,
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
-                    get_additional_saved_files, get_dataset,
+                    get_additional_saved_files, get_bucket_sizes, get_dataset,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
 
-
 logger = get_logger()
+
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
@@ -78,6 +79,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     if use_torchacc():
         import torchacc as ta
+        label_names = find_labels(model)
         model = ta.patch_qwen_model(model)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
@@ -97,10 +99,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
             config.memory.gc = True
             if config.memory.gc:
-                config.memory.gc_cls = {"QWenBlock"}
+                config.memory.gc_cls = {'QWenBlock'}
 
             config.dist.fsdp.size = 2
-            config.dist.fsdp.wrap_layer_cls = {"QWenBlock"}
+            config.dist.fsdp.wrap_layer_cls = {'QWenBlock'}
             config.dist.fsdp.flatten_parameters = False
 
             return config
@@ -168,10 +170,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)
 
+    bucket_sizes = get_bucket_sizes(
+        args.max_length) if use_torchacc() else None
     data_collator = partial(
         data_collate_fn,
         tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
+        padding_to=args.max_length,
+        bucket_sizes=bucket_sizes)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
@@ -228,7 +233,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         push_to_hub=args.push_to_hub,
         resume_from_checkpoint=args.resume_from_checkpoint,
         ddp_backend=args.ddp_backend,
-        gradient_checkpointing=False if use_torchacc() else args.gradient_checkpointing,
+        gradient_checkpointing=False
+        if use_torchacc() else args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
         generation_config=generation_config,
         local_rank=local_rank,
@@ -283,6 +289,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         callbacks=callbacks,
         **trainer_kwargs)
     trainer.sft_args = args
+    if use_torchacc():
+        trainer.label_names = label_names
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):

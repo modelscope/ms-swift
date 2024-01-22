@@ -20,7 +20,7 @@ swift sft \
   --use_flash_attn true \
   --gradient_accumulation_steps 1 \
   --tuner_backend 'peft' \
-  --eval_steps 2000000 \
+  --eval_steps 100 \
   --save_steps 2000000 \
   --logging_steps 10 \
   --preprocess_num_proc 1 \
