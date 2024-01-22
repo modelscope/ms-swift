@@ -176,6 +176,7 @@ class SftArguments:
     report_to: List[str] = field(default_factory=lambda: ['all'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
+    evaluation_strategy: Literal['steps', 'no'] = 'steps'
     save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
 
@@ -694,6 +695,7 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         args.model_revision = model_info['revision']
     else:
         model_info['revision'] = args.model_revision
+        logger.info(f"Setting model_info['revision']: {args.model_revision}")
     args.model_id_or_path = model_info['model_id_or_path']
     requires = model_info['requires']
     for require in requires:

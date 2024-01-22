@@ -63,24 +63,62 @@ VLLM支持绝大多数LLM模型的推理加速。它使用如下的方案大幅�
 pip install vllm
 ```
 
-之后直接运行即可：
-
 ```shell
-VLLM_USE_MODELSCOPE=True python -m vllm.entrypoints.openai.api_server --model qwen/Qwen-1_8B-Chat --trust-remote-code
+import os
+os.environ['VLLM_USE_MODELSCOPE'] = 'True'
+from vllm import LLM, SamplingParams
+prompts = [
+    "Hello, my name is",
+    "The president of the United States is",
+    "The capital of France is",
+    "The future of AI is",
+]
+sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
+llm = LLM(model="qwen/Qwen-1_8B", trust_remote_code=True)
+outputs = llm.generate(prompts, sampling_params)
+
+# Print the outputs.
+for output in outputs:
+    prompt = output.prompt
+    generated_text = output.outputs[0].text
+    print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 ```
 
-之后就可以调用服务：
+注意，截止到本文档编写完成，VLLM对Chat模型的推理支持（模板和结束符）存在问题，在实际进行部署时请考虑使用SWIFT或者FastChat。
 
-```shell
-curl http://localhost:8000/v1/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "qwen/Qwen-1_8B-Chat",
-"prompt": "San Francisco is a",
-"max_tokens": 7,
-"temperature": 0
-}'
+> LLM的generate方法支持直接输入拼接好的tokens(prompt_token_ids参数，此时不要传入prompts参数)，所以外部可以按照自己的模板进行拼接后传入VLLM，SWIFT就是使用了这种方法
+
+在量化章节中我们讲解了[AWQ量化](https://docs.vllm.ai/en/latest/quantization/auto_awq.html)，VLLM直接支持传入量化后的模型进行推理：
+
+```python
+from vllm import LLM, SamplingParams
+import os
+import torch
+os.environ['VLLM_USE_MODELSCOPE'] = 'True'
+
+# Sample prompts.
+prompts = [
+    "Hello, my name is",
+    "The president of the United States is",
+    "The capital of France is",
+    "The future of AI is",
+]
+# Create a sampling params object.
+sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
+
+# Create an LLM.
+llm = LLM(model="ticoAg/Qwen-1_8B-Chat-Int4-awq", quantization="AWQ", dtype=torch.float16, trust_remote_code=True)
+# Generate texts from the prompts. The output is a list of RequestOutput objects
+# that contain the prompt, generated text, and other information.
+outputs = llm.generate(prompts, sampling_params)
+# Print the outputs.
+for output in outputs:
+    prompt = output.prompt
+    generated_text = output.outputs[0].text
+    print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 ```
+
+VLLM官方文档可以查看[这里](https://docs.vllm.ai/en/latest/getting_started/quickstart.html)。
 
 # SWIFT
 
@@ -113,22 +151,42 @@ client = OpenAI(
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
 
-query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
-kwargs = {'model': model_type, 'messages': query, 'seed': 42, 'temperature': 0.1, 'max_tokens': 32}
-
-resp = client.chat.completions.create(**kwargs)
-response = resp.choices[0].text
+query = '浙江的省会在哪里?'
+messages = [{
+    'role': 'user',
+    'content': query
+}]
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    seed=42)
+response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
-stream_resp = client.completions.create(stream=True, **kwargs)
-response = resp.choices[0].text
+messages.append({'role': 'assistant', 'content': response})
+query = '这有什么好吃的?'
+messages.append({'role': 'user', 'content': query})
+stream_resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stream=True,
+    seed=42)
+
 print(f'query: {query}')
 print('response: ', end='')
 for chunk in stream_resp:
-    print(chunk.choices[0].text, end='', flush=True)
+    print(chunk.choices[0].delta.content, end='', flush=True)
 print()
+
+"""Out[0]
+model_type: qwen-7b-chat
+query: 浙江的省会在哪里?
+response: 浙江省的省会是杭州市。
+query: 这有什么好吃的?
+response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁、叫化童子鸡等。此外，杭州还有许多特色小吃，如西湖藕粉、杭州小笼包、杭州油条等。
+"""
 ```
 
 # llama.cpp
