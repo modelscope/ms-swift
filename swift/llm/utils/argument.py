@@ -246,7 +246,7 @@ class SftArguments:
                     self.additional_trainable_parameters
                 ]
             if self.learning_rate is None:
-                self.learning_rate = 2e-5
+                self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
         else:

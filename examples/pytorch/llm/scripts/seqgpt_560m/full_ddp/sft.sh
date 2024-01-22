@@ -23,7 +23,7 @@ torchrun \
     --gradient_checkpointing true \
     --batch_size 4 \
     --weight_decay 0.01 \
-    --learning_rate 2e-5 \
+    --learning_rate 1e-5 \
     --gradient_accumulation_steps $(expr 32 / $nproc_per_node / 4) \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
