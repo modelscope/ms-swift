@@ -16,6 +16,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
                          seed_everything, show_layers, use_torchacc)
+from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
@@ -37,6 +38,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     seed_everything(args.seed)
 
     if use_torchacc():
+        logger.warning('TorchAcc is currently only available internally.')
         import torchacc as ta
         ta.accelerate_hf_trainer()
 
@@ -79,6 +81,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     if use_torchacc():
         import torchacc as ta
+        # Get `label` and `return_loss` before 'ta_accelerate' because it will
+        # wrapper the model and make these properties wrong.
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
         model = ta.patch_qwen_model(model)
@@ -91,25 +95,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(model)
 
     if use_torchacc():
-        import torchacc as ta
-
-        def get_ta_config():
-            config = ta.Config()
-            config.compute.fp16 = False
-            config.compute.bf16 = True
-
-            config.memory.gc = True
-            if config.memory.gc:
-                config.memory.gc_cls = {'QWenBlock'}
-
-            config.dist.fsdp.size = 2
-            config.dist.fsdp.wrap_layer_cls = {'QWenBlock'}
-            config.dist.fsdp.flatten_parameters = False
-
-            return config
-
-        ta_config = get_ta_config()
-        model = ta.accelerate(model, ta_config)
+        model = ta_accelerate(
+            model,
+            world_size,
+            args.model_layer_cls_name,
+            args.bf16,
+            args.fp16,
+            gradient_checkpointing=True,
+            fsdp_flatten_parameters=False)
 
     # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
@@ -234,8 +227,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         push_to_hub=args.push_to_hub,
         resume_from_checkpoint=args.resume_from_checkpoint,
         ddp_backend=args.ddp_backend,
-        gradient_checkpointing=False
-        if use_torchacc() else args.gradient_checkpointing,
+        gradient_checkpointing=args.gradient_checkpointing,
         predict_with_generate=args.predict_with_generate,
         generation_config=generation_config,
         local_rank=local_rank,
@@ -251,7 +243,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logging_first_step=True,
         **kwargs)
 
-    if args.gradient_checkpointing and not use_torchacc():
+    if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()

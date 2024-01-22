@@ -1641,7 +1641,7 @@ def get_model_tokenizer(
     ignore_file_pattern = model_info['ignore_file_pattern']
     if model_kwargs is None:
         model_kwargs = {}
-    if (not use_torchacc()) and ('device_map' not in model_kwargs):
+    if 'device_map' not in model_kwargs and not use_torchacc():
         model_kwargs['device_map'] = 'auto'
 
     model_dir = kwargs.pop('model_dir', None)

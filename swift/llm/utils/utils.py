@@ -305,6 +305,9 @@ def get_bucket_sizes(max_length: int) -> List[int]:
 
 
 def _get_bucket(bucket_sizes, data_length):
+    """Select the one from bucket_sizes that is closest in distance to
+    data_length. This is required for TorchAcc.
+    """
     cloest_length = sys.maxsize
     for b in bucket_sizes:
         if b == data_length or ((b < cloest_length) and (b > data_length)):
