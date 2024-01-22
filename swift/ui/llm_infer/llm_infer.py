@@ -135,7 +135,6 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def reset_load_button(cls):
-        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
         return gr.update(
             value=cls.locale('load_checkpoint', cls.lang)['value'])
 
@@ -195,8 +194,9 @@ class LLMInfer(BaseUI):
         gpus = ','.join(devices)
         if gpus != 'cpu':
             os.environ['CUDA_VISIBLE_DEVICES'] = gpus
-        inter_args = InferArguments(**kwargs)
-        model, template = prepare_model_template(inter_args)
+        infer_args = InferArguments(**kwargs)
+        model, template = prepare_model_template(infer_args)
+        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
         return [model, template]
 
     @classmethod
