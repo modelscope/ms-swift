@@ -22,7 +22,7 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
-from .utils import download_dataset
+from .utils import dataset_map, download_dataset
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -581,7 +581,7 @@ register_dataset(
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise'])
+    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
 
 register_dataset(
     DatasetName.medical_zh,
@@ -668,7 +668,7 @@ register_dataset(
     [('default', 'validation')],
     _preprocess_capcha_images,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', 'vision', '🔥'])
+    tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
     DatasetName.cls_fudan_news_zh,
@@ -1120,6 +1120,7 @@ def load_dataset_from_local(
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
+
     return concatenate_datasets(dataset_list)
 
 

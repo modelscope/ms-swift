@@ -1,25 +1,20 @@
-# Experimental environment: 4 * 3090
-# 4 * 19GB GPU memory
-nproc_per_node=2
-
-PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-torchrun \
-    --nproc_per_node=$nproc_per_node \
-    --master_port 29500 \
-    llm_sft.py \
-    --model_id_or_path AI-ModelScope/Mistral-7B-Instruct-v0.1 \
+# Experimental environment: A10
+# 22GB GPU memory
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_type internlm2-7b-sft-chat \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type llama \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset damo-agent-mini-zh \
+    --dataset dureader-robust-zh \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 2048 \
+    --system 'You are a helpful assistant.' \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -29,14 +24,12 @@ torchrun \
     --batch_size 1 \
     --weight_decay 0.01 \
     --learning_rate 1e-4 \
-    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
+    --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --push_to_hub false \
-    --hub_model_id mistral-7b-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \
+    --neftune_noise_alpha 5 \
+    --use_flash_attn false \

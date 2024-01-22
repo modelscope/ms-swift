@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Callable, List, Type, TypeVar, Union
 
 from .logger import get_logger
@@ -15,7 +16,10 @@ def get_main(
 
     def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
                **kwargs) -> _T:
-        if isinstance(argv, args_class):
+        logger.info(
+            f'Time for running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}'
+        )
+        if not isinstance(argv, (list, tuple, NoneType)):
             args, remaining_argv = argv, []
         else:
             args, remaining_argv = parse_args(args_class, argv)

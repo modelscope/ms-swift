@@ -58,6 +58,12 @@ class LLMTrain(BaseUI):
                 'closing this page does not affect training'
             }
         },
+        'dataset_alert': {
+            'value': {
+                'zh': '请选择或填入一个数据集',
+                'en': 'Please input or select a dataset'
+            }
+        },
         'submit': {
             'value': {
                 'zh': '🚀 开始训练',
@@ -136,10 +142,10 @@ class LLMTrain(BaseUI):
                 'en': 'Use Distributed Data Parallel to train'
             }
         },
-        'neftune_alpha': {
+        'neftune_noise_alpha': {
             'label': {
-                'zh': 'neftune_alpha',
-                'en': 'neftune_alpha'
+                'zh': 'neftune_noise_alpha',
+                'en': 'neftune_noise_alpha'
             },
             'info': {
                 'zh': '使用neftune提升训练效果',
@@ -169,7 +175,7 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Slider(
-                        elem_id='neftune_alpha',
+                        elem_id='neftune_noise_alpha',
                         minimum=0.0,
                         maximum=1.0,
                         step=0.05,
@@ -248,7 +254,14 @@ class LLMTrain(BaseUI):
                 more_params = json.loads(value)
 
         kwargs.update(more_params)
-        sft_args = SftArguments(**kwargs)
+        if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
+            raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
+        sft_args = SftArguments(
+            **{
+                key: value.split(' ')
+                if key in kwargs_is_list and kwargs_is_list[key] else value
+                for key, value in kwargs.items()
+            })
         params = ''
 
         for e in kwargs:
