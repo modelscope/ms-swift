@@ -1,8 +1,5 @@
-rm -rf hlo
-rm -rf profile/*
-
 export USE_TORCHACC=1
-export XLA_FLAGS='--xla_dump_hlo_as_text --xla_dump_to=./hlo --xla_gpu_enable_latency_hiding_scheduler=true --xla_enable_pt_all_reduce_optimizer=false --xla_gpu_enable_async_all_gather=true --xla_gpu_enable_async_reduce_scatter=true --xla_multiheap_size_constraint_per_heap=4294967296 --xla_disable_hlo_passes=rematerialization,all-gather-combiner,all-reduce-combiner,reduce-scatter-combiner'
+export XLA_FLAGS='--xla_gpu_enable_latency_hiding_scheduler=true --xla_enable_pt_all_reduce_optimizer=false --xla_gpu_enable_async_all_gather=true --xla_gpu_enable_async_reduce_scatter=true --xla_multiheap_size_constraint_per_heap=4294967296 --xla_disable_hlo_passes=rematerialization,all-gather-combiner,all-reduce-combiner,reduce-scatter-combiner'
 export ACC_FLASH_ATTN=1
 export LOW_CPU_MEM_USAGE=1
 export XLA_IR_SHAPE_CACHE_SIZE=100000000
