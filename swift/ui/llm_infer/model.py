@@ -121,7 +121,7 @@ class Model(BaseUI):
                                                       cls.lang)['value'])
 
         def update_model_id_or_path(model_type, path):
-            if not path:
+            if not path or not os.path.exists(path):
                 return None, None, None
             local_path = os.path.join(path, 'sft_args.json')
             if not os.path.exists(local_path):

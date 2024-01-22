@@ -31,7 +31,7 @@ def llm_dpo(args: DPOArguments) -> str:
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
-    if (is_dist() and not is_ddp_plus_mp()) or 'HF_ACCELERATOR' in os.environ:
+    if is_dist() and not is_ddp_plus_mp():
         model_kwargs['device_map'] = {'': local_rank}
     else:
         model_kwargs['device_map'] = 'auto'
@@ -61,6 +61,8 @@ def llm_dpo(args: DPOArguments) -> str:
         ref_model = deepcopy(model)
 
     logger.info(f'model_config: {model.config}')
+    if hasattr(model, 'hf_device_map'):
+        logger.info(f'model device_map {model.hf_device_map}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,

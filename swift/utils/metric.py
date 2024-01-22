@@ -78,5 +78,5 @@ def compute_acc_metrics(
 def preprocess_logits_for_metrics(logits: Tensor, labels: Tensor) -> Tensor:
     if isinstance(logits, (list, tuple)):
         logits = logits[0]
-    preds = logits.argmax(dim=2)
+    preds = logits.argmax(dim=-1)
     return preds

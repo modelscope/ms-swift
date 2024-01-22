@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import os
 from functools import partial
 from typing import Any, Dict, Union
@@ -8,8 +9,7 @@ import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
-from swift.trainers import (IntervalStrategy, Seq2SeqTrainer,
-                            Seq2SeqTrainingArguments)
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -144,14 +144,23 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         tokenizer=tokenizer,
         padding_to=args.max_length if args.sft_type == 'longlora' else None)
     # Setting training_args
-    evaluation_strategy = IntervalStrategy.STEPS
+    evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
     if val_dataset is None:
-        evaluation_strategy = IntervalStrategy.NO
+        evaluation_strategy = 'no'
+    if evaluation_strategy == 'no':
         load_best_model_at_end = False
     additional_saved_files = []
     if args.sft_type == 'full':
         additional_saved_files = get_additional_saved_files(args.model_type)
+
+    kwargs = {}
+    parameters = inspect.signature(
+        Seq2SeqTrainingArguments.__init__).parameters
+    for key in ['neftune_noise_alpha']:
+        if key in parameters:
+            kwargs[key] = getattr(args, key)
+
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
         evaluation_strategy=evaluation_strategy,
@@ -203,7 +212,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         save_on_each_node=args.save_on_each_node,
         acc_strategy=args.acc_strategy,
         save_safetensors=args.save_safetensors,
-        logging_first_step=True)
+        logging_first_step=True,
+        **kwargs)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36

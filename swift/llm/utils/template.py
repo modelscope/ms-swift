@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -24,7 +25,9 @@ class TemplateType:
     llama = 'llama'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
+    internlm2 = 'internlm2'
     yi = 'yi'
+    yuan = 'yuan'
     xverse = 'xverse'
     ziya = 'ziya'
     skywork = 'skywork'
@@ -32,8 +35,8 @@ class TemplateType:
     zephyr = 'zephyr'
     sus = 'sus'
     deepseek = 'deepseek'
-    codefuse_codellama = 'codefuse-codellama'
     deepseek_coder = 'deepseek-coder'
+    codefuse_codellama = 'codefuse-codellama'
     cogagent = 'cogagent'
     # compatibility. (Deprecated)
     chatml = 'chatml'
@@ -552,6 +555,13 @@ class CogAgentTemplate(Template):
 
     def encode(self, example: Dict[str,
                                    Any]) -> Dict[str, Optional[List[int]]]:
+        if 'image' in example and isinstance(example['image'], str):
+            from PIL import Image
+            import requests
+            if not os.path.exists(example['image']):
+                example['image'] = requests.get(
+                    example['image'], stream=True).raw
+            example['image'] = Image.open(example['image'])
         return self.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
@@ -664,14 +674,31 @@ register_template(
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
+INTERNLM_SYSTEM = (
+    'You are an AI assistant whose name is InternLM (书生·浦语).\n'
+    '- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). '
+    'It is designed to be helpful, honest, and harmless.\n'
+    '- InternLM (书生·浦语) can understand and communicate fluently in the language chosen '
+    'by the user such as English and 中文.')
+
+# '<s><s>': internlm template official implementation
 register_template(
     TemplateType.internlm,
-    Template(['<s>{{SYSTEM}}'], ['<|User|>:{{QUERY}}<eoh>\n<|Bot|>:'],
-             ['<eoa>\n'], ['<eoa>'], ''))
+    Template(['<s><s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'],
+             ['<eoa>'], INTERNLM_SYSTEM, ['<s><s><|System|>:{{SYSTEM}}\n']))
+register_template(
+    TemplateType.internlm2,
+    Template(['<s><s>'], [
+        '[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n'
+    ], ['[UNUSED_TOKEN_145]\n'], ['[UNUSED_TOKEN_145]'], INTERNLM_SYSTEM, [
+        '<s><s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'
+    ]))
 register_template(
     TemplateType.xverse,
     Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
              [['eos_token_id']], [['eos_token_id']], ''))
+register_template(TemplateType.yuan,
+                  Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
 register_template(
     TemplateType.ziya,
     Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],

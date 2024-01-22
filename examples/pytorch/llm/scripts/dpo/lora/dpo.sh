@@ -1,7 +1,7 @@
-# Experimental environment: 8*A100
-# Memory usage: 8 * 50G
+# Experimental environment: 2*A100
+# Memory usage: 2 * 20G
 PYTHONPATH=../../.. \
-accelerate launch llm_dpo.py \
+python llm_dpo.py \
     --model_type  mistral-7b \
     --ref_model_type  mistral-7b \
     --model_revision  master \

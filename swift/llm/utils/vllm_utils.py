@@ -304,6 +304,8 @@ def prepare_vllm_engine_template(
         kwargs['model_dir'] = args.ckpt_dir
     elif args.model_cache_dir is not None:
         kwargs['model_dir'] = args.model_cache_dir
+    os.environ.pop('VLLM_USE_MODELSCOPE',
+                   None)  # fix HTTPError bug (use model_dir)
     llm_engine = get_vllm_engine(
         args.model_type,
         args.torch_dtype,

@@ -1,4 +1,4 @@
 decord
-diffusers>=0.18.0
+diffusers==0.25.0
 einops
 torchvision

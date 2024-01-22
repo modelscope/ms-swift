@@ -7,6 +7,7 @@ import json
 import torch
 from gradio import Accordion, Tab
 
+from swift import snapshot_download
 from swift.llm import (InferArguments, inference_stream, limit_history_length,
                        prepare_model_template)
 from swift.ui.base import BaseUI
@@ -18,9 +19,6 @@ class LLMInfer(BaseUI):
     group = 'llm_infer'
 
     sub_ui = [Model]
-
-    int_regex = r'^[-+]?[0-9]+$'
-    float_regex = r'[-+]?(?:\d*\.*\d+)'
 
     locale_dict = {
         'generate_alert': {
@@ -39,6 +37,12 @@ class LLMInfer(BaseUI):
             'value': {
                 'zh': '加载模型中，请等待',
                 'en': 'Start to load model, please wait'
+            }
+        },
+        'loaded_alert': {
+            'value': {
+                'zh': '模型加载完成',
+                'en': 'Model loaded'
             }
         },
         'chatbot': {
@@ -117,19 +121,26 @@ class LLMInfer(BaseUI):
                 clear_history.click(
                     fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
                 cls.element('load_checkpoint').click(
-                    cls.reset_memory, [], [model_and_template],
-                    show_progress=False).then(
+                    cls.reset_memory, [], [model_and_template])\
+                    .then(cls.reset_loading_button, [], [cls.element('load_checkpoint')]).then(
                         cls.prepare_checkpoint, [
                             value for value in cls.elements().values()
                             if not isinstance(value, (Tab, Accordion))
-                        ], [model_and_template],
-                        show_progress=True).then(cls.change_interactive, [],
-                                                 [prompt])
-                cls.element('load_checkpoint').click(
+                        ], [model_and_template]).then(cls.change_interactive, [],
+                                                 [prompt]).then( # noqa
                     cls.clear_session,
                     inputs=[],
                     outputs=[prompt, chatbot],
-                    queue=True)
+                    queue=True).then(cls.reset_load_button, [], [cls.element('load_checkpoint')])
+
+    @classmethod
+    def reset_load_button(cls):
+        return gr.update(
+            value=cls.locale('load_checkpoint', cls.lang)['value'])
+
+    @classmethod
+    def reset_loading_button(cls):
+        return gr.update(value=cls.locale('load_alert', cls.lang)['value'])
 
     @classmethod
     def reset_memory(cls):
@@ -170,7 +181,10 @@ class LLMInfer(BaseUI):
 
         kwargs.update(more_params)
         if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            kwargs['ckpt_dir'] = kwargs.pop('model_id_or_path')
+            model_dir = kwargs.pop('model_id_or_path')
+            if not os.path.exists(model_dir):
+                model_dir = snapshot_download(model_dir)
+            kwargs['ckpt_dir'] = model_dir
         if 'ckpt_dir' in kwargs or 'model_id_or_path' in kwargs:
             kwargs.pop('model_type', None)
 
@@ -180,8 +194,9 @@ class LLMInfer(BaseUI):
         gpus = ','.join(devices)
         if gpus != 'cpu':
             os.environ['CUDA_VISIBLE_DEVICES'] = gpus
-        inter_args = InferArguments(**kwargs)
-        model, template = prepare_model_template(inter_args)
+        infer_args = InferArguments(**kwargs)
+        model, template = prepare_model_template(infer_args)
+        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
         return [model, template]
 
     @classmethod
