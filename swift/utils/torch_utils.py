@@ -107,6 +107,7 @@ def is_mp() -> bool:
         return True
     return False
 
+
 def is_ddp_plus_mp() -> bool:
     if not is_dist():
         return False

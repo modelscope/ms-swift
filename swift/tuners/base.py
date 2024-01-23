@@ -6,7 +6,7 @@ import re
 from copy import copy
 from inspect import Parameter, Signature, signature
 from types import MethodType
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Optional, Union
 
 import json
 import torch
@@ -196,7 +196,7 @@ class SwiftModel(nn.Module):
             The state dict.
         """
         if device is None:
-            device='cuda' if torch.cuda.is_available() else 'cpu'
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
         if os.path.exists(os.path.join(path, SAFETENSORS_WEIGHTS_NAME)):
             filename = os.path.join(path, SAFETENSORS_WEIGHTS_NAME)
             from safetensors.torch import load_file as safe_load_file

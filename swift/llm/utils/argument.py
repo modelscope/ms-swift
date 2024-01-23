@@ -176,8 +176,8 @@ class SftArguments:
     def __post_init__(self) -> None:
         handle_compatibility(self)
         if self.deepspeed_config_path == 'default-zero2':
-            self.deepspeed_config_path = os.path.abspath(os.path.join(__file__, '..', '..', 
-                                                         'ds_config', 'zero2.json'))
+            self.deepspeed_config_path = os.path.abspath(
+                os.path.join(__file__, '..', '..', 'ds_config', 'zero2.json'))
         handle_path(self)
         set_model_type(self)
         register_custom_dataset(self)
@@ -187,7 +187,8 @@ class SftArguments:
             self.lora_target_modules = [self.lora_target_modules]
         if len(self.lora_target_modules) == 1:
             if ',' in self.lora_target_modules[0]:
-                self.lora_target_modules = self.lora_target_modules[0].split(',')
+                self.lora_target_modules = self.lora_target_modules[0].split(
+                    ',')
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
