@@ -296,6 +296,7 @@ class SftArguments:
 
         self.deepspeed = None
         if self.deepspeed_config_path is not None:
+            assert not is_mp(), 'DeepSpeed is not compatible with MP.'
             require_version('deepspeed')
             with open(self.deepspeed_config_path, 'r', encoding='utf-8') as f:
                 self.deepspeed = json.load(f)
