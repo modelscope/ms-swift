@@ -57,6 +57,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['model_dir'] = args.model_cache_dir
     model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
                                            model_kwargs, **kwargs)
+    logger.debug(f'device_map: {dict(model.hf_device_map)}') 
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
