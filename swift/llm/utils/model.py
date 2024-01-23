@@ -136,6 +136,9 @@ class ModelType:
     xverse_65b_v2 = 'xverse-65b-v2'
     xverse_65b_chat = 'xverse-65b-chat'
     xverse_13b_256k = 'xverse-13b-256k'
+    # orion
+    orion_14b = 'orion-14b'
+    orion_14b_chat = 'orion-14b-chat'
     # vivo
     bluelm_7b = 'bluelm-7b'
     bluelm_7b_32k = 'bluelm-7b-32k'
@@ -1480,7 +1483,7 @@ def get_model_tokenizer_phi(model_dir: str,
                             **kwargs):
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.get('use_flash_attn', False)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.flash_attn = use_flash_attn
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
                                          load_model, model_config, **kwargs)
@@ -1562,7 +1565,7 @@ def get_model_tokenizer_yuan(model_dir: str,
         os.rename(model_dir, new_model_dir)
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
-    use_flash_attention = kwargs.get('use_flash_attn', False)
+    use_flash_attention = kwargs.pop('use_flash_attn', False)
     model_config.use_flash_attention = use_flash_attention
     tokenizer = AutoTokenizer.from_pretrained(
         model_dir,
@@ -1588,6 +1591,35 @@ def get_model_tokenizer_yuan(model_dir: str,
     if need_rename:
         os.rename(new_model_dir, model_dir)
     return model, tokenizer
+
+
+@register_model(
+    ModelType.orion_14b,
+    'OrionStarAI/Orion-14B-Base',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True)
+@register_model(
+    ModelType.orion_14b_chat,
+    'OrionStarAI/Orion-14B-Chat',
+    LoRATM.llama2,
+    TemplateType.orion,
+    support_flash_attn=True)
+def get_model_tokenizer_orion(model_dir: str,
+                              torch_dtype: Dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:

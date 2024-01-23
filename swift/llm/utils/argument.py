@@ -13,7 +13,7 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master)
+                         get_dist_setting, is_dist, is_master, is_mp)
 from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset
 from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
