@@ -175,11 +175,19 @@ class SftArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
+        if self.deepspeed_config_path == 'default-zero2':
+            self.deepspeed_config_path = os.path.abspath(os.path.join(__file__, '..', '..', 
+                                                         'ds_config', 'zero2.json'))
         handle_path(self)
         set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
+        if isinstance(self.lora_target_modules, str):
+            self.lora_target_modules = [self.lora_target_modules]
+        if len(self.lora_target_modules) == 1:
+            if ',' in self.lora_target_modules[0]:
+                self.lora_target_modules = self.lora_target_modules[0].split(',')
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
@@ -267,8 +275,6 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if isinstance(self.lora_target_modules, str):
-            self.lora_target_modules = [self.lora_target_modules]
         if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
             self.lora_target_modules = get_default_lora_target_modules(
