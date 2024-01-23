@@ -38,6 +38,7 @@ class TemplateType:
     deepseek_coder = 'deepseek-coder'
     codefuse_codellama = 'codefuse-codellama'
     cogagent = 'cogagent'
+    orion = 'orion'
     # compatibility. (Deprecated)
     chatml = 'chatml'
 
@@ -741,6 +742,11 @@ register_template(
     TemplateType.sus,
     Template(['{{SYSTEM}}'], ['### Human: {{QUERY}}\n\n### Assistant: '],
              ['<|endoftext|>'], ['<|endoftext|>'], ''))
+
+register_template(
+    TemplateType.orion,
+    Template(['<s>{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: </s>'],
+             ['</s>'], ['</s>'], ''))
 
 register_template(TemplateType.cogagent,
                   CogAgentTemplate([], [], [], [], None, []))

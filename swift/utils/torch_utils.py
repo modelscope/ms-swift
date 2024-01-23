@@ -99,16 +99,22 @@ def is_dist():
     return rank >= 0 and local_rank >= 0
 
 
-def is_ddp_plus_mp() -> bool:
-    if not is_dist():
-        return False
+def is_mp() -> bool:
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
     assert n_gpu % local_world_size == 0
     if n_gpu // local_world_size >= 2:
-        logger.info('Using DDP + MP(device_map)')
         return True
     return False
+
+
+def is_ddp_plus_mp() -> bool:
+    if not is_dist():
+        return False
+    if not is_mp():
+        return False
+    logger.info('Using DDP + MP(device_map)')
+    return True
 
 
 def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:

@@ -6,7 +6,7 @@ import re
 from copy import copy
 from inspect import Parameter, Signature, signature
 from types import MethodType
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import json
 import torch
@@ -186,7 +186,7 @@ class SwiftModel(nn.Module):
             return getattr(self.base_model, name)
 
     @staticmethod
-    def load_state_file(path):
+    def load_state_file(path, device: Optional[str] = None):
         """Load a state dict file by the input path.
 
         Args:
@@ -195,18 +195,15 @@ class SwiftModel(nn.Module):
         Returns:
             The state dict.
         """
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
         if os.path.exists(os.path.join(path, SAFETENSORS_WEIGHTS_NAME)):
             filename = os.path.join(path, SAFETENSORS_WEIGHTS_NAME)
             from safetensors.torch import load_file as safe_load_file
-            return safe_load_file(
-                filename,
-                device='cuda' if torch.cuda.is_available() else 'cpu')
+            return safe_load_file(filename, device=device)
         elif os.path.exists(os.path.join(path, WEIGHTS_NAME)):
             filename = os.path.join(path, WEIGHTS_NAME)
-            return torch.load(
-                filename,
-                map_location=torch.device(
-                    'cuda' if torch.cuda.is_available() else 'cpu'))
+            return torch.load(filename, map_location=device)
         return None
 
     @classmethod
