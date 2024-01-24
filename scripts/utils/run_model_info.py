@@ -3,14 +3,13 @@ from typing import Dict, List, Tuple
 from swift.llm import MODEL_MAPPING, ModelType
 
 
-def write_model_info_table2(fpath: str) -> None:
+def get_model_info_table2() -> None:
     model_name_list = ModelType.get_model_name_list()
-    with open(fpath, 'w', encoding='utf-8') as f:
-        f.write(
-            '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
-            ' Support Flash Attn | Support VLLM | Requires |\n'
-            '| ---------  | -------- | --------------------------- | ---------------- |'
-            ' ------------------ | ------------ | -------- |\n')
+    result = (
+        '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
+        ' Support Flash Attn | Support VLLM | Requires |\n'
+        '| ---------  | -------- | --------------------------- | ---------------- |'
+        ' ------------------ | ------------ | -------- |\n')
     res = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
     for model_name in model_name_list:
@@ -32,10 +31,19 @@ def write_model_info_table2(fpath: str) -> None:
     for r in res:
         url = f'https://modelscope.cn/models/{r[1]}/summary'
         text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|\n'
-    with open(fpath, 'a', encoding='utf-8') as f:
-        f.write(text)
-    print()
+    result += text
+    return result
 
 
 if __name__ == '__main__':
-    write_model_info_table2('model_info.md')
+    result = get_model_info_table2()
+    fpath = 'docs/source/LLM/支持的模型和数据集.md'
+    with open(fpath, 'r') as f:
+        text = f.read()
+    start_idx = text.find('| Model Type |')
+    end_idx = text.find('## 数据集')
+    result += '\n\n'
+    output = text[:start_idx] + result + text[end_idx:]
+    with open(fpath, 'w') as f:
+        text = f.write(output)
+    print()

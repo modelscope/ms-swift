@@ -143,7 +143,7 @@ class Hyper(BaseUI):
                         scale=20)
                     learning_rate = gr.Textbox(
                         elem_id='learning_rate',
-                        value='2e-5',
+                        value='1e-5',
                         lines=1,
                         scale=20)
                     gr.Slider(
@@ -174,7 +174,7 @@ class Hyper(BaseUI):
 
             def update_lr(sft_type):
                 if sft_type == 'full':
-                    return 2e-5
+                    return 1e-5
                 else:
                     return 1e-4
 

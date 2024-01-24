@@ -10,7 +10,7 @@ swift sft \
     --output_dir output \
     --num_train_epochs 1 \
     --max_length 2048 \
-    --learning_rate 2e-5 \
+    --learning_rate 1e-5 \
     --use_flash_attn true \
     --save_only_model true \
     --dataset aishell1-mini-zh \
