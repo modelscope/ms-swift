@@ -95,6 +95,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(model)
 
     if use_torchacc():
+        model.config.use_cache = False
+        logger.info('Setting model.config.use_cache: False')
         model = ta_accelerate(
             model,
             world_size,

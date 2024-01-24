@@ -39,6 +39,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self.model.get_trainable_parameters() if hasattr(
                 self.model, 'get_trainable_parameters') else None,
         }
+        self._acc = torch.tensor(0.).to(self.args.device)
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         super().train(*args, **kwargs)
@@ -196,10 +197,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 acc = (preds == labels).float().mean()
         if model.training:
             if 'acc' not in self._custom_metrics:
-                self._custom_metrics['acc'] = torch.tensor(0.).to(
-                    self.args.device)
-            self._custom_metrics[
-                'acc'] += acc / self.args.gradient_accumulation_steps
+                self._custom_metrics['acc'] = self._acc
+            self._custom_metrics['acc'] = self._custom_metrics[
+                'acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
 
