@@ -787,6 +787,12 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
+    sft_model_cache_dir = sft_args.get('model_cache_dir')
+    if args.model_cache_dir is None and sft_model_cache_dir is not None:
+        logger.warning(
+            f'The model_cache_dir for the sft stage is detected as `{sft_model_cache_dir}`, '
+            'but the model_cache_dir for the infer stage is `None`. '
+            'Please check if this item has been omitted.')
 
 
 def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
