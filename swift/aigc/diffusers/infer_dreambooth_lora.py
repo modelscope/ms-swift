@@ -6,6 +6,8 @@ import torch
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 from modelscope import snapshot_download
 
+from swift import Swift
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -35,14 +37,6 @@ def parse_args():
     )
     parser.add_argument(
         '--prompt',
-        type=str,
-        default=None,
-        required=True,
-        help=
-        'The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`',
-    )
-    parser.add_argument(
-        '--conditioning_image_path',
         type=str,
         default=None,
         required=True,
@@ -92,7 +86,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if os.path.exists(args.pretrained_model_name_or_path):
+    if os.path.exists(args.base_model_path):
         base_model_path = args.base_model_path
     else:
         base_model_path = snapshot_download(
@@ -108,9 +102,9 @@ def main():
         base_model_path, torch_dtype=torch_dtype)
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(
         pipe.scheduler.config)
+    if args.lora_model_path is not None:
+        pipe.unet = Swift.from_pretrained(pipe.unet, args.lora_model_path)
     pipe.to('cuda')
-
-    pipe.unet.load_attn_procs(args.lora_model_path)
 
     image = pipe(
         args.prompt, num_inference_steps=args.num_inference_steps).images[0]
