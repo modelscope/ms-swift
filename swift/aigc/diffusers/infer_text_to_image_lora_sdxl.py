@@ -73,7 +73,6 @@ def parse_args():
         '--guidance_scale',
         type=float,
         default=7.5,
-        choices=['no', 'fp16', 'bf16'],
         help=
         ('A higher guidance scale value encourages the model to generate images closely linked to the text \
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.'
