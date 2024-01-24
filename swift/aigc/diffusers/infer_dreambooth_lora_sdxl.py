@@ -6,6 +6,8 @@ import torch
 from diffusers import DiffusionPipeline
 from modelscope import snapshot_download
 
+from swift import Swift
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -86,7 +88,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if os.path.exists(args.pretrained_model_name_or_path):
+    if os.path.exists(args.base_model_path):
         base_model_path = args.base_model_path
     else:
         base_model_path = snapshot_download(
@@ -100,8 +102,9 @@ def main():
 
     pipe = DiffusionPipeline.from_pretrained(
         base_model_path, torch_dtype=torch_dtype)
+    if args.lora_model_path is not None:
+        pipe.unet = Swift.from_pretrained(pipe.unet, args.lora_model_path)
     pipe = pipe.to('cuda')
-    pipe.load_lora_weights(args.lora_model_path)
     image = pipe(
         args.prompt, num_inference_steps=args.num_inference_steps).images[0]
     image.save(args.image_save_path)

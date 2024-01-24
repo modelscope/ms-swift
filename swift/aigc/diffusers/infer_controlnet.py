@@ -95,7 +95,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if os.path.exists(args.pretrained_model_name_or_path):
+    if os.path.exists(args.base_model_path):
         base_model_path = args.base_model_path
     else:
         base_model_path = snapshot_download(
