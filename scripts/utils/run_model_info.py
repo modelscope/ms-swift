@@ -55,7 +55,7 @@ def get_model_info_readme_zh(data: List[str]) -> None:
     match_list = re.findall(r'- (.+)( 系列)?: (.+)', text)
     model_list = []
     for match in match_list:
-        model_list += match[2].split(',')
+        model_list += match[2].strip('.').split(',')
     model_list = [model.strip() for model in model_list]
     model_type_list = [d[0] for d in data]
     print(set(model_type_list) - set(model_list))
@@ -72,7 +72,7 @@ def get_model_info_readme_en(data: List[str]) -> None:
     match_list = re.findall(r'- (.+)( series)?: (.+)', text)
     model_list = []
     for match in match_list:
-        model_list += match[2].split(',')
+        model_list += match[2].strip('.').split(',')
     model_list = [model.strip() for model in model_list]
     model_type_list = [d[0] for d in data]
     print(set(model_type_list) - set(model_list))
