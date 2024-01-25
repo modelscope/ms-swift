@@ -166,6 +166,8 @@ class ModelType:
     # coding
     # codefuse
     codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
+    codefuse_codegeex2_6b_chat = 'codefuse-codegeex2-6b-chat'
+    codefuse_qwen_14b_chat = 'codefuse-qwen-14b-chat'
     # deepseek-coder
     deepseek_coder_1_3b = 'deepseek-coder-1_3b'
     deepseek_coder_1_3b_instruct = 'deepseek-coder-1_3b-instruct'
@@ -575,6 +577,13 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
             setattr(tokenizer_cls, k, tokenizer_config[k])
 
 
+@register_model(
+    ModelType.codefuse_codegeex2_6b_chat,
+    'codefuse-ai/CodeFuse-CodeGeeX2-6B',
+    LoRATM.chatglm,
+    TemplateType.codefuse,
+    requires=['transformers<4.34'],
+    support_vllm=True)
 @register_model(
     ModelType.chatglm3_6b_32k,
     'ZhipuAI/chatglm3-6b-32k',
@@ -1100,6 +1109,13 @@ def get_model_tokenizer_qwen(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.codefuse_qwen_14b_chat,
+    'codefuse-ai/CodeFuse-QWen-14B',
+    LoRATM.qwen,
+    TemplateType.codefuse,
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_1_8b,
     'qwen/Qwen-1_8B',

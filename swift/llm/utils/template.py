@@ -37,6 +37,7 @@ class TemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
     codefuse_codellama = 'codefuse-codellama'
+    codefuse = 'codefuse'
     cogagent = 'cogagent'
     orion = 'orion'
     # compatibility. (Deprecated)
@@ -720,6 +721,11 @@ register_template(
     Template(['{{SYSTEM}}'], [
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
     ], [], [['eos_token_id']], ''))
+
+register_template(
+    TemplateType.codefuse,
+    Template([], ['<s>human\n{{QUERY}}\n<s>bot\n'], [['eos_token_id'], '\n'],
+             [['eos_token_id']], None, ['<s>system\n{{SYSTEM}}\n']))
 
 register_template(
     TemplateType.deepseek_coder,
