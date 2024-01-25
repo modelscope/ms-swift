@@ -1,4 +1,4 @@
-# Experimental environment: 2 * A800
+# Experimental environment: 4 * 8*A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
@@ -7,13 +7,18 @@ export XLA_FLAGS='--xla_multiheap_size_constraint_per_heap=4831838208 --xla_disa
 export XLA_IR_SHAPE_CACHE_SIZE=100000000
 export XLA_ALLOCATOR_FRACTION=0.97
 
-NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+# Note: You need to set the correct MASTER_ADDR, MASTER_PORT and NODE_RANK for each node.
+
+MASTER_ADDR=127.0.0.1 \
+MASTER_PORT=12456 \
+NODE_RANK=0 \
+NNODES=4 \
+NPROC_PER_NODE=8 \
 swift sft \
 	--model_type qwen-72b-chat \
   --model_layer_cls_name QWenBlock \
 	--dataset codefuse-python-en \
-	--sft_type lora \
+	--sft_type full \
   --output_dir output \
   --num_train_epochs 1 \
   --max_length 1024 \
