@@ -26,7 +26,7 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
 from swift import get_logger
-from swift.utils import is_dist, is_local_master
+from swift.utils import is_dist, is_local_master, use_torchacc
 from .template import TemplateType
 from .utils import get_max_model_len
 
@@ -2952,7 +2952,7 @@ def get_model_tokenizer(
     get_function = model_info['get_function']
     if model_kwargs is None:
         model_kwargs = {}
-    if 'device_map' not in model_kwargs:
+    if 'device_map' not in model_kwargs and not use_torchacc():
         model_kwargs['device_map'] = 'auto'
 
     if model_info.get('torch_dtype') is not None:

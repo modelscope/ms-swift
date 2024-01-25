@@ -4,6 +4,7 @@ from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import requests
+import sys
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -11,6 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
+from swift.utils import use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -119,6 +121,26 @@ def _replace_system(prefix: Prompt) -> Prompt:
             p = p.replace('{{SYSTEM}}', '')
         res.append(p)
     return res
+
+
+def get_bucket_sizes(max_length: int) -> List[int]:
+    return [max_length // 4 * (i + 1) for i in range(4)]
+
+
+def _get_bucket(bucket_sizes, data_length):
+    """Select the one from bucket_sizes that is closest in distance to
+    data_length. This is required for TorchAcc.
+    """
+    cloest_length = sys.maxsize
+    for b in bucket_sizes:
+        if b == data_length or ((b < cloest_length) and (b > data_length)):
+            cloest_length = b
+
+    if cloest_length == sys.maxsize:
+        bucket_sizes.append(data_length)
+        cloest_length = data_length
+
+    return cloest_length
 
 
 class Template:
@@ -388,12 +410,14 @@ class Template:
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+                      padding_to: Optional[int] = None,
+                      bucket_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
+            bucket_sizes(`List[int]`, optional): Bucket sizes of sequence for TorchAcc.
         """
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
@@ -428,6 +452,17 @@ class Template:
             loss_scale = pad_sequence(
                 loss_scale, batch_first=True, padding_value=0.)
         labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+
+
+        if padding_to is None and use_torchacc():
+            longest_len = input_ids.shape[-1]
+            bucket_data_length = _get_bucket(bucket_sizes, longest_len)
+            padding_length = bucket_data_length - input_ids.shape[1]
+            input_ids = F.pad(input_ids, (0, padding_length), 'constant',
+                              tokenizer.pad_token_id)
+            attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
+                                  0)
+            labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
         res = {
             'input_ids': input_ids,

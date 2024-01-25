@@ -10,7 +10,7 @@ from transformers.training_args_seq2seq import \
     Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 from transformers.utils import is_accelerate_available
 
-from swift.utils import is_dist
+from swift.utils import is_dist, use_torchacc
 
 
 @dataclass
@@ -52,4 +52,7 @@ class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin,
                                HfSeq2SeqTrainingArguments):
-    pass
+
+    @property
+    def place_model_on_device(self):
+        return False if use_torchacc() else super().place_model_on_device

@@ -49,6 +49,12 @@ class SftArguments:
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
+    model_layer_cls_name: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"
+        })
 
     sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3',
                       'llamapro'] = 'lora'
