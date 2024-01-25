@@ -15,7 +15,7 @@ from transformers.models.auto.modeling_auto import \
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import lower_bound
+from swift.utils import lower_bound, use_torchacc
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
                        ProgressCallbackNew)
 from .mixin import PushToMsHubMixin, SwiftMixin
@@ -45,6 +45,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self.model.get_trainable_parameters() if hasattr(
                 self.model, 'get_trainable_parameters') else None,
         }
+        self._acc = torch.tensor(0.).to(self.args.device)
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
@@ -253,13 +254,15 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                                                     m]).to(torch.int64).item())
             acc = torch.tensor(acc_list, device=preds.device).float().mean()
         else:
-            acc = (preds[masks] == labels[masks]).float().mean()
+            if not use_torchacc():
+                acc = (preds[masks] == labels[masks]).float().mean()
+            else:
+                acc = (preds == labels).float().mean()
         if model.training and acc is not None:
             if 'acc' not in self._custom_metrics:
-                self._custom_metrics['acc'] = torch.tensor(0.).to(
-                    self.args.device)
-            self._custom_metrics[
-                'acc'] += acc / self.args.gradient_accumulation_steps
+                self._custom_metrics['acc'] = self._acc
+            self._custom_metrics['acc'] = self._custom_metrics[
+                'acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
 
