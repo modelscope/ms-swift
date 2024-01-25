@@ -10,15 +10,17 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers)
+                         seed_everything, show_layers, use_torchacc)
+from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
-                    get_additional_saved_files, get_dataset,
+                    get_additional_saved_files, get_bucket_sizes, get_dataset,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
@@ -27,6 +29,7 @@ logger = get_logger()
 
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
+
     logger.info(f'args: {args}')
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -34,11 +37,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
           f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
 
+    if use_torchacc():
+        logger.warning('TorchAcc is currently only available internally.')
+        import torchacc as ta
+        ta.accelerate_hf_trainer()
+
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
     if is_dist() and not is_ddp_plus_mp():
         model_kwargs['device_map'] = {'': local_rank}
-    else:
+    elif not use_torchacc():
         model_kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -71,6 +79,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
 
+    if use_torchacc():
+        import torchacc as ta
+        # Get `label` and `return_loss` before 'ta_accelerate' because it will
+        # wrapper the model and make these properties wrong.
+        label_names = find_labels(model)
+        return_loss = can_return_loss(model)
+        model = ta.patch_qwen_model(model)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -78,6 +93,18 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     model_info = get_model_info(model)
     logger.info(model_info)
     logger.info(model)
+
+    if use_torchacc():
+        model.config.use_cache = False
+        logger.info('Setting model.config.use_cache: False')
+        model = ta_accelerate(
+            model,
+            world_size,
+            args.model_layer_cls_name,
+            args.bf16,
+            args.fp16,
+            gradient_checkpointing=True,
+            fsdp_flatten_parameters=False)
 
     # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
@@ -139,10 +166,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)
 
+    bucket_sizes = get_bucket_sizes(
+        args.max_length) if use_torchacc() else None
     data_collator = partial(
         data_collate_fn,
         tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
+        padding_to=args.max_length if args.sft_type == 'longlora' else None,
+        bucket_sizes=bucket_sizes)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
@@ -254,6 +284,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         callbacks=callbacks,
         **trainer_kwargs)
     trainer.sft_args = args
+    if use_torchacc():
+        trainer.label_names = label_names
+        trainer.can_return_loss = return_loss
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):

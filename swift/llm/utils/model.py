@@ -23,7 +23,7 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
 from swift import get_logger
-from swift.utils import is_dist, is_local_master
+from swift.utils import is_dist, is_local_master, use_torchacc
 from .template import TemplateType
 
 logger = get_logger()
@@ -1641,7 +1641,7 @@ def get_model_tokenizer(
     ignore_file_pattern = model_info['ignore_file_pattern']
     if model_kwargs is None:
         model_kwargs = {}
-    if 'device_map' not in model_kwargs:
+    if 'device_map' not in model_kwargs and not use_torchacc():
         model_kwargs['device_map'] = 'auto'
 
     model_dir = kwargs.pop('model_dir', None)

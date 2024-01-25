@@ -93,13 +93,21 @@ def is_local_master():
     return local_rank in {-1, 0}
 
 
+def use_torchacc() -> bool:
+    return os.getenv('USE_TORCHACC', '0') == '1'
+
+
 def is_dist():
     """Determine if the training is distributed"""
+    if use_torchacc():
+        return False
     rank, local_rank, _, _ = get_dist_setting()
     return rank >= 0 and local_rank >= 0
 
 
 def is_ddp_plus_mp() -> bool:
+    if use_torchacc():
+        return False
     if not is_dist():
         return False
     n_gpu = torch.cuda.device_count()
