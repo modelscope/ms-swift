@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 from swift.llm import MODEL_MAPPING, ModelType
 
 
-def get_model_info_table2() -> List[str]:
+def get_model_info_table() -> List[str]:
     model_name_list = ModelType.get_model_name_list()
     result = (
         '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
@@ -80,6 +80,6 @@ def get_model_info_readme_en(data: List[str]) -> None:
 
 
 if __name__ == '__main__':
-    result = get_model_info_table2()
+    result = get_model_info_table()
     result_en = get_model_info_readme_en(result)
     result_zh = get_model_info_readme_zh(result)
