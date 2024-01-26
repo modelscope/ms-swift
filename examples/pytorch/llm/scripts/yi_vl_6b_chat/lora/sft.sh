@@ -1,5 +1,5 @@
 # Experimental environment: V100, A10, 3090
-# 21GB GPU memory
+# 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type yi-vl-6b-chat \
