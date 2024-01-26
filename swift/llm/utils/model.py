@@ -181,7 +181,7 @@ class ModelType:
     deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
     # phi
     phi2_3b = 'phi2-3b'
-
+    # cogagent
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
 
@@ -372,13 +372,13 @@ def get_model_tokenizer_from_repo(model_dir: str,
     ModelType.cogagent_18b_chat,
     'ZhipuAI/cogagent-chat',
     LoRATM.cogagent,
-    TemplateType.cogagent,
+    TemplateType.cogagent_chat,
     support_gradient_checkpointing=False)
 @register_model(
     ModelType.cogagent_18b_instruct,
     'ZhipuAI/cogagent-vqa',
     LoRATM.cogagent,
-    TemplateType.cogagent,
+    TemplateType.cogagent_instruct,
     support_gradient_checkpointing=False)
 def get_model_tokenizer_cogagent(model_dir: str,
                                  torch_dtype: Dtype,
@@ -390,8 +390,8 @@ def get_model_tokenizer_cogagent(model_dir: str,
         revision='master',
         trust_remote_code=True)
     if load_model is True:
-        logger.info(
-            'CogAgent with FusedLayerNorm will cause an training loss of Nan, '
+        logger.warning(
+            'CogAgent with FusedLayerNorm will cause an training loss of NAN, '
             'to avoid this, please uninstall apex.')
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,

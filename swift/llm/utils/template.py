@@ -46,7 +46,8 @@ class TemplateType:
     deepseek_coder = 'deepseek-coder'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
-    cogagent = 'cogagent'
+    cogagent_chat = 'cogagent-chat'
+    cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
     # compatibility. (Deprecated)
     chatml = 'chatml'
@@ -377,53 +378,6 @@ class Template:
         }
 
 
-class CogAgentTemplate(Template):
-
-    def encode(
-        self, example: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-        from PIL import Image
-        images_path = example.get('images')
-        assert len(images_path) == 1
-        image = read_from_path(images_path[0])
-        inputs, _ = super().encode(example)
-        model = self.model
-        inputs2 = model.build_conversation_input_ids(
-            self.tokenizer,
-            query=example['query'],
-            history=example.get('history'),
-            images=[image])
-        image_token_len = inputs2['token_type_ids'].sum()
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        token_type_ids = inputs2['token_type_ids'].tolist()
-        inputs['input_ids'] = input_ids[:1] + [
-            0
-        ] * image_token_len + input_ids[1:]
-        if labels is not None:
-            inputs['labels'] = labels[:1] + [-100
-                                             ] * image_token_len + labels[1:]
-        dtype = model.dtype
-        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
-        inputs['cross_images'] = [[cross_img.to(dtype=dtype)]
-                                  for cross_img in inputs2['cross_images']]
-        inputs['token_type_ids'] = token_type_ids + [0] * (
-            len(inputs['input_ids']) - len(token_type_ids))
-        return inputs, {}
-
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        for key in ['images', 'cross_images']:
-            res[key] = [b[key][0] for b in batch]
-        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = pad_sequence(
-            token_type_ids, batch_first=True, padding_value=0)
-        res['token_type_ids'] = token_type_ids
-        return res
-
-
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
@@ -549,7 +503,7 @@ def read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
             image = Image.open(img_path)
     else:
         image = img_path
-    if image.mode == 'L':
+    if image.mode in {'L', 'RGBA'}:
         image = image.convert('RGB')
     return image
 
@@ -738,9 +692,65 @@ register_template(
     Template(['<s>{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: </s>'],
              ['</s>'], ['</s>'], ''))
 
+
+class CogAgentTemplate(Template):
+
+    def encode(
+        self, example: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        from PIL import Image
+        images_path = example.get('images')
+        assert len(images_path) == 1
+        image = read_from_path(images_path[0])
+        inputs, _ = super().encode(example)
+        model = self.model
+        inputs2 = model.build_conversation_input_ids(
+            self.tokenizer,
+            query=example['query'],
+            history=example.get('history'),
+            images=[image])
+        image_token_len = inputs2['token_type_ids'].sum()
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        token_type_ids = inputs2['token_type_ids'].tolist()
+        inputs['input_ids'] = input_ids[:1] + [
+            0
+        ] * image_token_len + input_ids[1:]
+        if labels is not None:
+            inputs['labels'] = labels[:1] + [-100
+                                             ] * image_token_len + labels[1:]
+        dtype = model.dtype
+        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        inputs['cross_images'] = [[cross_img.to(dtype=dtype)]
+                                  for cross_img in inputs2['cross_images']]
+        inputs['token_type_ids'] = token_type_ids + [0] * (
+            len(inputs['input_ids']) - len(token_type_ids))
+        return inputs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        for key in ['images', 'cross_images']:
+            res[key] = [b[key][0] for b in batch]
+        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
+        token_type_ids = pad_sequence(
+            token_type_ids, batch_first=True, padding_value=0)
+        res['token_type_ids'] = token_type_ids
+        return res
+
+
 register_template(
-    TemplateType.cogagent,
+    TemplateType.cogagent_chat,
     CogAgentTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
+    use_model=True,
+    infer_media_type='dialogue',
+    lazy_tokenize=True)
+
+register_template(
+    TemplateType.cogagent_instruct,
+    CogAgentTemplate(['<s>'], ['<EOI>Question: {{QUERY}} Answer:'], None,
+                     ['</s>']),
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)

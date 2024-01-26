@@ -417,12 +417,11 @@ def inference_stream(model: PreTrainedModel,
     inputs, tokenizer_kwargs = template.encode(example)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = to_device(torch.tensor(inputs['input_ids'])[None], device)
+    input_ids = torch.tensor(inputs['input_ids'])[None]
     inputs['input_ids'] = input_ids
-    inputs['attention_mask'] = to_device(torch.ones_like(input_ids), device)
+    inputs['attention_mask'] = torch.ones_like(input_ids)
     if 'token_type_ids' in inputs:
-        inputs['token_type_ids'] = torch.tensor(
-            inputs['token_type_ids'])[None].to(device)
+        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -446,6 +445,7 @@ def inference_stream(model: PreTrainedModel,
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
+    inputs = to_device(inputs, device)
     gen = model.generate_stream(
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
@@ -490,7 +490,7 @@ def to_device(inputs: Any, device: Device) -> Any:
         res = []
         for b in inputs:
             res.append(to_device(b, device))
-    elif isinstance(inputs, (int, float)):
+    elif isinstance(inputs, (int, float)) or inputs is None:
         res = inputs
     else:
         raise TypeError(f'inputs: {inputs}, {type(inputs)}')
@@ -529,12 +529,11 @@ def inference(model: PreTrainedModel,
     inputs, tokenizer_kwargs = template.encode(example)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = to_device(torch.tensor(inputs['input_ids'])[None], device)
+    input_ids = torch.tensor(inputs['input_ids'])[None]
     inputs['input_ids'] = input_ids
-    inputs['attention_mask'] = to_device(torch.ones_like(input_ids), device)
+    inputs['attention_mask'] = torch.ones_like(input_ids)
     if 'token_type_ids' in inputs:
-        inputs['token_type_ids'] = torch.tensor(
-            inputs['token_type_ids'])[None].to(device)
+        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -561,6 +560,7 @@ def inference(model: PreTrainedModel,
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
+    inputs = to_device(inputs, device)
     generate_ids = model.generate(
         streamer=streamer,
         generation_config=generation_config,

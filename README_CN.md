@@ -202,7 +202,7 @@ swift web-ui
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation.
-  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent.
+  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct.
 
 
 ## 🔥SCEdit

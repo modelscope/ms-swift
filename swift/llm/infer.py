@@ -217,7 +217,6 @@ def llm_infer(args: InferArguments) -> None:
                 continue
             elif query.strip() == '':
                 continue
-            read_media_file(infer_kwargs, args.infer_media_type)
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
                 logger.info('End multi-line input with `#`.')
@@ -229,6 +228,8 @@ def llm_infer(args: InferArguments) -> None:
                 continue
             if not template.support_multi_round:
                 history = []
+                infer_kwargs = {}
+            read_media_file(infer_kwargs, args.infer_media_type)
             if args.infer_backend == 'vllm':
                 request_list = [{'query': query, 'history': history}]
                 if args.stream:
