@@ -106,18 +106,19 @@ class DatasetName:
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
 
     # multi-modal
-    # vision
+    # for qwen-vl
     coco_en = 'coco-en'
-    coco_mini_en = 'coco-mini-en'  # for qwen-vl
-    coco_mini_en_2 = 'coco-mini-en-2'  # for yi-vl
-    capcha_images = 'capcha-images'  # for cogagent
-    # audio
+    coco_mini_en = 'coco-mini-en'
+    # for yi-vl, cogagnet
+    coco_mini_en_2 = 'coco-mini-en-2'
+    capcha_images = 'capcha-images'
+    # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
 
-    stack_exchange_paired = 'stack-exchange-paired'
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
+    stack_exchange_paired = 'stack-exchange-paired'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:

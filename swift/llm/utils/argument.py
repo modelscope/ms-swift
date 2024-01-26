@@ -311,7 +311,7 @@ class SftArguments:
             template_info = TEMPLATE_MAPPING[self.template_type]
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
         if 'qwen-audio' in self.model_type:
-            assert self.preprocess_num_proc == 1 or self.lazy_tokenize
+            assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
         model_info = MODEL_MAPPING[self.model_type]
         support_gradient_checkpointing = model_info.get(
             'support_gradient_checkpointing', True)

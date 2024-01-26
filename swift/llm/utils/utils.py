@@ -415,6 +415,7 @@ def inference_stream(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
+    inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
     input_ids = torch.tensor(inputs['input_ids'])[None]
@@ -474,6 +475,16 @@ def inference_stream(model: PreTrainedModel,
             safe_response = response[:print_idx]
             history[-1] = (query, safe_response)
             yield safe_response, history
+    # avoid printing template.suffix[-1])
+    if (isinstance(template.suffix[-1], list)
+            and raw_generate_ids[-len(template.suffix[-1]):]
+            == template.suffix[-1]):
+        raw_generate_ids = raw_generate_ids[:-len(template.suffix[-1])]
+    response = tokenizer.decode(raw_generate_ids, **tokenizer_kwargs)
+    if isinstance(
+            template.suffix[-1], str
+    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
+        response = response[:-len(template.suffix[-1])]
     history[-1] = (query, response)
     yield response, history
 
@@ -490,7 +501,7 @@ def to_device(inputs: Any, device: Device) -> Any:
         res = []
         for b in inputs:
             res.append(to_device(b, device))
-    elif isinstance(inputs, (int, float)) or inputs is None:
+    elif isinstance(inputs, (int, float, str)) or inputs is None:
         res = inputs
     else:
         raise TypeError(f'inputs: {inputs}, {type(inputs)}')
@@ -527,6 +538,7 @@ def inference(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
+    inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
     input_ids = torch.tensor(inputs['input_ids'])[None]

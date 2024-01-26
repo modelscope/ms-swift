@@ -150,8 +150,8 @@ class Template:
         self.model = kwargs.get('model', None)
 
     def encode(
-        self, example: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
@@ -428,14 +428,14 @@ register_template(TemplateType.chatml, QwenTemplate())
 class _QwenAudioTemplateMixin:
 
     def encode(
-        self, example: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inpus, tokenizer_kwargs = super().encode(example)
         inpus.update(tokenizer_kwargs)
         return inpus, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
-        return {'audio_info': tokenizer.process_audio(context)}
+        return {'audio_info': self.tokenizer.process_audio(context)}
 
     def concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any],
                                 curr_tokenizer_kwargs: Dict[str, Any]) -> None:
@@ -490,7 +490,7 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
-def read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
+def _read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
     from PIL import Image
     if isinstance(img_path, str):
         img_path = img_path.strip()
@@ -509,8 +509,8 @@ def read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
 class YiVLTemplate(Template):
 
     def encode(
-        self, example: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         from llava.mm_utils import expand2square
         model = self.model
@@ -523,7 +523,7 @@ class YiVLTemplate(Template):
             images_path = [images_path]
         images = []
         for image_path in images_path:
-            image = read_from_path(image_path)
+            image = _read_from_path(image_path)
             background_color = tuple(
                 int(x * 255) for x in image_processor.image_mean)
             image = expand2square(image, background_color)
@@ -694,12 +694,11 @@ register_template(
 class CogAgentTemplate(Template):
 
     def encode(
-        self, example: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-        from PIL import Image
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example.get('images')
         assert len(images_path) == 1
-        image = read_from_path(images_path[0])
+        image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
