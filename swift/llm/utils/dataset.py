@@ -1028,10 +1028,6 @@ def _check_dataset(
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
-    if check_dataset_strategy == 'error':
-        assert len(
-            set(dataset.features.keys())
-            - set(['query', 'response', 'system', 'history'])) == 0
     has_query = 'query' in dataset.features
     has_history = 'history' in dataset.features
     has_system = 'system' in dataset.features

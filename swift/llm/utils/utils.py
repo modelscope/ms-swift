@@ -9,7 +9,8 @@ from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (Any, Callable, Dict, Iterator, List, Mapping, Optional,
+                    Sequence, Tuple, Union)
 
 import accelerate
 import multiprocess
@@ -37,8 +38,7 @@ from transformers import (GenerationConfig, PreTrainedModel,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
-from .template import (History, StopWords, StopWordsCriteria, Template,
-                       get_audio_info)
+from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -166,8 +166,7 @@ class LLMDataset(Dataset):
 
     def __getitem__(self, idx: Union[int, str]) -> Dict[str, Any]:
         if isinstance(idx, int):
-            data, model_kwargs, _ = self.data[idx]
-            data.update(model_kwargs)
+            data, _ = self.data[idx]
             return data
         else:
             raise ValueError(f'idx: {idx}')
@@ -195,8 +194,7 @@ class LazyLLMDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         res = self._try_fetch(idx)
         if res is not None:
-            data, model_kwargs, _ = res
-            data.update(model_kwargs)
+            data, _ = res
             return data
         raise ValueError('Please check if the max_length is appropriate.')
 
@@ -398,7 +396,7 @@ def inference_stream(model: PreTrainedModel,
                      system: Optional[str] = None,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
-                     stop_words: Optional[List[StopWords]] = None,
+                     stop_words: Optional[StopWords] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -416,15 +414,15 @@ def inference_stream(model: PreTrainedModel,
         'images': kwargs.pop('images', None)  # for vl
     }
     template.model = model
-    inputs, model_kwargs, tokenizer_kwargs = template.encode(example)
-    input_ids = inputs['input_ids']
+    inputs, tokenizer_kwargs = template.encode(example)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = torch.tensor(input_ids)[None].to(device)
-    if 'attention_mask' not in inputs:
-        attention_mask = torch.ones_like(input_ids).to(device)
-    else:
-        attention_mask = inputs['attention_mask'].to(device)
+    input_ids = to_device(torch.tensor(inputs['input_ids'])[None], device)
+    inputs['input_ids'] = input_ids
+    inputs['attention_mask'] = to_device(torch.ones_like(input_ids), device)
+    if 'token_type_ids' in inputs:
+        inputs['token_type_ids'] = torch.tensor(
+            inputs['token_type_ids'])[None].to(device)
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -446,26 +444,13 @@ def inference_stream(model: PreTrainedModel,
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
-    # Compatible with cogagent
-    if 'token_type_ids' in inputs:
-        model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
-    if 'images' in inputs:
-        model_kwargs['images'] = [[
-            inputs['images'][0][0].to(device).to(torch.float16)
-        ]]
-    if 'cross_images' in inputs:
-        model_kwargs['cross_images'] = [[
-            inputs['cross_images'][0][0].to(device).to(torch.float16)
-        ]]
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     gen = model.generate_stream(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
-        **model_kwargs,
-        seed=-1)
+        seed=-1,
+        **inputs)
     raw_generate_ids = []
     response, safe_response = '', ''
     print_idx = 0
@@ -493,6 +478,25 @@ def inference_stream(model: PreTrainedModel,
     yield response, history
 
 
+def to_device(inputs: Any, device: Device) -> Any:
+    if callable(getattr(inputs, 'to', None)):
+        return inputs.to(device=device)
+    #
+    if isinstance(inputs, Mapping):
+        res = {}
+        for k, v in inputs.items():
+            res[k] = to_device(v, device)
+    elif isinstance(inputs, Sequence) and not isinstance(inputs, str):
+        res = []
+        for b in inputs:
+            res.append(to_device(b, device))
+    elif isinstance(inputs, (int, float)):
+        res = inputs
+    else:
+        raise TypeError(f'inputs: {inputs}, {type(inputs)}')
+    return res
+
+
 def inference(model: PreTrainedModel,
               template: Template,
               query: str,
@@ -500,7 +504,7 @@ def inference(model: PreTrainedModel,
               system: Optional[str] = None,
               *,
               generation_config: Optional[GenerationConfig] = None,
-              stop_words: Optional[List[StopWords]] = None,
+              stop_words: Optional[StopWords] = None,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
@@ -522,12 +526,15 @@ def inference(model: PreTrainedModel,
         'images': kwargs.pop('images', None)  # for vl
     }
     template.model = model
-    inputs, model_kwargs, tokenizer_kwargs = template.encode(example)
-    input_ids = inputs['input_ids']
+    inputs, tokenizer_kwargs = template.encode(example)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = torch.tensor(input_ids)[None].to(device)
-    attention_mask = torch.ones_like(input_ids).to(device)
+    input_ids = to_device(torch.tensor(inputs['input_ids'])[None], device)
+    inputs['input_ids'] = input_ids
+    inputs['attention_mask'] = to_device(torch.ones_like(input_ids), device)
+    if 'token_type_ids' in inputs:
+        inputs['token_type_ids'] = torch.tensor(
+            inputs['token_type_ids'])[None].to(device)
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -555,12 +562,10 @@ def inference(model: PreTrainedModel,
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     generate_ids = model.generate(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config,
         stopping_criteria=stopping_criteria,
-        **model_kwargs)
+        **inputs)
     generate_ids = generate_ids[0, len(input_ids[0]):].tolist()
     response = None
     if verbose and stream is False:

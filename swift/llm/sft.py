@@ -134,14 +134,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
-        td0, _, tkwargs0 = train_dataset.data[0]
+        td0, tkwargs0 = train_dataset.data[0]
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
         dataset_info = None
-        td0, _, tkwargs0 = template.encode(train_dataset[0])
+        td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)

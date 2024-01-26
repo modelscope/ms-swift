@@ -2,6 +2,7 @@
 import os
 import re
 from copy import deepcopy
+from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import requests
@@ -100,24 +101,6 @@ class StopWordsCriteria(StoppingCriteria):
         return False
 
 
-def get_audio_info(
-        tokenizer: PreTrainedTokenizerBase,
-        *,
-        context: Optional[str] = None,
-        audio_info: Optional[Dict[str,
-                                  Any]] = None) -> Optional[Dict[str, Any]]:
-    assert context is not None or audio_info is not None
-    assert context is None or audio_info is None
-    if context is None:
-        input_audios = audio_info.get('input_audios')
-        if isinstance(input_audios, Tensor):
-            return audio_info
-        audio_urls = audio_info['audio_urls']
-        context = ''.join([f'<audio>{url}</audio>' for url in audio_urls])
-    # apt install ffmpeg
-    return tokenizer.process_audio(context)
-
-
 def _has_system(prefix: Prompt) -> bool:
     for p in prefix:
         if '{{SYSTEM}}' in p:
@@ -170,15 +153,13 @@ class Template:
     def encode(
         self, example: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-        """return: inputs, model_kwargs, tokenizer_kwargs"""
+        """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.'
             )
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
-        rejected_response: Optional[str] = example.get('rejected_response',
-                                                       None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         if query is None:
@@ -192,15 +173,10 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
-        if rejected_response is None:
-            inputs, tokenizer_kwargs = self._encode(query, response, history,
-                                                    system,
-                                                    self.truncation_strategy)
-        else:
-            inputs = self._encode_pairwise(query, response, rejected_response,
-                                           system, self.truncation_strategy)
-            tokenizer_kwargs = {}
-        return inputs, {}, tokenizer_kwargs
+        inputs, tokenizer_kwargs = self._encode(query, response, history,
+                                                system,
+                                                self.truncation_strategy)
+        return inputs, tokenizer_kwargs
 
     @staticmethod
     def _concat_context_list(
@@ -350,52 +326,6 @@ class Template:
         inputs = {'input_ids': input_ids, 'labels': labels}
         return inputs, tokenizer_kwargs
 
-    def _encode_pairwise(self, query: str, response: Optional[str],
-                         rejected_response: Optional[str],
-                         system: Optional[str],
-                         truncation_strategy: str) -> Dict[str, Any]:
-        res_context_list: List[Context] = []
-        compute_loss_idx: List[int] = []
-        if system is None:
-            assert self.prefix != self.prefix_has_system, f'template.prefix: {self.prefix}'
-            prefix = self.prefix
-        else:
-            prefix = self.prefix_has_system
-        self._concat_context_list(
-            prefix, res_context_list, compute_loss_idx, system=system)
-        self._concat_context_list(
-            self.prompt,
-            res_context_list,
-            compute_loss_idx,
-            query=query,
-            round0=True)
-        res_context_list, compute_loss_idx = self._simplify_context_list(
-            res_context_list, compute_loss_idx)
-        input_ids, labels, _ = self._encode_context_list(
-            res_context_list, compute_loss_idx)
-
-        if response is not None:
-            tgt_input_ids = self._encode_context_list([response], [])[0]
-            tgt_input_ids += self._encode_context_list(self.suffix, [])[0]
-            labels = labels + tgt_input_ids
-            input_ids += tgt_input_ids
-        else:
-            labels = None
-
-        if self.max_length is not None:
-            if truncation_strategy == 'delete' and len(
-                    input_ids) > self.max_length:
-                return None
-            input_ids = input_ids[-self.max_length:]
-            if labels is not None:
-                labels = labels[-self.max_length:]
-        res = {
-            'input_ids': input_ids,
-            'attention_mask': [1] * len(input_ids),
-            'labels': labels
-        }
-        return res
-
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
         return {}
@@ -424,15 +354,15 @@ class Template:
             for i in range(len(input_ids))
         ]
 
-        if padding_to is not None and padding_to > input_ids[0].shape[-1]:
-            input_ids[0] = F.pad(input_ids[0],
-                                 (0, padding_to - input_ids[0].shape[-1]),
-                                 'constant', tokenizer.pad_token_id)
-            labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
-                              'constant', -100)
-            attention_mask[0] = F.pad(
-                attention_mask[0],
-                (0, padding_to - attention_mask[0].shape[-1]), 'constant', 0)
+        if padding_to is not None:
+            padding_len = padding_to - input_ids[0].shape[-1]
+            if padding_len > 0:
+                input_ids[0] = F.pad(input_ids[0], (0, padding_len),
+                                     'constant', tokenizer.pad_token_id)
+                attention_mask[0] = F.pad(attention_mask[0], (0, padding_len),
+                                          'constant', 0)
+                labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
+                                  -100)
 
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
@@ -448,176 +378,49 @@ class Template:
 
 
 class CogAgentTemplate(Template):
-    LANGUAGE_TOKEN_TYPE = 0
-    VISION_TOKEN_TYPE = 1
-
-    @staticmethod
-    def vqa_history_to_prompt(history, query):
-        # Only support single round chat in vqa mode
-        prompt = '<EOI>Question: '
-        # for i, (old_query, response) in enumerate(history):
-        #     prompt += old_query + " Short answer: " + response + " Question: "
-        prompt += query + ' Short answer:'
-        return prompt
-
-    @staticmethod
-    def chat_old_history_to_prompt(history, query):
-        prompt = '<EOI>Question: '
-        for i, (old_query, response) in enumerate(history):
-            prompt += old_query + ' Answer: ' + response + '\nQuestion: '
-        prompt += query + ' Answer:'
-        return prompt
-
-    @staticmethod
-    def chat_history_to_prompt(history, query):
-        prompt = ' [INST] '
-        for i, (old_query, response) in enumerate(history):
-            prompt += old_query + ' [/INST] ' + response + ' [INST] '
-        prompt += query + ' [/INST] '
-        return prompt
-
-    @staticmethod
-    def base_history_to_prompt(history, query):
-        prompt = query
-        return prompt
-
-    _history_to_prompt = {
-        'base': base_history_to_prompt,
-        'chat': chat_history_to_prompt,
-        'chat_old': chat_old_history_to_prompt,
-        'vqa': vqa_history_to_prompt
-    }
-
-    def build_conversation_input_ids(
-        self,
-        tokenizer: PreTrainedTokenizerBase,
-        *,
-        query: str,
-        label: Optional[str] = None,
-        history: Optional[List[Tuple[str, str]]] = None,
-        images: Optional[List['PIL.Image']] = None,
-        template_version: Optional[Literal['base', 'chat', 'vqa']] = None,
-    ):
-        from torchvision import transforms
-        image_size: int = self.model.config.vision_config['image_size']
-        cross_image_size: int = self.model.config.cross_image_size
-        patch_size: int = self.model.config.vision_config['patch_size']
-        template_version = template_version or self.model.config.template_version
-        assert images is None or len(
-            images) <= 1, 'not support multi images by now.'
-        history = history or []
-        text = self._history_to_prompt[template_version](history, query)
-
-        input_ids = [tokenizer.bos_token_id]
-        token_type_ids = [self.LANGUAGE_TOKEN_TYPE]
-        if images is not None and len(images) == 1:
-            ori = images
-            # vision
-            transform = transforms.Compose([
-                transforms.Resize(
-                    (image_size, image_size),
-                    interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.ToTensor(),
-                transforms.Normalize((0.48145466, 0.4578275, 0.40821073),
-                                     (0.26862954, 0.26130258, 0.27577711)),
-            ])
-            images = [transform(ori[0])]
-            cross_transform = transforms.Compose([
-                transforms.Resize(
-                    (cross_image_size, cross_image_size),
-                    interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.ToTensor(),
-                transforms.Normalize((0.48145466, 0.4578275, 0.40821073),
-                                     (0.26862954, 0.26130258, 0.27577711)),
-            ])
-            cross_images = [cross_transform(ori[0])]
-            # language
-            vision_token_num = (image_size // patch_size) * (image_size
-                                                             // patch_size) + 2
-            input_ids += [tokenizer.pad_token_id] * vision_token_num
-            token_type_ids += [self.VISION_TOKEN_TYPE] * vision_token_num
-        text_ids = tokenizer.encode(text, add_special_tokens=False)
-        train = label is not None
-        label_ids = tokenizer.encode(
-            label, add_special_tokens=False) if train else []
-        if len(text_ids) + len(input_ids) + len(
-                label_ids) > self.max_length - 1:
-            if self.truncation_strategy == 'delete' or (
-                    len(input_ids) + len(label_ids) >= self.max_length - 1):
-                return None
-            else:
-                text_ids = text_ids[-(self.max_length - len(input_ids)
-                                      - len(label_ids) - 1):]
-
-        input_ids += text_ids
-        if train:
-            labels = [-100] * len(input_ids) + label_ids + [
-                tokenizer.eos_token_id
-            ]
-            input_ids += label_ids + [tokenizer.eos_token_id]
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * (
-                len(text_ids) + len(label_ids) + 1)
-        else:
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * len(text_ids)
-        attention_mask = [1] * len(input_ids)
-
-        if len(input_ids) < self.max_length and train:
-            padding_len = self.max_length - len(input_ids)
-            input_ids += [tokenizer.pad_token_id] * padding_len
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * padding_len
-            attention_mask += [0] * padding_len
-            if label_ids:
-                labels += [-100] * padding_len
-
-        if train:
-            return {
-                'input_ids': torch.tensor(input_ids, dtype=torch.long),
-                'token_type_ids':
-                torch.tensor(token_type_ids, dtype=torch.long),
-                'attention_mask':
-                torch.tensor(attention_mask, dtype=torch.long),
-                'images': images,
-                'cross_images': cross_images,
-                'labels': labels,
-            }
-        else:
-            return {
-                'input_ids':
-                torch.tensor(input_ids, dtype=torch.long),
-                'token_type_ids':
-                torch.tensor(token_type_ids, dtype=torch.long).unsqueeze(0),
-                'attention_mask':
-                torch.tensor(attention_mask, dtype=torch.long).unsqueeze(0),
-                'images': [images],
-                'cross_images': [cross_images],
-            }
 
     def encode(
         self, example: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-        if 'image' in example and isinstance(example['image'], str):
-            from PIL import Image
-            if not os.path.exists(example['image']):
-                example['image'] = requests.get(
-                    example['image'], stream=True).raw
-            example['image'] = Image.open(example['image'])
-        return self.build_conversation_input_ids(
+        from PIL import Image
+        images_path = example.get('images')
+        assert len(images_path) == 1
+        image = read_from_path(images_path[0])
+        inputs, _ = super().encode(example)
+        model = self.model
+        inputs2 = model.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
-            label=example.get('response'),
             history=example.get('history'),
-            images=[example['image'].convert('RGB')]), {}, {}
+            images=[image])
+        image_token_len = inputs2['token_type_ids'].sum()
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        token_type_ids = inputs2['token_type_ids'].tolist()
+        inputs['input_ids'] = input_ids[:1] + [
+            0
+        ] * image_token_len + input_ids[1:]
+        if labels is not None:
+            inputs['labels'] = labels[:1] + [-100
+                                             ] * image_token_len + labels[1:]
+        dtype = model.dtype
+        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        inputs['cross_images'] = [[cross_img.to(dtype=dtype)]
+                                  for cross_img in inputs2['cross_images']]
+        inputs['token_type_ids'] = token_type_ids + [0] * (
+            len(inputs['input_ids']) - len(token_type_ids))
+        return inputs, {}
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         for key in ['images', 'cross_images']:
-            if batch[0].get(key) is not None:
-                res[key] = [b[key] for b in batch]
-        if batch[0].get('token_type_ids') is not None:
-            res['token_type_ids'] = torch.stack(
-                [b['token_type_ids'] for b in batch])
+            res[key] = [b[key][0] for b in batch]
+        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
+        token_type_ids = pad_sequence(
+            token_type_ids, batch_first=True, padding_value=0)
+        res['token_type_ids'] = token_type_ids
         return res
 
 
@@ -675,11 +478,12 @@ class _QwenAudioTemplateMixin:
     def encode(
         self, example: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-        inpus, _, tokenizer_kwargs = super().encode(example)
-        return inpus, tokenizer_kwargs, tokenizer_kwargs
+        inpus, tokenizer_kwargs = super().encode(example)
+        inpus.update(tokenizer_kwargs)
+        return inpus, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
-        return {'audio_info': get_audio_info(self.tokenizer, context=context)}
+        return {'audio_info': tokenizer.process_audio(context)}
 
     def concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any],
                                 curr_tokenizer_kwargs: Dict[str, Any]) -> None:
@@ -734,16 +538,19 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
-def read_from_path(img_path: str) -> 'PIL.Image':
-    from io import BytesIO
+def read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
     from PIL import Image
-    if isinstance(img_path, Image.Image):
-        return img_path
-    elif img_path.startswith('http'):
-        content = requests.get(img_path).content
-        image = Image.open(BytesIO(content))
+    if isinstance(img_path, str):
+        img_path = img_path.strip()
+        if img_path.startswith('http'):
+            content = requests.get(img_path).content
+            image = Image.open(BytesIO(content))
+        else:
+            image = Image.open(img_path)
     else:
-        image = Image.open(img_path)
+        image = img_path
+    if image.mode == 'L':
+        image = image.convert('RGB')
     return image
 
 
@@ -752,7 +559,7 @@ class YiVLTemplate(Template):
     def encode(
         self, example: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-        inputs, _, _ = super().encode(example)
+        inputs, _ = super().encode(example)
         from llava.mm_utils import expand2square
         model = self.model
         model = self.model.model
@@ -767,14 +574,12 @@ class YiVLTemplate(Template):
             image = read_from_path(image_path)
             background_color = tuple(
                 int(x * 255) for x in image_processor.image_mean)
-            if image.mode == 'L':
-                background_color = sum(background_color) // 3
             image = expand2square(image, background_color)
             images.append(image)
         image_tensor = image_processor.preprocess(
             images, return_tensors='pt')['pixel_values']
-        model_kwargs = {'images': image_tensor.to(model.config.torch_dtype)}
-        return inputs, model_kwargs, {}
+        inputs['images'] = image_tensor.to(model.dtype)
+        return inputs, {}
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -935,9 +740,10 @@ register_template(
 
 register_template(
     TemplateType.cogagent,
-    CogAgentTemplate([], [], [], [['eos_token_id']]),
+    CogAgentTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
     use_model=True,
-    infer_media_type='dialogue')
+    infer_media_type='dialogue',
+    lazy_tokenize=True)
 
 
 def get_template(

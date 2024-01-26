@@ -249,6 +249,18 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
 
 **客户端:**
 
+测试:
+```bash
+curl http://localhost:8000/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{
+"model": "qwen-7b-chat",
+"messages": [{"role": "user", "content": "晚上睡不着觉怎么办？"}],
+"max_tokens": 256,
+"temperature": 0
+}'
+```
+
 使用swift:
 ```python
 from swift.llm import get_model_list_client, XRequestConfig, inference_client
@@ -339,6 +351,19 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b
 ```
 
 **客户端:**
+
+测试:
+```bash
+curl http://localhost:8000/v1/completions \
+-H "Content-Type: application/json" \
+-d '{
+"model": "qwen-7b",
+"prompt": "浙江 -> 杭州\n安徽 -> 合肥\n四川 ->",
+"max_tokens": 32,
+"temperature": 0.1,
+"seed": 42
+}'
+```
 
 使用swift:
 ```python

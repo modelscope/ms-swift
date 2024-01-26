@@ -60,7 +60,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
 
 ## 🎉 新闻
-- 2024.1.26: 支持yi-vl-6b-chat, yi-vl-34b-chat.
+- 2024.1.26: 支持[yi-vl-6b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_vl_6b_chat), yi-vl-34b-chat.
 - 2024.1.24: 支持codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
 - 2024.1.23: 支持orion系列: orion-14b, [orion-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/orion_14b_chat).
 - 2024.1.20: 支持[xverse-13b-256k](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_13b_256k), xverse-65b-v2, xverse-65b-chat.
@@ -156,7 +156,7 @@ swift web-ui
     - qwen-vl 系列: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
     - qwen-audio 系列: qwen-audio, qwen-audio-chat.
     - yi-vl 系列: yi-vl-6b-chat, yi-vl-34b-chat.
-    - cogagent 系列: cogagent-chat, cogagent-vqa.
+    - cogagent 系列: cogagent-18b-chat, cogagent-18b-instruct.
   - 通用:
     - qwen 系列: qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8, qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8, qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8, qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
     - chatglm 系列: chatglm2-6b, chatglm2-6b-32k, chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
