@@ -1669,9 +1669,8 @@ def get_model_tokenizer_yi_vl(model_dir: str,
         model_config=model_config,
         automodel_class=LlavaLlamaForCausalLM,
         **kwargs)
-    logger.info(
-        'Please ignore the above warning and proceed with the import of the vision_tower parameter.'
-    )
+    logger.info('Please ignore the above warning.')
+    logger.info('Loading the parameters of vision_tower...')
     model.resize_token_embeddings(len(tokenizer))
     vision_tower = model.get_vision_tower()
     vision_tower.load_model()

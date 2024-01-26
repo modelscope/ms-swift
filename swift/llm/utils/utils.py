@@ -516,7 +516,7 @@ def inference_stream(model: PreTrainedModel,
         **model_kwargs,
         seed=-1)
     raw_generate_ids = []
-    response = ''
+    response, safe_response = '', ''
     print_idx = 0
     history.append(None)  # dummy
     for token in gen:

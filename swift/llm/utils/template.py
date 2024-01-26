@@ -196,8 +196,7 @@ class Template:
             inputs = self._encode_pairwise(query, response, rejected_response,
                                            system, self.truncation_strategy)
             tokenizer_kwargs = {}
-        model_kwargs = self.get_model_kwargs(inputs, tokenizer_kwargs)
-        return inputs, model_kwargs, tokenizer_kwargs
+        return inputs, {}, tokenizer_kwargs
 
     @staticmethod
     def _concat_context_list(
@@ -394,10 +393,6 @@ class Template:
         assert len(old_tokenizer_kwargs) == 0
         return curr_tokenizer_kwargs
 
-    def get_model_kwargs(self, inputs: Dict[str, Any],
-                         tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        return {}
-
 
 class CogAgentTemplate(Template):
     LANGUAGE_TOKEN_TYPE = 0
@@ -442,7 +437,7 @@ class CogAgentTemplate(Template):
 
     def build_conversation_input_ids(
         self,
-        tokenizer: 'PreTrainedTokenizer',
+        tokenizer: PreTrainedTokenizerBase,
         *,
         query: str,
         label: Optional[str] = None,
@@ -544,7 +539,9 @@ class CogAgentTemplate(Template):
                 'cross_images': [cross_images],
             }
 
-    def encode(self, example: Dict[str, Any]) -> Dict[str, Any]:
+    def encode(
+        self, example: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         if 'image' in example and isinstance(example['image'], str):
             from PIL import Image
             import requests
@@ -611,12 +608,14 @@ register_template(TemplateType.chatml, QwenTemplate())
 
 class _QwenAudioTemplateMixin:
 
+    def encode(
+        self, example: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        inpus, _, tokenizer_kwargs = super().encode(example)
+        return inpus, tokenizer_kwargs, tokenizer_kwargs
+
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         return {'audio_info': get_audio_info(self.tokenizer, context=context)}
-
-    def get_model_kwargs(self, inputs: Dict[str, Any],
-                         tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        return tokenizer_kwargs
 
     def concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any],
                                 curr_tokenizer_kwargs: Dict[str, Any]) -> None:
@@ -665,7 +664,9 @@ yi_vl_default_system = (
 
 class YiVLTemplate(Template):
 
-    def get_model_kwargs(self, inputs: Dict) -> Dict[str, Any]:
+    def encode(
+        self, example: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         inputs, _, _ = super().encode(example)
         from llava.mm_utils import expand2square, tokenizer_image_token
         from PIL import Image
@@ -677,6 +678,8 @@ class YiVLTemplate(Template):
         image_processor = self.model.model.vision_tower.image_processor
         image_path = example['image']
         image = Image.open(image_path)
+        image = expand2square(
+            image, tuple(int(x * 255) for x in image_processor.image_mean))
         image_tensor = image_processor.preprocess(
             image, return_tensors='pt')['pixel_values']
         model_kwargs = {'images': image_tensor.to(model.config.torch_dtype)}
