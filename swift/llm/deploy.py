@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
-from copy import deepcopy
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
