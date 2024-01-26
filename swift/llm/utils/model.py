@@ -17,9 +17,9 @@ from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (PretrainedConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from transformers.models.auto.auto_factory import _BaseAutoModelClass
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
@@ -81,6 +81,7 @@ class ModelType:
     yi_34b_chat = 'yi-34b-chat'
     # yi-vl
     yi_vl_6b = 'yi-vl-6b'
+    yi_vl_34b = 'yi-vl-34b'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -1639,6 +1640,8 @@ def get_model_tokenizer_orion(model_dir: str,
         **kwargs)
 
 
+@register_model(ModelType.yi_vl_34b, '01ai/Yi-VL-34B', LoRATM.llama2,
+                TemplateType.yi_vl)
 @register_model(ModelType.yi_vl_6b, '01ai/Yi-VL-6B', LoRATM.llama2,
                 TemplateType.yi_vl)
 def get_model_tokenizer_yi_vl(model_dir: str,
@@ -1650,18 +1653,18 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     yi_github_path = os.path.join(git_cache_dir, 'yi_github')
     if not os.path.exists(yi_github_path):
         command = f'git -C {git_cache_dir} clone https://github.com/01-ai/Yi.git yi_github'
-        logger.info(f'Run the command: {command}')
+        logger.info(f'Run the command: `{command}`')
         os.system(command)
     sys.path.append(os.path.join(yi_github_path, 'VL'))
-    from llava.model import LlavaLlamaForCausalLM
+    from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
 
-    model_config = AutoConfig.from_pretrained(model_dir)
+    model_config = LlavaConfig.from_pretrained(model_dir)
     model_config.mm_vision_tower = os.path.join(model_dir,
                                                 model_config.mm_vision_tower)
     model_config.attention_dropout = 0.
     key_info['model_path'] = model_dir
-    model, tokenizer = get_model_tokenizer_from_repo(
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
         torch_dtype,
         model_kwargs,
@@ -1774,9 +1777,9 @@ def get_model_tokenizer(
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     else:
         if torch_dtype is None:
-            model_config = AutoConfig.from_pretrained(
-                model_dir, trust_remote_code=True)
-            torch_dtype = getattr(model_config, 'torch_dtype', None)
+            model_config = PretrainedConfig.get_config_dict(model_dir)[0]
+            torch_dtype = model_config.get('torch_dtype', None)
+            torch_dtype = eval(f'torch.{torch_dtype}')
             if torch_dtype == torch.float32:
                 torch_dtype = torch.float16
             logger.info(f'Setting torch_dtype: {torch_dtype}')

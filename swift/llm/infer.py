@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import json
 import torch
@@ -13,8 +13,9 @@ from transformers import PreTrainedModel
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
-from .utils import (InferArguments, Template, get_additional_saved_files,
-                    get_dataset, get_model_tokenizer, get_template, inference,
+from .utils import (TEMPLATE_MAPPING, InferArguments, Template,
+                    get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, inference,
                     inference_stream, is_lora, set_generation_config)
 
 logger = get_logger()
@@ -157,6 +158,21 @@ def prepare_model_template(
     return model, template
 
 
+def read_media_file(
+        infer_kwargs: Dict[str, Any],
+        infer_media_type: Literal['none', 'round', 'dialogue']) -> None:
+    text = 'Input a media path or URL <<< '
+    images = infer_kwargs.get('images', [])
+    if infer_media_type == 'none':
+        return
+    if infer_media_type == 'round' or len(images) == 0:
+        image = input(text)
+        if len(image) > 0:
+            images += [image]
+    if len(images) > 0:
+        infer_kwargs['images'] = images
+
+
 def llm_infer(args: InferArguments) -> None:
     if args.merge_lora_and_save:
         merge_lora(args, device_map='cpu')
@@ -184,12 +200,10 @@ def llm_infer(args: InferArguments) -> None:
             logger.info(
                 'The current template only supports single-round dialogues.')
         history = []
-        if 'cogagent' in args.model_type:
-            image = input('Input an image url<<< ')
-            from PIL import Image
-            image = Image.open(image)
-        else:
-            image = None
+        infer_kwargs = {}
+        if args.infer_media_type != 'none':
+            logger.info('Please enter the conversation content first, '
+                        'followed by the path to the multimedia file.')
         while True:
             if input_mode == 'S':
                 query = input('<<< ')
@@ -199,9 +213,11 @@ def llm_infer(args: InferArguments) -> None:
                 break
             elif query.strip().lower() == 'clear':
                 history = []
+                infer_kwargs = {}
                 continue
             elif query.strip() == '':
                 continue
+            read_media_file(infer_kwargs, args.infer_media_type)
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
                 logger.info('End multi-line input with `#`.')
@@ -234,8 +250,8 @@ def llm_infer(args: InferArguments) -> None:
                     print(response)
             else:
                 if args.stream:
-                    gen = inference_stream(
-                        model, template, query, history, image=image)
+                    gen = inference_stream(model, template, query, history,
+                                           **infer_kwargs)
                     print_idx = 0
                     for response, new_history in gen:
                         if len(response) > print_idx:
@@ -243,8 +259,8 @@ def llm_infer(args: InferArguments) -> None:
                             print_idx = len(response)
                     print()
                 else:
-                    response, new_history = inference(
-                        model, template, query, history, image=image)
+                    response, new_history = inference(model, template, query,
+                                                      history, **infer_kwargs)
                     print(response)
             print('-' * 50)
             obj = {

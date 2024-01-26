@@ -28,7 +28,6 @@ from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PreTrainedModel,
@@ -296,54 +295,6 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     return stat_str
 
 
-def data_collate_fn(batch: List[Dict[str, Any]],
-                    tokenizer: PreTrainedTokenizerBase,
-                    padding_to: Optional[int] = None) -> Dict[str, Any]:
-    """
-    Args:
-        batch(`List[Dict[str, Any]]`): The input data in batch
-        tokenizer(`PreTrainedTokenizerBase`): The tokenizer of the model
-        padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
-            will be padded to the `longest`
-    """
-    assert tokenizer.pad_token_id is not None
-    input_ids = [torch.tensor(b['input_ids']) for b in batch]
-    labels = [torch.tensor(b['labels']) for b in batch]
-    attention_mask = [
-        torch.ones(len(input_ids[i]), dtype=torch.int64)
-        for i in range(len(input_ids))
-    ]
-
-    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
-        input_ids[0] = F.pad(input_ids[0],
-                             (0, padding_to - input_ids[0].shape[-1]),
-                             'constant', tokenizer.pad_token_id)
-        labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
-                          'constant', -100)
-        attention_mask[0] = F.pad(
-            attention_mask[0], (0, padding_to - attention_mask[0].shape[-1]),
-            'constant', 0)
-
-    input_ids = pad_sequence(
-        input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    attention_mask = pad_sequence(
-        attention_mask, batch_first=True, padding_value=0)
-    labels = pad_sequence(labels, batch_first=True, padding_value=-100)
-
-    res = {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'labels': labels,
-    }
-    for key in ['audio_info', 'images', 'cross_images']:
-        if batch[0].get(key) is not None:
-            res[key] = [b[key] for b in batch]
-    if batch[0].get('token_type_ids') is not None:
-        res['token_type_ids'] = torch.stack(
-            [b['token_type_ids'] for b in batch])
-    return res
-
-
 def _get_labels_str(labels: List[int],
                     tokenizer: PreTrainedTokenizerBase,
                     tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> str:
@@ -354,18 +305,18 @@ def _get_labels_str(labels: List[int],
     labels_str = ''
     for i in range(len(labels)):
         if i == 0:
-            if labels[i] == -100:
+            if labels[i] < 0:
                 s = 0
             else:
                 e = 0
             continue
-        if labels[i] == -100 and labels[i - 1] != -100:
+        if labels[i] < 0 and labels[i - 1] >= 0:
             s = i
             labels_str += tokenizer.decode(labels[e:s], **tokenizer_kwargs)
-        if labels[i] != -100 and labels[i - 1] == -100:
+        if labels[i] >= 0 and labels[i - 1] < 0:
             e = i
             labels_str += f'[-100 * {e - s}]'
-    if labels[-1] == -100:
+    if labels[-1] < 0:
         labels_str += f'[-100 * {len(labels) - s}]'
     else:
         labels_str += tokenizer.decode(labels[e:], **tokenizer_kwargs)
@@ -379,7 +330,8 @@ def print_example(example: Dict[str, Any],
         tokenizer_kwargs = {}
     input_ids, labels = example['input_ids'], example.get('labels')
     logger.info(f'[INPUT_IDS] {input_ids}')
-    logger.info(f'[INPUT] {tokenizer.decode(input_ids, **tokenizer_kwargs)}')
+    input_str = _get_labels_str(input_ids, tokenizer, tokenizer_kwargs)
+    logger.info(f'[INPUT] {input_str}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
         labels_str = _get_labels_str(labels, tokenizer, tokenizer_kwargs)
@@ -463,8 +415,9 @@ def inference_stream(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'image': kwargs.pop('image', None)  # for vl
+        'images': kwargs.pop('images', None)  # for vl
     }
+    template.model = model
     inputs, model_kwargs, tokenizer_kwargs = template.encode(example)
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
@@ -568,8 +521,9 @@ def inference(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'image': kwargs.pop('image', None)  # for vl
+        'images': kwargs.pop('images', None)  # for vl
     }
+    template.model = model
     inputs, model_kwargs, tokenizer_kwargs = template.encode(example)
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer

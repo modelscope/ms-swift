@@ -17,7 +17,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, data_collate_fn, dataset_map,
+                    add_self_cognition_dataset, dataset_map,
                     get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
@@ -112,7 +112,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
-    use_model = TEMPLATE_MAPPING[args.template_type].get('use_model', False)
+    template_info = TEMPLATE_MAPPING[args.template_type]
+    use_model = template_info.get('use_model', False)
     if use_model:
         template_kwargs['model'] = model
     template: Template = get_template(args.template_type, tokenizer,
@@ -145,10 +146,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)
 
-    data_collator = partial(
-        data_collate_fn,
-        tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
+    padding_to = args.max_length if args.sft_type == 'longlora' else None
+    data_collator = partial(template.data_collator, padding_to=padding_to)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True

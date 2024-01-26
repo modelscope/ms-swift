@@ -1,10 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import re
 from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import requests
 import torch
+import torch.nn.functional as F
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
@@ -261,7 +265,9 @@ class Template:
         input_ids: List[int] = []
         labels: List[int] = []
         tokenizer_kwargs = {}
+        len_idx = len(compute_loss_idx)
         compute_loss_idx = set(compute_loss_idx)
+        assert len(compute_loss_idx) == len_idx
         for i, context in enumerate(context_list):
             if isinstance(context, str):
                 curr_tokenizer_kwargs = self.get_tokenizer_kwargs(context)
@@ -321,6 +327,10 @@ class Template:
                 query=q,
                 response=r,
                 round0=i)
+        compute_loss_idx += list(
+            range(
+                len(res_context_list) - len(self.suffix),
+                len(res_context_list)))
         res_context_list, compute_loss_idx = self._simplify_context_list(
             res_context_list, compute_loss_idx)
         input_ids, labels, tokenizer_kwargs = self._encode_context_list(
@@ -393,6 +403,46 @@ class Template:
             curr_tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         assert len(old_tokenizer_kwargs) == 0
         return curr_tokenizer_kwargs
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Args:
+            batch(`List[Dict[str, Any]]`): The input data in batch
+            padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+                will be padded to the `longest`
+        """
+        tokenizer = self.tokenizer
+        assert tokenizer.pad_token_id is not None
+        input_ids = [torch.tensor(b['input_ids']) for b in batch]
+        labels = [torch.tensor(b['labels']) for b in batch]
+        attention_mask = [
+            torch.ones(len(input_ids[i]), dtype=torch.int64)
+            for i in range(len(input_ids))
+        ]
+
+        if padding_to is not None and padding_to > input_ids[0].shape[-1]:
+            input_ids[0] = F.pad(input_ids[0],
+                                 (0, padding_to - input_ids[0].shape[-1]),
+                                 'constant', tokenizer.pad_token_id)
+            labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
+                              'constant', -100)
+            attention_mask[0] = F.pad(
+                attention_mask[0],
+                (0, padding_to - attention_mask[0].shape[-1]), 'constant', 0)
+
+        input_ids = pad_sequence(
+            input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        attention_mask = pad_sequence(
+            attention_mask, batch_first=True, padding_value=0)
+        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+
+        return {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels,
+        }
 
 
 class CogAgentTemplate(Template):
@@ -545,7 +595,6 @@ class CogAgentTemplate(Template):
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         if 'image' in example and isinstance(example['image'], str):
             from PIL import Image
-            import requests
             if not os.path.exists(example['image']):
                 example['image'] = requests.get(
                     example['image'], stream=True).raw
@@ -556,6 +605,18 @@ class CogAgentTemplate(Template):
             label=example.get('response'),
             history=example.get('history'),
             images=[example['image'].convert('RGB')]), {}, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        for key in ['images', 'cross_images']:
+            if batch[0].get(key) is not None:
+                res[key] = [b[key] for b in batch]
+        if batch[0].get('token_type_ids') is not None:
+            res['token_type_ids'] = torch.stack(
+                [b['token_type_ids'] for b in batch])
+        return res
 
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -631,6 +692,14 @@ class _QwenAudioTemplateMixin:
             for k in ['audio_span_tokens', 'audio_urls']:
                 old_audio_info[k] = old_audio_info[k] + audio_info[k]
 
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        if batch[0].get('audio_info') is not None:
+            res['audio_info'] = [b['audio_info'] for b in batch]
+        return res
+
 
 class QwenAudioTemplate(_QwenAudioTemplateMixin, QwenTemplate):
     pass
@@ -663,37 +732,74 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
+def extract_images(example: Dict[str, Any]) -> List[str]:
+    history = example.get('history', None)
+    if history is None:
+        history = []
+    query_list = [h[0] for h in history]
+    query_list.append(example['query'])
+    res = []
+    for query in query_list:
+        img_path = re.findall(r'Picture \d:<img>(.+?)</img>\n', query)
+        res += img_path
+    return res
+
+
+def read_from_path(img_path: str) -> 'PIL.Image':
+    from io import BytesIO
+    from PIL import Image
+    if img_path.startswith('http'):
+        content = requests.get(img_path).content
+        image = Image.open(BytesIO(content))
+    else:
+        image = Image.open(img_path)
+    return image
+
+
 class YiVLTemplate(Template):
 
     def encode(
         self, example: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         inputs, _, _ = super().encode(example)
-        from llava.mm_utils import expand2square, tokenizer_image_token
-        from PIL import Image
+        from llava.mm_utils import expand2square
         model = self.model
-        tokenizer = self.tokenizer
-        inputs['input_ids'] = tokenizer_image_token(
-            tokenizer.decode(inputs['input_ids']), tokenizer, -200)
-
-        image_processor = self.model.model.vision_tower.image_processor
-        image_path = example['image']
-        image = Image.open(image_path)
-        image = expand2square(
-            image, tuple(int(x * 255) for x in image_processor.image_mean))
+        model = self.model.model
+        if not hasattr(model, 'vision_tower'):
+            model = model.model
+        image_processor = model.vision_tower.image_processor
+        if 'images' not in example:
+            images_path = extract_images(example)
+        else:
+            images_path = example['images']
+        images = []
+        for image_path in images_path:
+            image = read_from_path(image_path)
+            image = expand2square(
+                image, tuple(int(x * 255) for x in image_processor.image_mean))
+            images.append(image)
         image_tensor = image_processor.preprocess(
-            image, return_tensors='pt')['pixel_values']
+            images, return_tensors='pt')['pixel_values']
         model_kwargs = {'images': image_tensor.to(model.config.torch_dtype)}
         return inputs, model_kwargs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        if batch[0].get('images') is not None:
+            res['images'] = torch.concat([b['images'] for b in batch])
+        return res
 
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate(
-        ['{{SYSTEM}}\n\n'],
-        ['### Human: <image_placeholder>\n{{QUERY}}\n### Assistant:\n'],
-        ['\n'], ['\n###'], yi_vl_default_system),
-    use_model=True)
+    YiVLTemplate(['{{SYSTEM}}\n\n'],
+                 ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:\n'],
+                 ['\n'], ['\n###'], yi_vl_default_system),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
 
 register_template(
     TemplateType.baichuan,
@@ -837,7 +943,8 @@ register_template(
 register_template(
     TemplateType.cogagent,
     CogAgentTemplate([], [], [], [['eos_token_id']]),
-    use_model=True)
+    use_model=True,
+    infer_media_type='dialogue')
 
 
 def get_template(

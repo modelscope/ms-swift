@@ -181,8 +181,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         labels = inputs['labels'][..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
-        acc: Tensor
-        if acc_strategy == 'sentence':
+        acc: Optional[Tensor] = None
+        if preds.shape != labels.shape:
+            pass
+        elif acc_strategy == 'sentence':
             acc_list = []
             for i, m in enumerate(masks):
                 acc_list.append(
@@ -191,7 +193,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             acc = torch.tensor(acc_list, device=preds.device).float().mean()
         else:
             acc = (preds[masks] == labels[masks]).float().mean()
-        if model.training:
+        if model.training and acc is not None:
             if 'acc' not in self._custom_metrics:
                 self._custom_metrics['acc'] = torch.tensor(0.).to(
                     self.args.device)

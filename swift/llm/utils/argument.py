@@ -469,6 +469,8 @@ class InferArguments:
         if self.num_beams != 1:
             self.stream = False
             logger.info('Setting self.stream: False')
+        template_info = TEMPLATE_MAPPING[self.template_type]
+        self.infer_media_type = template_info.get('infer_media_type', 'none')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
