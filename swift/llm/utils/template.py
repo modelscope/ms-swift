@@ -349,24 +349,22 @@ class Template:
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
-        _concat_context_list(
+        self._concat_context_list(
             prefix, res_context_list, compute_loss_idx, system=system)
-        _concat_context_list(
+        self._concat_context_list(
             self.prompt,
             res_context_list,
             compute_loss_idx,
             query=query,
             round0=True)
-        res_context_list, compute_loss_idx = _simplify_context_list(
+        res_context_list, compute_loss_idx = self._simplify_context_list(
             res_context_list, compute_loss_idx)
-        input_ids, labels, _ = _encode_context_list(self.tokenizer,
-                                                    res_context_list,
-                                                    compute_loss_idx)
+        input_ids, labels, _ = self._encode_context_list(
+            res_context_list, compute_loss_idx)
 
         if response is not None:
-            tgt_input_ids = _encode_context_list(self.tokenizer, [response])[0]
-            tgt_input_ids += _encode_context_list(self.tokenizer,
-                                                  self.suffix)[0]
+            tgt_input_ids = self._encode_context_list([response], [])[0]
+            tgt_input_ids += self._encode_context_list(self.suffix, [])[0]
             labels = labels + tgt_input_ids
             input_ids += tgt_input_ids
         else:

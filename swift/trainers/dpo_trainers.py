@@ -4,9 +4,7 @@ from torch import nn
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
-from swift.llm.utils.template import (Context, Template, _concat_context_list,
-                                      _encode_context_list,
-                                      _simplify_context_list)
+from swift.llm.utils.template import Context, Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.trainers.mixin import PushToMsHubMixin, SwiftMixin
 from swift.utils import get_logger
@@ -43,26 +41,26 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prefix = self.template.prefix
         else:
             prefix = self.template.prefix_has_system
-        _concat_context_list(
+        self.template._concat_context_list(
             prefix, res_context_list, compute_loss_idx, system=system)
-        _concat_context_list(
+        self.template._concat_context_list(
             self.template.prompt,
             res_context_list,
             compute_loss_idx,
             query=query,
             round0=True)
-        res_context_list, compute_loss_idx = _simplify_context_list(
+        res_context_list, compute_loss_idx = self.template._simplify_context_list(
             res_context_list, compute_loss_idx)
 
         return res_context_list, feature['response'], feature[
             'rejected_response']
 
     def build_tokenized_answer(self, prompt, answer):
-        input_ids, labels, kwargs = _encode_context_list(
-            self.tokenizer, prompt, None)
-        tgt_input_ids = _encode_context_list(self.tokenizer, [answer])[0]
-        tgt_input_ids += _encode_context_list(self.tokenizer,
-                                              self.template.suffix)[0]
+        input_ids, labels, kwargs = self.template._encode_context_list(
+            prompt, [])
+        tgt_input_ids = self.template._encode_context_list([answer], [])[0]
+        tgt_input_ids += self.template._encode_context_list(
+            self.template.suffix, [])[0]
         return dict(
             prompt_input_ids=input_ids,
             prompt_attention_mask=[1] * len(input_ids),
@@ -77,7 +75,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if not self.is_encoder_decoder:
             prompt, chosen, rejected = self.concat_template(feature)
 
-            prompt_tokens, _, _ = _encode_context_list(self.tokenizer, prompt)
+            prompt_tokens, _, _ = self.template._encode_context_list(
+                prompt, [])
             prompt_tokens = {
                 'input_ids': prompt_tokens,
                 'attention_mask': [1] * len(prompt_tokens),
