@@ -525,7 +525,7 @@ def inference_stream(model: PreTrainedModel,
         # avoid printing template.suffix[-1])
         if isinstance(template.suffix[-1], list):
             generate_ids = generate_ids[:-len(template.suffix[-1])]
-        response = tokenizer.decode(generate_ids, True, **tokenizer_kwargs)
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         if isinstance(template.suffix[-1], str):
             response = response[:-len(template.suffix[-1])]
         if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
@@ -590,7 +590,7 @@ def inference(model: PreTrainedModel,
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if verbose:
         print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False, **tokenizer_kwargs)}{output_prefix}',
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0], **tokenizer_kwargs)}{output_prefix}',
             end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
@@ -610,12 +610,17 @@ def inference(model: PreTrainedModel,
         stopping_criteria=stopping_criteria,
         **model_kwargs)
     generate_ids = generate_ids[0, len(input_ids[0]):].tolist()
+    response = None
+    if verbose and stream is False:
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+        print(response)
+    # avoid printing template.suffix[-1])
     if (isinstance(template.suffix[-1], list) and
             generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
         generate_ids = generate_ids[:-len(template.suffix[-1])]
-    response = tokenizer.decode(generate_ids, True, **tokenizer_kwargs)
-    if verbose and stream is False:
-        print(tokenizer.decode(generate_ids, False, **tokenizer_kwargs))
+        response = None
+    if response is None:
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
     if isinstance(
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:

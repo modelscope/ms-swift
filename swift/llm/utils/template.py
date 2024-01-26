@@ -295,6 +295,7 @@ class Template:
         """
         return: inputs, tokenizer_kwargs
         """
+        history = history.copy()
         res_context_list: List[Context] = []
         compute_loss_idx: List[int] = []
         if system is None:
@@ -763,18 +764,17 @@ INTERNLM_SYSTEM = (
     '- InternLM (书生·浦语) can understand and communicate fluently in the language chosen '
     'by the user such as English and 中文.')
 
-# '<s><s>': internlm template official implementation
 register_template(
     TemplateType.internlm,
-    Template(['<s><s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'],
-             ['<eoa>'], INTERNLM_SYSTEM, ['<s><s><|System|>:{{SYSTEM}}\n']))
+    Template(['<s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'], ['<eoa>'],
+             INTERNLM_SYSTEM, ['<s><|System|>:{{SYSTEM}}\n']))
 register_template(
     TemplateType.internlm2,
-    Template(['<s><s>'], [
-        '[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n'
-    ], ['[UNUSED_TOKEN_145]\n'], ['[UNUSED_TOKEN_145]'], INTERNLM_SYSTEM, [
-        '<s><s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'
-    ]))
+    Template(
+        ['<s>'],
+        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>'], INTERNLM_SYSTEM,
+        ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 register_template(
     TemplateType.xverse,
     Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
