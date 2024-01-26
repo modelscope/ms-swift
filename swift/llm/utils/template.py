@@ -765,7 +765,8 @@ class YiVLTemplate(Template):
         images = []
         for image_path in images_path:
             image = read_from_path(image_path)
-            background_color = tuple(int(x * 255) for x in image_processor.image_mean)
+            background_color = tuple(
+                int(x * 255) for x in image_processor.image_mean)
             if image.mode == 'L':
                 background_color = sum(background_color) // 3
             image = expand2square(image, background_color)

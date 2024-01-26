@@ -1640,10 +1640,18 @@ def get_model_tokenizer_orion(model_dir: str,
         **kwargs)
 
 
-@register_model(ModelType.yi_vl_34b_chat, '01ai/Yi-VL-34B', LoRATM.llama2,
-                TemplateType.yi_vl, requires=['transformers>=4.34'])
-@register_model(ModelType.yi_vl_6b_chat, '01ai/Yi-VL-6B', LoRATM.llama2,
-                TemplateType.yi_vl, requires=['transformers>=4.34'])
+@register_model(
+    ModelType.yi_vl_34b_chat,
+    '01ai/Yi-VL-34B',
+    LoRATM.llama2,
+    TemplateType.yi_vl,
+    requires=['transformers>=4.34'])
+@register_model(
+    ModelType.yi_vl_6b_chat,
+    '01ai/Yi-VL-6B',
+    LoRATM.llama2,
+    TemplateType.yi_vl,
+    requires=['transformers>=4.34'])
 def get_model_tokenizer_yi_vl(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],

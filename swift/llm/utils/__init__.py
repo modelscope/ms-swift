@@ -32,8 +32,8 @@ from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
                     find_all_linear_for_lora, get_time_info,
                     history_to_messages, inference, inference_stream,
                     is_vllm_available, limit_history_length,
-                    messages_to_history, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset, safe_tokenizer_decode)
+                    messages_to_history, print_example, safe_tokenizer_decode,
+                    set_generation_config, sort_by_max_length, stat_dataset)
 
 try:
     if is_vllm_available():

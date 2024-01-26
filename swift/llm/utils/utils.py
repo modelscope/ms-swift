@@ -296,8 +296,7 @@ def stat_dataset(llm_dataset: Dataset) -> str:
 
 
 def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase,
-                    input_ids: List[int],
-                    **tokenizer_kwargs) -> str:
+                          input_ids: List[int], **tokenizer_kwargs) -> str:
     if len(input_ids) == 0:
         return ''
     result_str = ''
@@ -332,7 +331,8 @@ def print_example(example: Dict[str, Any],
     logger.info(f'[INPUT] {input_str}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = safe_tokenizer_decode(tokenizer, labels, **tokenizer_kwargs)
+        labels_str = safe_tokenizer_decode(tokenizer, labels,
+                                           **tokenizer_kwargs)
         logger.info(f'[LABLES] {labels_str}')
 
 

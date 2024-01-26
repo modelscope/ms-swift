@@ -353,8 +353,12 @@ def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
         if '&&' in d[response_key]:
             d[response_key] = d[response_key].split('&&')[0]
         response.append(d[response_key])
-    return HfDataset.from_dict({'query': [query] * len(response), 'response': response,
-                                  'images': images})
+    return HfDataset.from_dict({
+        'query': [query] * len(response),
+        'response': response,
+        'images': images
+    })
+
 
 register_dataset(
     DatasetName.coco_mini_en_2,
@@ -367,7 +371,6 @@ register_dataset(
         'val_dataset_sample': 200
     },
     tags=['chat', 'multi-modal', 'vision', '🔥'])
-
 
 
 def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
@@ -690,8 +693,11 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     for d in tqdm(dataset):
         images.append(d[image_key])
         response.append(d[response_key])
-    dataset = HfDataset.from_dict({'query': [query] * len(response), 'response': response,
-                                'images': images})
+    dataset = HfDataset.from_dict({
+        'query': [query] * len(response),
+        'response': response,
+        'images': images
+    })
     dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
