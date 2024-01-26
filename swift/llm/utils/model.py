@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import os
+import sys
 from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
@@ -78,6 +79,8 @@ class ModelType:
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
+    # yi-vl
+    yi_vl_6b = 'yi-vl-6b'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -221,7 +224,6 @@ def register_model(
     *,
     requires: Optional[List[str]] = None,
     torch_dtype: Optional[Dtype] = None,
-    automodel_class: Type[_BaseAutoModelClass] = AutoModelForCausalLM,
     use_hf: bool = False,
     revision: Optional[str] = None,
     ignore_file_pattern: Optional[List[str]] = None,
@@ -247,7 +249,6 @@ def register_model(
         'template': template,
         'requires': requires,
         'torch_dtype': torch_dtype,
-        'automodel_class': automodel_class,
         'ignore_file_pattern': ignore_file_pattern,
         'use_hf': use_hf,
         'revision': revision,
@@ -1275,14 +1276,14 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     ModelType.qwen_audio_chat,
     'qwen/Qwen-Audio-Chat',
     LoRATM.qwen,
-    TemplateType.qwen,
+    TemplateType.qwen_audio,
     support_flash_attn=True,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
 @register_model(
     ModelType.qwen_audio,
     'qwen/Qwen-Audio',
     LoRATM.qwen,
-    TemplateType.default_generation,
+    TemplateType.qwen_audio_generation,
     support_flash_attn=True,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
 def get_model_tokenizer_qwen_audio(model_dir: str,
@@ -1638,6 +1639,48 @@ def get_model_tokenizer_orion(model_dir: str,
         **kwargs)
 
 
+@register_model(ModelType.yi_vl_6b, '01ai/Yi-VL-6B', LoRATM.llama2,
+                TemplateType.yi_vl)
+def get_model_tokenizer_yi_vl(model_dir: str,
+                              torch_dtype: Dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    git_cache_dir = os.path.dirname(model_dir)
+    yi_github_path = os.path.join(git_cache_dir, 'yi_github')
+    if not os.path.exists(yi_github_path):
+        command = f'git -C {git_cache_dir} clone https://github.com/01-ai/Yi.git yi_github'
+        logger.info(f'Run the command: {command}')
+        os.system(command)
+    sys.path.append(os.path.join(yi_github_path, 'VL'))
+    from llava.model import LlavaLlamaForCausalLM
+    from llava.model.constants import key_info
+
+    model_config = AutoConfig.from_pretrained(model_dir)
+    model_config.mm_vision_tower = os.path.join(model_dir,
+                                                model_config.mm_vision_tower)
+    model_config.attention_dropout = 0.
+    key_info['model_path'] = model_dir
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        automodel_class=LlavaLlamaForCausalLM,
+        **kwargs)
+    logger.info(
+        'Please ignore the above warning and proceed with the import of the vision_tower parameter.'
+    )
+    model.resize_token_embeddings(len(tokenizer))
+    vision_tower = model.get_vision_tower()
+    vision_tower.load_model()
+    vision_tower.to(device='cuda', dtype=torch_dtype)
+    if not hasattr(model.config, 'max_sequence_length'):
+        model.config.max_sequence_length = 2048
+    return model, tokenizer
+
+
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
     if version.parse(transformers.__version__) >= version.parse('4.35'):
@@ -1648,23 +1691,29 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
 
 
 def fix_gradient_checkpointing_warning() -> None:
-    if version.parse(torch.__version__) < version.parse('2'):
+    torch_version = version.parse(torch.__version__)
+    if torch_version < version.parse('2'):
         return
+    elif torch_version < version.parse('2.1'):
+        # fix https://github.com/Dao-AILab/flash-attention/issues/341
+        use_reentrant = True
+    else:
+        use_reentrant = False
     _old_checkpoint = torch.utils.checkpoint.checkpoint
     if not hasattr(torch.utils.checkpoint,
                    '_old_checkpoint'):  # avoid double patching
 
         torch.utils.checkpoint._old_checkpoint = _old_checkpoint
         torch.utils.checkpoint.checkpoint = update_wrapper(
-            lambda *args, use_reentrant=False, **kwargs: _old_checkpoint(
-                *args, use_reentrant=use_reentrant, **kwargs),
+            lambda *args, use_reentrant=use_reentrant, **kwargs:
+            _old_checkpoint(*args, use_reentrant=use_reentrant, **kwargs),
             _old_checkpoint)
     try:
         import transformers.modeling_utils
         if hasattr(transformers.modeling_utils, 'checkpoint'):
             transformers.modeling_utils.checkpoint = (
-                lambda *args, use_reentrant=False, **kwargs: _old_checkpoint(
-                    *args, use_reentrant=use_reentrant, **kwargs))
+                lambda *args, use_reentrant=use_reentrant, **kwargs:
+                _old_checkpoint(*args, use_reentrant=use_reentrant, **kwargs))
     except ImportError:
         pass
 
@@ -1732,7 +1781,6 @@ def get_model_tokenizer(
             if torch_dtype == torch.float32:
                 torch_dtype = torch.float16
             logger.info(f'Setting torch_dtype: {torch_dtype}')
-    kwargs['automodel_class'] = model_info['automodel_class']
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)

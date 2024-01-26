@@ -167,16 +167,15 @@ class LLMDataset(Dataset):
 
     def __getitem__(self, idx: Union[int, str]) -> Dict[str, Any]:
         if isinstance(idx, int):
-            return self.data[idx]
-        elif isinstance(idx, str):
-            return [d[idx] for d in self.data]
+            data, model_kwargs, _ = self.data[idx]
+            data.update(model_kwargs)
+            return data
         else:
             raise ValueError(f'idx: {idx}')
 
     def select(self, idx_list: List[int]) -> 'LLMDataset':
-        new_data = np.array(self.data)
-        new_data = new_data[idx_list].tolist()
-        return self.__class__(new_data)
+        data = [self.data[i] for i in idx_list]
+        return self.__class__(data)
 
     def __len__(self) -> int:
         return len(self.data)
@@ -197,7 +196,9 @@ class LazyLLMDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         res = self._try_fetch(idx)
         if res is not None:
-            return res
+            data, model_kwargs, _ = res
+            data.update(model_kwargs)
+            return data
         raise ValueError('Please check if the max_length is appropriate.')
 
     def _try_fetch(self, first_idx: int) -> Optional[Dict[str, Any]]:
@@ -220,9 +221,6 @@ def _single_map(d: Dict[str, Any],
     d = map_func(d)
     if d is None:
         return None
-    audio_info = d.get('audio_info')
-    if audio_info is not None:
-        audio_info.pop('input_audios', None)
     return d
 
 
@@ -337,23 +335,20 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         'attention_mask': attention_mask,
         'labels': labels,
     }
-    if batch[0].get('audio_info') is not None:
-        res['audio_info'] = [
-            get_audio_info(tokenizer, audio_info=b['audio_info'])
-            for b in batch
-        ]
-    if batch[0].get('images') is not None:
-        res['images'] = [b['images'] for b in batch]
-    if batch[0].get('cross_images') is not None:
-        res['cross_images'] = [b['cross_images'] for b in batch]
+    for key in ['audio_info', 'images', 'cross_images']:
+        if batch[0].get(key) is not None:
+            res[key] = [b[key] for b in batch]
     if batch[0].get('token_type_ids') is not None:
         res['token_type_ids'] = torch.stack(
             [b['token_type_ids'] for b in batch])
     return res
 
 
-def _get_labels_str(labels: List[int], tokenizer: PreTrainedTokenizerBase,
-                    **decode_kwargs) -> str:
+def _get_labels_str(labels: List[int],
+                    tokenizer: PreTrainedTokenizerBase,
+                    tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> str:
+    if tokenizer_kwargs is None:
+        tokenizer_kwargs = {}
     if len(labels) == 0:
         return ''
     labels_str = ''
@@ -366,29 +361,28 @@ def _get_labels_str(labels: List[int], tokenizer: PreTrainedTokenizerBase,
             continue
         if labels[i] == -100 and labels[i - 1] != -100:
             s = i
-            labels_str += tokenizer.decode(labels[e:s], **decode_kwargs)
+            labels_str += tokenizer.decode(labels[e:s], **tokenizer_kwargs)
         if labels[i] != -100 and labels[i - 1] == -100:
             e = i
             labels_str += f'[-100 * {e - s}]'
     if labels[-1] == -100:
         labels_str += f'[-100 * {len(labels) - s}]'
     else:
-        labels_str += tokenizer.decode(labels[e:], **decode_kwargs)
+        labels_str += tokenizer.decode(labels[e:], **tokenizer_kwargs)
     return labels_str
 
 
 def print_example(example: Dict[str, Any],
-                  tokenizer: PreTrainedTokenizerBase) -> None:
+                  tokenizer: PreTrainedTokenizerBase,
+                  tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    if tokenizer_kwargs is None:
+        tokenizer_kwargs = {}
     input_ids, labels = example['input_ids'], example.get('labels')
     logger.info(f'[INPUT_IDS] {input_ids}')
-    decode_kwargs = {}
-    # Compatible with qwen-audio
-    if 'audio_info' in example:
-        decode_kwargs['audio_info'] = example['audio_info']
-    logger.info(f'[INPUT] {tokenizer.decode(input_ids, **decode_kwargs)}')
+    logger.info(f'[INPUT] {tokenizer.decode(input_ids, **tokenizer_kwargs)}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = _get_labels_str(labels, tokenizer, **decode_kwargs)
+        labels_str = _get_labels_str(labels, tokenizer, tokenizer_kwargs)
         logger.info(f'[LABLES] {labels_str}')
 
 
@@ -465,12 +459,13 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    example = {'query': query, 'history': history, 'system': system}
-    image = kwargs.pop('image', None)
-    if image is not None:
-        example['image'] = image
-    inputs = template.encode(example)
-    audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
+    example = {
+        'query': query,
+        'history': history,
+        'system': system,
+        'image': kwargs.pop('image', None)  # for vl
+    }
+    inputs, model_kwargs, tokenizer_kwargs = template.encode(example)
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -500,8 +495,6 @@ def inference_stream(model: PreTrainedModel,
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
-    decode_kwargs = {}
-    model_kwargs = {}
     # Compatible with cogagent
     if 'token_type_ids' in inputs:
         model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
@@ -513,13 +506,8 @@ def inference_stream(model: PreTrainedModel,
         model_kwargs['cross_images'] = [[
             inputs['cross_images'][0][0].to(device).to(torch.float16)
         ]]
-    # Compatible with qwen-audio
-    if audio_info is not None:
-        audio_info = get_audio_info(tokenizer, audio_info=audio_info)
-        decode_kwargs['audio_info'] = audio_info
-        model_kwargs['audio_info'] = audio_info
     stopping_criteria = StoppingCriteriaList(
-        [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
+        [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     gen = model.generate_stream(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -527,22 +515,29 @@ def inference_stream(model: PreTrainedModel,
         stopping_criteria=stopping_criteria,
         **model_kwargs,
         seed=-1)
-    generate_ids = []
+    raw_generate_ids = []
     response = ''
     print_idx = 0
     history.append(None)  # dummy
     for token in gen:
-        generate_ids.append(token.item())
-        response = tokenizer.decode(generate_ids, True, **decode_kwargs)
+        raw_generate_ids.append(token.item())
+        generate_ids = raw_generate_ids
+        # avoid printing template.suffix[-1])
+        if isinstance(template.suffix[-1], list):
+            generate_ids = generate_ids[:-len(template.suffix[-1])]
+        response = tokenizer.decode(generate_ids, True, **tokenizer_kwargs)
+        if isinstance(template.suffix[-1], str):
+            response = response[:-len(template.suffix[-1])]
         if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
                 ord(response[-1])):
             print_idx = len(response)
         else:
             print_idx = max(response.rfind(' ') + 1, print_idx)
         # avoid printing incomplete words
-        safe_response = response[:print_idx]
-        history[-1] = (query, safe_response)
-        yield safe_response, history
+        if safe_response != response[:print_idx]:
+            safe_response = response[:print_idx]
+            history[-1] = (query, safe_response)
+            yield safe_response, history
     history[-1] = (query, response)
     yield response, history
 
@@ -569,9 +564,13 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    example = {'query': query, 'history': history, 'system': system}
-    inputs = template.encode(example)
-    audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
+    example = {
+        'query': query,
+        'history': history,
+        'system': system,
+        'image': kwargs.pop('image', None)  # for vl
+    }
+    inputs, model_kwargs, tokenizer_kwargs = template.encode(example)
     input_ids = inputs['input_ids']
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -587,17 +586,11 @@ def inference(model: PreTrainedModel,
         )
         stream = False
     streamer = None
-    decode_kwargs = {}
-    model_kwargs = {}
-    if audio_info is not None:
-        audio_info = get_audio_info(tokenizer, audio_info=audio_info)
-        decode_kwargs['audio_info'] = audio_info
-        model_kwargs['audio_info'] = audio_info
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if verbose:
         print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False, **decode_kwargs)}{output_prefix}',
+            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False, **tokenizer_kwargs)}{output_prefix}',
             end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
@@ -608,7 +601,7 @@ def inference(model: PreTrainedModel,
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
-        [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
+        [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     generate_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -616,12 +609,17 @@ def inference(model: PreTrainedModel,
         generation_config=generation_config,
         stopping_criteria=stopping_criteria,
         **model_kwargs)
-    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True,
-                                **decode_kwargs)
+    generate_ids = generate_ids[0, len(input_ids[0]):].tolist()
+    if (isinstance(template.suffix[-1], list) and
+            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
+        generate_ids = generate_ids[:-len(template.suffix[-1])]
+    response = tokenizer.decode(generate_ids, True, **tokenizer_kwargs)
     if verbose and stream is False:
-        print(
-            tokenizer.decode(generate_ids[0, len(input_ids[0]):], False,
-                             **decode_kwargs))
+        print(tokenizer.decode(generate_ids, False, **tokenizer_kwargs))
+    if isinstance(
+            template.suffix[-1], str
+    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
+        response = response[:-len(template.suffix[-1])]
     history.append((query, response))
     return response, history
 
