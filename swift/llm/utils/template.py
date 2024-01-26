@@ -737,7 +737,9 @@ yi_vl_default_system = (
 def read_from_path(img_path: str) -> 'PIL.Image':
     from io import BytesIO
     from PIL import Image
-    if img_path.startswith('http'):
+    if isinstance(img_path, Image.Image):
+        return img_path
+    elif img_path.startswith('http'):
         content = requests.get(img_path).content
         image = Image.open(BytesIO(content))
     else:
@@ -758,6 +760,8 @@ class YiVLTemplate(Template):
             model = model.model
         image_processor = model.vision_tower.image_processor
         images_path = example['images']
+        if not isinstance(images_path, (list, tuple)):
+            images_path = [images_path]
         images = []
         for image_path in images_path:
             image = read_from_path(image_path)

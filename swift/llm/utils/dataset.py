@@ -688,7 +688,7 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     response = []
     images = []
     for d in tqdm(dataset):
-        images.append([d[image_key]])
+        images.append(d[image_key])
         response.append(d[response_key])
     dataset = HfDataset.from_dict({'query': [query] * len(response), 'response': response,
                                 'images': images})
