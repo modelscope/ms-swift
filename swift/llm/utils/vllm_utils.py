@@ -195,7 +195,7 @@ def inference_stream_vllm(
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -260,7 +260,7 @@ def inference_vllm(llm_engine: LLMEngine,
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:

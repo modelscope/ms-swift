@@ -144,7 +144,7 @@ class SftArguments:
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
     disable_tqdm: bool = False
-    lazy_tokenize: bool = False
+    lazy_tokenize: Optional[bool] = None
     preprocess_num_proc: int = 1
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
@@ -307,17 +307,11 @@ class SftArguments:
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
-        if self.preprocess_num_proc > 1 and 'qwen-audio' in self.model_type:
-            logger.warning(
-                'qwen-audio does not support multi-process preprocess, '
-                'because qwen-audio\'s preprocessing functions use torch\'s multi-processing, '
-                'which causes compatibility issues. '
-                'You can use `--lazy_tokenize true` to avoid long preprocessing times.'
-            )
-            self.preprocess_num_proc = 1
-            logger.info(
-                f'Setting self.preprocess_num_proc: {self.preprocess_num_proc}'
-            )
+        if self.lazy_tokenize is None:
+            template_info = TEMPLATE_MAPPING[self.template_type]
+            self.lazy_tokenize = template_info.get('lazy_tokenize', False)
+        if 'qwen-audio' in self.model_type:
+            assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
         model_info = MODEL_MAPPING[self.model_type]
         support_gradient_checkpointing = model_info.get(
             'support_gradient_checkpointing', True)
@@ -475,6 +469,8 @@ class InferArguments:
         if self.num_beams != 1:
             self.stream = False
             logger.info('Setting self.stream: False')
+        template_info = TEMPLATE_MAPPING[self.template_type]
+        self.infer_media_type = template_info.get('infer_media_type', 'none')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:

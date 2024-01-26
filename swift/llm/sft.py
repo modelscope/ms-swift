@@ -16,8 +16,8 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          is_master, plot_images, preprocess_logits_for_metrics,
                          seed_everything, show_layers)
 from .tuner import prepare_model
-from .utils import (LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, data_collate_fn, dataset_map,
+from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
+                    add_self_cognition_dataset, dataset_map,
                     get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
@@ -111,15 +111,18 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    template: Template = get_template(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        args.truncation_strategy,
-        model=model)
+    template_kwargs = {}
+    template_info = TEMPLATE_MAPPING[args.template_type]
+    use_model = template_info.get('use_model', False)
+    if use_model:
+        template_kwargs['model'] = model
+    template: Template = get_template(args.template_type, tokenizer,
+                                      args.system, args.max_length,
+                                      args.truncation_strategy,
+                                      **template_kwargs)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
+    logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
     if not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
@@ -131,19 +134,20 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
-        print_example(train_dataset[0], tokenizer)
+        td0, tkwargs0 = train_dataset.data[0]
+        print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
         dataset_info = None
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template)
         val_dataset = LazyLLMDataset(val_dataset, template)
 
-    data_collator = partial(
-        data_collate_fn,
-        tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
+    padding_to = args.max_length if args.sft_type == 'longlora' else None
+    data_collator = partial(template.data_collator, padding_to=padding_to)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True

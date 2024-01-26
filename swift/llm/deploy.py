@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
-from copy import deepcopy
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
@@ -88,7 +87,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 f'the model `{llm_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         example = messages_to_history(request.messages)
-        input_ids = template.encode(example)['input_ids']
+        input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
     else:
         if not is_generation_template(template.template_type):
@@ -97,7 +96,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
-        input_ids = template.encode({'query': request.prompt})['input_ids']
+        input_ids = template.encode({'query': request.prompt})[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
 
     error_msg = await check_length(request, input_ids)
