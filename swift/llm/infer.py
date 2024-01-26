@@ -316,10 +316,13 @@ def llm_infer(args: InferArguments) -> None:
                 kwargs = {'query': data['query']}
                 history = data.get('history')
                 system = data.get('system')
+                images = data.get('images')
                 if history is not None:
                     kwargs['history'] = history
                 if system is not None:
                     kwargs['system'] = system
+                if images is not None:
+                    kwargs['images'] = images
                 if args.infer_backend == 'vllm':
                     assert args.stream is True
                     if args.verbose:
@@ -349,6 +352,8 @@ def llm_infer(args: InferArguments) -> None:
                 if args.verbose:
                     print()
                     print(f'[LABELS]{label}')
+                    if images is not None:
+                        print(f'[IMAGES]{images}')
                     print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')

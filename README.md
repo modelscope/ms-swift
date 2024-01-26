@@ -62,6 +62,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
+- 2024.1.26: Support yi-vl-6b-chat, yi-vl-34b-chat.
 - 2024.1.24: Support codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
 - 2024.1.23: Support orion series: orion-14b, [orion-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/orion_14b_chat).
 - 2024.1.20: Support [xverse-13b-256k](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_13b_256k), xverse-65b-v2, xverse-65b-chat.
@@ -154,6 +155,7 @@ Here is a simple introduction of web-ui:
   - Multi-Modal:
     - qwen-vl series: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
     - qwen-audio series: qwen-audio, qwen-audio-chat.
+    - yi-vl series: yi-vl-6b-chat, yi-vl-34b-chat.
     - cogagent series: cogagent-chat, cogagent-vqa.
   - General:
     - qwen series: qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8, qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8, qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8, qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.

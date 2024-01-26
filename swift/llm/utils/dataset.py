@@ -30,7 +30,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     for k in dataset.features.keys():
         if k in {
                 'query', 'response', 'rejected_response', 'system', 'history',
-                'image'
+                'images'
         }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
@@ -108,8 +108,9 @@ class DatasetName:
     # multi-modal
     # vision
     coco_en = 'coco-en'
-    coco_mini_en = 'coco-mini-en'
-    capcha_images = 'capcha-images'
+    coco_mini_en = 'coco-mini-en'  # for qwen-vl
+    coco_mini_en_2 = 'coco-mini-en-2'  # for yi-vl
+    capcha_images = 'capcha-images'  # for cogagent
     # audio
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
@@ -301,7 +302,7 @@ register_dataset(
 
 
 def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
-    prompt = 'please describe the image'
+    prompt = 'please describe the image.'
     image_key = 'image'
     response_key = 'caption'
 
@@ -337,6 +338,36 @@ register_dataset(
         'val_dataset_sample': 200
     },
     tags=['chat', 'multi-modal', 'vision', '🔥'])
+
+
+def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
+    query = 'please describe the image.'
+    image_key = 'image'
+    response_key = 'caption'
+
+    dataset._info.features._column_requires_decoding['image'] = False
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        images.append([d[image_key]['path']])
+        if '&&' in d[response_key]:
+            d[response_key] = d[response_key].split('&&')[0]
+        response.append(d[response_key])
+    return HfDataset.from_dict({'query': [query] * len(response), 'response': response,
+                                  'images': images})
+
+register_dataset(
+    DatasetName.coco_mini_en_2,
+    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
+    [('coco_2014_caption', 'validation')],
+    _preprocess_vision_dataset2,
+    get_dataset_from_repo,
+    function_kwargs={
+        'train_dataset_sample': 20000,
+        'val_dataset_sample': 200
+    },
+    tags=['chat', 'multi-modal', 'vision', '🔥'])
+
 
 
 def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
@@ -650,15 +681,18 @@ register_dataset(
 
 
 def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
-    dataset = dataset.rename_columns({
-        'solution': 'response',
-    })
+    query = 'recognize the content.'
+    image_key = 'image'
+    response_key = 'solution'
 
-    def add_system(row):
-        row['query'] = 'CAPTCHA:'
-        return row
-
-    dataset = dataset.map(add_system)
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        images.append([d[image_key]])
+        response.append(d[response_key])
+    dataset = HfDataset.from_dict({'query': [query] * len(response), 'response': response,
+                                'images': images})
+    dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
 

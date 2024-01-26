@@ -295,32 +295,30 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     return stat_str
 
 
-def _get_labels_str(labels: List[int],
-                    tokenizer: PreTrainedTokenizerBase,
-                    tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> str:
-    if tokenizer_kwargs is None:
-        tokenizer_kwargs = {}
-    if len(labels) == 0:
+def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase,
+                    input_ids: List[int],
+                    **tokenizer_kwargs) -> str:
+    if len(input_ids) == 0:
         return ''
-    labels_str = ''
-    for i in range(len(labels)):
+    result_str = ''
+    for i in range(len(input_ids)):
         if i == 0:
-            if labels[i] < 0:
+            if input_ids[i] < 0:
                 s = 0
             else:
                 e = 0
             continue
-        if labels[i] < 0 and labels[i - 1] >= 0:
+        if input_ids[i] < 0 and input_ids[i - 1] >= 0:
             s = i
-            labels_str += tokenizer.decode(labels[e:s], **tokenizer_kwargs)
-        if labels[i] >= 0 and labels[i - 1] < 0:
+            result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+        if input_ids[i] >= 0 and input_ids[i - 1] < 0:
             e = i
-            labels_str += f'[-100 * {e - s}]'
-    if labels[-1] < 0:
-        labels_str += f'[-100 * {len(labels) - s}]'
+            result_str += f'[-100 * {e - s}]'
+    if input_ids[-1] < 0:
+        result_str += f'[-100 * {len(input_ids) - s}]'
     else:
-        labels_str += tokenizer.decode(labels[e:], **tokenizer_kwargs)
-    return labels_str
+        result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+    return result_str
 
 
 def print_example(example: Dict[str, Any],
@@ -330,11 +328,11 @@ def print_example(example: Dict[str, Any],
         tokenizer_kwargs = {}
     input_ids, labels = example['input_ids'], example.get('labels')
     logger.info(f'[INPUT_IDS] {input_ids}')
-    input_str = _get_labels_str(input_ids, tokenizer, tokenizer_kwargs)
+    input_str = safe_tokenizer_decode(tokenizer, input_ids, **tokenizer_kwargs)
     logger.info(f'[INPUT] {input_str}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = _get_labels_str(labels, tokenizer, tokenizer_kwargs)
+        labels_str = safe_tokenizer_decode(tokenizer, labels, **tokenizer_kwargs)
         logger.info(f'[LABLES] {labels_str}')
 
 
@@ -544,7 +542,7 @@ def inference(model: PreTrainedModel,
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if verbose:
         print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], **tokenizer_kwargs)}{output_prefix}',
+            f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
             end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
@@ -593,7 +591,7 @@ def limit_history_length(template: Template, query: str,
     def compute_token_length(history_length: int) -> int:
         assert history_length != 0
         example = {'query': query, 'history': history[-history_length:]}
-        input_ids = template.encode(example)['input_ids']
+        input_ids = template.encode(example)[0]['input_ids']
         return len(input_ids)
 
     history_length = upper_bound(

@@ -33,7 +33,7 @@ from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
                     history_to_messages, inference, inference_stream,
                     is_vllm_available, limit_history_length,
                     messages_to_history, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    sort_by_max_length, stat_dataset, safe_tokenizer_decode)
 
 try:
     if is_vllm_available():

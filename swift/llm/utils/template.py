@@ -315,11 +315,12 @@ class Template:
         for i, (q, r) in enumerate(history):
             context_list = self.prompt.copy()
             if i < len(history) - 1:
+                context_list.append('{{RESPONSE}}')
                 context_list += self.chat_sep
-            else:
-                if r is not None:
-                    context_list.append('{{RESPONSE}}')
-                    context_list += self.suffix
+            elif r is not None:
+                # last response
+                context_list.append('{{RESPONSE}}')
+                context_list += self.suffix
             self._concat_context_list(
                 context_list,
                 res_context_list,
@@ -327,10 +328,11 @@ class Template:
                 query=q,
                 response=r,
                 round0=i)
-        compute_loss_idx += list(
-            range(
-                len(res_context_list) - len(self.suffix),
-                len(res_context_list)))
+        if response is not None:
+            compute_loss_idx += list(
+                range(
+                    len(res_context_list) - len(self.suffix),
+                    len(res_context_list)))
         res_context_list, compute_loss_idx = self._simplify_context_list(
             res_context_list, compute_loss_idx)
         input_ids, labels, tokenizer_kwargs = self._encode_context_list(
@@ -732,19 +734,6 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
-def extract_images(example: Dict[str, Any]) -> List[str]:
-    history = example.get('history', None)
-    if history is None:
-        history = []
-    query_list = [h[0] for h in history]
-    query_list.append(example['query'])
-    res = []
-    for query in query_list:
-        img_path = re.findall(r'Picture \d:<img>(.+?)</img>\n', query)
-        res += img_path
-    return res
-
-
 def read_from_path(img_path: str) -> 'PIL.Image':
     from io import BytesIO
     from PIL import Image
@@ -768,15 +757,14 @@ class YiVLTemplate(Template):
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor
-        if 'images' not in example:
-            images_path = extract_images(example)
-        else:
-            images_path = example['images']
+        images_path = example['images']
         images = []
         for image_path in images_path:
             image = read_from_path(image_path)
-            image = expand2square(
-                image, tuple(int(x * 255) for x in image_processor.image_mean))
+            background_color = tuple(int(x * 255) for x in image_processor.image_mean)
+            if image.mode == 'L':
+                background_color = sum(background_color) // 3
+            image = expand2square(image, background_color)
             images.append(image)
         image_tensor = image_processor.preprocess(
             images, return_tensors='pt')['pixel_values']

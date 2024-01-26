@@ -80,8 +80,8 @@ class ModelType:
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
     # yi-vl
-    yi_vl_6b = 'yi-vl-6b'
-    yi_vl_34b = 'yi-vl-34b'
+    yi_vl_6b_chat = 'yi-vl-6b-chat'
+    yi_vl_34b_chat = 'yi-vl-34b-chat'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -1640,10 +1640,10 @@ def get_model_tokenizer_orion(model_dir: str,
         **kwargs)
 
 
-@register_model(ModelType.yi_vl_34b, '01ai/Yi-VL-34B', LoRATM.llama2,
-                TemplateType.yi_vl)
-@register_model(ModelType.yi_vl_6b, '01ai/Yi-VL-6B', LoRATM.llama2,
-                TemplateType.yi_vl)
+@register_model(ModelType.yi_vl_34b_chat, '01ai/Yi-VL-34B', LoRATM.llama2,
+                TemplateType.yi_vl, requires=['transformers>=4.34'])
+@register_model(ModelType.yi_vl_6b_chat, '01ai/Yi-VL-6B', LoRATM.llama2,
+                TemplateType.yi_vl, requires=['transformers>=4.34'])
 def get_model_tokenizer_yi_vl(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
@@ -1779,7 +1779,8 @@ def get_model_tokenizer(
         if torch_dtype is None:
             model_config = PretrainedConfig.get_config_dict(model_dir)[0]
             torch_dtype = model_config.get('torch_dtype', None)
-            torch_dtype = eval(f'torch.{torch_dtype}')
+            if isinstance(torch_dtype, str):
+                torch_dtype = eval(f'torch.{torch_dtype}')
             if torch_dtype == torch.float32:
                 torch_dtype = torch.float16
             logger.info(f'Setting torch_dtype: {torch_dtype}')
