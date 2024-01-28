@@ -180,6 +180,8 @@ class SftArguments:
                 os.path.join(__file__, '..', '..', 'ds_config', 'zero2.json'))
         handle_path(self)
         set_model_type(self)
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
@@ -264,8 +266,6 @@ class SftArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
         if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
                                        and len(
                                            self.custom_val_dataset_path) == 0
@@ -452,13 +452,12 @@ class InferArguments:
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
         if self.infer_backend == 'AUTO':
+            self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
                 if (self.sft_type == 'full'
                         or self.sft_type == 'lora' and self.merge_lora_and_save
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
-                else:
-                    self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             assert support_vllm, f'vllm not support `{self.model_type}`'
