@@ -85,6 +85,10 @@ def prepare_loss_scale(model):
         from .models import ChatGLM3Forward
         model.forward = MethodType(ChatGLM3Forward, model)
         model.support_loss_scale = True
+    elif model.__class__.__name__ == 'InternLM2ForCausalLM':
+        from .models import InternLMForward
+        model.forward = MethodType(InternLMForward, model)
+        model.support_loss_scale = True
     else:
         model.support_loss_scale = False
         logger.warn(f'Model {model.__class__.__name__} not supported for weight scaling')

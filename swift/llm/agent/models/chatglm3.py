@@ -43,7 +43,6 @@ def forward(
         hidden_states = hidden_states[-1:]
     lm_logits = self.transformer.output_layer(hidden_states)
     lm_logits = lm_logits.transpose(0, 1).contiguous()
-    loss_scale = kwargs.pop('loss_scale', None)
 
     loss = None
     if labels is not None:
@@ -55,6 +54,8 @@ def forward(
         # Flatten the tokens
         loss_fct = CrossEntropyLoss(ignore_index=-100, reduction='none')
         loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+        loss_scale = kwargs.pop('loss_scale', None)
         if loss_scale is not None:
             loss_scale = loss_scale[..., 1:].contiguous().view(-1)
             loss = loss_scale * loss

@@ -471,9 +471,10 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    is_observation = history[-1][-1].endswith('Observation:')
+    is_observation = history[-1][-1].endswith('Observation:') if history else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
+        act_length = len(history[-1][-1])
         example = {'query': None, 'history': history, 'system': system}
     else:
         example = {'query': query, 'history': history, 'system': system}
@@ -556,9 +557,10 @@ def inference_stream(model: PreTrainedModel,
         if not is_observation:
             history[-1] = [query, safe_response]
         else:
-            history[-1][-1] = history[-1][-1] + query + safe_response
+            history[-1][-1] = history[-1][-1][:act_length] + safe_response
         yield safe_response, history
-    history[-1] = (query, response)
+    if not is_observation:
+        history[-1] = (query, response)
     yield response, history
 
 

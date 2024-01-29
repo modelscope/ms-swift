@@ -205,7 +205,7 @@ def _encode(template: 'Template', query: str, response: Optional[str],
             query=q,
             response=r,
             round0=i)
-    if query is not None:
+    if query:
         _concat_context_list(
             template.prompt,
             res_context_list,
@@ -351,7 +351,7 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
-        return _encode(self, query, response, history, system, observation,
+        return _encode(self, query, response, history, system,
                        self.truncation_strategy, support_loss_scale)
 
 
