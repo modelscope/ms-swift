@@ -297,6 +297,8 @@ class SwiftAdapter:
                     module_key: str,
                     activate: bool,
                     offload: str = None):
+        if not isinstance(module, torch.nn.Module):
+            return
         if activate:
             SwiftAdapter.load(module, adapter_name, module_key)
         else:

@@ -310,6 +310,7 @@ def data_collate_fn(batch: List[Dict[str, Any]],
     """
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
+    loss_scale = [torch.tensor(b['loss_scale']) for b in batch]
     labels = [torch.tensor(b['labels']) for b in batch]
     attention_mask = [
         torch.ones(len(input_ids[i]), dtype=torch.int64)
@@ -322,6 +323,8 @@ def data_collate_fn(batch: List[Dict[str, Any]],
                              'constant', tokenizer.pad_token_id)
         labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
                           'constant', -100)
+        loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]),
+                          'constant', 0.)
         attention_mask[0] = F.pad(
             attention_mask[0], (0, padding_to - attention_mask[0].shape[-1]),
             'constant', 0)
@@ -330,12 +333,15 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
     attention_mask = pad_sequence(
         attention_mask, batch_first=True, padding_value=0)
+    loss_scale = pad_sequence(
+        loss_scale, batch_first=True, padding_value=0.)
     labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
     res = {
         'input_ids': input_ids,
         'attention_mask': attention_mask,
         'labels': labels,
+        'loss_scale': loss_scale,
     }
     if batch[0].get('audio_info') is not None:
         res['audio_info'] = [
@@ -417,7 +423,7 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
             linear_cls = (Linear4bit, AutoGPTQQuantLinear)
     lora_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, linear_cls):
+        if isinstance(module, (linear_cls, torch.nn.Embedding)):
             module_name = name.split('.')[-1]
             if head_module_name not in module_name:
                 lora_module_names.add(module_name)
@@ -454,7 +460,7 @@ def inference_stream(model: PreTrainedModel,
                      system: Optional[str] = None,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
-                     stop_words: Optional[List[StopWords]] = None,
+                     stop_words: Optional[StopWords] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -465,7 +471,12 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    example = {'query': query, 'history': history, 'system': system}
+    is_observation = history[-1][-1].endswith('Observation:')
+    if is_observation:
+        history[-1][-1] = history[-1][-1] + query
+        example = {'query': None, 'history': history, 'system': system}
+    else:
+        example = {'query': query, 'history': history, 'system': system}
     image = kwargs.pop('image', None)
     if image is not None:
         example['image'] = image
@@ -530,7 +541,8 @@ def inference_stream(model: PreTrainedModel,
     generate_ids = []
     response = ''
     print_idx = 0
-    history.append(None)  # dummy
+    if not is_observation:
+        history.append(None)  # dummy
     for token in gen:
         generate_ids.append(token.item())
         response = tokenizer.decode(generate_ids, True, **decode_kwargs)
@@ -541,7 +553,10 @@ def inference_stream(model: PreTrainedModel,
             print_idx = max(response.rfind(' ') + 1, print_idx)
         # avoid printing incomplete words
         safe_response = response[:print_idx]
-        history[-1] = (query, safe_response)
+        if not is_observation:
+            history[-1] = [query, safe_response]
+        else:
+            history[-1][-1] = history[-1][-1] + query + safe_response
         yield safe_response, history
     history[-1] = (query, response)
     yield response, history

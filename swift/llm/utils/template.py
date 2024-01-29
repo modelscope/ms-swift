@@ -7,6 +7,8 @@ import torch
 from torch import Tensor
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
+from swift.llm.agent.utils import calculate_loss_scale
+
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
 
@@ -59,23 +61,26 @@ Context = Union[str, List[int]]
 
 def _simplify_context_list(
         context_list: List[Context],
-        compute_loss_idx: List[int]) -> Tuple[List[Context], List[int]]:
+        compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
+    """This function is used to simplify content, to reduce the occurrence of spaces after tokenization"""
     res: List[Context] = []
-    res_idx: List[int] = []
+    res_idx: List[float] = []
     temp: List[str] = []
-    compute_loss_idx = set(compute_loss_idx)
-    for i, c in enumerate(context_list):
-        if isinstance(c, str) and i not in compute_loss_idx:
+    temp_index: List[int] = []
+    for i, (c, li) in enumerate(zip(context_list, compute_loss_idx)):
+        if isinstance(c, str) and compute_loss_idx[i] == 0.0:
             temp.append(c)
+            temp_index.append(i)
         else:
             if len(temp) > 0:
                 res.append(''.join(temp))
+                res_idx.append(0.0)
                 temp.clear()
             res.append(c)
-            if i in compute_loss_idx:
-                res_idx.append(len(res) - 1)
+            res_idx.append(li)
     if len(temp) > 0:
         res.append(''.join(temp))
+        res_idx.append(0.0)
     return res, res_idx
 
 
@@ -99,7 +104,7 @@ def get_audio_info(
 def _concat_context_list(
     context_list: List[Context],
     res_context_list: List[Context],
-    compute_loss_idx: List[int],
+    compute_loss_idx: List[float],
     system: Optional[str] = None,
     query: Optional[str] = None,
     response: Optional[str] = None,
@@ -114,8 +119,9 @@ def _concat_context_list(
         if isinstance(context, str):
             if '{{RESPONSE}}' == context:
                 assert response is not None
-                res_context_list.append(response)
-                compute_loss_idx.append(len(res_context_list) - 1)
+                content_part, weight_part = calculate_loss_scale(response)
+                res_context_list.extend(content_part)
+                compute_loss_idx.extend(weight_part)
                 continue
             old_str_list = [
                 '{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}'
@@ -125,20 +131,20 @@ def _concat_context_list(
                 if new_str is not None and old_str in context:
                     context = context.replace(old_str, new_str)
         res_context_list.append(context)
+        compute_loss_idx.append(0.0)
 
 
 def _encode_context_list(
     tokenizer: PreTrainedTokenizerBase,
     context_list: List[Context],
-    compute_loss_idx: Optional[List[int]] = None,
+    compute_loss_idx: Optional[List[float]] = None,
     **args,
-) -> Tuple[List[int], Optional[List[int]], Dict[str, Any]]:
+) -> Tuple[List[int], Optional[List[int]], List[float], Dict[str, Any]]:
     input_ids: List[int] = []
     labels: List[int] = []
     kwargs = {}
-    if compute_loss_idx is not None:
-        compute_loss_idx = set(compute_loss_idx)
-    for i, context in enumerate(context_list):
+    loss_scale: List[float] = []
+    for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
         if isinstance(context, list):
             for c in context:
                 if isinstance(c, str):
@@ -148,6 +154,7 @@ def _encode_context_list(
                     token = c
                 input_ids.append(token)
                 labels.append(-100)
+                loss_scale.append(loss_weight)
         elif isinstance(context, str):
             if (getattr(tokenizer, 'model_type', '').startswith('qwen-audio')):
                 audio_info = get_audio_info(tokenizer, context=context)
@@ -167,21 +174,20 @@ def _encode_context_list(
                 add_special_tokens=False,
                 **kwargs)['input_ids']
             input_ids += token_list
-            if compute_loss_idx is None:
-                continue
-            if i in compute_loss_idx:
+            if compute_loss_idx[i] > 0.0:
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
+            loss_scale.extend([loss_weight] * len(token_list))
     if compute_loss_idx is None:
-        return input_ids, None, kwargs
+        return input_ids, None, loss_scale, kwargs
     else:
-        return input_ids, labels, kwargs
+        return input_ids, labels, loss_scale, kwargs
 
 
 def _encode(template: 'Template', query: str, response: Optional[str],
             history: History, system: Optional[str],
-            truncation_strategy: str) -> Dict[str, Optional[List[int]]]:
+            truncation_strategy: str, support_loss_scale: bool) -> Dict[str, Optional[List[int]]]:
     res_context_list: List[Context] = []
     compute_loss_idx: List[int] = []
     if system is None:
@@ -199,22 +205,26 @@ def _encode(template: 'Template', query: str, response: Optional[str],
             query=q,
             response=r,
             round0=i)
-    _concat_context_list(
-        template.prompt,
-        res_context_list,
-        compute_loss_idx,
-        query=query,
-        round0=len(history))
+    if query is not None:
+        _concat_context_list(
+            template.prompt,
+            res_context_list,
+            compute_loss_idx,
+            query=query,
+            round0=len(history))
     res_context_list, compute_loss_idx = _simplify_context_list(
         res_context_list, compute_loss_idx)
-    input_ids, labels, kwargs = _encode_context_list(template.tokenizer,
+    input_ids, labels, loss_scale, kwargs = _encode_context_list(template.tokenizer,
                                                      res_context_list,
                                                      compute_loss_idx)
 
     if response is not None:
-        tgt_input_ids = _encode_context_list(template.tokenizer, [response])[0]
-        tgt_input_ids += _encode_context_list(template.tokenizer,
-                                              template.suffix)[0]
+        response_parts, loss_scales = calculate_loss_scale(response)
+        tgt_input_ids, _, response_scale, _ = _encode_context_list(template.tokenizer, response_parts, loss_scales)
+        loss_scale.extend(response_scale)
+        suffix_tgt_input_ids, _, response_scale, _ = _encode_context_list(template.tokenizer, template.suffix, [1.0])
+        tgt_input_ids += suffix_tgt_input_ids
+        loss_scale.extend(response_scale)
         labels = labels + tgt_input_ids
         input_ids += tgt_input_ids
     else:
@@ -227,59 +237,14 @@ def _encode(template: 'Template', query: str, response: Optional[str],
         input_ids = input_ids[-template.max_length:]
         if labels is not None:
             labels = labels[-template.max_length:]
-    res = {'input_ids': input_ids, 'labels': labels}
+    if support_loss_scale:
+        res = {'input_ids': input_ids, 'labels': labels, 'loss_scale': loss_scale}
+    else:
+        res = {'input_ids': input_ids, 'labels': labels}
     # Compatible with qwen-audio
     if 'audio_info' in kwargs:
         res['audio_info'] = kwargs['audio_info']
-    return res
 
-
-def _encode_pairwise(
-        template: 'Template', query: str, response: Optional[str],
-        rejected_response: Optional[str], system: Optional[str],
-        truncation_strategy: str) -> Dict[str, Optional[List[int]]]:
-    res_context_list: List[Context] = []
-    compute_loss_idx: List[int] = []
-    if system is None:
-        assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
-        prefix = template.prefix
-    else:
-        prefix = template.prefix_has_system
-    _concat_context_list(
-        prefix, res_context_list, compute_loss_idx, system=system)
-    _concat_context_list(
-        template.prompt,
-        res_context_list,
-        compute_loss_idx,
-        query=query,
-        round0=True)
-    res_context_list, compute_loss_idx = _simplify_context_list(
-        res_context_list, compute_loss_idx)
-    input_ids, labels, kwargs = _encode_context_list(template.tokenizer,
-                                                     res_context_list,
-                                                     compute_loss_idx)
-
-    if response is not None:
-        tgt_input_ids = _encode_context_list(template.tokenizer, [response])[0]
-        tgt_input_ids += _encode_context_list(template.tokenizer,
-                                              template.suffix)[0]
-        labels = labels + tgt_input_ids
-        input_ids += tgt_input_ids
-    else:
-        labels = None
-
-    if template.max_length is not None:
-        if truncation_strategy == 'delete' and len(
-                input_ids) > template.max_length:
-            return None
-        input_ids = input_ids[-template.max_length:]
-        if labels is not None:
-            labels = labels[-template.max_length:]
-    res = {
-        'input_ids': input_ids,
-        'attention_mask': [1] * len(input_ids),
-        'labels': labels
-    }
     return res
 
 
@@ -366,15 +331,13 @@ class Template:
         self.truncation_strategy = truncation_strategy
 
     def encode(self, example: Dict[str,
-                                   Any]) -> Dict[str, Optional[List[int]]]:
+                                   Any], support_loss_scale=False) -> Dict[str, Optional[List[int]]]:
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.'
             )
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
-        rejected_response: Optional[str] = example.get('rejected_response',
-                                                       None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         if query is None:
@@ -388,12 +351,8 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
-        if rejected_response is None:
-            return _encode(self, query, response, history, system,
-                           self.truncation_strategy)
-        else:
-            return _encode_pairwise(self, query, response, rejected_response,
-                                    system, self.truncation_strategy)
+        return _encode(self, query, response, history, system, observation,
+                       self.truncation_strategy, support_loss_scale)
 
 
 class CogAgentTemplate(Template):
@@ -554,7 +513,7 @@ class CogAgentTemplate(Template):
             }
 
     def encode(self, example: Dict[str,
-                                   Any]) -> Dict[str, Optional[List[int]]]:
+                                   Any], support_loss_scale=False) -> Dict[str, Optional[List[int]]]:
         if 'image' in example and isinstance(example['image'], str):
             from PIL import Image
             import requests

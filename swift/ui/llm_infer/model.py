@@ -64,8 +64,8 @@ class Model(BaseUI):
                 'en': 'system'
             },
             'info': {
-                'zh': '选择system字段的内容',
-                'en': 'Choose the content of the system field'
+                'zh': 'system字段支持在加载模型后修改',
+                'en': 'system can be modified after the model weights loaded'
             }
         },
         'more_params': {
@@ -99,7 +99,7 @@ class Model(BaseUI):
                 choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
                 scale=20)
         with gr.Row():
-            system = gr.Textbox(elem_id='system', lines=1, scale=20)
+            system = gr.Textbox(elem_id='system', lines=4, scale=20)
         Generate.build_ui(base_tab)
         with gr.Row():
             gr.Textbox(elem_id='more_params', lines=1, scale=20)

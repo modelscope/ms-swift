@@ -1,23 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
-
 import torch
 import transformers
 from packaging import version
 
 from swift.trainers import TrainerCallback
-from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, NEFTuneConfig, Swift, LoftQConfig, IA3Config, AdaLoraConfig)
+from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig, LongLoRAModelType, LoraConfig,
+                          LoRAConfig, NEFTuneConfig, Swift)
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linear_for_lora, is_lora
+from .utils import SftArguments, find_all_linear_for_lora, is_adapter
 
 logger = get_logger()
 
 
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
-    if is_lora(args.sft_type):
+    if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
@@ -31,12 +29,12 @@ def prepare_model(model, args: SftArguments):
                 'lora_alpha': args.lora_alpha,
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
-                'modules_to_save': args.lora_modules_to_save,
+                'modules_to_save': args.modules_to_save,
                 'layers_to_transform': args.lora_layers_to_transform,
                 'layers_pattern': args.lora_layers_pattern,
                 'rank_pattern': args.lora_rank_pattern,
                 'alpha_pattern': args.lora_alpha_pattern,
-                'loftq_config': LoftQConfig(**json.loads(args.lora_loftq_config)) if args.lora_loftq_config else None,
+                'loftq_config': args.lora_loftq_config,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
@@ -69,8 +67,10 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, qalora_config)
                 logger.info(f'qalora_config: {qalora_config}')
             elif args.sft_type == 'adalora':
+                lora_kwargs['rank_pattern'] = args.adalora_rank_pattern
                 adalora_config = AdaLoraConfig(
-                    task_type='CAUSAL_LM', **lora_kwargs,
+                    task_type='CAUSAL_LM',
+                    **lora_kwargs,
                     target_r=args.adalora_target_r,
                     init_r=args.adalora_init_r,
                     tinit=args.adalora_tinit,
@@ -80,7 +80,6 @@ def prepare_model(model, args: SftArguments):
                     beta2=args.adalora_beta2,
                     orth_reg_weight=args.adalora_orth_reg_weight,
                     total_step=args.adalora_total_step,
-                    rank_pattern=args.adalora_rank_pattern,
                 )
                 model = Swift.prepare_model(model, adalora_config)
                 logger.info(f'adalora_config: {adalora_config}')
@@ -129,6 +128,6 @@ def prepare_model(model, args: SftArguments):
                 model.set_active_adapters(model.adapters.keys(), offload='cpu')
 
     callbacks = []
-    if is_lora(args.sft_type) and args.tuner_backend == 'swift':
+    if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback())
     return model, callbacks

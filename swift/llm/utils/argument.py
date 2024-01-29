@@ -2,11 +2,14 @@
 import math
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set, Tuple, Union
+from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
+
+import numpy as np
 import torch
 import torch.distributed as dist
+from datasets import concatenate_datasets
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
@@ -14,7 +17,7 @@ from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
-from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset
+from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset, get_dataset
 from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
@@ -37,7 +40,8 @@ class SftArguments:
     model_revision: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora',
+                      'ia3'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft'] = 'swift'
@@ -61,6 +65,8 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
+    train_dataset_mix_ratio: float = None
+    train_dataset_mix_ds: List[str] = field(default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
@@ -91,11 +97,11 @@ class SftArguments:
     lora_dropout_p: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
     use_rslora: bool = False
-    lora_layers_to_transform: Optional[Union[List[int], int]] = None
-    lora_layers_pattern: Optional[Union[List[str], str]] = None
-    lora_rank_pattern: Optional[dict] = None
-    lora_alpha_pattern: Optional[dict] = None
-    lora_loftq_config: Optional[str] = None
+    lora_layers_to_transform: List[int] = None
+    lora_layers_pattern: List[str] = None
+    lora_rank_pattern: Dict = field(default_factory=dict)
+    lora_alpha_pattern: Dict = field(default_factory=dict)
+    lora_loftq_config: str = field(default_factory=dict)
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
     modules_to_save: List[str] = field(default_factory=list)
@@ -109,11 +115,11 @@ class SftArguments:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-    adalora_total_step: Optional[int] = None
-    adalora_rank_pattern: Optional[dict] = None
+    adalora_total_step: int = None
+    adalora_rank_pattern: Dict = None
 
-    ia3_target_modules: Optional[Union[List[str], str]] = None
-    ia3_feedforward_modules: Optional[Union[List[str], str]] = None
+    ia3_target_modules: List[str] = None
+    ia3_feedforward_modules: List[str] = None
     ia3_modules_to_save: List[str] = field(default_factory=list)
 
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
@@ -195,6 +201,8 @@ class SftArguments:
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
 
+    gpu_memory_fraction: Optional[float] = None
+
     def __post_init__(self) -> None:
         handle_compatibility(self)
         handle_path(self)
@@ -221,6 +229,9 @@ class SftArguments:
                     'For example: `--lora_target_modules ALL`. '
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
+
+        if self.modules_to_save is None:
+            self.modules_to_save = self.lora_modules_to_save
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         world_size = 1
@@ -533,6 +544,10 @@ class DPOArguments(SftArguments):
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
     max_prompt_length: int = 1024
+    beta: float = 0.1
+    label_smoothing: float = 0.0
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
+    sft_beta: float = 0.0
 
 
 @dataclass
@@ -822,3 +837,24 @@ def handle_generation_config(
             'Due to do_sample=False, the following settings are applied: args.temperature: '
             f'{args.temperature}, args.top_p: {args.top_p}, args.top_k: {args.top_k}.'
         )
+
+
+def handle_dataset_mixture(args: SftArguments, train_dataset, mix_dataset_sample) -> None:
+    train_length = len(train_dataset)
+    random_state = np.random.RandomState(args.dataset_seed)
+    if mix_dataset_sample:
+        assert args.train_dataset_mix_ds is not None
+        train_dataset_mix_ds = [args.train_dataset_mix_ds] if isinstance(args.train_dataset_mix_ds, str) else args.train_dataset_mix_ds
+        mixed_dataset = get_dataset(
+                                    train_dataset_mix_ds,
+                                    0.0,
+                                    random_state,
+                                    check_dataset_strategy=args.check_dataset_strategy)[0]
+        if len(mixed_dataset) < mix_dataset_sample:
+            logger.warn(f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
+                        f'lesser than the ratio required by the `train_dataset_mix_ratio` argument:{args.train_dataset_mix_ratio}'
+                        f'the actual ratio is : {len(mixed_dataset)/float(train_length)}')
+        else:
+            train_idxs = random_state.permutation(mix_dataset_sample)
+            mixed_dataset = mixed_dataset.select(train_idxs)
+        return concatenate_datasets([train_dataset, mixed_dataset])

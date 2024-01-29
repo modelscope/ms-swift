@@ -118,7 +118,7 @@ class ConversationsPreprocessor:
                 response.append(conversations[-1][self.value_key])
                 system.append(sys)
                 history.append(h)
-            except AssertionError:
+            except Exception:
                 if self.error_strategy == 'raise':
                     raise ValueError(f'conversations: {conversations}')
         kwargs = {}
