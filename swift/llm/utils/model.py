@@ -96,6 +96,10 @@ class ModelType:
     internlm2_20b = 'internlm2-20b'
     internlm2_20b_sft_chat = 'internlm2-20b-sft-chat'
     internlm2_20b_chat = 'internlm2-20b-chat'
+    internlm2_math_7b_chat = 'internlm2-math-7b-chat'
+    internlm2_math_7b = 'internlm2-math-7b'
+    internlm2_math_20b_chat = 'internlm2-math-20b-chat'
+    internlm2_math_20b = 'internlm2-math-20b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -911,6 +915,32 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
                                          load_model, model_config, **kwargs)
 
 
+@register_model(
+    ModelType.internlm2_math_7b,
+    'Shanghai_AI_Laboratory/internlm2-math-base-7b',
+    LoRATM.internlm2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.internlm2_math_20b,
+    'Shanghai_AI_Laboratory/internlm2-math-base-20b',
+    LoRATM.internlm2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.internlm2_math_7b_chat,
+    'Shanghai_AI_Laboratory/internlm2-math-7b',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    support_flash_attn=True)
+@register_model(
+    ModelType.internlm2_math_20b_chat,
+    'Shanghai_AI_Laboratory/internlm2-math-20b',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    support_flash_attn=True)
 @register_model(
     ModelType.internlm2_7b_sft_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-7b-sft',
