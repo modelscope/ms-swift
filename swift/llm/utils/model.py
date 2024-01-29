@@ -88,6 +88,7 @@ class ModelType:
     internlm_7b_chat_8k = 'internlm-7b-chat-8k'
     internlm_20b = 'internlm-20b'
     internlm_20b_chat = 'internlm-20b-chat'
+    # internlm2
     internlm2_7b_base = 'internlm2-7b-base'
     internlm2_7b = 'internlm2-7b'
     internlm2_7b_sft_chat = 'internlm2-7b-sft-chat'
@@ -96,6 +97,11 @@ class ModelType:
     internlm2_20b = 'internlm2-20b'
     internlm2_20b_sft_chat = 'internlm2-20b-sft-chat'
     internlm2_20b_chat = 'internlm2-20b-chat'
+    # internlm2-math
+    internlm2_math_7b_chat = 'internlm2-math-7b-chat'
+    internlm2_math_7b = 'internlm2-math-7b'
+    internlm2_math_20b_chat = 'internlm2-math-20b-chat'
+    internlm2_math_20b = 'internlm2-math-20b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -120,6 +126,7 @@ class ModelType:
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
     baichuan_13b_chat = 'baichuan-13b-chat'
+    # baichuan2
     baichuan2_7b = 'baichuan2-7b'
     baichuan2_7b_chat = 'baichuan2-7b-chat'
     baichuan2_7b_chat_int4 = 'baichuan2-7b-chat-int4'
@@ -912,6 +919,32 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
+    ModelType.internlm2_math_7b,
+    'Shanghai_AI_Laboratory/internlm2-math-base-7b',
+    LoRATM.internlm2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.internlm2_math_20b,
+    'Shanghai_AI_Laboratory/internlm2-math-base-20b',
+    LoRATM.internlm2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True)
+@register_model(
+    ModelType.internlm2_math_7b_chat,
+    'Shanghai_AI_Laboratory/internlm2-math-7b',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    support_flash_attn=True)
+@register_model(
+    ModelType.internlm2_math_20b_chat,
+    'Shanghai_AI_Laboratory/internlm2-math-20b',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    support_flash_attn=True)
+@register_model(
     ModelType.internlm2_7b_sft_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-7b-sft',
     LoRATM.internlm2,
@@ -986,9 +1019,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
         if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
             del tokenizer.__class__.eos_token_id
         tokenizer.eos_token = eos_token
-    if model is not None and use_flash_attn:
-        # fix AttributeError: no attribute 'attention_dropout'
-        model.model.layers[0].attention.__class__.attention_dropout = 0.
+
     return model, tokenizer
 
 

@@ -234,9 +234,10 @@ app_ui_main(infer_args)
     - SQL: text2sql-en, 🔥sql-create-context-en.
     - 文本生成: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
     - 分类: cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.
+    - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - 其他: finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.
   - 多模态:
-    - 视觉: coco-en, 🔥coco-mini-en.
+    - 视觉: coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.
     - 音频: aishell1-zh, 🔥aishell1-mini-zh.
   - 自定义数据集
 - 支持的对话模板:
