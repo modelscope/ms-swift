@@ -60,7 +60,7 @@ def forward(
             loss = loss_fct(shift_logits, shift_labels)
             loss_scale = kwargs.pop('loss_scale', None)
             if loss_scale is not None:
-                loss_scale = loss_scale[..., 1:].contiguous().view(-1)
+                loss_scale = loss_scale[..., 1:].contiguous().view(-1).to(loss.device)
                 loss = loss_scale * loss
             loss = loss.mean()
 
