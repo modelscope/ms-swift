@@ -178,7 +178,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self._custom_metrics = {}
         loss, outputs = super().compute_loss(model, inputs, True)
         preds = outputs.logits.argmax(dim=2)[..., :-1]
-        labels = inputs['labels'][..., 1:].to(outputs.logits.device)
+        labels = inputs['labels'][..., 1:].to(preds.device)
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Tensor
@@ -194,7 +194,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if model.training:
             if 'acc' not in self._custom_metrics:
                 self._custom_metrics['acc'] = torch.tensor(0.).to(
-                    self.args.device)
+                    preds.device)
             self._custom_metrics[
                 'acc'] += acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
