@@ -1,6 +1,6 @@
 """ PyTorch ChatGLM model. """
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union, List
 
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss
