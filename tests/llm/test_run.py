@@ -17,8 +17,9 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
-                       infer_main, merge_lora_main, sft_main, dpo_main, DPOArguments)
+from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType,
+                       SftArguments, dpo_main, infer_main, merge_lora_main,
+                       sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -239,38 +240,55 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        output = sft_main(SftArguments(model_type=ModelType.cogagent_18b_instruct, 
-                              dataset=DatasetName.coco_mini_en_2, 
-                              train_dataset_sample=100, eval_steps=5,
-                              quantization_bit=4))
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.cogagent_18b_instruct,
+                dataset=DatasetName.coco_mini_en_2,
+                train_dataset_sample=100,
+                eval_steps=5,
+                quantization_bit=4))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True))
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint, load_dataset_config=True))
 
     def test_yi_vl_6b_chat(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
         folder = os.path.join(os.path.dirname(__file__), 'data')
-        output = sft_main(SftArguments(model_type=ModelType.yi_vl_6b_chat, 
-                            #   dataset=DatasetName.capcha_images, 
-                              train_dataset_sample=100, eval_steps=5,
-                              custom_train_dataset_path=[os.path.join(folder, 'multi_modal.jsonl')],
-                              lazy_tokenize=False))
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.yi_vl_6b_chat,
+                #   dataset=DatasetName.capcha_images,
+                train_dataset_sample=100,
+                eval_steps=5,
+                custom_train_dataset_path=[
+                    os.path.join(folder, 'multi_modal.jsonl')
+                ],
+                lazy_tokenize=False))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True))
-
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint, load_dataset_config=True))
 
     def test_dpo(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        output = dpo_main(DPOArguments(model_type=ModelType.qwen_1_8b_chat, 
-                              dataset=DatasetName.hh_rlhf, train_dataset_sample=100, eval_steps=5))
+        output = dpo_main(
+            DPOArguments(
+                model_type=ModelType.qwen_1_8b_chat,
+                dataset=DatasetName.hh_rlhf,
+                train_dataset_sample=100,
+                eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True))
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint, load_dataset_config=True))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
