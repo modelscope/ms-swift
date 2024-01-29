@@ -178,7 +178,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self._custom_metrics = {}
         loss, outputs = super().compute_loss(model, inputs, True)
         preds = outputs.logits.argmax(dim=2)[..., :-1]
-        labels = inputs['labels'][..., 1:]
+        labels = inputs['labels'][..., 1:].to(outputs.logits.device)
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Tensor
