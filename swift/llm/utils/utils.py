@@ -218,7 +218,7 @@ MapFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
 def _single_map(d: Dict[str, Any],
                 map_func: MapFunc) -> Optional[Dict[str, Any]]:
     d = map_func(d)
-    if d is None:
+    if len(d[0]) == 0:
         return None
     return d
 
@@ -273,7 +273,6 @@ def dataset_map(dataset: HfDataset,
     else:
         assert num_proc > 1
         data = _map_mp(dataset, single_map, num_proc)
-    data = [d for d in data if d is not None]
     if len(data) == 0:
         logger.warning('len(dataset): 0')
         return None

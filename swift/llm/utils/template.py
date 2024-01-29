@@ -318,7 +318,7 @@ class Template:
         if self.max_length is not None:
             if truncation_strategy == 'delete' and len(
                     input_ids) > self.max_length:
-                return None
+                return {}, {}
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
                 labels = labels[-self.max_length:]
