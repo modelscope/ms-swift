@@ -2,7 +2,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "output/chatglm3-6b-32k/v4-20240125-235528/checkpoint-11278" \
+    --ckpt_dir "/mnt/workspace/tastelikefeet/inner/swift/examples/pytorch/llm/output/chatglm3-6b-32k/v4-20240125-235528/checkpoint-11278" \
     --load_dataset_config true \
     --max_length 4096 \
     --max_new_tokens 2048 \
