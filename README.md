@@ -148,6 +148,45 @@ Here is a simple introduction of web-ui:
 - View the training time and training GPU memory comparison under different parameters, you can check [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md).
 
 
+### Quick Start
+```python
+# pip install ms-swift -U
+
+# Experimental environment: A10, 3090, V100, ...
+# 12GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments,
+    infer_main, sft_main, app_ui_main, merge_lora_main
+)
+
+model_type = ModelType.qwen_1_8b_chat
+sft_args = SftArguments(
+    model_type=model_type,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.jd_sentiment_zh],
+    output_dir='output')
+result = sft_main(sft_args)
+best_model_checkpoint = result['best_model_checkpoint']
+print(f'best_model_checkpoint: {best_model_checkpoint}')
+torch.cuda.empty_cache()
+
+infer_args = InferArguments(
+    ckpt_dir=best_model_checkpoint,
+    load_dataset_config=True,
+    show_dataset_sample=10)
+# merge_lora_main(infer_args)
+result = infer_main(infer_args)
+torch.cuda.empty_cache()
+
+app_ui_main(infer_args)
+```
+
+
 ### Features
 - Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), [longlora](https://arxiv.org/abs/2309.12307), [qalora](https://arxiv.org/abs/2309.14717), full parameter fine-tuning, partial parameter fine-tuning.
 - Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, DPO, self-cognition fine-tuning, ...

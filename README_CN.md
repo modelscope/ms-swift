@@ -148,6 +148,45 @@ swift web-ui
 - 查看不同参数下的训练时间和训练显存对比, 可以查看[Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md).
 
 
+### 快速开始
+```python
+# pip install ms-swift -U
+
+# Experimental environment: A10, 3090, V100, ...
+# 12GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments,
+    infer_main, sft_main, app_ui_main, merge_lora_main
+)
+
+model_type = ModelType.qwen_1_8b_chat
+sft_args = SftArguments(
+    model_type=model_type,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.jd_sentiment_zh],
+    output_dir='output')
+result = sft_main(sft_args)
+best_model_checkpoint = result['best_model_checkpoint']
+print(f'best_model_checkpoint: {best_model_checkpoint}')
+torch.cuda.empty_cache()
+
+infer_args = InferArguments(
+    ckpt_dir=best_model_checkpoint,
+    load_dataset_config=True,
+    show_dataset_sample=10)
+# merge_lora_main(infer_args)
+result = infer_main(infer_args)
+torch.cuda.empty_cache()
+
+app_ui_main(infer_args)
+```
+
+
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), [longlora](https://arxiv.org/abs/2309.12307), [qalora](https://arxiv.org/abs/2309.14717), 全参数微调, 部分参数微调.
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, DPO, 自我认知微调, ...
