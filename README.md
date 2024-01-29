@@ -234,9 +234,10 @@ app_ui_main(infer_args)
     - SQL: text2sql-en, 🔥sql-create-context-en.
     - Text Generation: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
     - Classification: cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.
+    - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - Other: finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.
   - Multi-Modal:
-    - Vision: coco-en, 🔥coco-mini-en.
+    - Vision: coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.
     - Audio: aishell1-zh, 🔥aishell1-mini-zh.
   - Custom Dataset
 - Supported Templates:
