@@ -148,41 +148,80 @@ swift web-ui
 - 查看不同参数下的训练时间和训练显存对比, 可以查看[Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md).
 
 
+### 快速开始
+```python
+# pip install ms-swift -U
+
+# Experimental environment: A10, 3090, V100, ...
+# 12GB GPU memory
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+import torch
+
+from swift.llm import (
+    DatasetName, InferArguments, ModelType, SftArguments,
+    infer_main, sft_main, app_ui_main, merge_lora_main
+)
+
+model_type = ModelType.qwen_1_8b_chat
+sft_args = SftArguments(
+    model_type=model_type,
+    train_dataset_sample=2000,
+    dataset=[DatasetName.jd_sentiment_zh],
+    output_dir='output')
+result = sft_main(sft_args)
+best_model_checkpoint = result['best_model_checkpoint']
+print(f'best_model_checkpoint: {best_model_checkpoint}')
+torch.cuda.empty_cache()
+
+infer_args = InferArguments(
+    ckpt_dir=best_model_checkpoint,
+    load_dataset_config=True,
+    show_dataset_sample=10)
+# merge_lora_main(infer_args)
+result = infer_main(infer_args)
+torch.cuda.empty_cache()
+
+app_ui_main(infer_args)
+```
+
+
 ### 特性
 - 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), [longlora](https://arxiv.org/abs/2309.12307), [qalora](https://arxiv.org/abs/2309.14717), 全参数微调, 部分参数微调.
 - 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, DPO, 自我认知微调, ...
 - 支持的模型: [[详细信息]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B)
   - 多模态:
-    - qwen-vl 系列: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
-    - qwen-audio 系列: qwen-audio, qwen-audio-chat.
-    - yi-vl 系列: yi-vl-6b-chat, yi-vl-34b-chat.
-    - cogagent 系列: cogagent-18b-chat, cogagent-18b-instruct.
+    - [qwen-vl](https://github.com/QwenLM/Qwen-VL) 系列: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
+    - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) 系列: qwen-audio, qwen-audio-chat.
+    - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
+    - [cogagent](https://github.com/THUDM/CogVLM) 系列: cogagent-18b-chat, cogagent-18b-instruct.
   - 通用:
-    - qwen 系列: qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8, qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8, qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8, qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
-    - chatglm 系列: chatglm2-6b, chatglm2-6b-32k, chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
-    - llama 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat.
-    - yi 系列: yi-6b, yi-6b-200k, yi-6b-chat, yi-34b, yi-34b-200k, yi-34b-chat.
-    - internlm 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat, internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
-    - deepseek 系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
-    - openbuddy 系列: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat.
-    - mistral 系列: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
-    - mixtral 系列: mixtral-moe-7b, mixtral-moe-7b-instruct.
-    - baichuan 系列: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4.
-    - yuan 系列: yuan2-2b-instruct, yuan2-2b-janus-instruct, yuan2-51b-instruct, yuan2-102b-instruct.
-    - xverse 系列: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat, xverse-65b, xverse-65b-v2, xverse-65b-chat, xverse-13b-256k.
-    - orion 系列: orion-14b, orion-14b-chat.
-    - bluelm 系列: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k.
-    - zephyr 系列: zephyr-7b-beta-chat.
-    - ziya 系列: ziya2-13b, ziya2-13b-chat.
-    - skywork 系列: skywork-13b, skywork-13b-chat.
-    - other: polylm-13b, seqgpt-560m, sus-34b-chat.
+    - [qwen](https://github.com/QwenLM/Qwen) 系列: qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8, qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8, qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8, qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
+    - [chatglm](https://github.com/THUDM/ChatGLM-6B) 系列: chatglm2-6b, chatglm2-6b-32k, chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
+    - [llama](https://github.com/facebookresearch/llama) 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat.
+    - [yi](https://github.com/01-ai/Yi) 系列: yi-6b, yi-6b-200k, yi-6b-chat, yi-34b, yi-34b-200k, yi-34b-chat.
+    - [internlm](https://github.com/InternLM/InternLM) 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat, internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
+    - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) 系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
+    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) 系列: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat.
+    - [mistral](https://github.com/mistralai/mistral-src) 系列: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
+    - [mixtral](https://github.com/mistralai/mistral-src) 系列: mixtral-moe-7b, mixtral-moe-7b-instruct.
+    - [baichuan](https://github.com/baichuan-inc/Baichuan2) 系列: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4.
+    - [yuan](https://github.com/IEIT-Yuan/Yuan-2.0) 系列: yuan2-2b-instruct, yuan2-2b-janus-instruct, yuan2-51b-instruct, yuan2-102b-instruct.
+    - [xverse](https://github.com/xverse-ai/XVERSE-13B) 系列: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat, xverse-65b, xverse-65b-v2, xverse-65b-chat, xverse-13b-256k.
+    - [orion](https://github.com/OrionStarAI/OrionStar-Yi-34B-Chat) 系列: orion-14b, orion-14b-chat.
+    - [bluelm](https://github.com/vivo-ai-lab/BlueLM) 系列: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k.
+    - [zephyr](https://github.com/huggingface/alignment-handbook) 系列: zephyr-7b-beta-chat.
+    - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) 系列: ziya2-13b, ziya2-13b-chat.
+    - [skywork](https://github.com/SkyworkAI/Skywork) 系列: skywork-13b, skywork-13b-chat.
+    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat).
   - 金融:
-    - tongyi-finance 系列: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
+    - [tongyi-finance](https://github.com/QwenLM/Qwen) 系列: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
   - 代码:
-    - codefuse 系列: codefuse-codellama-34b-chat, codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
-    - deepseek-coder 系列: deepseek-coder-1_3b, deepseek-coder-1_3b-instruct, deepseek-coder-6_7b, deepseek-coder-6_7b-instruct, deepseek-coder-33b, deepseek-coder-33b-instruct.
-    - codegeex2 系列: codegeex2-6b.
-    - phi 系列: phi2-3b.
+    - [codefuse](https://github.com/codefuse-ai) 系列: codefuse-codellama-34b-chat, codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
+    - [deepseek-coder](https://github.com/deepseek-ai/DeepSeek-Coder) 系列: deepseek-coder-1_3b, deepseek-coder-1_3b-instruct, deepseek-coder-6_7b, deepseek-coder-6_7b-instruct, deepseek-coder-33b, deepseek-coder-33b-instruct.
+    - [codegeex2](https://github.com/THUDM/CodeGeeX2) 系列: codegeex2-6b.
+    - [phi](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/) 系列: phi2-3b.
 - 支持的数据集: [[详细信息]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
   - NLP:
     - 通用: 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tutu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4.
@@ -202,7 +241,7 @@ swift web-ui
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation.
-  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct.
+  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, yi-vl.
 
 
 ## 🔥SCEdit

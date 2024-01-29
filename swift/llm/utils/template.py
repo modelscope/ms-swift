@@ -253,20 +253,20 @@ class Template:
                     return_attention_mask=False,
                     add_special_tokens=False,
                     **curr_tokenizer_kwargs)['input_ids']
-                input_ids += token_list
-                if i in compute_loss_idx:
-                    labels += token_list
-                else:
-                    labels += [-100] * len(token_list)
             else:
+                token_list = []
                 for c in context:
                     if isinstance(c, str):
                         token = getattr(tokenizer, c)
                         assert token is not None
                     else:
                         token = c
-                    input_ids.append(token)
-                    labels.append(-100)
+                    token_list.append(token)
+            input_ids += token_list
+            if i in compute_loss_idx:
+                labels += token_list
+            else:
+                labels += [-100] * len(token_list)
         return input_ids, labels, tokenizer_kwargs
 
     def _encode(

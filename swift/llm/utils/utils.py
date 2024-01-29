@@ -168,6 +168,8 @@ class LLMDataset(Dataset):
         if isinstance(idx, int):
             data, _ = self.data[idx]
             return data
+        elif isinstance(idx, str):
+            return [d[0][idx] for d in self.data]
         else:
             raise ValueError(f'idx: {idx}')
 
