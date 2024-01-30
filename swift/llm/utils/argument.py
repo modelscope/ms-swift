@@ -324,6 +324,9 @@ class SftArguments:
             )
         if 'dataloader_pin_memory' in template_info:
             self.dataloader_pin_memory = template_info['dataloader_pin_memory']
+            logger.info(
+                f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}'
+            )
         if 'qwen-audio' in self.model_type:
             assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
         model_info = MODEL_MAPPING[self.model_type]
