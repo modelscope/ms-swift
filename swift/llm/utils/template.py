@@ -1,13 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 from copy import deepcopy
+from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
-import torch
-from torch import Tensor
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
-
 from swift.llm.agent.utils import calculate_loss_scale
+import requests
+import torch
+import torch.nn.functional as F
+from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
+from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -18,9 +19,11 @@ class TemplateType:
     default_generation = 'default-generation'
     default_generation_bos = 'default-generation-bos'
     chatglm_generation = 'chatglm-generation'
+    qwen_audio_generation = 'qwen-audio-generation'
     # chat
     default = 'default'
     qwen = 'qwen'
+    qwen_audio = 'qwen-audio'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -29,6 +32,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     yi = 'yi'
+    yi_vl = 'yi-vl'
     yuan = 'yuan'
     xverse = 'xverse'
     ziya = 'ziya'
@@ -39,7 +43,10 @@ class TemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
     codefuse_codellama = 'codefuse-codellama'
-    cogagent = 'cogagent'
+    codefuse = 'codefuse'
+    cogagent_chat = 'cogagent-chat'
+    cogagent_instruct = 'cogagent-instruct'
+    orion = 'orion'
     # compatibility. (Deprecated)
     chatml = 'chatml'
 
@@ -59,208 +66,13 @@ StopWords = Prompt
 Context = Union[str, List[int]]
 
 
-def _simplify_context_list(
-        context_list: List[Context],
-        compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
-    """This function is used to simplify content, to reduce the occurrence of spaces after tokenization"""
-    res: List[Context] = []
-    res_idx: List[float] = []
-    temp: List[str] = []
-    temp_index: List[int] = []
-    for i, (c, li) in enumerate(zip(context_list, compute_loss_idx)):
-        if isinstance(c, str) and compute_loss_idx[i] == 0.0:
-            temp.append(c)
-            temp_index.append(i)
-        else:
-            if len(temp) > 0:
-                res.append(''.join(temp))
-                res_idx.append(0.0)
-                temp.clear()
-            res.append(c)
-            res_idx.append(li)
-    if len(temp) > 0:
-        res.append(''.join(temp))
-        res_idx.append(0.0)
-    return res, res_idx
-
-
-def get_audio_info(
-        tokenizer: PreTrainedTokenizerBase,
-        *,
-        context: Optional[str] = None,
-        audio_info: Optional[Dict[str,
-                                  Any]] = None) -> Optional[Dict[str, Any]]:
-    assert context is not None or audio_info is not None
-    assert context is None or audio_info is None
-    if context is None:
-        input_audios = audio_info.get('input_audios')
-        if isinstance(input_audios, Tensor):
-            return audio_info
-        audio_urls = audio_info['audio_urls']
-        context = ''.join([f'<audio>{url}</audio>' for url in audio_urls])
-    return tokenizer.process_audio(context)
-
-
-def _concat_context_list(
-    context_list: List[Context],
-    res_context_list: List[Context],
-    compute_loss_idx: List[float],
-    system: Optional[str] = None,
-    query: Optional[str] = None,
-    response: Optional[str] = None,
-    round0: Optional[int] = None,
-) -> None:
-    # concat context list and replace placeholder
-    round1 = None
-    if round0 is not None:
-        round1 = str(round0 + 1)
-        round0 = str(round0)
-    for context in context_list:
-        if isinstance(context, str):
-            if '{{RESPONSE}}' == context:
-                assert response is not None
-                content_part, weight_part = calculate_loss_scale(response)
-                res_context_list.extend(content_part)
-                compute_loss_idx.extend(weight_part)
-                continue
-            old_str_list = [
-                '{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}'
-            ]
-            new_str_list = [system, query, round0, round1]
-            for (old_str, new_str) in zip(old_str_list, new_str_list):
-                if new_str is not None and old_str in context:
-                    context = context.replace(old_str, new_str)
-        res_context_list.append(context)
-        compute_loss_idx.append(0.0)
-
-
-def _encode_context_list(
-    tokenizer: PreTrainedTokenizerBase,
-    context_list: List[Context],
-    compute_loss_idx: Optional[List[float]] = None,
-    **args,
-) -> Tuple[List[int], Optional[List[int]], List[float], Dict[str, Any]]:
-    input_ids: List[int] = []
-    labels: List[int] = []
-    kwargs = {}
-    loss_scale: List[float] = []
-    for i, (context,
-            loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
-        if isinstance(context, list):
-            for c in context:
-                if isinstance(c, str):
-                    token = getattr(tokenizer, c)
-                    assert token is not None
-                else:
-                    token = c
-                input_ids.append(token)
-                labels.append(-100)
-                loss_scale.append(loss_weight)
-        elif isinstance(context, str):
-            if (getattr(tokenizer, 'model_type', '').startswith('qwen-audio')):
-                audio_info = get_audio_info(tokenizer, context=context)
-                old_audio_info = kwargs.get('audio_info')
-                if old_audio_info is None:
-                    kwargs['audio_info'] = audio_info
-                elif audio_info is not None:
-                    for k in ['input_audios', 'input_audio_lengths']:
-                        old_audio_info[k] = torch.concat(
-                            [old_audio_info[k], audio_info[k]], dim=0)
-                    for k in ['audio_span_tokens', 'audio_urls']:
-                        old_audio_info[k] = old_audio_info[k] + audio_info[k]
-
-            token_list = tokenizer(
-                context,
-                return_attention_mask=False,
-                add_special_tokens=False,
-                **kwargs)['input_ids']
-            input_ids += token_list
-            if compute_loss_idx[i] > 0.0:
-                labels += token_list
-            else:
-                labels += [-100] * len(token_list)
-            loss_scale.extend([loss_weight] * len(token_list))
-    if compute_loss_idx is None:
-        return input_ids, None, loss_scale, kwargs
-    else:
-        return input_ids, labels, loss_scale, kwargs
-
-
-def _encode(template: 'Template', query: str, response: Optional[str],
-            history: History, system: Optional[str], truncation_strategy: str,
-            support_loss_scale: bool) -> Dict[str, Optional[List[int]]]:
-    res_context_list: List[Context] = []
-    compute_loss_idx: List[int] = []
-    if system is None:
-        assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
-        prefix = template.prefix
-    else:
-        prefix = template.prefix_has_system
-    _concat_context_list(
-        prefix, res_context_list, compute_loss_idx, system=system)
-    for i, (q, r) in enumerate(history):
-        _concat_context_list(
-            [*template.prompt, '{{RESPONSE}}', *template.chat_sep],
-            res_context_list,
-            compute_loss_idx,
-            query=q,
-            response=r,
-            round0=i)
-    if query:
-        _concat_context_list(
-            template.prompt,
-            res_context_list,
-            compute_loss_idx,
-            query=query,
-            round0=len(history))
-    res_context_list, compute_loss_idx = _simplify_context_list(
-        res_context_list, compute_loss_idx)
-    input_ids, labels, loss_scale, kwargs = _encode_context_list(
-        template.tokenizer, res_context_list, compute_loss_idx)
-
-    if response is not None:
-        response_parts, loss_scales = calculate_loss_scale(response)
-        tgt_input_ids, _, response_scale, _ = _encode_context_list(
-            template.tokenizer, response_parts, loss_scales)
-        loss_scale.extend(response_scale)
-        suffix_tgt_input_ids, _, response_scale, _ = _encode_context_list(
-            template.tokenizer, template.suffix, [1.0])
-        tgt_input_ids += suffix_tgt_input_ids
-        loss_scale.extend(response_scale)
-        labels = labels + tgt_input_ids
-        input_ids += tgt_input_ids
-    else:
-        labels = None
-
-    if template.max_length is not None:
-        if truncation_strategy == 'delete' and len(
-                input_ids) > template.max_length:
-            return None
-        input_ids = input_ids[-template.max_length:]
-        if labels is not None:
-            labels = labels[-template.max_length:]
-    if support_loss_scale:
-        res = {
-            'input_ids': input_ids,
-            'labels': labels,
-            'loss_scale': loss_scale
-        }
-    else:
-        res = {'input_ids': input_ids, 'labels': labels}
-    # Compatible with qwen-audio
-    if 'audio_info' in kwargs:
-        res['audio_info'] = kwargs['audio_info']
-
-    return res
-
-
 class StopWordsCriteria(StoppingCriteria):
 
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
-                 stop_words: StopWords, **decode_kwargs) -> None:
+                 stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
-        self.decode_kwargs = decode_kwargs
+        self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
 
     def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
@@ -269,21 +81,14 @@ class StopWordsCriteria(StoppingCriteria):
         tokenizer = self.tokenizer
         stop_words = self.stop_words
         text = tokenizer.decode(input_ids[0, self.start_idx:],
-                                **self.decode_kwargs)
+                                **self.tokenizer_kwargs)
         for stop_word in stop_words:
             if isinstance(stop_word, str):
                 if stop_word in text:
                     return True
-            elif isinstance(stop_word, list) and len(stop_word) > 0:
-                res = []
-                for sw in stop_word:
-                    if isinstance(sw, str):
-                        token = getattr(tokenizer, sw)
-                        assert token is not None
-                    else:
-                        token = sw
-                    res.append(token)
-                if input_ids[0].tolist()[-len(res):] == res:
+            else:  # list
+                if len(stop_word) > 0 and input_ids[0].tolist(
+                )[-len(stop_word):] == stop_word:
                     return True
         return False
 
@@ -320,6 +125,24 @@ class Template:
         self.use_default_system = True
         self._is_init = False
 
+    @staticmethod
+    def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase,
+                           value: Optional[Prompt]) -> Optional[Prompt]:
+        # e.g. [['eos_token_id']] -> [[2]]
+        if value is None:
+            return None
+        res_value = []
+        for v in value:
+            if isinstance(v, list):
+                res_v = []
+                for sub_v in v:
+                    if isinstance(sub_v, str):
+                        sub_v = getattr(tokenizer, sub_v)
+                    res_v.append(sub_v)
+                v = res_v
+            res_value.append(v)
+        return res_value
+
     def _init_template(self,
                        tokenizer: PreTrainedTokenizerBase,
                        default_system: Optional[str] = None,
@@ -335,10 +158,16 @@ class Template:
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
+        self.model = kwargs.get('model', None)
+        for key in ['prefix', 'prompt', 'chat_sep', 'suffix']:
+            value = getattr(self, key)
+            value = self._preprocess_prompt(tokenizer, value)
+            setattr(self, key, value)
 
-    def encode(self,
-               example: Dict[str, Any],
-               support_loss_scale=False) -> Dict[str, Optional[List[int]]]:
+    def encode(
+            self, example: Dict[str,
+                                Any], support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.'
@@ -358,184 +187,219 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
-        return _encode(self, query, response, history, system,
-                       self.truncation_strategy, support_loss_scale)
+        inputs, tokenizer_kwargs = self._encode(query, response, history,
+                                                system,
+                                                self.truncation_strategy, support_loss_scale=support_loss_scale)
+        return inputs, tokenizer_kwargs
 
-
-class CogAgentTemplate(Template):
-    LANGUAGE_TOKEN_TYPE = 0
-    VISION_TOKEN_TYPE = 1
-
-    def _init_template(self,
-                       tokenizer: PreTrainedTokenizerBase,
-                       default_system: Optional[str] = None,
-                       max_length: Optional[int] = None,
-                       truncation_strategy: Literal[
-                           'delete', 'truncation_left'] = 'delete',
-                       **kwargs) -> None:
-        self.model = kwargs.pop('model')
-        self.suffix = [tokenizer.eos_token]
-        super()._init_template(tokenizer, default_system, max_length,
-                               truncation_strategy)
-
-    @staticmethod
-    def vqa_history_to_prompt(history, query):
-        # Only support single round chat in vqa mode
-        prompt = '<EOI>Question: '
-        # for i, (old_query, response) in enumerate(history):
-        #     prompt += old_query + " Short answer: " + response + " Question: "
-        prompt += query + ' Short answer:'
-        return prompt
-
-    @staticmethod
-    def chat_old_history_to_prompt(history, query):
-        prompt = '<EOI>Question: '
-        for i, (old_query, response) in enumerate(history):
-            prompt += old_query + ' Answer: ' + response + '\nQuestion: '
-        prompt += query + ' Answer:'
-        return prompt
-
-    @staticmethod
-    def chat_history_to_prompt(history, query):
-        prompt = ' [INST] '
-        for i, (old_query, response) in enumerate(history):
-            prompt += old_query + ' [/INST] ' + response + ' [INST] '
-        prompt += query + ' [/INST] '
-        return prompt
-
-    @staticmethod
-    def base_history_to_prompt(history, query):
-        prompt = query
-        return prompt
-
-    _history_to_prompt = {
-        'base': base_history_to_prompt,
-        'chat': chat_history_to_prompt,
-        'chat_old': chat_old_history_to_prompt,
-        'vqa': vqa_history_to_prompt
-    }
-
-    def build_conversation_input_ids(
+    def _concat_context_list(
         self,
-        tokenizer: 'PreTrainedTokenizer',
-        *,
-        query: str,
-        label: Optional[str] = None,
-        history: Optional[List[Tuple[str, str]]] = None,
-        images: Optional[List['PIL.Image']] = None,
-        template_version: Optional[Literal['base', 'chat', 'vqa']] = None,
-    ):
-        from torchvision import transforms
-        image_size: int = self.model.config.vision_config['image_size']
-        cross_image_size: int = self.model.config.cross_image_size
-        patch_size: int = self.model.config.vision_config['patch_size']
-        template_version = template_version or self.model.config.template_version
-        assert images is None or len(
-            images) <= 1, 'not support multi images by now.'
-        history = history or []
-        text = self._history_to_prompt[template_version](history, query)
+        context_list: List[Context],
+        res_context_list: List[Context],  # inplace
+        compute_loss_idx: List[float],  # inplace
+        system: Optional[str] = None,
+        query: Optional[str] = None,
+        response: Optional[str] = None,
+        round0: Optional[int] = None,
+    ) -> None:
+        # concat context list and replace placeholder
+        round1 = None
+        if round0 is not None:
+            round1 = str(round0 + 1)
+            round0 = str(round0)
+        for context in context_list:
+            if isinstance(context, str):
+                if '{{RESPONSE}}' == context:
+                    assert response is not None
+                    content_part, weight_part = calculate_loss_scale(response)
+                    res_context_list.extend(content_part)
+                    compute_loss_idx.extend(weight_part)
+                    continue
+                old_str_list = [
+                    '{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}'
+                ]
+                new_str_list = [system, query, round0, round1]
+                for (old_str, new_str) in zip(old_str_list, new_str_list):
+                    if new_str is not None and old_str in context:
+                        context = context.replace(old_str, new_str)
+            res_context_list.append(context)
+            compute_loss_idx.append(0.0 if context != self.suffix else 1.0)
 
-        input_ids = [tokenizer.bos_token_id]
-        token_type_ids = [self.LANGUAGE_TOKEN_TYPE]
-        if images is not None and len(images) == 1:
-            ori = images
-            # vision
-            transform = transforms.Compose([
-                transforms.Resize(
-                    (image_size, image_size),
-                    interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.ToTensor(),
-                transforms.Normalize((0.48145466, 0.4578275, 0.40821073),
-                                     (0.26862954, 0.26130258, 0.27577711)),
-            ])
-            images = [transform(ori[0])]
-            cross_transform = transforms.Compose([
-                transforms.Resize(
-                    (cross_image_size, cross_image_size),
-                    interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.ToTensor(),
-                transforms.Normalize((0.48145466, 0.4578275, 0.40821073),
-                                     (0.26862954, 0.26130258, 0.27577711)),
-            ])
-            cross_images = [cross_transform(ori[0])]
-            # language
-            vision_token_num = (image_size // patch_size) * (image_size
-                                                             // patch_size) + 2
-            input_ids += [tokenizer.pad_token_id] * vision_token_num
-            token_type_ids += [self.VISION_TOKEN_TYPE] * vision_token_num
-        text_ids = tokenizer.encode(text, add_special_tokens=False)
-        train = label is not None
-        label_ids = tokenizer.encode(
-            label, add_special_tokens=False) if train else []
-        if len(text_ids) + len(input_ids) + len(
-                label_ids) > self.max_length - 1:
-            if self.truncation_strategy == 'delete' or (
-                    len(input_ids) + len(label_ids) >= self.max_length - 1):
-                return None
+    @staticmethod
+    def _simplify_context_list(
+            context_list: List[Context],
+            compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
+        res: List[Context] = []  # result of context_list
+        res_idx: List[float] = []  # result of compute_loss_idx
+        temp: List[str] = []
+        temp_index: List[int] = []
+        for i, (context, loss_idx) in enumerate(zip(context_list, compute_loss_idx)):
+            if isinstance(context, str) and compute_loss_idx[i] == 0.0:
+                temp.append(context)
+                temp_index.append(i)
             else:
-                text_ids = text_ids[-(self.max_length - len(input_ids)
-                                      - len(label_ids) - 1):]
+                if len(temp) > 0:
+                    res.append(''.join(temp))
+                    res_idx.append(0.0)
+                    temp.clear()
+                res.append(context)
+                res_idx.append(loss_idx)
+        if len(temp) > 0:
+            res.append(''.join(temp))
+            res_idx.append(0.0)
+        return res, res_idx
 
-        input_ids += text_ids
-        if train:
-            labels = [-100] * len(input_ids) + label_ids + [
-                tokenizer.eos_token_id
-            ]
-            input_ids += label_ids + [tokenizer.eos_token_id]
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * (
-                len(text_ids) + len(label_ids) + 1)
+    def _encode_context_list(
+        self,
+        context_list: List[Context],
+        compute_loss_idx: List[float],
+    ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+        """return: input_ids, labels, tokenizer_kwargs"""
+        tokenizer = self.tokenizer
+        input_ids: List[int] = []
+        labels: List[int] = []
+        loss_scale: List[float] = []
+        tokenizer_kwargs = {}
+        for i, (context,
+                loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
+            if isinstance(context, str):
+                curr_tokenizer_kwargs = self.get_tokenizer_kwargs(context)
+                self.concat_tokenizer_kwargs(tokenizer_kwargs,
+                                             curr_tokenizer_kwargs)
+                token_list = tokenizer(
+                    context,
+                    return_attention_mask=False,
+                    add_special_tokens=False,
+                    **curr_tokenizer_kwargs)['input_ids']
+            else:
+                token_list = context
+            input_ids += token_list
+            if compute_loss_idx[i] > 0.0:
+                labels += token_list
+            else:
+                labels += [-100] * len(token_list)
+            loss_scale.extend([loss_weight] * len(token_list))
+        return input_ids, labels, loss_scale, tokenizer_kwargs
+
+    def _encode(
+            self, query: str, response: Optional[str], history: History,
+            system: Optional[str],
+            truncation_strategy: str, support_loss_scale: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """
+        return: inputs, tokenizer_kwargs
+        """
+        history = history.copy()
+        res_context_list: List[Context] = []
+        compute_loss_idx: List[float] = []
+        if system is None:
+            assert self.prefix != self.prefix_has_system, f'template.prefix: {self.prefix}'
+            prefix = self.prefix
         else:
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * len(text_ids)
-        attention_mask = [1] * len(input_ids)
+            prefix = self.prefix_has_system
+        self._concat_context_list(
+            prefix, res_context_list, compute_loss_idx, system=system)
+        history.append([query, response])
+        for i, (q, r) in enumerate(history):
+            context_list = self.prompt.copy()
+            if i < len(history) - 1:
+                context_list.append('{{RESPONSE}}')
+                context_list += self.chat_sep
+            elif r is not None:
+                # last response
+                context_list.append('{{RESPONSE}}')
+                context_list += self.suffix
+            if q is not None:
+                self._concat_context_list(
+                    context_list,
+                    res_context_list,
+                    compute_loss_idx,
+                    query=q,
+                    response=r,
+                    round0=i)
 
-        if len(input_ids) < self.max_length and train:
-            padding_len = self.max_length - len(input_ids)
-            input_ids += [tokenizer.pad_token_id] * padding_len
-            token_type_ids += [self.LANGUAGE_TOKEN_TYPE] * padding_len
-            attention_mask += [0] * padding_len
-            if label_ids:
-                labels += [-100] * padding_len
+        res_context_list, compute_loss_idx = self._simplify_context_list(
+            res_context_list, compute_loss_idx)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
+            res_context_list, compute_loss_idx)
 
-        if train:
-            return {
-                'input_ids': torch.tensor(input_ids, dtype=torch.long),
-                'token_type_ids':
-                torch.tensor(token_type_ids, dtype=torch.long),
-                'attention_mask':
-                torch.tensor(attention_mask, dtype=torch.long),
-                'images': images,
-                'cross_images': cross_images,
-                'labels': labels,
-            }
-        else:
-            return {
-                'input_ids':
-                torch.tensor(input_ids, dtype=torch.long),
-                'token_type_ids':
-                torch.tensor(token_type_ids, dtype=torch.long).unsqueeze(0),
-                'attention_mask':
-                torch.tensor(attention_mask, dtype=torch.long).unsqueeze(0),
-                'images': [images],
-                'cross_images': [cross_images],
-            }
+        if response is None:
+            labels = None
 
-    def encode(self,
-               example: Dict[str, Any],
-               support_loss_scale=False) -> Dict[str, Optional[List[int]]]:
-        if 'image' in example and isinstance(example['image'], str):
-            from PIL import Image
-            import requests
-            if not os.path.exists(example['image']):
-                example['image'] = requests.get(
-                    example['image'], stream=True).raw
-            example['image'] = Image.open(example['image'])
-        return self.build_conversation_input_ids(
-            self.tokenizer,
-            query=example['query'],
-            label=example.get('response'),
-            history=example.get('history'),
-            images=[example['image'].convert('RGB')])
+        if self.max_length is not None:
+            if truncation_strategy == 'delete' and len(
+                    input_ids) > self.max_length:
+                return {}, {}
+            input_ids = input_ids[-self.max_length:]
+            if labels is not None:
+                labels = labels[-self.max_length:]
+            if loss_scale is not None:
+                loss_scale = loss_scale[-self.max_length:]
+        inputs = {'input_ids': input_ids, 'labels': labels}
+        if support_loss_scale:
+            inputs['loss_scale'] = loss_scale
+        return inputs, tokenizer_kwargs
 
+    def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+        """return: curr_tokenizer_kwargs"""
+        return {}
+
+    def concat_tokenizer_kwargs(
+            self, old_tokenizer_kwargs: Dict[str, Any],
+            curr_tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        assert len(old_tokenizer_kwargs) == 0
+        return curr_tokenizer_kwargs
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Args:
+            batch(`List[Dict[str, Any]]`): The input data in batch
+            padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+                will be padded to the `longest`
+        """
+        tokenizer = self.tokenizer
+        assert tokenizer.pad_token_id is not None
+        input_ids = [torch.tensor(b['input_ids']) for b in batch]
+        labels = [torch.tensor(b['labels']) for b in batch]
+        loss_scale = [torch.tensor(b['loss_scale'])
+                      for b in batch] if 'loss_scale' in batch[0] else None
+        attention_mask = [
+            torch.ones(len(input_ids[i]), dtype=torch.int64)
+            for i in range(len(input_ids))
+        ]
+
+        if padding_to is not None:
+            padding_len = padding_to - input_ids[0].shape[-1]
+            if padding_len > 0:
+                input_ids[0] = F.pad(input_ids[0], (0, padding_len),
+                                     'constant', tokenizer.pad_token_id)
+                attention_mask[0] = F.pad(attention_mask[0], (0, padding_len),
+                                          'constant', 0)
+                labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
+                                  -100)
+                if loss_scale:
+                    loss_scale[0] = F.pad(loss_scale[0],
+                                          (0, padding_to - labels[0].shape[-1]),
+                                          'constant', 0.)
+
+        input_ids = pad_sequence(
+            input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        attention_mask = pad_sequence(
+            attention_mask, batch_first=True, padding_value=0)
+        if loss_scale:
+            loss_scale = pad_sequence(
+                loss_scale, batch_first=True, padding_value=0.)
+        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+
+        res = {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels,
+        }
+        if loss_scale:
+            res['loss_scale'] = loss_scale
+        return res
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -558,19 +422,83 @@ register_template(
     Template([], ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'],
              ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n']))
 
+
 # You can set the query as '' to serve as a template for pre-training.
-register_template(TemplateType.default_generation,
-                  Template([], ['{{QUERY}}'], None, [['eos_token_id']]))
+class DefaultGenerationTemplate(Template):
+
+    def __init__(self):
+        return super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
+
+
+register_template(TemplateType.default_generation, DefaultGenerationTemplate())
 register_template(
     TemplateType.default_generation_bos,
     Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]))
 
-qwen_template = Template(
-    [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-    ['<|im_end|>\n'], ['<|im_end|>'], DEFAULT_SYSTEM,
-    ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
-register_template(TemplateType.qwen, qwen_template)
-register_template(TemplateType.chatml, deepcopy(qwen_template))
+
+class QwenTemplate(Template):
+
+    def __init__(self):
+        super().__init__(
+            [],
+            ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+            ['<|im_end|>\n'], ['<|im_end|>'], DEFAULT_SYSTEM,
+            ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+
+
+register_template(TemplateType.qwen, QwenTemplate())
+register_template(TemplateType.chatml, QwenTemplate())
+
+
+class _QwenAudioTemplateMixin:
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inpus, tokenizer_kwargs = super().encode(example)
+        inpus.update(tokenizer_kwargs)
+        return inpus, tokenizer_kwargs
+
+    def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+        return {'audio_info': self.tokenizer.process_audio(context)}
+
+    def concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any],
+                                curr_tokenizer_kwargs: Dict[str, Any]) -> None:
+        audio_info = curr_tokenizer_kwargs.get('audio_info')
+        old_audio_info = tokenizer_kwargs.get('audio_info')
+        if old_audio_info is None:
+            tokenizer_kwargs['audio_info'] = audio_info
+        elif audio_info is not None:
+            for k in ['input_audios', 'input_audio_lengths']:
+                old_audio_info[k] = torch.concat(
+                    [old_audio_info[k], audio_info[k]], dim=0)
+            for k in ['audio_span_tokens', 'audio_urls']:
+                old_audio_info[k] = old_audio_info[k] + audio_info[k]
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        if batch[0].get('audio_info') is not None:
+            res['audio_info'] = [b['audio_info'] for b in batch]
+        return res
+
+
+class QwenAudioTemplate(_QwenAudioTemplateMixin, QwenTemplate):
+    pass
+
+
+class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin,
+                                  DefaultGenerationTemplate):
+    pass
+
+
+register_template(
+    TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
+register_template(
+    TemplateType.qwen_audio_generation,
+    QwenAudioGenerationTemplate(),
+    lazy_tokenize=True)
 
 register_template(
     TemplateType.yi,
@@ -578,6 +506,75 @@ register_template(
         [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         ['<|im_end|>\n'], ['<|im_end|>'], None,
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+yi_vl_default_system = (
+    'This is a chat between an inquisitive human and an AI assistant. Assume the role of the AI assistant. '
+    "Read all the images carefully, and respond to the human's questions with informative, "
+    'helpful, detailed and polite answers. '
+    '这是一个好奇的人类和一个人工智能助手之间的对话。假设你扮演这个AI助手的角色。'
+    '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
+
+
+def _read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
+    from PIL import Image
+    if isinstance(img_path, str):
+        img_path = img_path.strip()
+        if img_path.startswith('http'):
+            content = requests.get(img_path).content
+            image = Image.open(BytesIO(content))
+        else:
+            image = Image.open(img_path)
+    else:
+        image = img_path
+    if image.mode in {'L', 'RGBA'}:
+        image = image.convert('RGB')
+    return image
+
+
+class YiVLTemplate(Template):
+
+    def encode(
+            self, example: Dict[str,
+                                Any], support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        from llava.mm_utils import expand2square
+        model = self.model
+        model = self.model.model
+        if not hasattr(model, 'vision_tower'):
+            model = model.model
+        image_processor = model.vision_tower.image_processor
+        images_path = example['images']
+        if not isinstance(images_path, (list, tuple)):
+            images_path = [images_path]
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            background_color = tuple(
+                int(x * 255) for x in image_processor.image_mean)
+            image = expand2square(image, background_color)
+            images.append(image)
+        image_tensor = image_processor.preprocess(
+            images, return_tensors='pt')['pixel_values']
+        inputs['images'] = image_tensor.to(model.dtype)
+        return inputs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        if batch[0].get('images') is not None:
+            res['images'] = torch.concat([b['images'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.yi_vl,
+    YiVLTemplate(['{{SYSTEM}}\n\n'],
+                 ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:\n'],
+                 ['\n'], ['\n###'], yi_vl_default_system),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
 
 register_template(
     TemplateType.baichuan,
@@ -648,18 +645,17 @@ INTERNLM_SYSTEM = (
     '- InternLM (书生·浦语) can understand and communicate fluently in the language chosen '
     'by the user such as English and 中文.')
 
-# '<s><s>': internlm template official implementation
 register_template(
     TemplateType.internlm,
-    Template(['<s><s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'],
-             ['<eoa>'], INTERNLM_SYSTEM, ['<s><s><|System|>:{{SYSTEM}}\n']))
+    Template(['<s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'], ['<eoa>'],
+             INTERNLM_SYSTEM, ['<s><|System|>:{{SYSTEM}}\n']))
 register_template(
     TemplateType.internlm2,
-    Template(['<s><s>'], [
-        '[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n'
-    ], ['[UNUSED_TOKEN_145]\n'], ['[UNUSED_TOKEN_145]'], INTERNLM_SYSTEM, [
-        '<s><s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'
-    ]))
+    Template(
+        ['<s>'],
+        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>'], INTERNLM_SYSTEM,
+        ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 register_template(
     TemplateType.xverse,
     Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
@@ -688,6 +684,11 @@ register_template(
     ], [], [['eos_token_id']], ''))
 
 register_template(
+    TemplateType.codefuse,
+    Template([], ['<s>human\n{{QUERY}}\n<s>bot\n'], [['eos_token_id'], '\n'],
+             [['eos_token_id']], None, ['<s>system\n{{SYSTEM}}\n']))
+
+register_template(
     TemplateType.deepseek_coder,
     Template([
         '{{SYSTEM}}'
@@ -709,8 +710,72 @@ register_template(
     Template(['{{SYSTEM}}'], ['### Human: {{QUERY}}\n\n### Assistant: '],
              ['<|endoftext|>'], ['<|endoftext|>'], ''))
 
-register_template(TemplateType.cogagent,
-                  CogAgentTemplate([], [], [], [], None, []))
+register_template(
+    TemplateType.orion,
+    Template(['<s>{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: </s>'],
+             ['</s>'], ['</s>'], ''))
+
+
+class CogAgentTemplate(Template):
+
+    def encode(
+            self, example: Dict[str,
+                                Any], support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        images_path = example.get('images')
+        assert len(images_path) == 1
+        image = _read_from_path(images_path[0])
+        inputs, _ = super().encode(example)
+        model = self.model
+        inputs2 = model.build_conversation_input_ids(
+            self.tokenizer,
+            query=example['query'],
+            history=example.get('history'),
+            images=[image])
+        image_token_len = inputs2['token_type_ids'].sum()
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        token_type_ids = inputs2['token_type_ids'].tolist()
+        inputs['input_ids'] = input_ids[:1] + [
+            0
+        ] * image_token_len + input_ids[1:]
+        if labels is not None:
+            inputs['labels'] = labels[:1] + [-100
+                                             ] * image_token_len + labels[1:]
+        dtype = model.dtype
+        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        inputs['cross_images'] = [[cross_img.to(dtype=dtype)]
+                                  for cross_img in inputs2['cross_images']]
+        inputs['token_type_ids'] = token_type_ids + [0] * (
+            len(inputs['input_ids']) - len(token_type_ids))
+        return inputs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        for key in ['images', 'cross_images']:
+            res[key] = [b[key][0] for b in batch]
+        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
+        token_type_ids = pad_sequence(
+            token_type_ids, batch_first=True, padding_value=0)
+        res['token_type_ids'] = token_type_ids
+        return res
+
+
+register_template(
+    TemplateType.cogagent_chat,
+    CogAgentTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
+    use_model=True,
+    infer_media_type='dialogue',
+    lazy_tokenize=True)
+
+register_template(
+    TemplateType.cogagent_instruct,
+    CogAgentTemplate(['<s>'], ['<EOI>Question: {{QUERY}} Answer:'], None,
+                     ['</s>']),
+    use_model=True,
+    infer_media_type='dialogue',
+    lazy_tokenize=True)
 
 
 def get_template(

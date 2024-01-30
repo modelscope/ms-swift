@@ -30,7 +30,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     for k in dataset.features.keys():
         if k in {
                 'query', 'response', 'rejected_response', 'system', 'history',
-                'image'
+                'images'
         }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
@@ -106,17 +106,19 @@ class DatasetName:
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
 
     # multi-modal
-    # vision
+    # for qwen-vl
     coco_en = 'coco-en'
     coco_mini_en = 'coco-mini-en'
+    # for yi-vl, cogagnet
+    coco_mini_en_2 = 'coco-mini-en-2'
     capcha_images = 'capcha-images'
-    # audio
+    # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
 
-    stack_exchange_paired = 'stack-exchange-paired'
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
+    stack_exchange_paired = 'stack-exchange-paired'
 
     # A dataset used for mixed training
     ms_bench = 'ms-bench'
@@ -307,7 +309,7 @@ register_dataset(
 
 
 def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
-    prompt = 'please describe the image'
+    prompt = 'please describe the image.'
     image_key = 'image'
     response_key = 'caption'
 
@@ -337,6 +339,39 @@ register_dataset(
     'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
     [('coco_2014_caption', 'validation')],
     _preprocess_vision_dataset,
+    get_dataset_from_repo,
+    function_kwargs={
+        'train_dataset_sample': 20000,
+        'val_dataset_sample': 200
+    },
+    tags=['chat', 'multi-modal', 'vision', '🔥'])
+
+
+def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
+    query = 'please describe the image.'
+    image_key = 'image'
+    response_key = 'caption'
+
+    dataset._info.features._column_requires_decoding['image'] = False
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        images.append([d[image_key]['path']])
+        if '&&' in d[response_key]:
+            d[response_key] = d[response_key].split('&&')[0]
+        response.append(d[response_key])
+    return HfDataset.from_dict({
+        'query': [query] * len(response),
+        'response': response,
+        'images': images
+    })
+
+
+register_dataset(
+    DatasetName.coco_mini_en_2,
+    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
+    [('coco_2014_caption', 'validation')],
+    _preprocess_vision_dataset2,
     get_dataset_from_repo,
     function_kwargs={
         'train_dataset_sample': 20000,
@@ -670,15 +705,21 @@ register_dataset(
 
 
 def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
-    dataset = dataset.rename_columns({
-        'solution': 'response',
+    query = 'recognize the content.'
+    image_key = 'image'
+    response_key = 'solution'
+
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        images.append(d[image_key])
+        response.append(d[response_key])
+    dataset = HfDataset.from_dict({
+        'query': [query] * len(response),
+        'response': response,
+        'images': images
     })
-
-    def add_system(row):
-        row['query'] = 'CAPTCHA:'
-        return row
-
-    dataset = dataset.map(add_system)
+    dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
 
@@ -1008,10 +1049,6 @@ def _check_dataset(
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
-    if check_dataset_strategy == 'error':
-        assert len(
-            set(dataset.features.keys())
-            - set(['query', 'response', 'system', 'history'])) == 0
     has_query = 'query' in dataset.features
     has_history = 'history' in dataset.features
     has_system = 'system' in dataset.features

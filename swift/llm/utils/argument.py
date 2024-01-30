@@ -15,9 +15,8 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master)
-from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
-                      register_dataset)
+                         get_dist_setting, is_dist, is_master, is_mp)
+from .dataset import DATASET_MAPPING, get_custom_dataset, get_dataset, register_dataset
 from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
@@ -173,7 +172,7 @@ class SftArguments:
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
     disable_tqdm: bool = False
-    lazy_tokenize: bool = False
+    lazy_tokenize: Optional[bool] = None
     preprocess_num_proc: int = 1
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
@@ -206,11 +205,22 @@ class SftArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
+        if self.deepspeed_config_path == 'default-zero2':
+            self.deepspeed_config_path = os.path.abspath(
+                os.path.join(__file__, '..', '..', 'ds_config', 'zero2.json'))
         handle_path(self)
         set_model_type(self)
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
+        if isinstance(self.lora_target_modules, str):
+            self.lora_target_modules = [self.lora_target_modules]
+        if len(self.lora_target_modules) == 1:
+            if ',' in self.lora_target_modules[0]:
+                self.lora_target_modules = self.lora_target_modules[0].split(
+                    ',')
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
@@ -280,7 +290,7 @@ class SftArguments:
                     self.additional_trainable_parameters
                 ]
             if self.learning_rate is None:
-                self.learning_rate = 2e-5
+                self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
         else:
@@ -289,8 +299,6 @@ class SftArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
         if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
                                        and len(
                                            self.custom_val_dataset_path) == 0
@@ -301,8 +309,6 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if isinstance(self.lora_target_modules, str):
-            self.lora_target_modules = [self.lora_target_modules]
         if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
             self.lora_target_modules = get_default_lora_target_modules(
@@ -324,6 +330,7 @@ class SftArguments:
 
         self.deepspeed = None
         if self.deepspeed_config_path is not None:
+            assert not is_mp(), 'DeepSpeed is not compatible with MP.'
             require_version('deepspeed')
             with open(self.deepspeed_config_path, 'r', encoding='utf-8') as f:
                 self.deepspeed = json.load(f)
@@ -333,17 +340,11 @@ class SftArguments:
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
-        if self.preprocess_num_proc > 1 and 'qwen-audio' in self.model_type:
-            logger.warning(
-                'qwen-audio does not support multi-process preprocess, '
-                'because qwen-audio\'s preprocessing functions use torch\'s multi-processing, '
-                'which causes compatibility issues. '
-                'You can use `--lazy_tokenize true` to avoid long preprocessing times.'
-            )
-            self.preprocess_num_proc = 1
-            logger.info(
-                f'Setting self.preprocess_num_proc: {self.preprocess_num_proc}'
-            )
+        if self.lazy_tokenize is None:
+            template_info = TEMPLATE_MAPPING[self.template_type]
+            self.lazy_tokenize = template_info.get('lazy_tokenize', False)
+        if 'qwen-audio' in self.model_type:
+            assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
         model_info = MODEL_MAPPING[self.model_type]
         support_gradient_checkpointing = model_info.get(
             'support_gradient_checkpointing', True)
@@ -484,13 +485,12 @@ class InferArguments:
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
         if self.infer_backend == 'AUTO':
+            self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
                 if (self.sft_type == 'full'
                         or self.sft_type == 'lora' and self.merge_lora_and_save
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
-                else:
-                    self.infer_backend = 'pt'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             assert support_vllm, f'vllm not support `{self.model_type}`'
@@ -501,6 +501,8 @@ class InferArguments:
         if self.num_beams != 1:
             self.stream = False
             logger.info('Setting self.stream: False')
+        template_info = TEMPLATE_MAPPING[self.template_type]
+        self.infer_media_type = template_info.get('infer_media_type', 'none')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -817,6 +819,12 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
+    sft_model_cache_dir = sft_args.get('model_cache_dir')
+    if args.model_cache_dir is None and sft_model_cache_dir is not None:
+        logger.warning(
+            f'The model_cache_dir for the sft stage is detected as `{sft_model_cache_dir}`, '
+            'but the model_cache_dir for the infer stage is `None`. '
+            'Please check if this item has been omitted.')
 
 
 def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:

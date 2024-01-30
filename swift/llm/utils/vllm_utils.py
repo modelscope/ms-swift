@@ -146,11 +146,18 @@ class VllmGenerationConfig(SamplingParams):
                     f'The VLLM version is too old and does not support the parameter: {k}.'
                 )
                 kwargs.pop(k)
+        self._temperature = temperature
         super().__init__(**kwargs)
 
     def __setattr__(self, key: str, value: str) -> None:
         if key == 'max_new_tokens':
             self.max_tokens = value
+        elif key == 'do_sample':
+            assert value in {True, False}
+            if value:
+                self.temperature = self._temperature
+            else:
+                self.temperature = 0.
         elif key == 'max_length':
             raise ValueError(
                 '`max_length` is not supported, please use `max_new_tokens` for setting.'
@@ -188,7 +195,7 @@ def inference_stream_vllm(
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -253,7 +260,7 @@ def inference_vllm(llm_engine: LLMEngine,
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:

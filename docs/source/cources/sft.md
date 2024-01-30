@@ -153,6 +153,7 @@ torch.cuda.empty_cache()
 
 infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
+    load_dataset_config=True,
     show_dataset_sample=10)
 # merge_lora_main(infer_args)
 result = infer_main(infer_args)
