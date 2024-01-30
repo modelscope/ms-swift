@@ -105,15 +105,24 @@ def prepare_loss_scale(model):
 
     if model.__class__.__name__ == 'ChatGLMForConditionalGeneration':
         from .models import ChatGLM3Forward
-        model.forward = MethodType(ChatGLM3Forward, model)
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(ChatGLM3Forward, model)
+        else:
+            model.forward = MethodType(ChatGLM3Forward, model)
         model.support_loss_scale = True
     elif model.__class__.__name__ == 'InternLM2ForCausalLM':
         from .models import InternLMForward
-        model.forward = MethodType(InternLMForward, model)
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(InternLMForward, model)
+        else:
+            model.forward = MethodType(InternLMForward, model)
         model.support_loss_scale = True
     elif model.__class__.__name__ == 'QWenLMHeadModel':
         from .models import QwenForward
-        model.forward = MethodType(QwenForward, model)
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(QwenForward, model)
+        else:
+            model.forward = MethodType(QwenForward, model)
         model.support_loss_scale = True
     else:
         model.support_loss_scale = False
