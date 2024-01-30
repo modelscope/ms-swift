@@ -86,16 +86,8 @@ class StopWordsCriteria(StoppingCriteria):
             if isinstance(stop_word, str):
                 if stop_word in text:
                     return True
-            elif isinstance(stop_word, list) and len(stop_word) > 0:
-                res = []
-                for sw in stop_word:
-                    if isinstance(sw, str):
-                        token = getattr(tokenizer, sw)
-                        assert token is not None
-                    else:
-                        token = sw
-                    res.append(token)
-                if input_ids[0].tolist()[-len(res):] == res:
+            else:
+                if input_ids[0].tolist()[-len(stop_word):] == stop_word:
                     return True
         return False
 
@@ -148,6 +140,22 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
+        # e.g. [['eos_token_id']] -> [[2]]
+        for key in ['prefix', 'prompt', 'chat_sep', 'suffix']:
+            value = getattr(self, key)
+            if value is None:
+                continue
+            res_value = []
+            for v in value:
+                if isinstance(v, list):
+                    res_v = []
+                    for sub_v in v:
+                        if isinstance(sub_v, str):
+                            sub_v = getattr(tokenizer, sub_v)
+                        res_v.append(sub_v)
+                    v = res_v
+                res_value.append(v)
+            setattr(self, key, res_value)
 
     def encode(
             self, example: Dict[str,
@@ -253,15 +261,6 @@ class Template:
                     return_attention_mask=False,
                     add_special_tokens=False,
                     **curr_tokenizer_kwargs)['input_ids']
-            else:
-                token_list = []
-                for c in context:
-                    if isinstance(c, str):
-                        token = getattr(tokenizer, c)
-                        assert token is not None
-                    else:
-                        token = c
-                    token_list.append(token)
             input_ids += token_list
             if i in compute_loss_idx:
                 labels += token_list

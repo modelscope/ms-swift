@@ -164,7 +164,7 @@ from swift.llm import (
     infer_main, sft_main, app_ui_main, merge_lora_main
 )
 
-model_type = ModelType.qwen_1_8b_chat
+model_type = ModelType.qwen_1_8b
 sft_args = SftArguments(
     model_type=model_type,
     train_dataset_sample=2000,
@@ -178,7 +178,7 @@ torch.cuda.empty_cache()
 infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_dataset_config=True,
-    show_dataset_sample=10)
+    val_dataset_sample=10)
 # merge_lora_main(infer_args)
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
