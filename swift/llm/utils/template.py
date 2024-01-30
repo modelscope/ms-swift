@@ -86,8 +86,9 @@ class StopWordsCriteria(StoppingCriteria):
             if isinstance(stop_word, str):
                 if stop_word in text:
                     return True
-            else:
-                if input_ids[0].tolist()[-len(stop_word):] == stop_word:
+            else:  # list
+                if len(stop_word) > 0 and input_ids[0].tolist(
+                )[-len(stop_word):] == stop_word:
                     return True
         return False
 
