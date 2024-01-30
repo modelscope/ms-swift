@@ -571,7 +571,7 @@ def inference(model: PreTrainedModel,
     if tokenizer.pad_token_id is not None:
         generation_config.pad_token_id = tokenizer.pad_token_id
     if tokenizer.bos_token_id is not None:
-        stream_config.bos_token_id = tokenizer.bos_token_id
+        generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     if template.suffix[-1] not in stop_words:

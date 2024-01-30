@@ -251,7 +251,9 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main(
             InferArguments(
-                ckpt_dir=best_model_checkpoint, load_dataset_config=True))
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
 
     def test_yi_vl_6b_chat(self):
         if not __name__ == '__main__':
@@ -272,7 +274,9 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main(
             InferArguments(
-                ckpt_dir=best_model_checkpoint, load_dataset_config=True))
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
 
     def test_dpo(self):
         if not __name__ == '__main__':
@@ -288,7 +292,9 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main(
             InferArguments(
-                ckpt_dir=best_model_checkpoint, load_dataset_config=True))
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],

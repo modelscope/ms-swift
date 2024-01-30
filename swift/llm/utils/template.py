@@ -261,6 +261,8 @@ class Template:
                     return_attention_mask=False,
                     add_special_tokens=False,
                     **curr_tokenizer_kwargs)['input_ids']
+            else:
+                token_list = context
             input_ids += token_list
             if i in compute_loss_idx:
                 labels += token_list
