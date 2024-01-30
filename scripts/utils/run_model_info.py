@@ -56,7 +56,14 @@ def get_model_info_readme_zh(data: List[str]) -> None:
     model_list = []
     for match in match_list:
         model_list += match[2].strip('.').split(',')
-    model_list = [model.strip() for model in model_list]
+    model_list_2 = []
+    for model in model_list:
+        model = model.strip()
+        model_match = re.search(r'\[(.+)\]\(.+\)', model)
+        if model_match is not None:
+            model = model_match.group(1)
+        model_list_2.append(model)
+    model_list = model_list_2
     model_type_list = [d[0] for d in data]
     print(set(model_type_list) - set(model_list))
     print(set(model_list) - set(model_type_list))
