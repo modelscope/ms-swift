@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import shutil
-from typing import Optional
 
 import torch
 from diffusers import DDIMScheduler, MotionAdapter
@@ -10,7 +8,6 @@ from diffusers.utils import export_to_gif
 
 from swift import Swift, snapshot_download
 from swift.aigc.utils import AnimateDiffInferArguments
-from swift.llm import merge_lora
 from swift.utils import get_logger, get_main
 
 logger = get_logger()
