@@ -179,8 +179,6 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
-        if query is None:
-            query = ''
         if history is None:
             history = []
         if len(history) > 0:

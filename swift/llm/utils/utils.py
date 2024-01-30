@@ -415,19 +415,7 @@ def inference_stream(model: PreTrainedModel,
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         act_length = len(history[-1][-1])
-        example = {
-            'query': None,
-            'history': history,
-            'system': system,
-            'images': kwargs.pop('images', None)
-        }  # for vl
-    else:
-        example = {
-            'query': query,
-            'history': history,
-            'system': system,
-            'images': kwargs.pop('images', None)
-        }
+        query = None
 
     example = {
         'query': query,
@@ -559,6 +547,14 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+
+    is_observation = history[-1][-1].endswith(
+        'Observation:') if history else False
+    if is_observation:
+        history[-1][-1] = history[-1][-1] + query
+        act_length = len(history[-1][-1])
+        query = None
+
     example = {
         'query': query,
         'history': history,
@@ -626,6 +622,10 @@ def inference(model: PreTrainedModel,
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
     history.append((query, response))
+    if not is_observation:
+        history.append((query, response))
+    else:
+        history[-1][-1] = history[-1][-1][:act_length] + response
     return response, history
 
 
