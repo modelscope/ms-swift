@@ -124,6 +124,34 @@ def prepare_loss_scale(model):
         else:
             model.forward = MethodType(QwenForward, model)
         model.support_loss_scale = True
+    elif model.__class__.__name__ == 'LlamaForCausalLM':
+        from .models import LLaMAForward
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(LLaMAForward, model)
+        else:
+            model.forward = MethodType(LLaMAForward, model)
+        model.support_loss_scale = True
+    elif model.__class__.__name__ == 'MistralForCausalLM':
+        from .models import MistralForward
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(MistralForward, model)
+        else:
+            model.forward = MethodType(MistralForward, model)
+        model.support_loss_scale = True
+    elif model.__class__.__name__ == 'XverseForCausalLM':
+        from .models import XverseForward
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(XverseForward, model)
+        else:
+            model.forward = MethodType(XverseForward, model)
+        model.support_loss_scale = True
+    elif model.__class__.__name__ == 'XverseForCausalLM':
+        from .models import XverseForward
+        if hasattr(model, '_old_forward'):
+            model._old_forward = MethodType(XverseForward, model)
+        else:
+            model.forward = MethodType(XverseForward, model)
+        model.support_loss_scale = True
     else:
         model.support_loss_scale = False
         logger.warn(f'Model {model.__class__.__name__} not supported for weight scaling')
