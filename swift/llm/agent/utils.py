@@ -11,14 +11,14 @@ logger = get_logger()
 
 
 def split_agent_parts_by(text: str, delimiters: List[str]):
-    """
+    """Split the text field into parts.
 
     Args:
         text: A text to be split.
         delimiters: The delimiters.
 
     Returns:
-        The split text.
+        The split text in list of dicts.
     """
     all_start_chars = [d[0] for d in delimiters]
     all_length = [len(d) for d in delimiters]
@@ -53,7 +53,27 @@ def split_agent_parts_by(text: str, delimiters: List[str]):
     return text_list
 
 
-def calculate_loss_scale(response) -> Tuple[List[str], List[float]]:
+def calculate_loss_scale(response: str) -> Tuple[List[str], List[float]]:
+    """Calculate the loss scale by splitting the agent response.
+
+    Agent response format:
+
+    ```text
+        Thought: you should always think about what to do
+        Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
+        Action Input: the input to the action
+        Observation: the result of the action
+        ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+        Thought: I now know the final answer
+        Final Answer: the final answer to the original input question
+    ```
+
+    Args:
+        response: The response text
+
+    Returns:
+        A tuple of agent response parts and their weights.
+    """
     if 'Action:' in response and 'Thought:' in response:
         agent_keyword = ['Action:', 'Action Input:', 'Thought:', 'Final Answer:', 'Observation:']
         agent_parts = split_agent_parts_by(response, agent_keyword)
@@ -78,6 +98,8 @@ def calculate_loss_scale(response) -> Tuple[List[str], List[float]]:
 
 
 def prepare_loss_scale(model):
+    """Prepare the loss scale by model.
+    """
     if isinstance(model, (SwiftModel, PeftModel, HFPeftModel)):
         model = model.base_model
 

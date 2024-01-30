@@ -10,7 +10,7 @@ python llm_sft.py \
     --template_type chatglm-generation \
     --dtype AUTO \
     --output_dir output \
-    --dataset jd-sentiment-zh \
+    --dataset dureader-robust-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
