@@ -71,10 +71,10 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         return res_context_list, feature['response'], feature[
             'rejected_response'], compute_loss_idx
 
-    def build_tokenized_answer(self, prompt, answer):
+    def build_tokenized_answer(self, prompt, answer, prompt_loss_scale):
         input_ids, labels, loss_scale, kwargs = self.template._encode_context_list(
-            prompt, [])
-        tgt_input_ids = self.template._encode_context_list([answer], loss_scale)[0]
+            prompt, prompt_loss_scale)
+        tgt_input_ids = self.template._encode_context_list([answer], [1.0])[0]
         tgt_input_ids += self.template._encode_context_list(
             self.template.suffix, [1.0])[0]
         return dict(
@@ -105,12 +105,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if not isinstance(chosen, str):
                 raise ValueError(
                     f'chosen should be an str but got {type(chosen)}')
-            chosen_tokens = self.build_tokenized_answer(prompt, chosen)
+            chosen_tokens = self.build_tokenized_answer(prompt, chosen, loss_scale)
 
             if not isinstance(rejected, str):
                 raise ValueError(
                     f'rejected should be an str but got {type(rejected)}')
-            rejected_tokens = self.build_tokenized_answer(prompt, rejected)
+            rejected_tokens = self.build_tokenized_answer(prompt, rejected, loss_scale)
 
             longer_response_length = max(
                 len(chosen_tokens['input_ids']),
