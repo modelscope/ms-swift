@@ -120,6 +120,7 @@ class SftArguments:
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     dataloader_num_workers: int = 1
+    dataloader_pin_memory: bool = True
 
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -311,9 +312,21 @@ class SftArguments:
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
+        template_info = TEMPLATE_MAPPING[self.template_type]
         if self.lazy_tokenize is None:
-            template_info = TEMPLATE_MAPPING[self.template_type]
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        if 'dataloader_num_workers' in template_info:
+            self.dataloader_num_workers = template_info[
+                'dataloader_num_workers']
+            logger.info(
+                f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}'
+            )
+        if 'dataloader_pin_memory' in template_info:
+            self.dataloader_pin_memory = template_info['dataloader_pin_memory']
+            logger.info(
+                f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}'
+            )
         if 'qwen-audio' in self.model_type:
             assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
         model_info = MODEL_MAPPING[self.model_type]
@@ -469,10 +482,11 @@ class InferArguments:
                 assert self.merge_lora_and_save is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
                     'Please set --merge_lora_and_save true.')
-        if self.num_beams != 1:
+        template_info = TEMPLATE_MAPPING[self.template_type]
+        support_stream = template_info.get('support_stream', True)
+        if self.num_beams != 1 or not support_stream:
             self.stream = False
             logger.info('Setting self.stream: False')
-        template_info = TEMPLATE_MAPPING[self.template_type]
         self.infer_media_type = template_info.get('infer_media_type', 'none')
 
     @staticmethod

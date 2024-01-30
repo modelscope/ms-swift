@@ -325,10 +325,13 @@ def print_example(example: Dict[str, Any],
                   tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
     if tokenizer_kwargs is None:
         tokenizer_kwargs = {}
-    input_ids, labels = example['input_ids'], example.get('labels')
-    logger.info(f'[INPUT_IDS] {input_ids}')
-    input_str = safe_tokenizer_decode(tokenizer, input_ids, **tokenizer_kwargs)
-    logger.info(f'[INPUT] {input_str}')
+    input_ids = example.get('input_ids')
+    labels = example.get('labels')
+    if input_ids is not None:
+        logger.info(f'[INPUT_IDS] {input_ids}')
+        input_str = safe_tokenizer_decode(tokenizer, input_ids,
+                                          **tokenizer_kwargs)
+        logger.info(f'[INPUT] {input_str}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
         labels_str = safe_tokenizer_decode(tokenizer, labels,
@@ -391,6 +394,25 @@ def _is_chinese_char(cp):
     return False
 
 
+def to_device(inputs: Any, device: Device) -> Any:
+    if callable(getattr(inputs, 'to', None)):
+        return inputs.to(device=device)
+    #
+    if isinstance(inputs, Mapping):
+        res = {}
+        for k, v in inputs.items():
+            res[k] = to_device(v, device)
+    elif isinstance(inputs, Sequence) and not isinstance(inputs, str):
+        res = []
+        for b in inputs:
+            res.append(to_device(b, device))
+    elif isinstance(inputs, (int, float, str)) or inputs is None:
+        res = inputs
+    else:
+        raise TypeError(f'inputs: {inputs}, {type(inputs)}')
+    return res
+
+
 def inference_stream(model: PreTrainedModel,
                      template: Template,
                      query: str,
@@ -420,9 +442,15 @@ def inference_stream(model: PreTrainedModel,
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = torch.tensor(inputs['input_ids'])[None]
-    inputs['input_ids'] = input_ids
-    inputs['attention_mask'] = torch.ones_like(input_ids)
+    if 'input_ids' in inputs:
+        input_ids = torch.tensor(inputs['input_ids'])[None]
+        inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
+    else:
+        inputs_embeds = inputs['inputs_embeds'][None]
+        inputs['inputs_embeds'] = inputs_embeds
+        token_len = inputs_embeds.shape[1]
+    inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
@@ -493,25 +521,6 @@ def inference_stream(model: PreTrainedModel,
     yield response, history
 
 
-def to_device(inputs: Any, device: Device) -> Any:
-    if callable(getattr(inputs, 'to', None)):
-        return inputs.to(device=device)
-    #
-    if isinstance(inputs, Mapping):
-        res = {}
-        for k, v in inputs.items():
-            res[k] = to_device(v, device)
-    elif isinstance(inputs, Sequence) and not isinstance(inputs, str):
-        res = []
-        for b in inputs:
-            res.append(to_device(b, device))
-    elif isinstance(inputs, (int, float, str)) or inputs is None:
-        res = inputs
-    else:
-        raise TypeError(f'inputs: {inputs}, {type(inputs)}')
-    return res
-
-
 def inference(model: PreTrainedModel,
               template: Template,
               query: str,
@@ -545,9 +554,15 @@ def inference(model: PreTrainedModel,
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = torch.tensor(inputs['input_ids'])[None]
-    inputs['input_ids'] = input_ids
-    inputs['attention_mask'] = torch.ones_like(input_ids)
+    if 'input_ids' in inputs:
+        input_ids = torch.tensor(inputs['input_ids'])[None]
+        inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
+    else:
+        inputs_embeds = inputs['inputs_embeds'][None]
+        inputs['inputs_embeds'] = inputs_embeds
+        token_len = inputs_embeds.shape[1]
+    inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
@@ -563,9 +578,14 @@ def inference(model: PreTrainedModel,
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if verbose:
-        print(
-            f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
-            end='')
+        if 'input_ids' in inputs:
+            input_ids = inputs['input_ids']
+            print(
+                f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
+                end='')
+        elif 'query' in example:
+            query = example['query']
+            print(f'[QUERY]{query}\n{output_prefix}', end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
@@ -584,7 +604,7 @@ def inference(model: PreTrainedModel,
         generation_config=generation_config,
         stopping_criteria=stopping_criteria,
         **inputs)
-    generate_ids = generate_ids[0, len(input_ids[0]):].tolist()
+    generate_ids = template.get_generate_ids(generate_ids, token_len)
     response = None
     if verbose and stream is False:
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)

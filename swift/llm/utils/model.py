@@ -102,6 +102,8 @@ class ModelType:
     internlm2_math_7b_chat = 'internlm2-math-7b-chat'
     internlm2_math_20b = 'internlm2-math-20b'
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
+    # internlm-xcomposer2
+    internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -1020,6 +1022,41 @@ def get_model_tokenizer_internlm2(model_dir: str,
             del tokenizer.__class__.eos_token_id
         tokenizer.eos_token = eos_token
 
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.internlm_xcomposer2_7b_chat,
+    'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
+    LoRATM.internlm2,
+    TemplateType.internlm_xcomposer2,
+    eos_token='[UNUSED_TOKEN_145]',
+    support_flash_attn=True)
+def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
+                                            torch_dtype: Dtype,
+                                            model_kwargs: Dict[str, Any],
+                                            load_model: bool = True,
+                                            **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    model_config._flash_attn_2_enabled = use_flash_attn
+
+    eos_token = kwargs.pop('eos_token', None)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
+    if eos_token is not None:
+        if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
+            del tokenizer.__class__.eos_token_id
+        tokenizer.eos_token = eos_token
+    if model is not None and use_flash_attn:
+        # fix AttributeError: no attribute 'attention_dropout'
+        model.model.layers[0].attention.__class__.attention_dropout = 0.
     return model, tokenizer
 
 
