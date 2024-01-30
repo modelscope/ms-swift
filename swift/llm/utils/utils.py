@@ -441,6 +441,8 @@ def inference_stream(model: PreTrainedModel,
         stream_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
         stream_config.pad_token_id = tokenizer.pad_token_id
+    if tokenizer.bos_token_id is not None:
+        stream_config.bos_token_id = tokenizer.bos_token_id
     if stream_config.max_new_tokens is not None:
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
@@ -568,6 +570,8 @@ def inference(model: PreTrainedModel,
         generation_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
         generation_config.pad_token_id = tokenizer.pad_token_id
+    if tokenizer.bos_token_id is not None:
+        generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     if template.suffix[-1] not in stop_words:

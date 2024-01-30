@@ -60,6 +60,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
 
 ## 🎉 新闻
+- 2024.1.29: 支持internlm2-math系列: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
 - 2024.1.26: 支持[yi-vl-6b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_vl_6b_chat), yi-vl-34b-chat.
 - 2024.1.24: 支持codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
 - 2024.1.23: 支持orion系列: orion-14b, [orion-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/orion_14b_chat).
@@ -164,7 +165,7 @@ from swift.llm import (
     infer_main, sft_main, app_ui_main, merge_lora_main
 )
 
-model_type = ModelType.qwen_1_8b_chat
+model_type = ModelType.qwen_1_8b
 sft_args = SftArguments(
     model_type=model_type,
     train_dataset_sample=2000,
@@ -178,7 +179,7 @@ torch.cuda.empty_cache()
 infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_dataset_config=True,
-    show_dataset_sample=10)
+    val_dataset_sample=10)
 # merge_lora_main(infer_args)
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
@@ -222,6 +223,8 @@ app_ui_main(infer_args)
     - [deepseek-coder](https://github.com/deepseek-ai/DeepSeek-Coder) 系列: deepseek-coder-1_3b, deepseek-coder-1_3b-instruct, deepseek-coder-6_7b, deepseek-coder-6_7b-instruct, deepseek-coder-33b, deepseek-coder-33b-instruct.
     - [codegeex2](https://github.com/THUDM/CodeGeeX2) 系列: codegeex2-6b.
     - [phi](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/) 系列: phi2-3b.
+  - 数学:
+    - [internlm2-math](https://github.com/InternLM/InternLM-Math) 系列: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
 - 支持的数据集: [[详细信息]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
   - NLP:
     - 通用: 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tutu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4.

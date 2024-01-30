@@ -98,10 +98,10 @@ class ModelType:
     internlm2_20b_sft_chat = 'internlm2-20b-sft-chat'
     internlm2_20b_chat = 'internlm2-20b-chat'
     # internlm2-math
-    internlm2_math_7b_chat = 'internlm2-math-7b-chat'
     internlm2_math_7b = 'internlm2-math-7b'
-    internlm2_math_20b_chat = 'internlm2-math-20b-chat'
+    internlm2_math_7b_chat = 'internlm2-math-7b-chat'
     internlm2_math_20b = 'internlm2-math-20b'
+    internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
