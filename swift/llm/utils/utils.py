@@ -415,9 +415,19 @@ def inference_stream(model: PreTrainedModel,
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         act_length = len(history[-1][-1])
-        example = {'query': None, 'history': history, 'system': system, 'images': kwargs.pop('images', None)}  # for vl
+        example = {
+            'query': None,
+            'history': history,
+            'system': system,
+            'images': kwargs.pop('images', None)
+        }  # for vl
     else:
-        example = {'query': query, 'history': history, 'system': system, 'images': kwargs.pop('images', None)}
+        example = {
+            'query': query,
+            'history': history,
+            'system': system,
+            'images': kwargs.pop('images', None)
+        }
 
     example = {
         'query': query,

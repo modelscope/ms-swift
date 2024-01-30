@@ -2,13 +2,15 @@
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-from swift.llm.agent.utils import calculate_loss_scale
+
 import requests
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
+
+from swift.llm.agent.utils import calculate_loss_scale
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -165,8 +167,9 @@ class Template:
             setattr(self, key, value)
 
     def encode(
-            self, example: Dict[str,
-                                Any], support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            self,
+            example: Dict[str, Any],
+            support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
@@ -187,9 +190,13 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
-        inputs, tokenizer_kwargs = self._encode(query, response, history,
-                                                system,
-                                                self.truncation_strategy, support_loss_scale=support_loss_scale)
+        inputs, tokenizer_kwargs = self._encode(
+            query,
+            response,
+            history,
+            system,
+            self.truncation_strategy,
+            support_loss_scale=support_loss_scale)
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(
@@ -227,13 +234,14 @@ class Template:
 
     @staticmethod
     def _simplify_context_list(
-            context_list: List[Context],
-            compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
+            context_list: List[Context], compute_loss_idx: List[float]
+    ) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
         res_idx: List[float] = []  # result of compute_loss_idx
         temp: List[str] = []
         temp_index: List[int] = []
-        for i, (context, loss_idx) in enumerate(zip(context_list, compute_loss_idx)):
+        for i, (context,
+                loss_idx) in enumerate(zip(context_list, compute_loss_idx)):
             if isinstance(context, str) and compute_loss_idx[i] == 0.0:
                 temp.append(context)
                 temp_index.append(i)
@@ -283,8 +291,8 @@ class Template:
 
     def _encode(
             self, query: str, response: Optional[str], history: History,
-            system: Optional[str],
-            truncation_strategy: str, support_loss_scale: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            system: Optional[str], truncation_strategy: str,
+            support_loss_scale: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -379,9 +387,9 @@ class Template:
                 labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
                                   -100)
                 if loss_scale:
-                    loss_scale[0] = F.pad(loss_scale[0],
-                                          (0, padding_to - labels[0].shape[-1]),
-                                          'constant', 0.)
+                    loss_scale[0] = F.pad(
+                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
+                        'constant', 0.)
 
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
@@ -400,6 +408,7 @@ class Template:
         if loss_scale:
             res['loss_scale'] = loss_scale
         return res
+
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -534,8 +543,9 @@ def _read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
 class YiVLTemplate(Template):
 
     def encode(
-            self, example: Dict[str,
-                                Any], support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            self,
+            example: Dict[str, Any],
+            support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         from llava.mm_utils import expand2square
         model = self.model
@@ -719,8 +729,9 @@ register_template(
 class CogAgentTemplate(Template):
 
     def encode(
-            self, example: Dict[str,
-                                Any], support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            self,
+            example: Dict[str, Any],
+            support_loss_scale=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example.get('images')
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
