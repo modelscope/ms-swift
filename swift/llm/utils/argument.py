@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
-
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -17,7 +16,8 @@ from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, is_dist, is_master)
-from .dataset import DATASET_MAPPING, get_custom_dataset, register_dataset, get_dataset
+from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
+                      register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
@@ -66,7 +66,8 @@ class SftArguments:
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
     train_dataset_mix_ratio: float = None
-    train_dataset_mix_ds: List[str] = field(default_factory=lambda: ['ms-bench'])
+    train_dataset_mix_ds: List[str] = field(
+        default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
@@ -839,21 +840,26 @@ def handle_generation_config(
         )
 
 
-def handle_dataset_mixture(args: SftArguments, train_dataset, mix_dataset_sample) -> None:
+def handle_dataset_mixture(args: SftArguments, train_dataset,
+                           mix_dataset_sample) -> None:
     train_length = len(train_dataset)
     random_state = np.random.RandomState(args.dataset_seed)
     if mix_dataset_sample:
         assert args.train_dataset_mix_ds is not None
-        train_dataset_mix_ds = [args.train_dataset_mix_ds] if isinstance(args.train_dataset_mix_ds, str) else args.train_dataset_mix_ds
+        train_dataset_mix_ds = [args.train_dataset_mix_ds] if isinstance(
+            args.train_dataset_mix_ds, str) else args.train_dataset_mix_ds
         mixed_dataset = get_dataset(
-                                    train_dataset_mix_ds,
-                                    0.0,
-                                    random_state,
-                                    check_dataset_strategy=args.check_dataset_strategy)[0]
+            train_dataset_mix_ds,
+            0.0,
+            random_state,
+            check_dataset_strategy=args.check_dataset_strategy)[0]
         if len(mixed_dataset) < mix_dataset_sample:
-            logger.warn(f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
-                        f'lesser than the ratio required by the `train_dataset_mix_ratio` argument:{args.train_dataset_mix_ratio}'
-                        f'the actual ratio is : {len(mixed_dataset)/float(train_length)}')
+            logger.warn(
+                f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
+                'lesser than the ratio required by the `train_dataset_mix_ratio` '
+                f'argument:{args.train_dataset_mix_ratio}'
+                f'the actual ratio is : {len(mixed_dataset)/float(train_length)}'
+            )
         else:
             train_idxs = random_state.permutation(mix_dataset_sample)
             mixed_dataset = mixed_dataset.select(train_idxs)

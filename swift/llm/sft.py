@@ -15,6 +15,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
                          seed_everything, show_layers)
+from .agent import prepare_loss_scale
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, data_collate_fn, dataset_map,
@@ -22,7 +23,6 @@ from .utils import (LazyLLMDataset, SftArguments, Template,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
-from .agent import prepare_loss_scale
 from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
@@ -96,13 +96,15 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
-    mix_dataset_sample = 0 if not args.train_dataset_mix_ratio else round(len(train_dataset) * args.train_dataset_mix_ratio)
+    mix_dataset_sample = 0 if not args.train_dataset_mix_ratio else round(
+        len(train_dataset) * args.train_dataset_mix_ratio)
     if train_dataset is not None and args.train_dataset_sample >= 0:
         total_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])
         train_dataset_sample = total_dataset_sample
         if args.train_dataset_mix_ratio:
-            train_dataset_sample = round(1./(1+args.train_dataset_mix_ratio) * total_dataset_sample)
+            train_dataset_sample = round(
+                1. / (1 + args.train_dataset_mix_ratio) * total_dataset_sample)
             mix_dataset_sample = total_dataset_sample - train_dataset_sample
         if train_dataset.shape[0] > train_dataset_sample:
             logger.info(f'train_dataset_sample: {train_dataset_sample}')
@@ -116,7 +118,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_dataset = val_dataset.select(range(val_dataset_sample))
 
-    train_dataset = handle_dataset_mixture(args, train_dataset, mix_dataset_sample)
+    train_dataset = handle_dataset_mixture(args, train_dataset,
+                                           mix_dataset_sample)
 
     # add self-cognition dataset
     if args.self_cognition_sample > 0:
@@ -139,11 +142,18 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        train_dataset = dataset_map(train_dataset, partial(template.encode, support_loss_scale=model.support_loss_scale),
-                                    args.preprocess_num_proc)
+        train_dataset = dataset_map(
+            train_dataset,
+            partial(
+                template.encode, support_loss_scale=model.support_loss_scale),
+            args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, partial(template.encode, support_loss_scale=model.support_loss_scale),
-                                      args.preprocess_num_proc)
+            val_dataset = dataset_map(
+                val_dataset,
+                partial(
+                    template.encode,
+                    support_loss_scale=model.support_loss_scale),
+                args.preprocess_num_proc)
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis

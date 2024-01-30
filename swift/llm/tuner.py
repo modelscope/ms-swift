@@ -4,8 +4,9 @@ import transformers
 from packaging import version
 
 from swift.trainers import TrainerCallback
-from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, NEFTuneConfig, Swift)
+from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
+                          LongLoRAModelType, LoraConfig, LoRAConfig,
+                          NEFTuneConfig, Swift)
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
 from .utils import SftArguments, find_all_linear_for_lora, is_adapter

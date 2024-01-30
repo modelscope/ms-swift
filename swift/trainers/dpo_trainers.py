@@ -50,14 +50,17 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         _concat_context_list(
             prefix, res_context_list, compute_loss_idx, system=system)
         for i, (q, r) in enumerate(history):
-            _concat_context_list([
-                *self.template.prompt, '{{RESPONSE}}', *self.template.chat_sep
-            ],
-                                 res_context_list,
-                                 compute_loss_idx,
-                                 query=q,
-                                 response=r,
-                                 round0=i)
+            _concat_context_list(
+                [
+                    *self.template.prompt,
+                    '{{RESPONSE}}',
+                    *self.template.chat_sep  # noqa
+                ],
+                res_context_list,
+                compute_loss_idx,
+                query=q,
+                response=r,
+                round0=i)  # noqa
         _concat_context_list(
             self.template.prompt,
             res_context_list,
@@ -249,11 +252,11 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if self.sft_beta > 0.:
             chosen_labels = concatenated_batch[
                 'concatenated_labels'][:batch['chosen_labels'].shape[0]]
-            sft_loss = self.sft_beta * self.sft_loss(policy_chosen_logits,
-                                                     chosen_labels)
+            sft_loss = -self.get_batch_logps(
+                policy_chosen_logits, chosen_labels, average_log_prob=True)
             if losses.shape[0] == 2 * sft_loss.shape[0]:
                 sft_loss = sft_loss.repeat(2, *sft_loss.shape[1:])
-            losses = (1 - self.sft_beta) * losses + sft_loss
+            losses = (1 - self.sft_beta) * losses + self.sft_beta * sft_loss
 
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
@@ -268,8 +271,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         metrics[f'{prefix}logps/chosen'] = policy_chosen_logps.detach().mean(
         ).cpu()
         metrics[
-            f'{prefix}logps/ref_rejected'] = reference_rejected_logps.detach(
-            ).mean().cpu()
+            f'{prefix}logps/ref_rejected'] = reference_rejected_logps.detach(  # noqa
+            ).mean().cpu()  # noqa
         metrics[f'{prefix}logps/ref_chosen'] = reference_chosen_logps.detach(
         ).mean().cpu()
         metrics[f'{prefix}logits/rejected'] = policy_rejected_logits.detach(
@@ -278,17 +281,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         ).cpu()
 
         return losses.mean(), metrics
-
-    def sft_loss(self, chosen_logits: torch.FloatTensor,
-                 chosen_labels: torch.LongTensor) -> torch.Tensor:
-        r"""
-        Computes supervised cross-entropy loss of given labels under the given logits.
-        Returns:
-            A tensor of shape (batch_size,) containing the cross-entropy loss of each samples.
-        """
-        all_logps = self.get_batch_logps(
-            chosen_logits, chosen_labels, average_log_prob=True)
-        return -all_logps
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]

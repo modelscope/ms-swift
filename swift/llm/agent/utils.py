@@ -1,11 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Tuple
 from types import MethodType
+from typing import List, Tuple
 
 from peft import PeftModel as HFPeftModel
 
-from swift import SwiftModel, PeftModel
-from swift.utils import (get_logger)
+from swift import PeftModel, SwiftModel
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -28,18 +28,25 @@ def split_agent_parts_by(text: str, delimiters: List[str]):
 
     while len(text) > 0:
         for char_idx, char in enumerate(text):
-            match_index = [idx for idx, start_char in enumerate(all_start_chars) if start_char == char]
+            match_index = [
+                idx for idx, start_char in enumerate(all_start_chars)
+                if start_char == char
+            ]
             is_delimiter = False
             for index in match_index:
-                if text[char_idx: char_idx+all_length[index]] == delimiters[index]:
+                if text[char_idx:char_idx
+                        + all_length[index]] == delimiters[index]:
                     if last_words:
                         if text_list:
                             text_list[-1]['content'] = last_words
                         else:
-                            text_list.append({'key': '', 'content': last_words})
+                            text_list.append({
+                                'key': '',
+                                'content': last_words
+                            })
                     last_words = ''
                     text_list.append({'key': delimiters[index]})
-                    text = text[char_idx+all_length[index]:]
+                    text = text[char_idx + all_length[index]:]
                     is_delimiter = True
                     break
             if not is_delimiter:
@@ -60,7 +67,8 @@ def calculate_loss_scale(response: str) -> Tuple[List[str], List[float]]:
 
     ```text
         Thought: you should always think about what to do
-        Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
+        Action: the action to take, should be one of the above tools[fire_recognition,
+            fire_alert, call_police, call_fireman]
         Action Input: the input to the action
         Observation: the result of the action
         ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
@@ -75,7 +83,10 @@ def calculate_loss_scale(response: str) -> Tuple[List[str], List[float]]:
         A tuple of agent response parts and their weights.
     """
     if 'Action:' in response and 'Thought:' in response:
-        agent_keyword = ['Action:', 'Action Input:', 'Thought:', 'Final Answer:', 'Observation:']
+        agent_keyword = [
+            'Action:', 'Action Input:', 'Thought:', 'Final Answer:',
+            'Observation:'
+        ]
         agent_parts = split_agent_parts_by(response, agent_keyword)
         assert all([c['key'] for c in agent_parts])
         weights = []
@@ -87,7 +98,7 @@ def calculate_loss_scale(response: str) -> Tuple[List[str], List[float]]:
             elif c['key'] in ('Thought:', 'Final Answer:', ''):
                 weights += [1.0]
                 weights += [1.0]
-            elif c['key'] in ('Observation:',):
+            elif c['key'] in ('Observation:', ):
                 weights += [2.0]
                 weights += [0.0]
             agent_content.append(c['key'])
@@ -154,8 +165,6 @@ def prepare_loss_scale(model):
         model.support_loss_scale = True
     else:
         model.support_loss_scale = False
-        logger.warn(f'Model {model.__class__.__name__} not supported for weight scaling')
-
-
-
-
+        logger.warn(
+            f'Model {model.__class__.__name__} not supported for weight scaling'
+        )

@@ -310,7 +310,8 @@ def data_collate_fn(batch: List[Dict[str, Any]],
     """
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
-    loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
+    loss_scale = [torch.tensor(b['loss_scale'])
+                  for b in batch] if 'loss_scale' in batch[0] else None
     labels = [torch.tensor(b['labels']) for b in batch]
     attention_mask = [
         torch.ones(len(input_ids[i]), dtype=torch.int64)
@@ -324,8 +325,9 @@ def data_collate_fn(batch: List[Dict[str, Any]],
         labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
                           'constant', -100)
         if loss_scale:
-            loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]),
-                              'constant', 0.)
+            loss_scale[0] = F.pad(loss_scale[0],
+                                  (0, padding_to - labels[0].shape[-1]),
+                                  'constant', 0.)
         attention_mask[0] = F.pad(
             attention_mask[0], (0, padding_to - attention_mask[0].shape[-1]),
             'constant', 0)
@@ -475,7 +477,8 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    is_observation = history[-1][-1].endswith('Observation:') if history else False
+    is_observation = history[-1][-1].endswith(
+        'Observation:') if history else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         act_length = len(history[-1][-1])

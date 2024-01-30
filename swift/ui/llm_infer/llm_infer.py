@@ -223,7 +223,13 @@ class LLMInfer(BaseUI):
         else:
             old_history = []
             history = []
-        gen = inference_stream(model, template, prompt, history, system=system, stop_words=['Observation:'])
+        gen = inference_stream(
+            model,
+            template,
+            prompt,
+            history,
+            system=system,
+            stop_words=['Observation:'])
         for _, history in gen:
             total_history = old_history + history
             yield '', total_history

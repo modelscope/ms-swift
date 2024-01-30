@@ -118,12 +118,10 @@ class DatasetName:
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
 
-    hh_rlhf_cn = 'hh-rlhf-cn'
-
-    custom_dpo = 'custom-dpo'
-
+    # A dataset used for mixed training
     ms_bench = 'ms-bench'
 
+    # A dataset for agent training
     ms_agent = 'ms-agent'
 
     @classmethod
@@ -403,16 +401,14 @@ register_dataset(
     'iic/ms_bench', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'benchmark', 'multi-round', '🔥'])
-
+    tags=['chat', 'benchmark', '🔥'])
 
 register_dataset(
     DatasetName.ms_agent,
     'iic/ms_agent', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
-
+    tags=['chat', 'agent', '🔥'])
 
 register_dataset(
     DatasetName.damo_agent_mini_zh,
@@ -577,68 +573,6 @@ register_dataset(
     }),
     get_dataset_from_repo,
     tags=['hfrl', 'dpo', 'pairwise'])
-
-
-def process_hh_rlhf_cn(dataset):
-
-    def reorganize_row_simple(row):
-        context = row['context']
-        history = []
-        for idx, r in enumerate(context):
-            if idx % 2 == 0:
-                assert r['role'] == 'human'
-                history.append([r['text'], None])
-            else:
-                assert r['role'] == 'assistant'
-                history[-1][-1] = r['text']
-
-        assert history[-1][-1] is None
-        query = history[-1][0]
-        history = history[:-1]
-        response = row['chosen']['text']
-        rejected_response = row['rejected']['text']
-        return {
-            'query': query,
-            'history': history,
-            'response': response,
-            'rejected_response': rejected_response,
-        }
-
-    return dataset.map(reorganize_row_simple)
-
-
-def get_dataset_from_hf(*args, **kwargs):
-    from datasets import load_dataset
-    dataset = load_dataset(
-        '/mnt/workspace/yzhao/tastelikefeet/datasets/hh_rlhf_cn')
-    return process_hh_rlhf_cn(dataset['train']), process_hh_rlhf_cn(
-        dataset['test'])
-
-
-register_dataset(
-    DatasetName.hh_rlhf_cn,
-    'AI-ModelScope/hh-rlhf', [], [],
-    process_hh_rlhf_cn,
-    get_dataset_from_hf,
-    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
-
-
-def get_dataset_from_local_dpo(*args, **kwargs):
-    _list = []
-    with open(
-            '/mnt/workspace/yzhao/tastelikefeet/inner/swift/examples/pytorch/llm/train_dpo.jsonl',
-            'r') as f:
-        for line in f.readlines():
-            _list.append(json.loads(line))
-    return HfDataset.from_list(_list), None
-
-
-register_dataset(
-    DatasetName.custom_dpo,
-    '', [], [],
-    lambda x: x,
-    get_dataset_from_local_dpo,
-    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
 
 
 def process_hh_rlhf(dataset):
@@ -1164,10 +1098,6 @@ def get_dataset(
         if val_d is not None:
             val_dataset_list.append(val_d)
 
-    for t_dataset, name in zip(train_dataset_list, dataset_name_list):
-        logger.info(
-            f'Train dataset {dataset_name_list} of length: {len(t_dataset)}')
-
     train_dataset = None
     if len(train_dataset_list) > 0:
         train_dataset = concatenate_datasets(train_dataset_list)
@@ -1210,8 +1140,7 @@ def load_dataset_from_local(
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
-    dataset = concatenate_datasets(dataset_list)
-    return dataset
+    return concatenate_datasets(dataset_list)
 
 
 def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
