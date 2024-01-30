@@ -228,7 +228,7 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
-            compute_loss_idx.append(0.0 if context != self.suffix else 1.0)
+            compute_loss_idx.append(0.0 if context not in self.suffix else 2.0)
 
     @staticmethod
     def _simplify_context_list(
@@ -403,7 +403,7 @@ class Template:
             'attention_mask': attention_mask,
             'labels': labels,
         }
-        if loss_scale:
+        if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
 

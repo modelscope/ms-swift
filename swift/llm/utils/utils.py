@@ -503,6 +503,8 @@ def inference_stream(model: PreTrainedModel,
         response = response[:-len(template.suffix[-1])]
     if not is_observation:
         history[-1] = (query, response)
+    else:
+        history[-1][-1] = history[-1][-1][:act_length] + response
     yield response, history
 
 
@@ -621,7 +623,6 @@ def inference(model: PreTrainedModel,
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
-    history.append((query, response))
     if not is_observation:
         history.append((query, response))
     else:
