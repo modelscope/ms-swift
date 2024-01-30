@@ -125,6 +125,24 @@ class Template:
         self.use_default_system = True
         self._is_init = False
 
+    @staticmethod
+    def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase,
+                           value: Optional[Prompt]):
+        # e.g. [['eos_token_id']] -> [[2]]
+        if value is None:
+            return None
+        res_value = []
+        for v in value:
+            if isinstance(v, list):
+                res_v = []
+                for sub_v in v:
+                    if isinstance(sub_v, str):
+                        sub_v = getattr(tokenizer, sub_v)
+                    res_v.append(sub_v)
+                v = res_v
+            res_value.append(v)
+        return res_value
+
     def _init_template(self,
                        tokenizer: PreTrainedTokenizerBase,
                        default_system: Optional[str] = None,
@@ -141,22 +159,10 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
-        # e.g. [['eos_token_id']] -> [[2]]
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix']:
             value = getattr(self, key)
-            if value is None:
-                continue
-            res_value = []
-            for v in value:
-                if isinstance(v, list):
-                    res_v = []
-                    for sub_v in v:
-                        if isinstance(sub_v, str):
-                            sub_v = getattr(tokenizer, sub_v)
-                        res_v.append(sub_v)
-                    v = res_v
-                res_value.append(v)
-            setattr(self, key, res_value)
+            value = self._preprocess_prompt(tokenizer, value)
+            setattr(self, key, value)
 
     def encode(
             self, example: Dict[str,
