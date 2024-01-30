@@ -577,11 +577,15 @@ def inference(model: PreTrainedModel,
     streamer = None
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
-    if verbose and 'input_ids' in inputs:
-        input_ids = inputs['input_ids']
-        print(
-            f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
-            end='')
+    if verbose:
+        if 'input_ids' in inputs:
+            input_ids = inputs['input_ids']
+            print(
+                f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
+                end='')
+        elif 'query' in example:
+            query = example['query']
+            print(f'[QUERY]{query}\n{output_prefix}', end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
