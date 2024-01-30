@@ -39,7 +39,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         else:
             assert self.template.prefix_has_system is not None, 'not support `system`'
         res_context_list: List[Context] = []
-        compute_loss_idx: List[int] = []
+        compute_loss_idx: List[float] = []
         if system is None:
             assert self.template.prefix != self.template.prefix_has_system, f'template.prefix: {self.template.prefix}'
             prefix = self.template.prefix
@@ -72,7 +72,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             'rejected_response']
 
     def build_tokenized_answer(self, prompt, answer):
-        input_ids, labels, kwargs = self.template._encode_context_list(
+        input_ids, labels, _, kwargs = self.template._encode_context_list(
             prompt, [])
         tgt_input_ids = self.template._encode_context_list([answer], [])[0]
         tgt_input_ids += self.template._encode_context_list(
@@ -91,7 +91,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if not self.is_encoder_decoder:
             prompt, chosen, rejected = self.concat_template(feature)
 
-            prompt_tokens, _, _ = self.template._encode_context_list(
+            prompt_tokens, _, _, _ = self.template._encode_context_list(
                 prompt, [])
             prompt_tokens = {
                 'input_ids': prompt_tokens,
@@ -284,7 +284,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor,
-               torch.FloatTensor]:
+               torch.FloatTensor, Dict[str, torch.LongTensor]]:
         """Run the given model on the given batch of inputs, concatenating the chosen and rejected inputs together.
 
         We do this to avoid doing two forward passes, because it's faster for FSDP.
