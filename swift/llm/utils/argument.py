@@ -175,9 +175,13 @@ class SftArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
+        ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
         if self.deepspeed_config_path == 'default-zero2':
             self.deepspeed_config_path = os.path.abspath(
-                os.path.join(__file__, '..', '..', 'ds_config', 'zero2.json'))
+                os.path.join(ds_config_folder, 'zero2.json'))
+        elif self.deepspeed_config_path == 'default-zero3':
+            self.deepspeed_config_path = os.path.abspath(
+                os.path.join(ds_config_folder, 'zero3.json'))
         handle_path(self)
         set_model_type(self)
         if isinstance(self.dataset, str):
