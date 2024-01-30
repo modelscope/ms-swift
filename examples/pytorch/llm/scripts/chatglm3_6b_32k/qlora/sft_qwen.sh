@@ -1,6 +1,6 @@
 # Experimental environment: A10, 3090
 # 10GB GPU memory
-nproc_per_node=4
+nproc_per_node=8
 
 PYTHONPATH=../../.. \
 torchrun \
@@ -9,7 +9,7 @@ torchrun \
     llm_sft.py \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --model_revision master \
-    --sft_type full \
+    --sft_type lora \
     --train_dataset_mix_ratio 2.0 \
     --tuner_backend swift \
     --dtype AUTO \
