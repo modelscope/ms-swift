@@ -89,7 +89,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                      model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
         batch = {}
         if not self.is_encoder_decoder:
-            prompt, chosen, rejected, loss_scale = self.concat_template(feature)
+            prompt, chosen, rejected, loss_scale = self.concat_template(
+                feature)
 
             prompt_tokens, _, _, _ = self.template._encode_context_list(
                 prompt, loss_scale)
@@ -105,12 +106,14 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if not isinstance(chosen, str):
                 raise ValueError(
                     f'chosen should be an str but got {type(chosen)}')
-            chosen_tokens = self.build_tokenized_answer(prompt, chosen, loss_scale)
+            chosen_tokens = self.build_tokenized_answer(
+                prompt, chosen, loss_scale)
 
             if not isinstance(rejected, str):
                 raise ValueError(
                     f'rejected should be an str but got {type(rejected)}')
-            rejected_tokens = self.build_tokenized_answer(prompt, rejected, loss_scale)
+            rejected_tokens = self.build_tokenized_answer(
+                prompt, rejected, loss_scale)
 
             longer_response_length = max(
                 len(chosen_tokens['input_ids']),
