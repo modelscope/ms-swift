@@ -127,7 +127,7 @@ class Template:
 
     @staticmethod
     def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase,
-                           value: Optional[Prompt]):
+                           value: Optional[Prompt]) -> Optional[Prompt]:
         # e.g. [['eos_token_id']] -> [[2]]
         if value is None:
             return None
