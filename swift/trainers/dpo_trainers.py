@@ -69,14 +69,14 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             res_context_list, compute_loss_idx)
 
         return res_context_list, feature['response'], feature[
-            'rejected_response']
+            'rejected_response'], compute_loss_idx
 
     def build_tokenized_answer(self, prompt, answer):
-        input_ids, labels, _, kwargs = self.template._encode_context_list(
+        input_ids, labels, loss_scale, kwargs = self.template._encode_context_list(
             prompt, [])
-        tgt_input_ids = self.template._encode_context_list([answer], [])[0]
+        tgt_input_ids = self.template._encode_context_list([answer], loss_scale)[0]
         tgt_input_ids += self.template._encode_context_list(
-            self.template.suffix, [])[0]
+            self.template.suffix, [1.0])[0]
         return dict(
             prompt_input_ids=input_ids,
             prompt_attention_mask=[1] * len(input_ids),
@@ -89,10 +89,10 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                      model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
         batch = {}
         if not self.is_encoder_decoder:
-            prompt, chosen, rejected = self.concat_template(feature)
+            prompt, chosen, rejected, loss_scale = self.concat_template(feature)
 
             prompt_tokens, _, _, _ = self.template._encode_context_list(
-                prompt, [])
+                prompt, loss_scale)
             prompt_tokens = {
                 'input_ids': prompt_tokens,
                 'attention_mask': [1] * len(prompt_tokens),
