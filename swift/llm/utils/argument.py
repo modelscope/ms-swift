@@ -580,7 +580,7 @@ class DPOArguments(SftArguments):
     beta: float = 0.1
     label_smoothing: float = 0.0
     loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
-    sft_beta: float = 0.0
+    sft_beta: float = 0.1
 
 
 @dataclass
