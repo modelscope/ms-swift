@@ -505,7 +505,8 @@ def get_model_tokenizer_baichuan2_13b(model_dir: str,
         torch_dtype,
         model_kwargs,
         load_model,
-        model_config=model_config**kwargs)
+        model_config=model_config,
+        **kwargs)
 
 
 def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
