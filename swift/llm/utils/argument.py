@@ -891,3 +891,5 @@ def handle_dataset_mixture(args: SftArguments, train_dataset,
             train_idxs = random_state.permutation(mix_dataset_sample)
             mixed_dataset = mixed_dataset.select(train_idxs)
         return concatenate_datasets([train_dataset, mixed_dataset])
+    else:
+        return train_dataset
