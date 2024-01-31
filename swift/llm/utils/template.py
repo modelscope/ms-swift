@@ -161,7 +161,9 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
-        for key in ['prefix', 'prompt', 'chat_sep', 'suffix']:
+        for key in [
+                'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
+        ]:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)

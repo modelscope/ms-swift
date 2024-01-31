@@ -313,7 +313,7 @@ you are a helpful assistant!<|im_end|>
         inputs = inputs.to('cuda:0')
         pred = model.generate(
             **inputs, max_new_tokens=64, repetition_penalty=1.1)
-        print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True))
+        response = tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)
         print(f'official response: {response}')
         #
         input_ids_official = inputs['input_ids'][0].tolist()
@@ -592,7 +592,7 @@ Assistant:""")
         'To avoid excessive testing time caused by downloading models and '
         'to prevent OOM (Out of Memory) errors.')
     def test_deepseek_coder_template(self):
-        model_type = ModelType.deepseek_coder_6_7b_chat
+        model_type = ModelType.deepseek_coder_6_7b_instruct
         model, tokenizer = get_model_tokenizer(model_type)
         template_type = get_default_template_type(model_type)
         template = get_template(template_type, tokenizer)
@@ -620,7 +620,8 @@ Assistant:""")
         input_ids_official = tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True)
         inputs = torch.tensor(input_ids_official, device='cuda')[None]
-        outputs = model.generate(input_ids=inputs)
+        outputs = model.generate(
+            input_ids=inputs, eos_token_id=tokenizer.eos_token_id)
         response = tokenizer.decode(
             outputs[0, len(inputs[0]):], skip_special_tokens=True)
         print(f'official response: {response}')
