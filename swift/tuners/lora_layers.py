@@ -399,6 +399,9 @@ class LoraModel(_LoraModel):
             )
             self._convert_dtype(target, lora_config.lora_dtype)
         elif isinstance(target, linear_types):
+            if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
+                # Fix issue: https://github.com/modelscope/swift/issues/342
+                return
             target.update_layer(
                 adapter_name,
                 r,
@@ -496,6 +499,9 @@ class LoraModel(_LoraModel):
                 enable_lora=lora_config.enable_lora,
                 **kwargs)
         elif isinstance(target_base_layer, torch.nn.Linear):
+            if target_base_layer.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
+                # Fix issue: https://github.com/modelscope/swift/issues/342
+                return None
             if kwargs['fan_in_fan_out']:
                 warnings.warn(
                     'fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. '
