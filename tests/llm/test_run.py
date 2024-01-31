@@ -266,7 +266,7 @@ class TestRun(unittest.TestCase):
             SftArguments(
                 model_type=ModelType.internlm_xcomposer2_7b_chat,
                 dataset=DatasetName.coco_mini_en,
-                lora_target_modules='ALL',
+                lora_target_modules='DEFAULT',
                 train_dataset_sample=100,
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
