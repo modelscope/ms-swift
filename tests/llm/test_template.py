@@ -620,7 +620,8 @@ Assistant:""")
         input_ids_official = tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True)
         inputs = torch.tensor(input_ids_official, device='cuda')[None]
-        outputs = model.generate(input_ids=inputs, eos_token_id=tokenizer.eos_token_id)
+        outputs = model.generate(
+            input_ids=inputs, eos_token_id=tokenizer.eos_token_id)
         response = tokenizer.decode(
             outputs[0, len(inputs[0]):], skip_special_tokens=True)
         print(f'official response: {response}')
