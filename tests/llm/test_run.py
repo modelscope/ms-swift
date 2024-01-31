@@ -138,6 +138,7 @@ class TestRun(unittest.TestCase):
                 template_type='AUTO',
                 eval_steps=5,
                 check_dataset_strategy='warning',
+                lora_target_modules='ALL',
                 train_dataset_sample=200,
                 dataset=[dataset],
                 output_dir=output_dir,
