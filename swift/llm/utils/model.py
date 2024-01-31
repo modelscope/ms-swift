@@ -175,7 +175,7 @@ class ModelType:
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
-    openbmb_minicpm_2b = 'openbmb-minicpm-2b'
+    openbmb_minicpm_2b_chat = 'openbmb-minicpm-2b-chat'
     sus_34b_chat = 'sus-34b-chat'
 
     # domain-specific
@@ -1851,7 +1851,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
 
 @register_model(
-    ModelType.openbmb_minicpm_2b,
+    ModelType.openbmb_minicpm_2b_chat,
     'OpenBMB/miniCPM-bf16',
     LoRATM.llama2,
     TemplateType.openbmb,
