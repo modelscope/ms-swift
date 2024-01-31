@@ -15,7 +15,6 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
                          seed_everything, show_layers)
-from .agent import prepare_loss_scale
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, dataset_map,
@@ -87,7 +86,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     model_info = get_model_info(model)
     logger.info(model_info)
     logger.info(model)
-    prepare_loss_scale(model)
 
     # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)

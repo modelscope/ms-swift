@@ -29,7 +29,7 @@ from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        StopWords, Template, TemplateType, get_template,
                        register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
-                    find_all_linear_for_lora, get_time_info,
+                    find_all_linears, get_time_info,
                     history_to_messages, inference, inference_stream,
                     is_vllm_available, limit_history_length,
                     messages_to_history, print_example, safe_tokenizer_decode,

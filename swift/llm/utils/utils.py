@@ -339,8 +339,8 @@ def print_example(example: Dict[str, Any],
         logger.info(f'[LABLES] {labels_str}')
 
 
-def find_all_linear_for_lora(model: Module, quantization_bit: int,
-                             model_type: str) -> List[str]:
+def find_all_linears(model: Module, quantization_bit: int,
+                             model_type: str, find_embedding=True) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm'):
@@ -362,13 +362,14 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
         linear_cls = Linear4bit
         if AutoGPTQQuantLinear is not None:
             linear_cls = (Linear4bit, AutoGPTQQuantLinear)
-    lora_module_names = set()
+    target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, (linear_cls, torch.nn.Embedding)):
+        target_type = (linear_cls, torch.nn.Embedding) if find_embedding else linear_cls
+        if isinstance(module, target_type):
             module_name = name.split('.')[-1]
             if head_module_name not in module_name:
-                lora_module_names.add(module_name)
-    return list(lora_module_names)
+                target_module_names.add(module_name)
+    return list(target_module_names)
 
 
 def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:

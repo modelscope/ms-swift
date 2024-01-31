@@ -1,10 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from types import MethodType
 from typing import List, Tuple
 
-from peft import PeftModel as HFPeftModel
-
-from swift import PeftModel, SwiftModel
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -106,65 +102,3 @@ def calculate_loss_scale(response: str) -> Tuple[List[str], List[float]]:
         return agent_content, weights
     else:
         return [response], [1.0]
-
-
-def prepare_loss_scale(model):
-    """Prepare the loss scale by model.
-    """
-    if isinstance(model, (SwiftModel, PeftModel, HFPeftModel)):
-        model = model.base_model
-
-    if model.__class__.__name__ == 'ChatGLMForConditionalGeneration':
-        from .models import ChatGLM3Forward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(ChatGLM3Forward, model)
-        else:
-            model.forward = MethodType(ChatGLM3Forward, model)
-        model.support_loss_scale = True
-    elif model.__class__.__name__ == 'InternLM2ForCausalLM':
-        from .models import InternLMForward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(InternLMForward, model)
-        else:
-            model.forward = MethodType(InternLMForward, model)
-        model.support_loss_scale = True
-    elif model.__class__.__name__ == 'QWenLMHeadModel':
-        from .models import QwenForward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(QwenForward, model)
-        else:
-            model.forward = MethodType(QwenForward, model)
-        model.support_loss_scale = True
-    elif model.__class__.__name__ == 'LlamaForCausalLM':
-        from .models import LLaMAForward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(LLaMAForward, model)
-        else:
-            model.forward = MethodType(LLaMAForward, model)
-        model.support_loss_scale = True
-    elif model.__class__.__name__ == 'MistralForCausalLM':
-        from .models import MistralForward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(MistralForward, model)
-        else:
-            model.forward = MethodType(MistralForward, model)
-        model.support_loss_scale = True
-    elif model.__class__.__name__ == 'XverseForCausalLM':
-        from .models import XverseForward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(XverseForward, model)
-        else:
-            model.forward = MethodType(XverseForward, model)
-        model.support_loss_scale = True
-    elif model.__class__.__name__ == 'XverseForCausalLM':
-        from .models import XverseForward
-        if hasattr(model, '_old_forward'):
-            model._old_forward = MethodType(XverseForward, model)
-        else:
-            model.forward = MethodType(XverseForward, model)
-        model.support_loss_scale = True
-    else:
-        model.support_loss_scale = False
-        logger.warn(
-            f'Model {model.__class__.__name__} not supported for weight scaling'
-        )

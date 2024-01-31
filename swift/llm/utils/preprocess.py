@@ -95,7 +95,8 @@ class ConversationsPreprocessor:
             try:
                 conversations = d[self.conversations_key]
                 conversations = self.repair_conversations(conversations)
-                if conversations is None:
+                if not conversations or any([self.from_key not in conversation or self.value_key
+                                             not in conversation for conversation in conversations]):
                     continue
                 lo = 0
                 sys = None
@@ -118,7 +119,7 @@ class ConversationsPreprocessor:
                 response.append(conversations[-1][self.value_key])
                 system.append(sys)
                 history.append(h)
-            except Exception:
+            except AssertionError:
                 if self.error_strategy == 'raise':
                     raise ValueError(f'conversations: {conversations}')
         kwargs = {}

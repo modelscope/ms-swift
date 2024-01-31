@@ -4,10 +4,15 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from torch import Tensor, nn
+from torch.nn import CrossEntropyLoss
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
+from transformers.modeling_utils import unwrap_model
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.utils import is_peft_available
 
 from swift.utils import lower_bound
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
@@ -173,12 +178,59 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
+    def compute_scaled_loss(self, labels, lm_logits, loss_scale):
+        lm_logits = lm_logits.to(torch.float32)
+
+        # Shift so that tokens < n predict n
+        shift_logits = lm_logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        # Flatten the tokens
+        loss_fct = CrossEntropyLoss(ignore_index=-100, reduction='none')
+        loss = loss_fct(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1))
+        loss_scale = loss_scale[...,
+                     1:].contiguous().view(-1).to(loss.device)
+        loss = loss_scale * loss
+        return loss.mean()
+
     def compute_loss(self, model, inputs, return_outputs=None):
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
-        loss, outputs = super().compute_loss(model, inputs, True)
+
+        labels = None
+        loss_scale = None
+        if 'loss_scale' in inputs:
+            labels = inputs.pop('labels')
+            loss_scale = inputs.pop('loss_scale')
+
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+
+        outputs = model(**inputs)
+        if loss_scale is not None:
+            outputs['loss'] = self.compute_scaled_loss(labels, outputs.logits, loss_scale)
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None and loss_scale is None:
+            unwrapped_model = unwrap_model(model)
+            if is_peft_available() and isinstance(unwrapped_model, PeftModel):
+                model_name = unwrapped_model.base_model.model._get_name()
+            else:
+                model_name = unwrapped_model._get_name()
+            if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
         preds = outputs.logits.argmax(dim=2)[..., :-1]
-        labels = inputs['labels'][..., 1:]
+        labels = (labels or inputs['labels'])[..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Optional[Tensor] = None

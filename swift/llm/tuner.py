@@ -9,7 +9,7 @@ from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           NEFTuneConfig, Swift)
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linear_for_lora, is_adapter
+from .utils import SftArguments, find_all_linears, is_adapter
 
 logger = get_logger()
 
@@ -20,7 +20,7 @@ def prepare_model(model, args: SftArguments):
         if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linear_for_lora(
+                args.lora_target_modules = find_all_linears(
                     model, args.quantization_bit, args.model_type)
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
@@ -68,7 +68,7 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, qalora_config)
                 logger.info(f'qalora_config: {qalora_config}')
             elif args.sft_type == 'adalora':
-                lora_kwargs['rank_pattern'] = args.adalora_rank_pattern
+                lora_kwargs['rank_pattern'] = None
                 adalora_config = AdaLoraConfig(
                     task_type='CAUSAL_LM',
                     **lora_kwargs,
@@ -80,16 +80,23 @@ def prepare_model(model, args: SftArguments):
                     beta1=args.adalora_beta1,
                     beta2=args.adalora_beta2,
                     orth_reg_weight=args.adalora_orth_reg_weight,
-                    total_step=args.adalora_total_step,
                 )
                 model = Swift.prepare_model(model, adalora_config)
                 logger.info(f'adalora_config: {adalora_config}')
             elif args.sft_type == 'ia3':
+                if 'ALL' in args.ia3_target_modules:
+                    assert len(args.ia3_target_modules) == 1
+                    assert args.ia3_feedforward_modules, 'Setting ia3_target_modules to `ALL` ' \
+                                                         'need to pass MLP linear names to `ia3_feedforward_modules`'
+                    args.ia3_target_modules = find_all_linears(
+                        model, args.quantization_bit, args.model_type, find_embedding=False)
+                    logger.info(
+                        f'Setting ia3_target_modules: {args.ia3_target_modules}')
                 ia3_config = IA3Config(
                     task_type='CAUSAL_LM',
                     target_modules=args.ia3_target_modules,
                     feedforward_modules=args.ia3_feedforward_modules,
-                    modules_to_save=args.ia3_modules_to_save,
+                    modules_to_save=args.modules_to_save,
                 )
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')
@@ -124,9 +131,15 @@ def prepare_model(model, args: SftArguments):
 
     class TrainerAdapterCallback(TrainerCallback):
         # offload original_modules to cpu, to save memory
-        def on_train_begin(*args, **kwargs):
+        def on_train_begin(self, _args, state, control, **kwargs):
             if hasattr(model, 'set_active_adapters'):
                 model.set_active_adapters(model.adapters.keys(), offload='cpu')
+            if args.sft_type == 'adalora':
+                model.peft_config.total_step = state.max_steps
+
+        def on_step_end(self, _args, state, control, **kwargs):
+            if args.sft_type == 'adalora':
+                model.update_and_allocate(state.global_step)
 
     callbacks = []
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':

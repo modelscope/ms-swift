@@ -116,12 +116,9 @@ class SftArguments:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-    adalora_total_step: int = None
-    adalora_rank_pattern: Dict = None
 
-    ia3_target_modules: List[str] = None
+    ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     ia3_feedforward_modules: List[str] = None
-    ia3_modules_to_save: List[str] = field(default_factory=list)
 
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
 
@@ -205,6 +202,14 @@ class SftArguments:
 
     gpu_memory_fraction: Optional[float] = None
 
+    def prepare_target_modules(self, target_modules):
+        if isinstance(target_modules, str):
+            target_modules = [target_modules]
+        if len(target_modules) == 1:
+            if ',' in target_modules[0]:
+                target_modules = target_modules.split(',')
+        return target_modules
+
     def __post_init__(self) -> None:
         handle_compatibility(self)
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
@@ -221,12 +226,9 @@ class SftArguments:
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
-        if isinstance(self.lora_target_modules, str):
-            self.lora_target_modules = [self.lora_target_modules]
-        if len(self.lora_target_modules) == 1:
-            if ',' in self.lora_target_modules[0]:
-                self.lora_target_modules = self.lora_target_modules[0].split(
-                    ',')
+        self.lora_target_modules = self.prepare_target_modules(self.lora_target_modules)
+        self.ia3_target_modules = self.prepare_target_modules(self.ia3_target_modules)
+        self.ia3_feedforward_modules = self.prepare_target_modules(self.ia3_feedforward_modules)
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
@@ -247,7 +249,7 @@ class SftArguments:
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
 
-        if self.modules_to_save is None:
+        if not self.modules_to_save:
             self.modules_to_save = self.lora_modules_to_save
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
@@ -318,6 +320,10 @@ class SftArguments:
         if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
             assert len(self.lora_target_modules) == 1
             self.lora_target_modules = get_default_lora_target_modules(
+                self.model_type)
+        if 'DEFAULT' in self.ia3_target_modules or 'AUTO' in self.ia3_target_modules:
+            assert len(self.ia3_target_modules) == 1
+            self.ia3_target_modules = get_default_lora_target_modules(
                 self.model_type)
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
