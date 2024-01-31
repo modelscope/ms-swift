@@ -77,7 +77,13 @@ def get_vllm_engine(model_type: str,
         destroy_model_parallel()
     except ImportError:
         pass
-    llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    try:
+        llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    except ValueError:
+        logger.warning(
+            f'The current version of VLLM does not support {model_type}. '
+            'Please upgrade VLLM or specify `--infer_backend pt`.')
+        raise
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
@@ -195,7 +201,7 @@ def inference_stream_vllm(
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -260,7 +266,7 @@ def inference_vllm(llm_engine: LLMEngine,
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:

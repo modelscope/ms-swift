@@ -17,7 +17,7 @@ def get_main(
     def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
                **kwargs) -> _T:
         logger.info(
-            f'Time for running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}'
+            f'Start time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}'
         )
         if not isinstance(argv, (list, tuple, NoneType)):
             args, remaining_argv = argv, []
@@ -28,6 +28,10 @@ def get_main(
                 logger.warning(f'remaining_argv: {remaining_argv}')
             else:
                 raise ValueError(f'remaining_argv: {remaining_argv}')
-        return llm_x(args, **kwargs)
+        result = llm_x(args, **kwargs)
+        logger.info(
+            f'End time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}'
+        )
+        return result
 
     return x_main

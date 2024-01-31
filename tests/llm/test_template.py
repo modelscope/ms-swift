@@ -32,8 +32,8 @@ class TestTemplate(unittest.TestCase):
                 'history': history
             }
             from swift.llm import print_example
-            print_example(template.encode(data), tokenizer)
-            input_ids = template.encode(data)['input_ids']
+            print_example(template.encode(data)[0], tokenizer)
+            input_ids = template.encode(data)[0]['input_ids']
             print(model_type)
             text = tokenizer.decode(input_ids)
             result = """<|im_start|>system
@@ -89,7 +89,7 @@ you are a helpful assistant!<|im_end|>
         input_ids_swift = template.encode({
             'query': query,
             'system': system
-        })['input_ids']
+        })[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -115,7 +115,7 @@ you are a helpful assistant!<|im_end|>
             151644, 872, 198, 16, 17, 18, 19, 20, 10, 17, 18, 19, 28, 11319,
             151645, 198, 151644, 77091, 198
         ]
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -166,11 +166,11 @@ you are a helpful assistant!<|im_end|>
         input_ids_official = template.tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True)
         example = messages_to_history(messages)
-        input_ids_swift = template.encode(example)['input_ids']
+        input_ids_swift = template.encode(example)[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
         template.use_default_system = True
         template.tokenizer.use_default_system_prompt = True
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         input_ids_official = template.tokenizer.apply_chat_template(
             [{
                 'role': 'user',
@@ -210,7 +210,7 @@ you are a helpful assistant!<|im_end|>
         input_ids_swift = template.encode({
             'query': query,
             'system': system
-        })['input_ids']
+        })[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -243,7 +243,7 @@ you are a helpful assistant!<|im_end|>
             31211, 30939, 30943, 30966, 30972, 30970, 31011, 30943, 30966,
             30972, 30980, 31514, 13, 13, 55437, 31211
         ]
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -273,10 +273,18 @@ you are a helpful assistant!<|im_end|>
         print(f'official response: {response}')
         #
         input_ids_official = [
-            1, 333, 352, 1621, 352, 27232, 4575, 1889, 342, 11622, 310, 99050,
-            103027, 364, 333, 352, 23845, 352, 27232
+            1, 333, 352, 2472, 352, 27232, 2770, 657, 589, 15358, 17993, 6843,
+            963, 505, 4576, 11146, 451, 60614, 60381, 98666, 62412, 60735,
+            4452, 285, 4576, 11146, 451, 60614, 60381, 98666, 62412, 60735,
+            313, 505, 395, 7659, 1813, 4287, 1762, 560, 505, 8020, 684, 36956,
+            15358, 31288, 451, 67738, 75808, 70730, 699, 1226, 505, 6342, 442,
+            517, 11100, 328, 10894, 328, 454, 51978, 756, 285, 4576, 11146,
+            451, 60614, 60381, 98666, 62412, 60735, 313, 777, 3696, 454, 19187,
+            19829, 4563, 435, 410, 4287, 12032, 684, 410, 1341, 1893, 569,
+            6519, 454, 262, 68242, 756, 333, 352, 1621, 352, 27232, 4575, 1889,
+            342, 11622, 310, 99050, 364, 333, 352, 23845, 352, 27232
         ]
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -309,7 +317,7 @@ you are a helpful assistant!<|im_end|>
         print(f'official response: {response}')
         #
         input_ids_official = inputs['input_ids'][0].tolist()
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -333,7 +341,7 @@ you are a helpful assistant!<|im_end|>
         print(f'official response: {response}')
         #
         input_ids_official = inputs['input_ids'][0].tolist()
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -363,7 +371,7 @@ you are a helpful assistant!<|im_end|>
         print(f'official response: {response}')
         #
         input_ids_official = inputs['input_ids'][0].tolist()
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -393,7 +401,7 @@ you are a helpful assistant!<|im_end|>
         print(f'official response: {response}')
         #
         input_ids_official = input_ids[0].tolist()
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
 
     @unittest.skipIf(
@@ -438,12 +446,12 @@ Assistant:""")
         print(f'official response: {response}')
         #
         input_ids_official = inputs[0].tolist()
-        input_ids_swift = template.encode({'query': query})['input_ids']
+        input_ids_swift = template.encode({'query': query})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
         input_ids_swift = template.encode({
             'query': query,
             'history': [['1234', 'avdc']]
-        })['input_ids']
+        })[0]['input_ids']
         print(tokenizer.decode(input_ids_swift))
 
     @unittest.skipIf(
@@ -463,7 +471,7 @@ Assistant:""")
             input_ids_swift = template.encode({
                 'query': query,
                 'system': sys
-            })['input_ids']
+            })[0]['input_ids']
             response, _ = inference(model, template, query)
             print(f'swift response: {response}')
             #
@@ -499,7 +507,7 @@ Assistant:""")
         input_ids_swift = template.encode({
             'query': query,
             'history': [('你好', '你好呀！')]
-        })['input_ids']
+        })[0]['input_ids']
         response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         #
@@ -556,7 +564,7 @@ Assistant:""")
         input_ids_swift = template.encode({
             'query': query,
             'system': system,
-        })['input_ids']
+        })[0]['input_ids']
         response, _ = inference(model, template, query)
         print(f'swift response: {response}')
         #
@@ -605,7 +613,7 @@ Assistant:""")
             },
         ]
         example = messages_to_history(messages)
-        input_ids_swift = template.encode(example)['input_ids']
+        input_ids_swift = template.encode(example)[0]['input_ids']
         response, _ = inference(model, template, example['query'],
                                 example['history'])
         print(f'swift response: {response}')

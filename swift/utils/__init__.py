@@ -11,7 +11,7 @@ from .tb_utils import (TB_COLOR, TB_COLOR_SMOOTH, plot_images,
 from .torch_utils import (activate_model_parameters, broadcast_string,
                           freeze_model_parameters, get_dist_setting,
                           get_model_info, is_ddp_plus_mp, is_dist,
-                          is_local_master, is_master, is_on_same_device,
+                          is_local_master, is_master, is_mp, is_on_same_device,
                           seed_everything, show_layers, time_synchronize)
 from .utils import (add_version_to_work_dir, check_json_format, lower_bound,
                     parse_args, read_multi_line, test_time, upper_bound)

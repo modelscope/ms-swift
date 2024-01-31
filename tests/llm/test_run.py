@@ -17,8 +17,9 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
-                       infer_main, merge_lora_main, sft_main)
+from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType,
+                       SftArguments, dpo_main, infer_main, merge_lora_main,
+                       sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -235,6 +236,84 @@ class TestRun(unittest.TestCase):
             print(result)
             torch.cuda.empty_cache()
 
+    def test_cogagent_instruct(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.cogagent_18b_instruct,
+                dataset=DatasetName.coco_mini_en_2,
+                train_dataset_sample=100,
+                eval_steps=5,
+                quantization_bit=4))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_xcomposer_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.internlm_xcomposer2_7b_chat,
+                dataset=DatasetName.coco_mini_en,
+                train_dataset_sample=100,
+                eval_steps=5))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_yi_vl_6b_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.yi_vl_6b_chat,
+                #   dataset=DatasetName.capcha_images,
+                train_dataset_sample=100,
+                eval_steps=5,
+                custom_train_dataset_path=[
+                    os.path.join(folder, 'multi_modal.jsonl')
+                ],
+                lazy_tokenize=False))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_dpo(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        output = dpo_main(
+            DPOArguments(
+                model_type=ModelType.qwen_1_8b_chat,
+                dataset=DatasetName.hh_rlhf,
+                train_dataset_sample=100,
+                eval_steps=5))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
 
 def data_collate_fn(batch: List[Dict[str, Any]],
                     tokenizer) -> Dict[str, Tensor]:
@@ -275,8 +354,6 @@ class TestTrainer(unittest.TestCase):
         self.tmp_dir = self._tmp_dir.name
         # self.tmp_dir = 'test'
         logger.info(f'self.tmp_dir: {self.tmp_dir}')
-        self.hub_model_id = 'test_trainer2'
-        logger.info(f'self.hub_model_id: {self.hub_model_id}')
 
     def tearDown(self):
         if os.path.isdir(self.tmp_dir):
@@ -286,6 +363,8 @@ class TestTrainer(unittest.TestCase):
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
+        self.hub_model_id = 'test_trainer2'
+        logger.info(f'self.hub_model_id: {self.hub_model_id}')
         self.tmp_dir = 'output/damo/nlp_structbert_backbone_base_std'
         push_to_hub = True
         if not __name__ == '__main__':

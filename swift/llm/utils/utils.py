@@ -9,7 +9,8 @@ from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (Any, Callable, Dict, Iterator, List, Mapping, Optional,
+                    Sequence, Tuple, Union)
 
 import accelerate
 import multiprocess
@@ -28,7 +29,6 @@ from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PreTrainedModel,
@@ -38,8 +38,7 @@ from transformers import (GenerationConfig, PreTrainedModel,
 from swift.hub import ModelScopeConfig
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
-from .template import (History, StopWords, StopWordsCriteria, Template,
-                       get_audio_info)
+from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -167,16 +166,16 @@ class LLMDataset(Dataset):
 
     def __getitem__(self, idx: Union[int, str]) -> Dict[str, Any]:
         if isinstance(idx, int):
-            return self.data[idx]
+            data, _ = self.data[idx]
+            return data
         elif isinstance(idx, str):
-            return [d[idx] for d in self.data]
+            return [d[0][idx] for d in self.data]
         else:
             raise ValueError(f'idx: {idx}')
 
     def select(self, idx_list: List[int]) -> 'LLMDataset':
-        new_data = np.array(self.data)
-        new_data = new_data[idx_list].tolist()
-        return self.__class__(new_data)
+        data = [self.data[i] for i in idx_list]
+        return self.__class__(data)
 
     def __len__(self) -> int:
         return len(self.data)
@@ -197,7 +196,8 @@ class LazyLLMDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         res = self._try_fetch(idx)
         if res is not None:
-            return res
+            data, _ = res
+            return data
         raise ValueError('Please check if the max_length is appropriate.')
 
     def _try_fetch(self, first_idx: int) -> Optional[Dict[str, Any]]:
@@ -218,11 +218,8 @@ MapFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
 def _single_map(d: Dict[str, Any],
                 map_func: MapFunc) -> Optional[Dict[str, Any]]:
     d = map_func(d)
-    if d is None:
+    if len(d[0]) == 0:
         return None
-    audio_info = d.get('audio_info')
-    if audio_info is not None:
-        audio_info.pop('input_audios', None)
     return d
 
 
@@ -298,97 +295,47 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     return stat_str
 
 
-def data_collate_fn(batch: List[Dict[str, Any]],
-                    tokenizer: PreTrainedTokenizerBase,
-                    padding_to: Optional[int] = None) -> Dict[str, Any]:
-    """
-    Args:
-        batch(`List[Dict[str, Any]]`): The input data in batch
-        tokenizer(`PreTrainedTokenizerBase`): The tokenizer of the model
-        padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
-            will be padded to the `longest`
-    """
-    assert tokenizer.pad_token_id is not None
-    input_ids = [torch.tensor(b['input_ids']) for b in batch]
-    labels = [torch.tensor(b['labels']) for b in batch]
-    attention_mask = [
-        torch.ones(len(input_ids[i]), dtype=torch.int64)
-        for i in range(len(input_ids))
-    ]
-
-    if padding_to is not None and padding_to > input_ids[0].shape[-1]:
-        input_ids[0] = F.pad(input_ids[0],
-                             (0, padding_to - input_ids[0].shape[-1]),
-                             'constant', tokenizer.pad_token_id)
-        labels[0] = F.pad(labels[0], (0, padding_to - labels[0].shape[-1]),
-                          'constant', -100)
-        attention_mask[0] = F.pad(
-            attention_mask[0], (0, padding_to - attention_mask[0].shape[-1]),
-            'constant', 0)
-
-    input_ids = pad_sequence(
-        input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    attention_mask = pad_sequence(
-        attention_mask, batch_first=True, padding_value=0)
-    labels = pad_sequence(labels, batch_first=True, padding_value=-100)
-
-    res = {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'labels': labels,
-    }
-    if batch[0].get('audio_info') is not None:
-        res['audio_info'] = [
-            get_audio_info(tokenizer, audio_info=b['audio_info'])
-            for b in batch
-        ]
-    if batch[0].get('images') is not None:
-        res['images'] = [b['images'] for b in batch]
-    if batch[0].get('cross_images') is not None:
-        res['cross_images'] = [b['cross_images'] for b in batch]
-    if batch[0].get('token_type_ids') is not None:
-        res['token_type_ids'] = torch.stack(
-            [b['token_type_ids'] for b in batch])
-    return res
-
-
-def _get_labels_str(labels: List[int], tokenizer: PreTrainedTokenizerBase,
-                    **decode_kwargs) -> str:
-    if len(labels) == 0:
+def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase,
+                          input_ids: List[int], **tokenizer_kwargs) -> str:
+    if len(input_ids) == 0:
         return ''
-    labels_str = ''
-    for i in range(len(labels)):
+    result_str = ''
+    for i in range(len(input_ids)):
         if i == 0:
-            if labels[i] == -100:
+            if input_ids[i] < 0:
                 s = 0
             else:
                 e = 0
             continue
-        if labels[i] == -100 and labels[i - 1] != -100:
+        if input_ids[i] < 0 and input_ids[i - 1] >= 0:
             s = i
-            labels_str += tokenizer.decode(labels[e:s], **decode_kwargs)
-        if labels[i] != -100 and labels[i - 1] == -100:
+            result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+        if input_ids[i] >= 0 and input_ids[i - 1] < 0:
             e = i
-            labels_str += f'[-100 * {e - s}]'
-    if labels[-1] == -100:
-        labels_str += f'[-100 * {len(labels) - s}]'
+            result_str += f'[-100 * {e - s}]'
+    if input_ids[-1] < 0:
+        result_str += f'[-100 * {len(input_ids) - s}]'
     else:
-        labels_str += tokenizer.decode(labels[e:], **decode_kwargs)
-    return labels_str
+        result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+    return result_str
 
 
 def print_example(example: Dict[str, Any],
-                  tokenizer: PreTrainedTokenizerBase) -> None:
-    input_ids, labels = example['input_ids'], example.get('labels')
-    logger.info(f'[INPUT_IDS] {input_ids}')
-    decode_kwargs = {}
-    # Compatible with qwen-audio
-    if 'audio_info' in example:
-        decode_kwargs['audio_info'] = example['audio_info']
-    logger.info(f'[INPUT] {tokenizer.decode(input_ids, **decode_kwargs)}')
+                  tokenizer: PreTrainedTokenizerBase,
+                  tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    if tokenizer_kwargs is None:
+        tokenizer_kwargs = {}
+    input_ids = example.get('input_ids')
+    labels = example.get('labels')
+    if input_ids is not None:
+        logger.info(f'[INPUT_IDS] {input_ids}')
+        input_str = safe_tokenizer_decode(tokenizer, input_ids,
+                                          **tokenizer_kwargs)
+        logger.info(f'[INPUT] {input_str}')
     if labels is not None:
         logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = _get_labels_str(labels, tokenizer, **decode_kwargs)
+        labels_str = safe_tokenizer_decode(tokenizer, labels,
+                                           **tokenizer_kwargs)
         logger.info(f'[LABLES] {labels_str}')
 
 
@@ -447,6 +394,25 @@ def _is_chinese_char(cp):
     return False
 
 
+def to_device(inputs: Any, device: Device) -> Any:
+    if callable(getattr(inputs, 'to', None)):
+        return inputs.to(device=device)
+    #
+    if isinstance(inputs, Mapping):
+        res = {}
+        for k, v in inputs.items():
+            res[k] = to_device(v, device)
+    elif isinstance(inputs, Sequence) and not isinstance(inputs, str):
+        res = []
+        for b in inputs:
+            res.append(to_device(b, device))
+    elif isinstance(inputs, (int, float, str)) or inputs is None:
+        res = inputs
+    else:
+        raise TypeError(f'inputs: {inputs}, {type(inputs)}')
+    return res
+
+
 def inference_stream(model: PreTrainedModel,
                      template: Template,
                      query: str,
@@ -454,7 +420,7 @@ def inference_stream(model: PreTrainedModel,
                      system: Optional[str] = None,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
-                     stop_words: Optional[List[StopWords]] = None,
+                     stop_words: Optional[StopWords] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -465,20 +431,28 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    example = {'query': query, 'history': history, 'system': system}
-    image = kwargs.pop('image', None)
-    if image is not None:
-        example['image'] = image
-    inputs = template.encode(example)
-    audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
-    input_ids = inputs['input_ids']
+    example = {
+        'query': query,
+        'history': history,
+        'system': system,
+        'images': kwargs.pop('images', None)  # for vl
+    }
+    template.model = model
+    inputs, tokenizer_kwargs = template.encode(example)
+    inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = torch.tensor(input_ids)[None].to(device)
-    if 'attention_mask' not in inputs:
-        attention_mask = torch.ones_like(input_ids).to(device)
+    if 'input_ids' in inputs:
+        input_ids = torch.tensor(inputs['input_ids'])[None]
+        inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
     else:
-        attention_mask = inputs['attention_mask'].to(device)
+        inputs_embeds = inputs['inputs_embeds'][None]
+        inputs['inputs_embeds'] = inputs_embeds
+        token_len = inputs_embeds.shape[1]
+    inputs['attention_mask'] = torch.ones(token_len)[None]
+    if 'token_type_ids' in inputs:
+        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -495,54 +469,54 @@ def inference_stream(model: PreTrainedModel,
         stream_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
         stream_config.pad_token_id = tokenizer.pad_token_id
+    if tokenizer.bos_token_id is not None:
+        stream_config.bos_token_id = tokenizer.bos_token_id
     if stream_config.max_new_tokens is not None:
         stream_config.max_length = 20  # fix max_length, max_new_tokens warning
     stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
-    decode_kwargs = {}
-    model_kwargs = {}
-    # Compatible with cogagent
-    if 'token_type_ids' in inputs:
-        model_kwargs['token_type_ids'] = inputs['token_type_ids'].to(device)
-    if 'images' in inputs:
-        model_kwargs['images'] = [[
-            inputs['images'][0][0].to(device).to(torch.float16)
-        ]]
-    if 'cross_images' in inputs:
-        model_kwargs['cross_images'] = [[
-            inputs['cross_images'][0][0].to(device).to(torch.float16)
-        ]]
-    # Compatible with qwen-audio
-    if audio_info is not None:
-        audio_info = get_audio_info(tokenizer, audio_info=audio_info)
-        decode_kwargs['audio_info'] = audio_info
-        model_kwargs['audio_info'] = audio_info
     stopping_criteria = StoppingCriteriaList(
-        [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
+        [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
+    inputs = to_device(inputs, device)
     gen = model.generate_stream(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
-        **model_kwargs,
-        seed=-1)
-    generate_ids = []
-    response = ''
+        seed=-1,
+        **inputs)
+    raw_generate_ids = []
+    response, safe_response = '', ''
     print_idx = 0
     history.append(None)  # dummy
     for token in gen:
-        generate_ids.append(token.item())
-        response = tokenizer.decode(generate_ids, True, **decode_kwargs)
+        raw_generate_ids.append(token.item())
+        generate_ids = raw_generate_ids
+        # avoid printing template.suffix[-1])
+        if isinstance(template.suffix[-1], list):
+            generate_ids = generate_ids[:-len(template.suffix[-1])]
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+        if isinstance(template.suffix[-1], str):
+            response = response[:-len(template.suffix[-1])]
         if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
                 ord(response[-1])):
             print_idx = len(response)
         else:
             print_idx = max(response.rfind(' ') + 1, print_idx)
         # avoid printing incomplete words
-        safe_response = response[:print_idx]
-        history[-1] = (query, safe_response)
-        yield safe_response, history
+        if safe_response != response[:print_idx]:
+            safe_response = response[:print_idx]
+            history[-1] = (query, safe_response)
+            yield safe_response, history
+    # avoid printing template.suffix[-1])
+    if (isinstance(template.suffix[-1], list)
+            and raw_generate_ids[-len(template.suffix[-1]):]
+            == template.suffix[-1]):
+        raw_generate_ids = raw_generate_ids[:-len(template.suffix[-1])]
+    response = tokenizer.decode(raw_generate_ids, **tokenizer_kwargs)
+    if isinstance(
+            template.suffix[-1], str
+    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
+        response = response[:-len(template.suffix[-1])]
     history[-1] = (query, response)
     yield response, history
 
@@ -554,7 +528,7 @@ def inference(model: PreTrainedModel,
               system: Optional[str] = None,
               *,
               generation_config: Optional[GenerationConfig] = None,
-              stop_words: Optional[List[StopWords]] = None,
+              stop_words: Optional[StopWords] = None,
               stream: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
@@ -569,14 +543,28 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-    example = {'query': query, 'history': history, 'system': system}
-    inputs = template.encode(example)
-    audio_info = inputs.get('audio_info')  # Compatible with qwen-audio
-    input_ids = inputs['input_ids']
+    example = {
+        'query': query,
+        'history': history,
+        'system': system,
+        'images': kwargs.pop('images', None)  # for vl
+    }
+    template.model = model
+    inputs, tokenizer_kwargs = template.encode(example)
+    inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    input_ids = torch.tensor(input_ids)[None].to(device)
-    attention_mask = torch.ones_like(input_ids).to(device)
+    if 'input_ids' in inputs:
+        input_ids = torch.tensor(inputs['input_ids'])[None]
+        inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
+    else:
+        inputs_embeds = inputs['inputs_embeds'][None]
+        inputs['inputs_embeds'] = inputs_embeds
+        token_len = inputs_embeds.shape[1]
+    inputs['attention_mask'] = torch.ones(token_len)[None]
+    if 'token_type_ids' in inputs:
+        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
@@ -587,41 +575,51 @@ def inference(model: PreTrainedModel,
         )
         stream = False
     streamer = None
-    decode_kwargs = {}
-    model_kwargs = {}
-    if audio_info is not None:
-        audio_info = get_audio_info(tokenizer, audio_info=audio_info)
-        decode_kwargs['audio_info'] = audio_info
-        model_kwargs['audio_info'] = audio_info
     if stream:
         streamer = TextStreamer(tokenizer, skip_prompt=True)
     if verbose:
-        print(
-            f'{prompt_prefix}{tokenizer.decode(input_ids[0], False, **decode_kwargs)}{output_prefix}',
-            end='')
+        if 'input_ids' in inputs:
+            input_ids = inputs['input_ids']
+            print(
+                f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
+                end='')
+        elif 'query' in example:
+            query = example['query']
+            print(f'[QUERY]{query}\n{output_prefix}', end='')
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
         generation_config.pad_token_id = tokenizer.pad_token_id
+    if tokenizer.bos_token_id is not None:
+        generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
-        [StopWordsCriteria(tokenizer, stop_words, **decode_kwargs)])
+        [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
+    inputs = to_device(inputs, device)
     generate_ids = model.generate(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
         streamer=streamer,
         generation_config=generation_config,
         stopping_criteria=stopping_criteria,
-        **model_kwargs)
-    response = tokenizer.decode(generate_ids[0, len(input_ids[0]):], True,
-                                **decode_kwargs)
+        **inputs)
+    generate_ids = template.get_generate_ids(generate_ids, token_len)
+    response = None
     if verbose and stream is False:
-        print(
-            tokenizer.decode(generate_ids[0, len(input_ids[0]):], False,
-                             **decode_kwargs))
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+        print(response)
+    # avoid printing template.suffix[-1])
+    if (isinstance(template.suffix[-1], list) and
+            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
+        generate_ids = generate_ids[:-len(template.suffix[-1])]
+        response = None
+    if response is None:
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+    if isinstance(
+            template.suffix[-1], str
+    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
+        response = response[:-len(template.suffix[-1])]
     history.append((query, response))
     return response, history
 
@@ -636,7 +634,7 @@ def limit_history_length(template: Template, query: str,
     def compute_token_length(history_length: int) -> int:
         assert history_length != 0
         example = {'query': query, 'history': history[-history_length:]}
-        input_ids = template.encode(example)['input_ids']
+        input_ids = template.encode(example)[0]['input_ids']
         return len(input_ids)
 
     history_length = upper_bound(

@@ -64,6 +64,8 @@ def compute_acc_metrics(
                               'sentence'] = 'token') -> Dict[str, Tensor]:
     labels = eval_prediction.label_ids[..., 1:]
     predictions = eval_prediction.predictions[..., :-1]
+    if predictions.shape != labels.shape:
+        return {}
     masks = labels != -100
     if acc_strategy == 'sentence':
         acc_list = []
