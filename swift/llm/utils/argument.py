@@ -203,6 +203,8 @@ class SftArguments:
     gpu_memory_fraction: Optional[float] = None
 
     def prepare_target_modules(self, target_modules):
+        if not target_modules:
+            return target_modules
         if isinstance(target_modules, str):
             target_modules = [target_modules]
         if len(target_modules) == 1:
