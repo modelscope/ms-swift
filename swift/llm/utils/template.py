@@ -168,8 +168,8 @@ class Template:
             setattr(self, key, value)
 
     def encode(
-            self,
-            example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
@@ -188,12 +188,9 @@ class Template:
                 system = self.default_system
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
-        inputs, tokenizer_kwargs = self._encode(
-            query,
-            response,
-            history,
-            system,
-            self.truncation_strategy)
+        inputs, tokenizer_kwargs = self._encode(query, response, history,
+                                                system,
+                                                self.truncation_strategy)
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(
@@ -288,7 +285,8 @@ class Template:
 
     def _encode(
             self, query: str, response: Optional[str], history: History,
-            system: Optional[str], truncation_strategy: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            system: Optional[str],
+            truncation_strategy: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -338,7 +336,11 @@ class Template:
                 labels = labels[-self.max_length:]
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
-        inputs = {'input_ids': input_ids, 'labels': labels, 'loss_scale': loss_scale}
+        inputs = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'loss_scale': loss_scale
+        }
         return inputs, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
@@ -542,8 +544,8 @@ def _read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
 class YiVLTemplate(Template):
 
     def encode(
-            self,
-            example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         from llava.mm_utils import expand2square
         model = self.model
@@ -868,8 +870,8 @@ register_template(
 class CogAgentTemplate(Template):
 
     def encode(
-            self,
-            example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example.get('images')
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])

@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import types
+
 import torch
 import transformers
 from packaging import version
-import types
+
 from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
@@ -21,7 +23,10 @@ def prepare_model(model, args: SftArguments):
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
                 args.lora_target_modules = find_all_linears(
-                    model, args.quantization_bit, args.model_type, find_embedding=(args.sft_type != 'adalora'))
+                    model,
+                    args.quantization_bit,
+                    args.model_type,
+                    find_embedding=(args.sft_type != 'adalora'))
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             lora_kwargs = {
@@ -89,9 +94,13 @@ def prepare_model(model, args: SftArguments):
                     assert args.ia3_feedforward_modules, 'Setting ia3_target_modules to `ALL` ' \
                                                          'need to pass MLP linear names to `ia3_feedforward_modules`'
                     args.ia3_target_modules = find_all_linears(
-                        model, args.quantization_bit, args.model_type, find_embedding=False)
+                        model,
+                        args.quantization_bit,
+                        args.model_type,
+                        find_embedding=False)
                     logger.info(
-                        f'Setting ia3_target_modules: {args.ia3_target_modules}')
+                        f'Setting ia3_target_modules: {args.ia3_target_modules}'
+                    )
                 ia3_config = IA3Config(
                     task_type='CAUSAL_LM',
                     target_modules=args.ia3_target_modules,
@@ -140,10 +149,11 @@ def prepare_model(model, args: SftArguments):
                 model.set_active_adapters(model.adapters.keys(), offload='cpu')
             if args.sft_type == 'adalora':
                 model.peft_config['default'].total_step = state.max_steps
+
                 def zero_grad(_self, *args, **kwargs):
-                    _self.update_and_allocate(self.global_step+1)
+                    _self.update_and_allocate(self.global_step + 1)
                     _self._zero_grad(*args, **kwargs)
-                
+
                 model._zero_grad = model.zero_grad
                 model.zero_grad = types.MethodType(zero_grad, model)
 

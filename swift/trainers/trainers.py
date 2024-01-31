@@ -11,7 +11,8 @@ from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
 from transformers.modeling_utils import unwrap_model
-from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.models.auto.modeling_auto import \
+    MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
 from swift.utils import lower_bound
@@ -189,8 +190,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         loss = loss_fct(
             shift_logits.view(-1, shift_logits.size(-1)),
             shift_labels.view(-1))
-        loss_scale = loss_scale[...,
-                     1:].contiguous().view(-1).to(loss.device)
+        loss_scale = loss_scale[..., 1:].contiguous().view(-1).to(loss.device)
         loss = loss_scale * loss
         return loss.mean()
 
@@ -204,12 +204,13 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             labels = inputs.pop('labels')
             loss_scale = inputs.pop('loss_scale')
 
-        if self.label_smoother is not None and "labels" in inputs:
-            labels = inputs.pop("labels")
+        if self.label_smoother is not None and 'labels' in inputs:
+            labels = inputs.pop('labels')
 
         outputs = model(**inputs)
         if loss_scale is not None:
-            outputs['loss'] = self.compute_scaled_loss(labels, outputs.logits, loss_scale)
+            outputs['loss'] = self.compute_scaled_loss(labels, outputs.logits,
+                                                       loss_scale)
 
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
@@ -227,7 +228,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             else:
                 loss = self.label_smoother(outputs, labels)
         else:
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+            loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:

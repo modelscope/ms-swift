@@ -95,8 +95,11 @@ class ConversationsPreprocessor:
             try:
                 conversations = d[self.conversations_key]
                 conversations = self.repair_conversations(conversations)
-                if not conversations or any([self.from_key not in conversation or self.value_key
-                                             not in conversation for conversation in conversations]) or len(conversations) < 2:
+                if not conversations or any([
+                        self.from_key not in conversation
+                        or self.value_key not in conversation
+                        for conversation in conversations
+                ]) or len(conversations) < 2:
                     continue
                 lo = 0
                 sys = None

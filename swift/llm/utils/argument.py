@@ -228,9 +228,12 @@ class SftArguments:
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
-        self.lora_target_modules = self.prepare_target_modules(self.lora_target_modules)
-        self.ia3_target_modules = self.prepare_target_modules(self.ia3_target_modules)
-        self.ia3_feedforward_modules = self.prepare_target_modules(self.ia3_feedforward_modules)
+        self.lora_target_modules = self.prepare_target_modules(
+            self.lora_target_modules)
+        self.ia3_target_modules = self.prepare_target_modules(
+            self.ia3_target_modules)
+        self.ia3_feedforward_modules = self.prepare_target_modules(
+            self.ia3_feedforward_modules)
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
