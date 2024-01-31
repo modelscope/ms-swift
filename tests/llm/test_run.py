@@ -255,6 +255,24 @@ class TestRun(unittest.TestCase):
                 load_dataset_config=True,
                 val_dataset_sample=2))
 
+    def test_xcomposer_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.internlm_xcomposer2_7b_chat,
+                dataset=DatasetName.coco_mini_en,
+                train_dataset_sample=100,
+                eval_steps=5))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
     def test_yi_vl_6b_chat(self):
         if not __name__ == '__main__':
             # ignore citest error in github

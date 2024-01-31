@@ -33,6 +33,7 @@ class TemplateType:
     openbuddy = 'openbuddy'
     internlm = 'internlm'
     internlm2 = 'internlm2'
+    internlm_xcomposer2 = 'internlm-xcomposer2'
     yi = 'yi'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
@@ -407,6 +408,11 @@ class Template:
             res['loss_scale'] = loss_scale
         return res
 
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0, input_token_len:].tolist()
+
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -664,6 +670,147 @@ register_template(
         ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         ['<|im_end|>\n'], ['<|im_end|>'], INTERNLM_SYSTEM,
         ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+
+class InternLMXComposer2(Template):
+    INTERNLM_XCOMPOSER2_SYSTEM = (
+        'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
+        '- InternLM-XComposer (浦语·灵笔) is a conversational language model that is developed by '
+        'Shanghai AI Laboratory (上海人工智能实验室). '
+        'It is designed to be helpful, honest, and harmless.\n'
+        '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
+        'by the user such as English and 中文.')
+
+    def __init__(self):
+        prefix = ['<s>']
+        prompt = [
+            '[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n'
+        ]
+        chat_sep = ['[UNUSED_TOKEN_145]\n']
+        suffix = ['[UNUSED_TOKEN_145]']
+        prefix_has_system = [
+            '<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'
+        ]
+        super().__init__(prefix, prompt, chat_sep, suffix,
+                         self.INTERNLM_XCOMPOSER2_SYSTEM, prefix_has_system)
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        import re
+        images_path = []
+        example = example.copy()
+        history = example.pop('history', [])
+        pattern = r'<img>(.+?)</img>'
+        replace_token = '</s>'
+        new_history = []
+        for i, h in enumerate(new_history):
+            images_path += re.findall(pattern, h[0])
+            new_history[i] = re.sub(pattern, replace_token, h[0])
+        history = new_history
+        images_path += re.findall(pattern, example['query'])
+        example['query'] = re.sub(pattern, replace_token, example['query'])
+        images = []
+        dtype = self.model.dtype
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            image = self.model.vis_processor(image)
+            images.append(image.to(dtype))
+        example['history'] = history
+        inputs, _ = super().encode(example)
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        if len(images) > 0:  # # ignore <s>
+            input_ids = input_ids[1:]
+            if labels is not None:
+                labels = labels[1:]
+        input_ids.append(2)  # add dummy </s>
+        if labels is not None:
+            labels.append(2)
+        else:
+            labels = []
+        res_inputs_embeds = []
+        res_labels = []
+        wrap_im_mask = []
+        pre_i, i, idx = 0, 0, 0
+        device = self.model.device
+        if len(images) > 0:
+            images = torch.stack(images, dim=0)
+            images = self.model.encode_img(images)
+        else:
+            images = None
+        internlm2_model = self.model.model
+        if not hasattr(internlm2_model, 'tok_embeddings'):
+            internlm2_model = internlm2_model.model
+        tok_embeddings = internlm2_model.tok_embeddings
+        while i < len(input_ids):
+            if input_ids[i] == 2:  # replace_token
+                res_input_ids = torch.tensor(
+                    [1] + input_ids[pre_i:i], device=device)
+                res_inputs_embeds.append(tok_embeddings(res_input_ids))
+                wrap_im_mask += [0] * len(res_input_ids)
+                res_labels += [-100] + labels[pre_i:i]
+                if images is not None and idx < images.shape[0]:
+                    res_inputs_embeds.append(images[idx])
+                    wrap_im_mask += [1] * images.shape[1]
+                    res_labels += [-100] * images.shape[1]
+                idx += 1
+                i += 1
+                pre_i = i
+                continue
+            i += 1
+        if len(labels) == 0:
+            res_labels = None
+        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
+        wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
+        return {
+            'inputs_embeds': res_inputs_embeds,
+            'im_mask': wrap_im_mask,
+            'labels': res_labels
+        }, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        tokenizer = self.tokenizer
+        assert tokenizer.pad_token_id is not None
+        inputs_embeds = [b['inputs_embeds'] for b in batch]
+        labels = [torch.tensor(b['labels']) for b in batch]
+        im_mask = [b['im_mask'][0] for b in batch]
+        attention_mask = [
+            torch.ones(inputs_embeds[i].shape[0], dtype=torch.int64)
+            for i in range(len(inputs_embeds))
+        ]
+
+        inputs_embeds = pad_sequence(
+            inputs_embeds, batch_first=True, padding_value=0)
+        attention_mask = pad_sequence(
+            attention_mask, batch_first=True, padding_value=0)
+        im_mask = pad_sequence(im_mask, batch_first=True, padding_value=0)
+        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+
+        return {
+            'inputs_embeds': inputs_embeds,
+            'attention_mask': attention_mask,
+            'im_mask': im_mask,
+            'labels': labels,
+        }
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0, 1:].tolist()
+
+
+register_template(
+    TemplateType.internlm_xcomposer2,
+    InternLMXComposer2(),
+    use_model=True,
+    lazy_tokenize=True,
+    support_stream=False,
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
 register_template(
     TemplateType.xverse,
     Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
