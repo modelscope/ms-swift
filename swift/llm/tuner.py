@@ -2,7 +2,7 @@
 import torch
 import transformers
 from packaging import version
-
+import types
 from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
@@ -21,7 +21,7 @@ def prepare_model(model, args: SftArguments):
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
                 args.lora_target_modules = find_all_linears(
-                    model, args.quantization_bit, args.model_type)
+                    model, args.quantization_bit, args.model_type, find_embedding=(args.sft_type != 'adalora'))
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             lora_kwargs = {
@@ -130,16 +130,26 @@ def prepare_model(model, args: SftArguments):
         logger.info(f'neftune_config: {neftune_config}')
 
     class TrainerAdapterCallback(TrainerCallback):
+
+        def __init__(self):
+            self.global_step = 0
+
         # offload original_modules to cpu, to save memory
         def on_train_begin(self, _args, state, control, **kwargs):
             if hasattr(model, 'set_active_adapters'):
                 model.set_active_adapters(model.adapters.keys(), offload='cpu')
             if args.sft_type == 'adalora':
-                model.peft_config.total_step = state.max_steps
+                model.peft_config['default'].total_step = state.max_steps
+                def zero_grad(_self, *args, **kwargs):
+                    _self.update_and_allocate(self.global_step+1)
+                    _self._zero_grad(*args, **kwargs)
+                
+                model._zero_grad = model.zero_grad
+                model.zero_grad = types.MethodType(zero_grad, model)
 
         def on_step_end(self, _args, state, control, **kwargs):
             if args.sft_type == 'adalora':
-                model.update_and_allocate(state.global_step)
+                self.global_step = state.global_step
 
     callbacks = []
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
