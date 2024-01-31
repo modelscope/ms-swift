@@ -365,7 +365,7 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
     lora_module_names = set()
     for name, module in model.named_modules():
         if isinstance(module, linear_cls):
-            module_name = name.split('.')[-1]
+            module_name = '.'.join(name.split('.')[-2:])
             if head_module_name not in module_name:
                 lora_module_names.add(module_name)
     return list(lora_module_names)
