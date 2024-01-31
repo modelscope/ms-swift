@@ -543,8 +543,8 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
-        if not hasattr(model_config, 'z_loss_weight'):
-            model_config.z_loss_weight = 0
+    if not hasattr(model_config, 'z_loss_weight'):
+        model_config.z_loss_weight = 0
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
