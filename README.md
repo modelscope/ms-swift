@@ -218,7 +218,7 @@ app_ui_main(infer_args)
     - [zephyr](https://github.com/huggingface/alignment-handbook) series: zephyr-7b-beta-chat.
     - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) series: ziya2-13b, ziya2-13b-chat.
     - [skywork](https://github.com/SkyworkAI/Skywork) series: skywork-13b, skywork-13b-chat.
-    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat), [openbmb-minicpm-2b](https://github.com/OpenBMB/CPM-Bee).
+    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat), [openbmb-minicpm-2b-chat](https://github.com/OpenBMB/CPM-Bee).
   - Financial:
     - [tongyi-finance](https://github.com/QwenLM/Qwen) series: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
   - Coding:
