@@ -51,6 +51,13 @@ class ModelType:
     qwen_72b_chat = 'qwen-72b-chat'
     qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
     qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
+    # qwen2
+    qwen2_beta_0_5b = 'qwen2-beta-0_5b'
+    qwen2_beta_1_8b = 'qwen2-beta-1_8b'
+    qwen2_beta_4b = 'qwen2-beta-4b'
+    qwen2_beta_7b = 'qwen2-beta-7b'
+    qwen2_beta_14b = 'qwen2-beta-14b'
+    qwen2_beta_72b = 'qwen2-beta-72b'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -165,11 +172,11 @@ class ModelType:
     skywork_13b_chat = 'skywork-13b-chat'
     # zephyr
     zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
-    # sus
-    sus_34b_chat = 'sus-34b-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
+    openbmb_minicpm_2b = 'openbmb-minicpm-2b'
+    sus_34b_chat = 'sus-34b-chat'
 
     # domain-specific
     # financial
@@ -210,6 +217,7 @@ class LoRATM(NamedTuple):
     chatglm = ['query_key_value']
     llama2 = ['q_proj', 'k_proj', 'v_proj']
     qwen = ['c_attn']
+    qwen2 = llama2
     polylm = ['c_attn']
     bloom = ['query_key_value']
     cogagent = [
@@ -492,8 +500,12 @@ def get_model_tokenizer_baichuan2_13b(model_dir: str,
     gradient_checkpointing = model_config.gradient_checkpointing
     if isinstance(gradient_checkpointing, (tuple, list)):
         model_config.gradient_checkpointing = gradient_checkpointing[0]
-    return get_model_tokenizer_baichuan2(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, **kwargs)
+    return get_model_tokenizer_baichuan2(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config**kwargs)
 
 
 def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
@@ -527,9 +539,13 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                   load_model: bool = True,
                                   model_config=None,
                                   **kwargs):
-    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     model_kwargs, load_model,
-                                                     model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
     if model is not None:
         new_forward = MethodType(patch_baichuan2_lm_head_forward,
                                  model.lm_head)
@@ -669,6 +685,54 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.qwen2_beta_0_5b,
+    'qwen/Qwen2-beta-0_5B',
+    LoRATM.qwen2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen2_beta_1_8b,
+    'qwen/Qwen2-beta-1_8B',
+    LoRATM.qwen2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen2_beta_4b,
+    'qwen/Qwen2-beta-4B',
+    LoRATM.qwen2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen2_beta_7b,
+    'qwen/Qwen2-beta-7B',
+    LoRATM.qwen2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen2_beta_14b,
+    'qwen/Qwen2-beta-14B',
+    LoRATM.qwen2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen2_beta_72b,
+    'qwen/Qwen2-beta-72B',
+    LoRATM.qwen2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
 @register_model(
     ModelType.deepseek_coder_1_3b,
     'deepseek-ai/deepseek-coder-1.3b-base',
@@ -916,8 +980,13 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
             model_config._attn_implementation = 'flash_attention_2'
     else:
         model_config._flash_attn_2_enabled = use_flash_attn
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, **kwargs)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
 
 
 @register_model(
@@ -1116,9 +1185,13 @@ def get_model_tokenizer_llama2(model_dir: str,
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     model_config.pretraining_tp = 1
-    return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
-                                               model_kwargs, load_model,
-                                               model_config, **kwargs)
+    return get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
 
 
 @register_model(ModelType.polylm_13b, 'damo/nlp_polylm_13b_text_generation',
@@ -1169,9 +1242,13 @@ def get_model_tokenizer_qwen(model_dir: str,
     if use_flash_attn is None:
         use_flash_attn = 'auto'
     model_config.use_flash_attn = use_flash_attn
-    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype,
-                                                     model_kwargs, load_model,
-                                                     model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
     try:
         # fix mp+ddp bug
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda(
@@ -1574,8 +1651,13 @@ def get_model_tokenizer_phi(model_dir: str,
         model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.flash_attn = use_flash_attn
-    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, **kwargs)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
 
 
 @register_model(
@@ -1760,6 +1842,32 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     return model, tokenizer
+
+
+@register_model(
+    ModelType.openbmb_minicpm_2b,
+    'OpenBMB/miniCPM-bf16',
+    LoRATM.llama2,
+    TemplateType.openbmb,
+    support_flash_attn=True,
+    support_gradient_checkpointing=False)
+def get_model_tokenizer_openbmb(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        model_config._attn_implementation = 'flash_attention_2'
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:

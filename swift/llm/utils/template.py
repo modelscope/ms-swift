@@ -48,6 +48,7 @@ class TemplateType:
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
+    openbmb = 'openbmb'
     # compatibility. (Deprecated)
     chatml = 'chatml'
 
@@ -906,6 +907,10 @@ register_template(
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
+
+register_template(
+    TemplateType.openbmb,
+    Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>'], ''))
 
 
 def get_template(
