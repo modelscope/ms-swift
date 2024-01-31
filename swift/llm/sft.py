@@ -146,17 +146,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(
             train_dataset,
-            partial(
-                template.encode,
-                support_loss_scale=getattr(model, 'support_loss_scale',
-                                           False)), args.preprocess_num_proc)
+                template.encode, args.preprocess_num_proc)
         if val_dataset is not None:
             val_dataset = dataset_map(
                 val_dataset,
-                partial(
-                    template.encode,
-                    support_loss_scale=getattr(model, 'support_loss_scale',
-                                               False)),
+                template.encode,
                 args.preprocess_num_proc)
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
