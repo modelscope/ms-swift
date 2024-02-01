@@ -1852,7 +1852,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
 @register_model(
     ModelType.openbmb_minicpm_2b_chat,
-    'OpenBMB/miniCPM-bf16',
+    'OpenBMB/MiniCPM-2B-dpo-bf16',
     LoRATM.llama2,
     TemplateType.openbmb,
     support_flash_attn=True,
