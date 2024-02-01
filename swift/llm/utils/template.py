@@ -50,6 +50,7 @@ class TemplateType:
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
+    openbmb = 'openbmb'
     # compatibility. (Deprecated)
     chatml = 'chatml'
 
@@ -162,7 +163,9 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
-        for key in ['prefix', 'prompt', 'chat_sep', 'suffix']:
+        for key in [
+                'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
+        ]:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
@@ -927,6 +930,10 @@ register_template(
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
+
+register_template(
+    TemplateType.openbmb,
+    Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>'], ''))
 
 
 def get_template(

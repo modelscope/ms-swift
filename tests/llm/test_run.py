@@ -50,6 +50,7 @@ class TestRun(unittest.TestCase):
             sft_args = SftArguments(
                 model_type=model_type,
                 template_type='AUTO',
+                lora_target_modules='ALL',
                 quantization_bit=quantization_bit,
                 batch_size=2,
                 eval_steps=5,
@@ -138,6 +139,7 @@ class TestRun(unittest.TestCase):
                 template_type='AUTO',
                 eval_steps=5,
                 check_dataset_strategy='warning',
+                lora_target_modules='ALL',
                 train_dataset_sample=200,
                 dataset=[dataset],
                 output_dir=output_dir,
@@ -245,6 +247,7 @@ class TestRun(unittest.TestCase):
                 model_type=ModelType.cogagent_18b_instruct,
                 dataset=DatasetName.coco_mini_en_2,
                 train_dataset_sample=100,
+                lora_target_modules='ALL',
                 eval_steps=5,
                 quantization_bit=4))
         best_model_checkpoint = output['best_model_checkpoint']
@@ -263,6 +266,7 @@ class TestRun(unittest.TestCase):
             SftArguments(
                 model_type=ModelType.internlm_xcomposer2_7b_chat,
                 dataset=DatasetName.coco_mini_en,
+                lora_target_modules='DEFAULT',
                 train_dataset_sample=100,
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
@@ -282,6 +286,7 @@ class TestRun(unittest.TestCase):
             SftArguments(
                 model_type=ModelType.yi_vl_6b_chat,
                 #   dataset=DatasetName.capcha_images,
+                lora_target_modules='ALL',
                 train_dataset_sample=100,
                 eval_steps=5,
                 custom_train_dataset_path=[
@@ -303,6 +308,7 @@ class TestRun(unittest.TestCase):
         output = dpo_main(
             DPOArguments(
                 model_type=ModelType.qwen_1_8b_chat,
+                sft_type='full',
                 dataset=DatasetName.hh_rlhf,
                 train_dataset_sample=100,
                 eval_steps=5))

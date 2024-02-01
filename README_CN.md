@@ -77,6 +77,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 🔥2024.1.12: 支持**deepseek-moe**系列: deepseek-moe-16b, [deepseek-moe-16b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/deepseek_moe_16b_chat).
 - 🔥2024.1.4: 支持**VLLM部署**, 兼容**OpenAI API**样式, 具体可以查看[VLLM推理加速与部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#部署).
 - 2024.1.4: 更新[Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md), 方便查看不同模型训练的速度和所需显存.
+<details><summary>更多</summary>
+
 - 🔥 2023.12.29: 支持web-ui进行sft训练和推理，安装ms-swift后使用`swift web-ui`开启
 - 🔥 2023.12.29: 支持 DPO RLHF(Reinforcement Learning from Human Feedback) 和两个用于此任务的数据集: AI-ModelScope/stack-exchange-paired 以及 AI-ModelScope/hh-rlhf. 查看[文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md)开启训练！
 - 🔥 2023.12.28: 支持SCEdit! 该tuner可显著降低U-Net中的显存占用，并支持低显存可控图像生成（取代ControlNet），阅读下面的章节来了解详细信息
@@ -90,8 +92,6 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.12.7: 支持[Multi-Node DDP训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md#%E4%BD%BF%E7%94%A8cli).
 - 2023.12.5: 支持模型: zephyr-7b-beta-chat, openbuddy-zephyr-7b-chat. 支持数据集: hc3-zh, hc3-en.
 - 🔥 2023.12.2: [自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), **10分钟对大模型进行自我认知微调**, 创建专属于自己的大模型.
-<details><summary>更多</summary>
-
 - 🔥 2023.11.30: 支持**qwen-1_8b**, **qwen-72b**, **qwen-audio**系列模型的训练的推理. 对应的sh脚本可以查看[qwen_1_8b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_1_8b_chat), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat), [qwen_audio_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_audio_chat)
 - 🔥 2023.11.29: 支持**AnimateDiff**的训练和推理
 - 🔥 2023.11.24: 支持**yi-34b-chat**, **codefuse-codellama-34b-chat**模型. 对应的sh脚本可以查看[yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
@@ -223,7 +223,7 @@ app_ui_main(infer_args)
     - [zephyr](https://github.com/huggingface/alignment-handbook) 系列: zephyr-7b-beta-chat.
     - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) 系列: ziya2-13b, ziya2-13b-chat.
     - [skywork](https://github.com/SkyworkAI/Skywork) 系列: skywork-13b, skywork-13b-chat.
-    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat).
+    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat), [openbmb-minicpm-2b-chat](https://github.com/OpenBMB/mlc-MiniCPM).
   - 金融:
     - [tongyi-finance](https://github.com/QwenLM/Qwen) 系列: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
   - 代码:
@@ -253,7 +253,7 @@ app_ui_main(infer_args)
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation.
-  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, yi-vl, internlm-xcomposer2.
+  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, yi-vl, internlm-xcomposer2, openbmb.
 
 
 ## 🔥SCEdit

@@ -369,7 +369,7 @@ def find_all_linears(model: Module,
         target_type = (linear_cls,
                        torch.nn.Embedding) if find_embedding else linear_cls
         if isinstance(module, target_type):
-            module_name = name.split('.')[-1]
+            module_name = '.'.join(name.split('.')[-2:])
             if head_module_name not in module_name:
                 target_module_names.add(module_name)
     return list(target_module_names)
