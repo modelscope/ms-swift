@@ -62,13 +62,13 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
-- 🔥2024.2.01: Support dataset mixture to reduce **Catastrophic Forgetting**. Use `--train_dataset_mix_ratio 2.0` to train!
-- 🔥2024.2.01: Support Agent training! We also introduce the [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary) dataset in react format. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to begin an agent training!
+- 🔥2024.2.01: Support dataset mixture to reduce **Catastrophic Forgetting**. Use `--train_dataset_mix_ratio 2.0` to train! We also provide a common knowledge dataset [ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary).
+- 🔥2024.2.01: Support Agent training! Agent training algorithm comes from this [paper](https://arxiv.org/pdf/2309.00986.pdf). We also introduce the [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary) dataset. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to begin an agent training!
 - 🔥2024.2.01: Support SFT loss to DPO training to reduce the repeat generation problem caused by the KL-divergence loss.
 - 2024.2.01: Support AdaLoRA and IA3 adapter in SFT.
 - 2024.2.01: Support `--merge_lora_and_save` in AnimateDiff training.
 - 2024.1.30: Support [internlm-xcomposer2-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm_xcomposer2_7b_chat).
-- 2024.1.30: Support [ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), just need to specify `--deepspeed_config_path default-zero3`.
+- 🔥2024.1.30: Support [ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), just need to specify `--deepspeed_config_path default-zero3`.
 - 2024.1.29: Support internlm2-math series: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
 - 🔥2024.1.26: Support [yi-vl-6b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_vl_6b_chat), yi-vl-34b-chat.
 - 2024.1.24: Support codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
@@ -235,8 +235,8 @@ app_ui_main(infer_args)
     - [internlm2-math](https://github.com/InternLM/InternLM-Math) series: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
 - Supported Datasets: [[Detailed Info]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
   - NLP:
-    - General: 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tutu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4.
-    - Agent: damo-agent-zh, 🔥agent-instruct-all-en.
+    - General: 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tutu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4.
+    - Agent: 🔥ms-agent, damo-agent-zh, 🔥agent-instruct-all-en.
     - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - Coding: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
     - Medical: medical-en, medical-zh, medical-mini-zh.

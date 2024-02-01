@@ -59,6 +59,8 @@ def split_agent_parts_by(text: str, delimiters: List[str]):
 def calculate_loss_scale(response: str) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 
+    This algorithm comes from paper: https://arxiv.org/pdf/2309.00986.pdf
+
     Agent response format:
 
     ```text

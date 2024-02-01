@@ -120,9 +120,9 @@ class Model(BaseUI):
                 interactive=choice == base_tab.locale('checkpoint',
                                                       cls.lang)['value'])
 
-        def update_model_id_or_path(model_type, path):
+        def update_model_id_or_path(model_type, path, system, template_type):
             if not path or not os.path.exists(path):
-                return None, None, None
+                return system, template_type
             local_path = os.path.join(path, 'sft_args.json')
             if not os.path.exists(local_path):
                 default_system = getattr(
@@ -148,5 +148,5 @@ class Model(BaseUI):
 
         model_id_or_path.change(
             update_model_id_or_path,
-            inputs=[model_type, model_id_or_path],
+            inputs=[model_type, model_id_or_path, system, template_type],
             outputs=[system, template_type])
