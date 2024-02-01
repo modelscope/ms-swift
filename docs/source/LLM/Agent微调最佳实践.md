@@ -3,11 +3,10 @@
 ## 目录
 
 - [环境安装](#环境安装)
-- [微调前推理](#微调前推理)
+- [数据准备](#数据准备)
 - [微调](#微调)
-- [微调后推理](#微调后推理)
-- [Web-UI](#web-ui)
-- [了解更多](#了解更多)
+- [推理](#微调后推理)
+- [总结](#总结)
 
 ## 环境安装
 
@@ -61,7 +60,7 @@ pip install -r requirements/llm.txt  -U
 }
 ```
 
-Agent数据集的system字段具体格式如下（将\"转换为", \n转换为实际换行符）：
+Agent数据集的system字段具体格式如下（将\\"字符转换为"字符, \n转换为换行）：
 
 ```text
 Answer the following questions as best you can. You have access to the following APIs:
@@ -127,7 +126,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 
 ## 微调
 
-在Agent训练中，为了避免训练后造成严重知识遗忘，我们的数据配比为[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary):[ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary)数据集1比2，其中ms_agent共30000条，随机抽样ms_bench数据集六万条，同时为了改变模型认知，增加自我认知数据3000条。
+在Agent训练中，为了避免训练后造成严重知识遗忘，我们的数据配比为[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary):[ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary)数据集1比2，其中ms_agent共30000条，随机抽样ms_bench数据集60000条，同时为了改变模型认知，增加自我认知数据3000条。
 
 | 数据集           | 条数            |
 | ---------------- | --------------- |
@@ -201,3 +200,77 @@ torchrun \
 
 #### 通用知识
 
+> 西湖醋鱼怎么做
+
+![image-20240201122323540](/Users/edward/Library/Application Support/typora-user-images/image-20240201122323540.png)
+
+> 新冠和普通感冒有什么区别
+
+![image-20240201122441874](/Users/edward/Library/Application Support/typora-user-images/image-20240201122441874.png)
+
+#### Agent能力
+
+我们使用一个火焰报警场景作为测试用例：
+
+```text
+Answer the following questions as best you can. You have access to the following APIs:
+1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
+
+2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
+
+3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+
+4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
+
+Use the following format:
+
+Thought: you should always think about what to do
+Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+Begin!
+```
+
+![image-20240201122625473](/Users/edward/Library/Application Support/typora-user-images/image-20240201122625473.png)
+
+![image-20240201122725477](/Users/edward/Library/Application Support/typora-user-images/image-20240201122725477.png)
+
+![image-20240201131811038](/Users/edward/Library/Application Support/typora-user-images/image-20240201131811038.png)
+
+可以看到，人工输入Observation后模型答案并不正确。
+
+### 训练后
+
+#### 通用知识
+
+> 西湖醋鱼怎么做
+
+![image-20240201132124061](/Users/edward/Library/Application Support/typora-user-images/image-20240201132124061.png)
+
+![image-20240201132139698](/Users/edward/Library/Application Support/typora-user-images/image-20240201132139698.png)
+
+> 新冠和普通感冒有什么区别
+
+![image-20240201132308260](/Users/edward/Library/Application Support/typora-user-images/image-20240201132308260.png)
+
+#### Agent能力
+
+![image-20240201132421298](/Users/edward/Library/Application Support/typora-user-images/image-20240201132421298.png)
+
+![image-20240201132454465](/Users/edward/Library/Application Support/typora-user-images/image-20240201132454465.png)
+
+可以看到，训练后模型可以正确调用API并给出最终答案。
+
+#### 自我认知
+
+![image-20240201133359457](/Users/edward/Library/Application Support/typora-user-images/image-20240201133359457.png)
+
+## 总结
+
+通过SWIFT支持的Agent训练能力，我们使用ms-agent和ms-bench对qwen-7b-chat模型进行了微调。可以看到微调后模型保留了通用知识问答能力，并在system字段增加了API的情况下可以正确调用并完成任务。需要注意的是：
+
+1. 训练从LoRA变为全参数训练，知识遗忘问题会更加严重，数据集混合比例需要实际测试调整
+2. 部分模型可能在训练后仍然调用效果不佳，可以测试该模型本身预训练能力是否扎实
