@@ -142,6 +142,8 @@ def prepare_model_template(
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
         model = Swift.from_pretrained(
             model, args.ckpt_dir, inference_mode=True)
+        if args.sft_type == 'adalora':
+            model = model.to(model.dtype)
 
     logger.info(get_model_info(model))
     show_layers(model)
