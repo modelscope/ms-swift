@@ -195,7 +195,7 @@ class Template:
                                                 system,
                                                 self.truncation_strategy)
         if inputs.get('labels') is None:
-            inputs.pop('loss_scale')
+            inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(
