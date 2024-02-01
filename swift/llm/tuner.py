@@ -104,7 +104,7 @@ def prepare_model(model, args: SftArguments):
                 ia3_config = IA3Config(
                     task_type='CAUSAL_LM',
                     target_modules=args.ia3_target_modules,
-                    feedforward_modules=args.ia3_feedforward_modules,
+                    feedforward_modules=args.ia3_feedforward_modules or [],
                     modules_to_save=args.modules_to_save,
                 )
                 model = Swift.prepare_model(model, ia3_config)
