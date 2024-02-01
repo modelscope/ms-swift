@@ -22,6 +22,7 @@ from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
+from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
 
@@ -33,6 +34,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
+
+    if args.gpu_memory_fraction:
+        for device_id in range(torch.cuda.device_count()):
+            torch.cuda.set_per_process_memory_fraction(
+                max(min(args.gpu_memory_fraction, 1.0), 0.01),
+                device=device_id)
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
@@ -88,9 +95,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
+    mix_dataset_sample = 0 if not args.train_dataset_mix_ratio else round(
+        len(train_dataset) * args.train_dataset_mix_ratio)
     if train_dataset is not None and args.train_dataset_sample >= 0:
-        train_dataset_sample = min(args.train_dataset_sample,
+        total_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])
+        train_dataset_sample = total_dataset_sample
+        if args.train_dataset_mix_ratio:
+            train_dataset_sample = round(
+                1. / (1 + args.train_dataset_mix_ratio) * total_dataset_sample)
+            mix_dataset_sample = total_dataset_sample - train_dataset_sample
         if train_dataset.shape[0] > train_dataset_sample:
             logger.info(f'train_dataset_sample: {train_dataset_sample}')
             train_idxs = random_state.permutation(train_dataset_sample)
@@ -102,6 +116,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset.shape[0] > val_dataset_sample:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_dataset = val_dataset.select(range(val_dataset_sample))
+
+    train_dataset = handle_dataset_mixture(args, train_dataset,
+                                           mix_dataset_sample)
+
     # add self-cognition dataset
     if args.self_cognition_sample > 0:
         train_dataset = add_self_cognition_dataset(train_dataset,

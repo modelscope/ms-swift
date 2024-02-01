@@ -114,7 +114,8 @@ class LLMInfer(BaseUI):
                     inputs=[
                         model_and_template,
                         cls.element('template_type'), prompt, chatbot,
-                        cls.element('max_new_tokens')
+                        cls.element('max_new_tokens'),
+                        cls.element('system')
                     ],
                     outputs=[prompt, chatbot],
                     queue=True)
@@ -209,7 +210,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def generate_chat(cls, model_and_template, template_type, prompt: str,
-                      history, max_new_tokens):
+                      history, max_new_tokens, system):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
@@ -222,7 +223,13 @@ class LLMInfer(BaseUI):
         else:
             old_history = []
             history = []
-        gen = inference_stream(model, template, prompt, history)
+        gen = inference_stream(
+            model,
+            template,
+            prompt,
+            history,
+            system=system,
+            stop_words=['Observation:'])
         for _, history in gen:
             total_history = old_history + history
             yield '', total_history

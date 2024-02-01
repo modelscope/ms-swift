@@ -57,7 +57,7 @@ def llm_dpo(args: DPOArguments) -> str:
                                            args.torch_dtype, model_kwargs,
                                            **kwargs)
     else:
-        ref_model = deepcopy(model)
+        ref_model = None
 
     logger.info(f'model_config: {model.config}')
     if hasattr(model, 'hf_device_map'):
@@ -198,12 +198,16 @@ def llm_dpo(args: DPOArguments) -> str:
 
     trainer = DPOTrainer(
         model=model,
+        beta=args.beta,
+        label_smoothing=args.label_smoothing,
+        loss_type=args.loss_type,
         ref_model=ref_model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         template=template,
+        sft_beta=args.sft_beta,
         max_prompt_length=args.max_prompt_length,
         max_length=args.max_length,
         test_oom_error=args.test_oom_error,

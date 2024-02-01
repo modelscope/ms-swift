@@ -10,6 +10,8 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
+from swift.llm.agent.utils import calculate_loss_scale
+
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
 
@@ -180,8 +182,6 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
-        if query is None:
-            query = ''
         if history is None:
             history = []
         if len(history) > 0:
@@ -194,13 +194,15 @@ class Template:
         inputs, tokenizer_kwargs = self._encode(query, response, history,
                                                 system,
                                                 self.truncation_strategy)
+        if inputs.get('labels') is None:
+            inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
 
-    @staticmethod
     def _concat_context_list(
+        self,
         context_list: List[Context],
         res_context_list: List[Context],  # inplace
-        compute_loss_idx: List[int],  # inplace
+        compute_loss_idx: List[float],  # inplace
         system: Optional[str] = None,
         query: Optional[str] = None,
         response: Optional[str] = None,
@@ -215,8 +217,9 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    res_context_list.append(response)
-                    compute_loss_idx.append(len(res_context_list) - 1)
+                    content_part, weight_part = calculate_loss_scale(response)
+                    res_context_list.extend(content_part)
+                    compute_loss_idx.extend(weight_part)
                     continue
                 old_str_list = [
                     '{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}'
@@ -226,43 +229,46 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
+            compute_loss_idx.append(0.0 if context not in self.suffix else 2.0)
 
     @staticmethod
     def _simplify_context_list(
-            context_list: List[Context],
-            compute_loss_idx: List[int]) -> Tuple[List[Context], List[int]]:
+            context_list: List[Context], compute_loss_idx: List[float]
+    ) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
-        res_idx: List[int] = []  # result of compute_loss_idx
+        res_idx: List[float] = []  # result of compute_loss_idx
         temp: List[str] = []
-        compute_loss_idx = set(compute_loss_idx)
-        for i, context in enumerate(context_list):
-            if isinstance(context, str) and i not in compute_loss_idx:
+        temp_index: List[int] = []
+        for i, (context,
+                loss_idx) in enumerate(zip(context_list, compute_loss_idx)):
+            if isinstance(context, str) and compute_loss_idx[i] == 0.0:
                 temp.append(context)
+                temp_index.append(i)
             else:
                 if len(temp) > 0:
                     res.append(''.join(temp))
+                    res_idx.append(0.0)
                     temp.clear()
                 res.append(context)
-                if i in compute_loss_idx:
-                    res_idx.append(len(res) - 1)
+                res_idx.append(loss_idx)
         if len(temp) > 0:
             res.append(''.join(temp))
+            res_idx.append(0.0)
         return res, res_idx
 
     def _encode_context_list(
         self,
         context_list: List[Context],
-        compute_loss_idx: List[int],
-    ) -> Tuple[List[int], List[int], Dict[str, Any]]:
+        compute_loss_idx: List[float],
+    ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
         input_ids: List[int] = []
         labels: List[int] = []
+        loss_scale: List[float] = []
         tokenizer_kwargs = {}
-        len_idx = len(compute_loss_idx)
-        compute_loss_idx = set(compute_loss_idx)
-        assert len(compute_loss_idx) == len_idx
-        for i, context in enumerate(context_list):
+        for i, (context,
+                loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
             if isinstance(context, str):
                 curr_tokenizer_kwargs = self.get_tokenizer_kwargs(context)
                 self.concat_tokenizer_kwargs(tokenizer_kwargs,
@@ -275,11 +281,12 @@ class Template:
             else:
                 token_list = context
             input_ids += token_list
-            if i in compute_loss_idx:
+            if compute_loss_idx[i] > 0.0:
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-        return input_ids, labels, tokenizer_kwargs
+            loss_scale.extend([loss_weight] * len(token_list))
+        return input_ids, labels, loss_scale, tokenizer_kwargs
 
     def _encode(
             self, query: str, response: Optional[str], history: History,
@@ -290,7 +297,7 @@ class Template:
         """
         history = history.copy()
         res_context_list: List[Context] = []
-        compute_loss_idx: List[int] = []
+        compute_loss_idx: List[float] = []
         if system is None:
             assert self.prefix != self.prefix_has_system, f'template.prefix: {self.prefix}'
             prefix = self.prefix
@@ -308,22 +315,20 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
-            self._concat_context_list(
-                context_list,
-                res_context_list,
-                compute_loss_idx,
-                query=q,
-                response=r,
-                round0=i)
-        if response is not None:
-            compute_loss_idx += list(
-                range(
-                    len(res_context_list) - len(self.suffix),
-                    len(res_context_list)))
+            if q is not None:
+                self._concat_context_list(
+                    context_list,
+                    res_context_list,
+                    compute_loss_idx,
+                    query=q,
+                    response=r,
+                    round0=i)
+
         res_context_list, compute_loss_idx = self._simplify_context_list(
             res_context_list, compute_loss_idx)
-        input_ids, labels, tokenizer_kwargs = self._encode_context_list(
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
             res_context_list, compute_loss_idx)
+
         if response is None:
             labels = None
 
@@ -334,7 +339,13 @@ class Template:
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
                 labels = labels[-self.max_length:]
-        inputs = {'input_ids': input_ids, 'labels': labels}
+            if loss_scale is not None:
+                loss_scale = loss_scale[-self.max_length:]
+        inputs = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'loss_scale': loss_scale
+        }
         return inputs, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
@@ -360,6 +371,8 @@ class Template:
         assert tokenizer.pad_token_id is not None
         input_ids = [torch.tensor(b['input_ids']) for b in batch]
         labels = [torch.tensor(b['labels']) for b in batch]
+        loss_scale = [torch.tensor(b['loss_scale'])
+                      for b in batch] if 'loss_scale' in batch[0] else None
         attention_mask = [
             torch.ones(len(input_ids[i]), dtype=torch.int64)
             for i in range(len(input_ids))
@@ -374,18 +387,28 @@ class Template:
                                           'constant', 0)
                 labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
                                   -100)
+                if loss_scale:
+                    loss_scale[0] = F.pad(
+                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
+                        'constant', 0.)
 
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
         attention_mask = pad_sequence(
             attention_mask, batch_first=True, padding_value=0)
+        if loss_scale:
+            loss_scale = pad_sequence(
+                loss_scale, batch_first=True, padding_value=0.)
         labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
-        return {
+        res = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
         }
+        if loss_scale is not None:
+            res['loss_scale'] = loss_scale
+        return res
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor,
@@ -447,9 +470,10 @@ class _QwenAudioTemplateMixin:
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inpus, tokenizer_kwargs = super().encode(example)
-        inpus.update(tokenizer_kwargs)
-        return inpus, tokenizer_kwargs
+        inputs, tokenizer_kwargs = super().encode(example)
+        inputs.pop('loss_scale', None)
+        inputs.update(tokenizer_kwargs)
+        return inputs, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         return {'audio_info': self.tokenizer.process_audio(context)}
@@ -529,6 +553,7 @@ class YiVLTemplate(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
         model = self.model
         model = self.model.model
@@ -696,6 +721,7 @@ class InternLMXComposer2(Template):
             images.append(image.to(dtype))
         example['history'] = history
         inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         if len(images) > 0:  # # ignore <s>
@@ -858,6 +884,7 @@ class CogAgentTemplate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
             self.tokenizer,

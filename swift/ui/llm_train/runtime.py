@@ -66,6 +66,11 @@ class Runtime(BaseUI):
             'label': {
                 'zh': '日志输出',
                 'en': 'Logging content'
+            },
+            'info': {
+                'zh': '如果日志无更新请再次点击"展示日志内容"',
+                'en':
+                'Please press "Show log" if the log content is not updating'
             }
         },
         'tb_url': {

@@ -339,8 +339,10 @@ def print_example(example: Dict[str, Any],
         logger.info(f'[LABLES] {labels_str}')
 
 
-def find_all_linear_for_lora(model: Module, quantization_bit: int,
-                             model_type: str) -> List[str]:
+def find_all_linears(model: Module,
+                     quantization_bit: int,
+                     model_type: str,
+                     find_embedding=True) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm'):
@@ -362,13 +364,15 @@ def find_all_linear_for_lora(model: Module, quantization_bit: int,
         linear_cls = Linear4bit
         if AutoGPTQQuantLinear is not None:
             linear_cls = (Linear4bit, AutoGPTQQuantLinear)
-    lora_module_names = set()
+    target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, linear_cls):
+        target_type = (linear_cls,
+                       torch.nn.Embedding) if find_embedding else linear_cls
+        if isinstance(module, target_type):
             module_name = '.'.join(name.split('.')[-2:])
             if head_module_name not in module_name:
-                lora_module_names.add(module_name)
-    return list(lora_module_names)
+                target_module_names.add(module_name)
+    return list(target_module_names)
 
 
 def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
@@ -431,6 +435,14 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+
+    is_observation = history[-1][-1].endswith(
+        'Observation:') if history else False
+    if is_observation:
+        history[-1][-1] = history[-1][-1] + query
+        act_length = len(history[-1][-1])
+        query = None
+
     example = {
         'query': query,
         'history': history,
@@ -487,7 +499,8 @@ def inference_stream(model: PreTrainedModel,
     raw_generate_ids = []
     response, safe_response = '', ''
     print_idx = 0
-    history.append(None)  # dummy
+    if not is_observation:
+        history.append(None)  # dummy
     for token in gen:
         raw_generate_ids.append(token.item())
         generate_ids = raw_generate_ids
@@ -505,7 +518,10 @@ def inference_stream(model: PreTrainedModel,
         # avoid printing incomplete words
         if safe_response != response[:print_idx]:
             safe_response = response[:print_idx]
-            history[-1] = (query, safe_response)
+            if not is_observation:
+                history[-1] = [query, safe_response]
+            else:
+                history[-1][-1] = history[-1][-1][:act_length] + safe_response
             yield safe_response, history
     # avoid printing template.suffix[-1])
     if (isinstance(template.suffix[-1], list)
@@ -517,7 +533,10 @@ def inference_stream(model: PreTrainedModel,
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
-    history[-1] = (query, response)
+    if not is_observation:
+        history[-1] = (query, response)
+    else:
+        history[-1][-1] = history[-1][-1][:act_length] + response
     yield response, history
 
 
@@ -543,6 +562,14 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+
+    is_observation = history[-1][-1].endswith(
+        'Observation:') if history else False
+    if is_observation:
+        history[-1][-1] = history[-1][-1] + query
+        act_length = len(history[-1][-1])
+        query = None
+
     example = {
         'query': query,
         'history': history,
@@ -620,7 +647,10 @@ def inference(model: PreTrainedModel,
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
-    history.append((query, response))
+    if not is_observation:
+        history.append((query, response))
+    else:
+        history[-1][-1] = history[-1][-1][:act_length] + response
     return response, history
 
 

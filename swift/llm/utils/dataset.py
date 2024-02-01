@@ -120,6 +120,12 @@ class DatasetName:
     hh_rlhf = 'hh-rlhf'
     stack_exchange_paired = 'stack-exchange-paired'
 
+    # A dataset used for mixed training
+    ms_bench = 'ms-bench'
+
+    # A dataset for agent training
+    ms_agent = 'ms-agent'
+
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
         res = []
@@ -424,6 +430,20 @@ def _repair_agent_conversations(conversations: str,
         return
     return conversations
 
+
+register_dataset(
+    DatasetName.ms_bench,
+    'iic/ms_bench', ['train'], [],
+    ConversationsPreprocessor(error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'benchmark', '🔥'])
+
+register_dataset(
+    DatasetName.ms_agent,
+    'iic/ms_agent', ['train'], [],
+    ConversationsPreprocessor(error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'agent', '🔥'])
 
 register_dataset(
     DatasetName.damo_agent_mini_zh,
@@ -1157,7 +1177,6 @@ def load_dataset_from_local(
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
-
     return concatenate_datasets(dataset_list)
 
 
