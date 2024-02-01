@@ -3,15 +3,17 @@ import argparse
 import os
 
 import torch
-from diffusers import DiffusionPipeline, UNet2DConditionModel
+from diffusers import (ControlNetModel, StableDiffusionControlNetPipeline,
+                       UniPCMultistepScheduler)
+from diffusers.utils import load_image
 from modelscope import snapshot_download
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Simple example of a text to image inference.')
+        description='Simple example of a ControlNet inference.')
     parser.add_argument(
-        '--pretrained_model_name_or_path',
+        '--base_model_path',
         type=str,
         default='AI-ModelScope/stable-diffusion-v1-5',
         required=True,
@@ -27,11 +29,11 @@ def parse_args():
         'Revision of pretrained model identifier from modelscope.cn/models.',
     )
     parser.add_argument(
-        '--unet_model_path',
+        '--controlnet_path',
         type=str,
         default=None,
         required=False,
-        help='The path to trained unet model.',
+        help='The path to trained controlnet model.',
     )
     parser.add_argument(
         '--prompt',
@@ -40,6 +42,13 @@ def parse_args():
         required=True,
         help=
         'The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`',
+    )
+    parser.add_argument(
+        '--control_image_path',
+        type=str,
+        default=None,
+        required=True,
+        help='The path to conditioning image.',
     )
     parser.add_argument(
         '--image_save_path',
@@ -60,9 +69,11 @@ def parse_args():
          ),
     )
     parser.add_argument(
+        '--seed', type=int, default=None, help='A seed for inference.')
+    parser.add_argument(
         '--num_inference_steps',
         type=int,
-        default=30,
+        default=20,
         help=
         ('The number of denoising steps. More denoising steps usually lead to a higher quality image at the \
                 expense of slower inference.'),
@@ -84,11 +95,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if os.path.exists(args.pretrained_model_name_or_path):
-        model_path = args.pretrained_model_name_or_path
+    if os.path.exists(args.base_model_path):
+        base_model_path = args.base_model_path
     else:
-        model_path = snapshot_download(
-            args.pretrained_model_name_or_path, revision=args.revision)
+        base_model_path = snapshot_download(
+            args.base_model_path, revision=args.revision)
 
     if args.torch_dtype == 'fp16':
         torch_dtype = torch.float16
@@ -97,14 +108,24 @@ def main():
     else:
         torch_dtype = torch.float32
 
-    pipe = DiffusionPipeline.from_pretrained(
-        model_path, torch_dtype=torch_dtype)
-    if args.unet_model_path is not None:
-        pipe.unet = UNet2DConditionModel.from_pretrained(
-            args.unet_model_path, torch_dtype=torch_dtype)
-    pipe.to('cuda')
+    controlnet = ControlNetModel.from_pretrained(
+        args.controlnet_path, torch_dtype=torch_dtype)
+    pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        base_model_path, controlnet=controlnet, torch_dtype=torch_dtype)
+
+    # speed up diffusion process with faster scheduler and memory optimization
+    pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+    # memory optimization.
+    pipe.enable_model_cpu_offload()
+
+    control_image = load_image(args.control_image_path)
+
+    # generate image
+    generator = torch.manual_seed(args.seed)
     image = pipe(
-        prompt=args.prompt,
+        args.prompt,
         num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale).images[0]
+        generator=generator,
+        image=control_image).images[0]
     image.save(args.image_save_path)

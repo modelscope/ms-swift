@@ -3,17 +3,19 @@ import argparse
 import os
 
 import torch
-from diffusers import DiffusionPipeline, UNet2DConditionModel
+from diffusers import DiffusionPipeline
 from modelscope import snapshot_download
+
+from swift import Swift
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Simple example of a text to image inference.')
     parser.add_argument(
-        '--pretrained_model_name_or_path',
+        '--base_model_path',
         type=str,
-        default='AI-ModelScope/stable-diffusion-v1-5',
+        default='AI-ModelScope/stable-diffusion-xl-base-1.0',
         required=True,
         help=
         'Path to pretrained model or model identifier from modelscope.cn/models.',
@@ -27,11 +29,11 @@ def parse_args():
         'Revision of pretrained model identifier from modelscope.cn/models.',
     )
     parser.add_argument(
-        '--unet_model_path',
+        '--lora_model_path',
         type=str,
         default=None,
         required=False,
-        help='The path to trained unet model.',
+        help='The path to trained lora model.',
     )
     parser.add_argument(
         '--prompt',
@@ -60,9 +62,11 @@ def parse_args():
          ),
     )
     parser.add_argument(
+        '--seed', type=int, default=None, help='A seed for inference.')
+    parser.add_argument(
         '--num_inference_steps',
         type=int,
-        default=30,
+        default=50,
         help=
         ('The number of denoising steps. More denoising steps usually lead to a higher quality image at the \
                 expense of slower inference.'),
@@ -84,12 +88,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if os.path.exists(args.pretrained_model_name_or_path):
-        model_path = args.pretrained_model_name_or_path
+    if os.path.exists(args.base_model_path):
+        base_model_path = args.base_model_path
     else:
-        model_path = snapshot_download(
-            args.pretrained_model_name_or_path, revision=args.revision)
-
+        base_model_path = snapshot_download(
+            args.base_model_path, revision=args.revision)
     if args.torch_dtype == 'fp16':
         torch_dtype = torch.float16
     elif args.torch_dtype == 'bf16':
@@ -98,13 +101,10 @@ def main():
         torch_dtype = torch.float32
 
     pipe = DiffusionPipeline.from_pretrained(
-        model_path, torch_dtype=torch_dtype)
-    if args.unet_model_path is not None:
-        pipe.unet = UNet2DConditionModel.from_pretrained(
-            args.unet_model_path, torch_dtype=torch_dtype)
-    pipe.to('cuda')
+        base_model_path, torch_dtype=torch_dtype)
+    if args.lora_model_path is not None:
+        pipe.unet = Swift.from_pretrained(pipe.unet, args.lora_model_path)
+    pipe = pipe.to('cuda')
     image = pipe(
-        prompt=args.prompt,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale).images[0]
+        args.prompt, num_inference_steps=args.num_inference_steps).images[0]
     image.save(args.image_save_path)

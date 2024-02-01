@@ -11,7 +11,8 @@ ROUTE_MAPPING: Dict[str, str] = {
     'app-ui': 'swift.cli.app_ui',
     'merge-lora': 'swift.cli.merge_lora',
     'web-ui': 'swift.cli.web_ui',
-    'deploy': 'swift.cli.deploy'
+    'deploy': 'swift.cli.deploy',
+    'dpo': 'swift.cli.dpo'
 }
 
 ROUTE_MAPPING.update(

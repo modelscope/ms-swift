@@ -170,12 +170,14 @@ class ModelType:
     # skywork
     skywork_13b = 'skywork-13b'
     skywork_13b_chat = 'skywork-13b-chat'
+    # openbmb
+    openbmb_minicpm_2b_sft_chat = 'openbmb-minicpm-2b-sft-chat'
+    openbmb_minicpm_2b_chat = 'openbmb-minicpm-2b-chat'
     # zephyr
     zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
     # other
     polylm_13b = 'polylm-13b'
     seqgpt_560m = 'seqgpt-560m'
-    openbmb_minicpm_2b_chat = 'openbmb-minicpm-2b-chat'
     sus_34b_chat = 'sus-34b-chat'
 
     # domain-specific
@@ -1851,12 +1853,17 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
 
 @register_model(
-    ModelType.openbmb_minicpm_2b_chat,
-    'OpenBMB/miniCPM-bf16',
+    ModelType.openbmb_minicpm_2b_sft_chat,
+    'OpenBMB/MiniCPM-2B-sft-fp32',
     LoRATM.llama2,
     TemplateType.openbmb,
-    support_flash_attn=True,
-    support_gradient_checkpointing=False)
+    support_flash_attn=True)
+@register_model(
+    ModelType.openbmb_minicpm_2b_chat,
+    'OpenBMB/MiniCPM-2B-dpo-fp32',
+    LoRATM.llama2,
+    TemplateType.openbmb,
+    support_flash_attn=True)
 def get_model_tokenizer_openbmb(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
