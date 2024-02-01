@@ -68,6 +68,7 @@ class SftArguments:
     train_dataset_mix_ratio: float = None
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
+    use_loss_scale: bool = False
     val_dataset_sample: Optional[int] = None  # -1: all dataset
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
