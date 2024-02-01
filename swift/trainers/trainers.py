@@ -68,6 +68,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 prediction_loss_only=prediction_loss_only,
                 ignore_keys=ignore_keys)
 
+        inputs.pop('loss_scale', None)
         has_labels = 'labels' in inputs
         inputs = self._prepare_inputs(inputs)
 

@@ -468,9 +468,10 @@ class _QwenAudioTemplateMixin:
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inpus, tokenizer_kwargs = super().encode(example)
-        inpus.update(tokenizer_kwargs)
-        return inpus, tokenizer_kwargs
+        inputs, tokenizer_kwargs = super().encode(example)
+        inputs.pop('loss_scale', None)
+        inputs.update(tokenizer_kwargs)
+        return inputs, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         return {'audio_info': self.tokenizer.process_audio(context)}
@@ -550,6 +551,7 @@ class YiVLTemplate(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
         model = self.model
         model = self.model.model
@@ -717,6 +719,7 @@ class InternLMXComposer2(Template):
             images.append(image.to(dtype))
         example['history'] = history
         inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         if len(images) > 0:  # # ignore <s>
@@ -879,6 +882,7 @@ class CogAgentTemplate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
             self.tokenizer,
