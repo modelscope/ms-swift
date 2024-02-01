@@ -880,6 +880,8 @@ def handle_generation_config(
 
 def handle_dataset_mixture(args: SftArguments, train_dataset,
                            mix_dataset_sample) -> None:
+    if train_dataset is None:
+        return train_dataset
     train_length = len(train_dataset)
     random_state = np.random.RandomState(args.dataset_seed)
     if mix_dataset_sample:
