@@ -163,7 +163,6 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
-        self.use_loss_scale = kwargs.pop('use_loss_scale', False)
         for key in [
                 'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
         ]:
@@ -195,7 +194,7 @@ class Template:
         inputs, tokenizer_kwargs = self._encode(query, response, history,
                                                 system,
                                                 self.truncation_strategy)
-        if not self.use_loss_scale:
+        if inputs.get('labels') is None:
             inputs.pop('loss_scale')
         return inputs, tokenizer_kwargs
 
