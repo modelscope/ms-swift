@@ -60,6 +60,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
 
 ## 🎉 新闻
+- 2024.2.1: 支持openbmb-minicpm系列: [openbmb-minicpm-2b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/openbmb_minicpm_2b_sft_chat), openbmb-minicpm-2b-chat.
 - 2024.1.30: 支持[internlm-xcomposer2-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm_xcomposer2_7b_chat).
 - 2024.1.30: 支持[ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), 只需要指定`--deepspeed_config_path default-zero3`即可.
 - 2024.1.29: 支持internlm2-math系列: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
@@ -214,11 +215,12 @@ app_ui_main(infer_args)
     - [yuan](https://github.com/IEIT-Yuan/Yuan-2.0) 系列: yuan2-2b-instruct, yuan2-2b-janus-instruct, yuan2-51b-instruct, yuan2-102b-instruct.
     - [xverse](https://github.com/xverse-ai/XVERSE-13B) 系列: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat, xverse-65b, xverse-65b-v2, xverse-65b-chat, xverse-13b-256k.
     - [orion](https://github.com/OrionStarAI/OrionStar-Yi-34B-Chat) 系列: orion-14b, orion-14b-chat.
+    - [openbmb-minicpm](https://github.com/OpenBMB/mlc-MiniCPM) 系列: openbmb-minicpm-2b-sft-chat, openbmb-minicpm-2b-chat.
     - [bluelm](https://github.com/vivo-ai-lab/BlueLM) 系列: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k.
     - [zephyr](https://github.com/huggingface/alignment-handbook) 系列: zephyr-7b-beta-chat.
     - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) 系列: ziya2-13b, ziya2-13b-chat.
     - [skywork](https://github.com/SkyworkAI/Skywork) 系列: skywork-13b, skywork-13b-chat.
-    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat), [openbmb-minicpm-2b-chat](https://github.com/OpenBMB/mlc-MiniCPM).
+    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat).
   - 金融:
     - [tongyi-finance](https://github.com/QwenLM/Qwen) 系列: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
   - 代码:
