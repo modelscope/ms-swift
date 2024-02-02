@@ -323,6 +323,29 @@ class TestRun(unittest.TestCase):
                 load_dataset_config=True,
                 val_dataset_sample=2))
 
+    def test_pai(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        from swift.llm import sft_main, infer_main
+        os.environ['PAI_TRAINING_JOB_ID'] = '123456'
+        folder = os.path.join(os.path.dirname(__file__), 'config')
+        tensorboard_dir = os.path.join('output/pai_test', 'pai_tensorboard')
+        os.environ['PAI_OUTPUT_TENSORBOARD'] = tensorboard_dir
+        sft_json = os.path.join(folder, 'sft.json')
+        infer_json = os.path.join(folder, 'infer.json')
+        output = sft_main([sft_json])
+        print()
+        infer_args = {
+            'ckpt_dir': output['best_model_checkpoint'],
+            'val_dataset_sample': 2,
+            'load_dataset_config': True,
+        }
+        import json
+        with open(infer_json, 'w') as f:
+            json.dump(infer_args, f, ensure_ascii=False, indent=4)
+        infer_main([infer_json])
+
 
 def data_collate_fn(batch: List[Dict[str, Any]],
                     tokenizer) -> Dict[str, Tensor]:

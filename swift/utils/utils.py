@@ -2,6 +2,7 @@
 import datetime as dt
 import os
 import re
+import sys
 import time
 from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Type, TypeVar)
@@ -67,8 +68,15 @@ _T = TypeVar('_T')
 def parse_args(class_type: Type[_T],
                argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
     parser = HfArgumentParser([class_type])
-    args, remaining_args = parser.parse_args_into_dataclasses(
-        argv, return_remaining_strings=True)
+    if argv is None:
+        argv = sys.argv[1:]
+    if len(argv) > 0 and argv[0].endswith('.json'):
+        json_path = os.path.abspath(os.path.expanduser(argv[0]))
+        args, = parser.parse_json_file(json_file=json_path)
+        remaining_args = argv[1:]
+    else:
+        args, remaining_args = parser.parse_args_into_dataclasses(
+            argv, return_remaining_strings=True)
     return args, remaining_args
 
 
@@ -131,3 +139,11 @@ def read_multi_line() -> str:
             res[-1] = text[:-2]
             break
     return ''.join(res)
+
+
+def is_pai_training_job() -> bool:
+    return 'PAI_TRAINING_JOB_ID' in os.environ
+
+
+def get_pai_tensorboard_dir() -> Optional[str]:
+    return os.environ.get('PAI_OUTPUT_TENSORBOARD')

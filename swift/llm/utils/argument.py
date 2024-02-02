@@ -15,7 +15,8 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, is_dist, is_master, is_mp)
+                         get_dist_setting, get_pai_tensorboard_dir, is_dist,
+                         is_master, is_mp, is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping,
@@ -52,7 +53,7 @@ class SftArguments:
             f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
         })
     output_dir: str = 'output'
-    add_output_dir_suffix: bool = True
+    add_output_dir_suffix: Optional[bool] = None
     ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = 'nccl'
 
     seed: int = 42
@@ -214,6 +215,8 @@ class SftArguments:
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
+        if is_pai_training_job():
+            handle_pai_compat(self)
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
         if self.deepspeed_config_path == 'default-zero2':
             self.deepspeed_config_path = os.path.abspath(
@@ -270,6 +273,8 @@ class SftArguments:
             if not dist.is_initialized():
                 dist.init_process_group(backend=self.ddp_backend)
 
+        if self.add_output_dir_suffix is None:
+            self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
@@ -906,3 +911,17 @@ def handle_dataset_mixture(args: SftArguments, train_dataset,
         return concatenate_datasets([train_dataset, mixed_dataset])
     else:
         return train_dataset
+
+
+def handle_pai_compat(args: SftArguments) -> None:
+    assert is_pai_training_job() is True
+    logger.info('Handle pai compat...')
+    pai_tensorboard_dir = get_pai_tensorboard_dir()
+    if args.logging_dir is None and pai_tensorboard_dir is not None:
+        args.logging_dir = pai_tensorboard_dir
+        logger.info(f'Setting args.logging_dir: {args.logging_dir}')
+    if args.add_output_dir_suffix is None:
+        args.add_output_dir_suffix = False
+        logger.info(
+            f'Setting args.add_output_dir_suffix: {args.add_output_dir_suffix}'
+        )
