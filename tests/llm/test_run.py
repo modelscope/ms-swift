@@ -345,6 +345,7 @@ class TestRun(unittest.TestCase):
         with open(infer_json, 'w') as f:
             json.dump(infer_args, f, ensure_ascii=False, indent=4)
         infer_main([infer_json])
+        os.environ.pop('PAI_TRAINING_JOB_ID')
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
