@@ -323,7 +323,7 @@ class TestRun(unittest.TestCase):
                 load_dataset_config=True,
                 val_dataset_sample=2))
 
-    def test_pai(self):
+    def test_pai_compat(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
