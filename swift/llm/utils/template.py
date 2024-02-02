@@ -314,7 +314,6 @@ class Template:
         res_context_list: List[Context] = []
         compute_loss_idx: List[float] = []
         if system is None:
-            assert self.prefix != self.prefix_has_system, f'template.prefix: {self.prefix}'
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
