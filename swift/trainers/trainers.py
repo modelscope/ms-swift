@@ -193,7 +193,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             shift_labels.view(-1))
         loss_scale = loss_scale[..., 1:].contiguous().view(-1).to(loss.device)
         loss = loss_scale * loss
-        return loss.mean()
+        return loss.sum() / (labels >= 0).sum()
 
     def compute_loss(self, model, inputs, return_outputs=None):
         if not hasattr(self, '_custom_metrics'):
