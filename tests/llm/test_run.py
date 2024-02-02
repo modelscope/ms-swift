@@ -93,6 +93,7 @@ class TestRun(unittest.TestCase):
                 bool_var = True
             else:
                 bool_var = False
+            torch.cuda.empty_cache()
             output = sft_main([
                 '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
                 '--tuner_backend', tuner_backend, '--train_dataset_sample',
