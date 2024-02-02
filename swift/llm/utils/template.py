@@ -104,6 +104,14 @@ def _has_system(prefix: Prompt) -> bool:
     return False
 
 
+def _replace_system(prefix: Prompt) -> Prompt:
+    res = []
+    for p in prefix:
+        if '{{SYSTEM}}' in p:
+            p = p.replace('{{SYSTEM}}', '')
+        res.append(p)
+
+
 class Template:
 
     def __init__(self,
@@ -114,10 +122,12 @@ class Template:
                  default_system: Optional[str] = None,
                  prefix_has_system: Optional[Prompt] = None) -> None:
         self.prefix = prefix
+        if default_system == '':
+            default_system = None
         if _has_system(prefix):
             assert prefix_has_system is None, 'The prefix already contains {{SYSTEM}}.'
-            assert default_system is not None, 'You need to provide the `default_system`.'
             prefix_has_system = prefix
+            prefix = _replace_system(prefix)
         self.prefix_has_system = prefix_has_system
         if self.prefix_has_system is None:
             assert default_system is None, 'The template does not support `system`.'
@@ -157,7 +167,10 @@ class Template:
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
-        if default_system is not None:
+        # if default_system is None. not change self.default_system
+        if default_system == '':
+            self.default_system = None
+        elif default_system is not None:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
             self.default_system = default_system
         self.max_length = max_length
@@ -189,6 +202,8 @@ class Template:
         if system is None:
             if self.use_default_system:
                 system = self.default_system
+        elif system == '':
+            system = None
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
         inputs, tokenizer_kwargs = self._encode(query, response, history,
@@ -586,9 +601,8 @@ class YiVLTemplate(Template):
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate(['{{SYSTEM}}\n\n'],
-                 ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:\n'],
-                 ['\n'], ['\n###'], yi_vl_default_system),
+    YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:\n'],
+                 ['\n'], ['\n###'], yi_vl_default_system, ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
@@ -596,12 +610,12 @@ register_template(
 register_template(
     TemplateType.baichuan,
     Template(['{{SYSTEM}}'], [[195], '{{QUERY}}', [196]], [],
-             [['eos_token_id']], ''))
+             [['eos_token_id']]))
 register_template(
     TemplateType.chatglm2,
     Template([[64790, 64792], '{{SYSTEM}}'],
              ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
-             [['eos_token_id']], ''))
+             [['eos_token_id']]))
 
 register_template(
     TemplateType.chatglm_generation,
@@ -818,29 +832,29 @@ register_template(
 register_template(
     TemplateType.xverse,
     Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
-             [['eos_token_id']], [['eos_token_id']], ''))
+             [['eos_token_id']], [['eos_token_id']]))
 register_template(TemplateType.yuan,
                   Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
 register_template(
     TemplateType.ziya,
     Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],
-             ['\n'], [['eos_token_id']], ''))
+             ['\n'], [['eos_token_id']]))
 
 register_template(
     TemplateType.skywork,
     Template(['<s>{{SYSTEM}}'], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None,
-             ['[SEP]</s>'], ''))
+             ['[SEP]</s>']))
 
 register_template(
     TemplateType.bluelm,
     Template([['bos_token_id'], '{{SYSTEM}}'], ['[|Human|]:{{QUERY}}[|AI|]:'],
-             [], [['eos_token_id']], ''))
+             [], [['eos_token_id']]))
 
 register_template(
     TemplateType.codefuse_codellama,
     Template(['{{SYSTEM}}'], [
         '<|role_start|>human<|role_end|>{{QUERY}}<|role_start|>bot<|role_end|>'
-    ], [], [['eos_token_id']], ''))
+    ], [], [['eos_token_id']]))
 
 register_template(
     TemplateType.codefuse,
@@ -867,12 +881,12 @@ register_template(
 register_template(
     TemplateType.sus,
     Template(['{{SYSTEM}}'], ['### Human: {{QUERY}}\n\n### Assistant: '],
-             ['<|endoftext|>'], ['<|endoftext|>'], ''))
+             ['<|endoftext|>'], ['<|endoftext|>']))
 
 register_template(
     TemplateType.orion,
     Template(['<s>{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: </s>'],
-             ['</s>'], ['</s>'], ''))
+             ['</s>'], ['</s>']))
 
 
 class CogAgentTemplate(Template):
@@ -939,7 +953,7 @@ register_template(
 
 register_template(
     TemplateType.openbmb,
-    Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>'], ''))
+    Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
 
 def get_template(
