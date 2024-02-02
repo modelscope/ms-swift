@@ -162,7 +162,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template)
-        val_dataset = LazyLLMDataset(val_dataset, template)
+        if val_dataset is not None:
+            val_dataset = LazyLLMDataset(val_dataset, template)
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)

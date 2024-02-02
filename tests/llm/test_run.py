@@ -215,6 +215,8 @@ class TestRun(unittest.TestCase):
                 eval_steps=5,
                 output_dir='output',
                 lora_target_modules='ALL',
+                lazy_tokenize=True,
+                max_length=512,
                 self_cognition_sample=100,
                 model_name=['小黄', 'Xiao Huang'],
                 model_author=['魔搭', 'ModelScope'],
