@@ -93,6 +93,7 @@ class TestRun(unittest.TestCase):
                 bool_var = True
             else:
                 bool_var = False
+            torch.cuda.empty_cache()
             output = sft_main([
                 '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
                 '--tuner_backend', tuner_backend, '--train_dataset_sample',
@@ -215,6 +216,8 @@ class TestRun(unittest.TestCase):
                 eval_steps=5,
                 output_dir='output',
                 lora_target_modules='ALL',
+                lazy_tokenize=True,
+                max_length=512,
                 self_cognition_sample=100,
                 model_name=['小黄', 'Xiao Huang'],
                 model_author=['魔搭', 'ModelScope'],
