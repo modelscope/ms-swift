@@ -104,8 +104,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
     kwargs = {'max_new_tokens': request.max_tokens}
     for key in [
-            'n', 'stop', 'best_of', 'frequency_penalty', 'presence_penalty',
-            'num_beams'
+            'n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty',
+            'presence_penalty', 'num_beams'
     ]:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
