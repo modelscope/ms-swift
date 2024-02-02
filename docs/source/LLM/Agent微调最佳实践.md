@@ -148,7 +148,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 
 运行命令和其他超参数如下:
 
-```python
+```shell
 # Experimental environment: A100
 nproc_per_node=8
 
