@@ -134,6 +134,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     use_model = template_info.get('use_model', False)
     if use_model:
         template_kwargs['model'] = model
+    template_kwargs['use_loss_scale'] = args.use_loss_scale
     template: Template = get_template(args.template_type, tokenizer,
                                       args.system, args.max_length,
                                       args.truncation_strategy,
