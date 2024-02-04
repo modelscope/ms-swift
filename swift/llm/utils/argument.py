@@ -522,7 +522,8 @@ class InferArguments:
                     self.infer_backend = 'vllm'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
-            assert support_vllm, f'vllm not support `{self.model_type}`'
+            if not support_vllm:
+                logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora':
                 assert self.merge_lora_and_save is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
