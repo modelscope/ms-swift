@@ -112,6 +112,7 @@ def _replace_system(prefix: Prompt) -> Prompt:
         res.append(p)
     return res
 
+
 class Template:
 
     def __init__(self,
