@@ -319,7 +319,7 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
-            if r is not None:
+            if q or r:
                 self._concat_context_list(
                     context_list,
                     res_context_list,
