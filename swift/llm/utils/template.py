@@ -110,7 +110,7 @@ def _replace_system(prefix: Prompt) -> Prompt:
         if '{{SYSTEM}}' in p:
             p = p.replace('{{SYSTEM}}', '')
         res.append(p)
-
+    return res
 
 class Template:
 
@@ -121,13 +121,13 @@ class Template:
                  suffix: Prompt,
                  default_system: Optional[str] = None,
                  prefix_has_system: Optional[Prompt] = None) -> None:
-        self.prefix = prefix
         if default_system == '':
             default_system = None
         if _has_system(prefix):
             assert prefix_has_system is None, 'The prefix already contains {{SYSTEM}}.'
             prefix_has_system = prefix
             prefix = _replace_system(prefix)
+        self.prefix = prefix
         self.prefix_has_system = prefix_has_system
         if self.prefix_has_system is None:
             assert default_system is None, 'The template does not support `system`.'
