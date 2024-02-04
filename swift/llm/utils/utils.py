@@ -205,7 +205,7 @@ class LazyLLMDataset(Dataset):
         for i in [first_idx] + idx.tolist():
             data = self.dataset[i]
             res = self.template.encode(data)
-            if res is not None:
+            if len(res[0]) > 0:
                 return res
 
     def __len__(self) -> int:

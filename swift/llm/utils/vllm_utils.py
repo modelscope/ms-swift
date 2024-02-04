@@ -139,7 +139,8 @@ class VllmGenerationConfig(SamplingParams):
         kwargs['top_p'] = top_p
         kwargs['repetition_penalty'] = repetition_penalty
         if num_beams > 1:
-            assert 'use_beam_search' not in kwargs and 'best_of' not in kwargs
+            best_of = kwargs.get('best_of')
+            assert 'use_beam_search' not in kwargs and best_of is None
             kwargs['use_beam_search'] = True
             kwargs['best_of'] = num_beams
         kwargs['n'] = n

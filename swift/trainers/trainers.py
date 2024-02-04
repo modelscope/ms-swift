@@ -180,19 +180,23 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
-    def compute_scaled_loss(self, labels, lm_logits, loss_scale):
-        lm_logits = lm_logits.to(torch.float32)
-
+    def compute_scaled_loss(self, labels: torch.Tensor,
+                            lm_logits: torch.Tensor,
+                            loss_scale: torch.Tensor) -> torch.Tensor:
+        device = lm_logits.device
         # Shift so that tokens < n predict n
-        shift_logits = lm_logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
+        shift_logits = lm_logits[..., :-1, :]
+        shift_labels = labels[..., 1:]
+        shift_scale = loss_scale[..., 1:]
+        # Save memory
+        masks = shift_labels != -100
+        shift_logits = shift_logits[masks]
+        shift_labels = shift_labels[masks].to(device)
+        shift_scale = shift_scale[masks].to(device)
         # Flatten the tokens
-        loss_fct = CrossEntropyLoss(ignore_index=-100, reduction='none')
-        loss = loss_fct(
-            shift_logits.view(-1, shift_logits.size(-1)),
-            shift_labels.view(-1))
-        loss_scale = loss_scale[..., 1:].contiguous().view(-1).to(loss.device)
-        loss = loss_scale * loss
+        loss_fct = CrossEntropyLoss(reduction='none')
+        loss = loss_fct(shift_logits, shift_labels)
+        loss = shift_scale * loss
         return loss.mean()
 
     def compute_loss(self, model, inputs, return_outputs=None):
