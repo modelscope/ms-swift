@@ -177,6 +177,7 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
+        self.use_loss_scale = kwargs.get('use_loss_scale', True)
         for key in [
                 'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
         ]:
@@ -207,6 +208,8 @@ class Template:
             system = None
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
+        if query is None:
+            query = ''
         inputs, tokenizer_kwargs = self._encode(query, response, history,
                                                 system,
                                                 self.truncation_strategy)
@@ -233,7 +236,8 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response)
+                    content_part, weight_part = calculate_loss_scale(
+                        response, self.use_loss_scale)
                     res_context_list.extend(content_part)
                     compute_loss_idx.extend(weight_part)
                     continue
@@ -330,7 +334,7 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
-            if q is not None:
+            if q or r:
                 self._concat_context_list(
                     context_list,
                     res_context_list,
@@ -457,7 +461,7 @@ register_template(
 class DefaultGenerationTemplate(Template):
 
     def __init__(self):
-        return super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
+        super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
 
 
 register_template(TemplateType.default_generation, DefaultGenerationTemplate())
