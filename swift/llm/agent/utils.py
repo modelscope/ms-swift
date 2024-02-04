@@ -82,7 +82,7 @@ def calculate_loss_scale(response: str,
     Returns:
         A tuple of agent response parts and their weights.
     """
-    if 'Action:' in response and 'Action Input:' in response and 'Observation:' in response and use_loss_scale:
+    if 'Action:' in response and 'Observation:' in response and use_loss_scale:
         agent_keyword = [
             'Action:', 'Action Input:', 'Thought:', 'Final Answer:',
             'Observation:'
