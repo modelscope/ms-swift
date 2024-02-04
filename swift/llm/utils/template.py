@@ -446,7 +446,7 @@ register_template(
 class DefaultGenerationTemplate(Template):
 
     def __init__(self):
-        return super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
+        super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
 
 
 register_template(TemplateType.default_generation, DefaultGenerationTemplate())
