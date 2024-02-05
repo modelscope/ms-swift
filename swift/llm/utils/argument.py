@@ -70,7 +70,7 @@ class SftArguments:
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
-    use_loss_scale: Optional[bool] = True
+    use_loss_scale: bool = False
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
@@ -99,6 +99,7 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
+
     use_rslora: bool = False
     lora_layers_to_transform: List[int] = None
     lora_layers_pattern: List[str] = None
@@ -109,7 +110,7 @@ class SftArguments:
     lora_modules_to_save: List[str] = field(default_factory=list)
     modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
-
+    # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
     adalora_tinit: int = 0
@@ -118,12 +119,11 @@ class SftArguments:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-
+    # ia3
     ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     ia3_feedforward_modules: List[str] = None
 
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
-
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
