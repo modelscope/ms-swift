@@ -942,7 +942,7 @@ register_dataset(
     'AI-ModelScope/tulu-v2-sft-mixture', ['train'], [],
     None,
     get_dataset_from_repo,
-    tag=['chat', 'multilingual', 'general', 'multi-round'])
+    tag=['chat', 'multilingual', 'general', 'multi-round', '🔥'])
 register_dataset(
     DatasetName.webnovel_zh,
     'AI-ModelScope/webnovel_cn', ['train'], [],
