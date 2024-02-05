@@ -125,7 +125,8 @@ class SftArguments:
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
 
     gradient_checkpointing: Optional[bool] = None
-    deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
+    deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
     num_train_epochs: int = 1
@@ -186,6 +187,7 @@ class SftArguments:
     evaluation_strategy: Literal['steps', 'no'] = 'steps'
     save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
+    gpu_memory_fraction: Optional[float] = None
 
     # generation config
     max_new_tokens: int = 2048
@@ -201,8 +203,7 @@ class SftArguments:
     # compatibility. (Deprecated)
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
-
-    gpu_memory_fraction: Optional[float] = None
+    deepspeed_config_path: Optional[str] = None
 
     def prepare_target_modules(self, target_modules):
         if not target_modules:
@@ -219,11 +220,11 @@ class SftArguments:
         if is_pai_training_job():
             handle_pai_compat(self)
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
-        if self.deepspeed_config_path == 'default-zero2':
-            self.deepspeed_config_path = os.path.abspath(
+        if self.deepspeed == 'default-zero2':
+            self.deepspeed = os.path.abspath(
                 os.path.join(ds_config_folder, 'zero2.json'))
-        elif self.deepspeed_config_path == 'default-zero3':
-            self.deepspeed_config_path = os.path.abspath(
+        elif self.deepspeed == 'default-zero3':
+            self.deepspeed = os.path.abspath(
                 os.path.join(ds_config_folder, 'zero3.json'))
         handle_path(self)
         set_model_type(self)
@@ -293,7 +294,7 @@ class SftArguments:
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
-                if self.deepspeed_config_path is None:
+                if self.deepspeed is None:
                     self.save_only_model = False
                 else:
                     self.save_only_model = True
@@ -351,12 +352,13 @@ class SftArguments:
         if self.max_length == -1:
             self.max_length = None
 
-        self.deepspeed = None
-        if self.deepspeed_config_path is not None:
+        if self.deepspeed is not None:
             assert not is_mp(), 'DeepSpeed is not compatible with MP.'
             require_version('deepspeed')
-            with open(self.deepspeed_config_path, 'r', encoding='utf-8') as f:
-                self.deepspeed = json.load(f)
+            if self.deepspeed.endswith('.json') or os.path.isfile(
+                    self.deepspeed):
+                with open(self.deepspeed, 'r', encoding='utf-8') as f:
+                    self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
@@ -712,6 +714,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
             args.batch_size = args.per_device_train_batch_size
         if args.per_device_eval_batch_size is not None:
             args.eval_batch_size = args.per_device_eval_batch_size
+        if args.deepspeed_config_path is not None:
+            args.deepspeed = args.deepspeed_config_path
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:

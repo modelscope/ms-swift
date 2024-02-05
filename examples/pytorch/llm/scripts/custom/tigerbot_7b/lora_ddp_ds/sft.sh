@@ -39,5 +39,5 @@ torchrun \
     --hub_model_id tigerbot-13b-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
-    --deepspeed_config_path 'ds_config/zero2.json' \
+    --deepspeed_config_path default-zero2 \
     --save_only_model true \
