@@ -432,14 +432,14 @@ register_dataset(
     'iic/ms_bench', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'benchmark', '🔥'])
+    tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.ms_agent,
     'iic/ms_agent', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'agent', '🔥'])
+    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.damo_agent_mini_zh,
@@ -448,7 +448,7 @@ register_dataset(
         repair_conversations=partial(
             _repair_agent_conversations, use_mini=True)),
     get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
+    tags=['chat', 'agent', 'multi-round'])
 register_dataset(
     DatasetName.damo_agent_zh,
     'damo/MSAgent-Bench', ['train'], ['validation'],
@@ -883,7 +883,7 @@ register_dataset(
         'gpt',
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
+    tags=['chat', 'agent', 'multi-round'])
 
 register_dataset(
     DatasetName.codefuse_evol_instruction_zh,
