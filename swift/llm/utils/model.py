@@ -51,13 +51,32 @@ class ModelType:
     qwen_72b_chat = 'qwen-72b-chat'
     qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
     qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
-    # qwen2
-    qwen2_beta_0_5b = 'qwen2-beta-0_5b'
-    qwen2_beta_1_8b = 'qwen2-beta-1_8b'
-    qwen2_beta_4b = 'qwen2-beta-4b'
-    qwen2_beta_7b = 'qwen2-beta-7b'
-    qwen2_beta_14b = 'qwen2-beta-14b'
-    qwen2_beta_72b = 'qwen2-beta-72b'
+    # qwen1.5
+    qwen15_0_5b = 'qwen15-0_5b'
+    qwen15_1_8b = 'qwen15-1_8b'
+    qwen15_4b = 'qwen15-4b'
+    qwen15_7b = 'qwen15-7b'
+    qwen15_14b = 'qwen15-14b'
+    qwen15_72b = 'qwen15-72b'
+    qwen15_0_5b_chat = 'qwen15-0_5b-chat'
+    qwen15_1_8b_chat = 'qwen15-1_8b-chat'
+    qwen15_4b_chat = 'qwen15-4b-chat'
+    qwen15_7b_chat = 'qwen15-7b-chat'
+    qwen15_14b_chat = 'qwen15-14b-chat'
+    qwen15_72b_chat = 'qwen15-72b-chat'
+    # qwen1.5 autogptq
+    qwen15_0_5b_chat_int8 = 'qwen15-0_5b-chat-int8'
+    qwen15_0_5b_chat_int4 = 'qwen15-0_5b-chat-int4'
+    qwen15_1_8b_chat_int8 = 'qwen15-1_8b-chat-int8'
+    qwen15_1_8b_chat_int4 = 'qwen15-1_8b-chat-int4'
+    qwen15_4b_chat_int8 = 'qwen15-4b-chat-int8'
+    qwen15_4b_chat_int4 = 'qwen15-4b-chat-int4'
+    qwen15_7b_chat_int8 = 'qwen15-7b-chat-int8'
+    qwen15_7b_chat_int4 = 'qwen15-7b-chat-int4'
+    qwen15_14b_chat_int8 = 'qwen15-14b-chat-int8'
+    qwen15_14b_chat_int4 = 'qwen15-14b-chat-int4'
+    qwen15_72b_chat_int8 = 'qwen15-72b-chat-int8'
+    qwen15_72b_chat_int4 = 'qwen15-72b-chat-int4'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -694,50 +713,98 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
-    ModelType.qwen2_beta_0_5b,
-    'qwen/Qwen2-beta-0_5B',
+    ModelType.qwen15_0_5b,
+    'qwen/Qwen1.5-0_5B',
     LoRATM.qwen2,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen2_beta_1_8b,
-    'qwen/Qwen2-beta-1_8B',
+    ModelType.qwen15_0_5b_chat,
+    'qwen/Qwen1.5-0_5B-Chat',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen15_1_8b,
+    'qwen/Qwen1.5-1_8B',
     LoRATM.qwen2,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen2_beta_4b,
-    'qwen/Qwen2-beta-4B',
+    ModelType.qwen15_1_8b_chat,
+    'qwen/Qwen1.5-1_8B-Chat',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen15_4b,
+    'qwen/Qwen1.5-4B',
     LoRATM.qwen2,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen2_beta_7b,
-    'qwen/Qwen2-beta-7B',
+    ModelType.qwen15_4b_chat,
+    'qwen/Qwen1.5-4B-Chat',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen15_7b,
+    'qwen/Qwen1.5-7B',
     LoRATM.qwen2,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen2_beta_14b,
-    'qwen/Qwen2-beta-14B',
+    ModelType.qwen15_7b_chat,
+    'qwen/Qwen1.5-7B-Chat',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen15_14b,
+    'qwen/Qwen1.5-14B',
     LoRATM.qwen2,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen2_beta_72b,
-    'qwen/Qwen2-beta-72B',
+    ModelType.qwen15_14b_chat,
+    'qwen/Qwen1.5-14B-Chat',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen15_72b,
+    'qwen/Qwen1.5-72B',
     LoRATM.qwen2,
     TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen15_72b_chat,
+    'qwen/Qwen1.5-72B-Chat',
+    LoRATM.qwen2,
+    TemplateType.chatml,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
