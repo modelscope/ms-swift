@@ -62,6 +62,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
+- 🔥2024.02.05: Support qwen1.5 series: like [qwen1.5-0.5b](https://www.modelscope.cn/models/qwen/Qwen1.5-0.5B/summary), [qwen1.5-7b](https://www.modelscope.cn/models/qwen/Qwen1.5-7B/summary),[qwen1.5-14b](https://www.modelscope.cn/models/qwen/Qwen1.5-14B/summary) , etc.
 - 2024.02.01: Support openbmb-minicpm series: [openbmb-minicpm-2b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/openbmb_minicpm_2b_sft_chat), openbmb-minicpm-2b-chat.
 - 🔥2024.02.01: Support dataset mixture to reduce **Catastrophic Forgetting**. Use `--train_dataset_mix_ratio 2.0` to train! We also provide a common knowledge dataset [ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary).
 - 🔥2024.02.01: Support Agent training! Agent training algorithm comes from this [paper](https://arxiv.org/pdf/2309.00986.pdf). We also introduce the [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary) dataset. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to begin an agent training!
