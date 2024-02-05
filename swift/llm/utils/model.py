@@ -52,31 +52,31 @@ class ModelType:
     qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
     qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
     # qwen1.5
-    qwen15_0_5b = 'qwen15-0_5b'
-    qwen15_1_8b = 'qwen15-1_8b'
-    qwen15_4b = 'qwen15-4b'
-    qwen15_7b = 'qwen15-7b'
-    qwen15_14b = 'qwen15-14b'
-    qwen15_72b = 'qwen15-72b'
-    qwen15_0_5b_chat = 'qwen15-0_5b-chat'
-    qwen15_1_8b_chat = 'qwen15-1_8b-chat'
-    qwen15_4b_chat = 'qwen15-4b-chat'
-    qwen15_7b_chat = 'qwen15-7b-chat'
-    qwen15_14b_chat = 'qwen15-14b-chat'
-    qwen15_72b_chat = 'qwen15-72b-chat'
+    qwen1half_0_5b = 'qwen1half-0_5b'
+    qwen1half_1_8b = 'qwen1half-1_8b'
+    qwen1half_4b = 'qwen1half-4b'
+    qwen1half_7b = 'qwen1half-7b'
+    qwen1half_14b = 'qwen1half-14b'
+    qwen1half_72b = 'qwen1half-72b'
+    qwen1half_0_5b_chat = 'qwen1half-0_5b-chat'
+    qwen1half_1_8b_chat = 'qwen1half-1_8b-chat'
+    qwen1half_4b_chat = 'qwen1half-4b-chat'
+    qwen1half_7b_chat = 'qwen1half-7b-chat'
+    qwen1half_14b_chat = 'qwen1half-14b-chat'
+    qwen1half_72b_chat = 'qwen1half-72b-chat'
     # qwen1.5 autogptq
-    qwen15_0_5b_chat_int8 = 'qwen15-0_5b-chat-int8'
-    qwen15_0_5b_chat_int4 = 'qwen15-0_5b-chat-int4'
-    qwen15_1_8b_chat_int8 = 'qwen15-1_8b-chat-int8'
-    qwen15_1_8b_chat_int4 = 'qwen15-1_8b-chat-int4'
-    qwen15_4b_chat_int8 = 'qwen15-4b-chat-int8'
-    qwen15_4b_chat_int4 = 'qwen15-4b-chat-int4'
-    qwen15_7b_chat_int8 = 'qwen15-7b-chat-int8'
-    qwen15_7b_chat_int4 = 'qwen15-7b-chat-int4'
-    qwen15_14b_chat_int8 = 'qwen15-14b-chat-int8'
-    qwen15_14b_chat_int4 = 'qwen15-14b-chat-int4'
-    qwen15_72b_chat_int8 = 'qwen15-72b-chat-int8'
-    qwen15_72b_chat_int4 = 'qwen15-72b-chat-int4'
+    qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
+    qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
+    qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
+    qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
+    qwen1half_4b_chat_int8 = 'qwen1half-4b-chat-int8'
+    qwen1half_4b_chat_int4 = 'qwen1half-4b-chat-int4'
+    qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
+    qwen1half_7b_chat_int4 = 'qwen1half-7b-chat-int4'
+    qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
+    qwen1half_14b_chat_int4 = 'qwen1half-14b-chat-int4'
+    qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
+    qwen1half_72b_chat_int4 = 'qwen1half-72b-chat-int4'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -713,7 +713,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
-    ModelType.qwen15_0_5b,
+    ModelType.qwen1half_0_5b,
     'qwen/Qwen1.5-0_5B',
     LoRATM.qwen2,
     TemplateType.default_generation,
@@ -721,7 +721,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_0_5b_chat,
+    ModelType.qwen1half_0_5b_chat,
     'qwen/Qwen1.5-0_5B-Chat',
     LoRATM.qwen2,
     TemplateType.chatml,
@@ -729,7 +729,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_1_8b,
+    ModelType.qwen1half_1_8b,
     'qwen/Qwen1.5-1_8B',
     LoRATM.qwen2,
     TemplateType.default_generation,
@@ -737,7 +737,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_1_8b_chat,
+    ModelType.qwen1half_1_8b_chat,
     'qwen/Qwen1.5-1_8B-Chat',
     LoRATM.qwen2,
     TemplateType.chatml,
@@ -745,7 +745,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_4b,
+    ModelType.qwen1half_4b,
     'qwen/Qwen1.5-4B',
     LoRATM.qwen2,
     TemplateType.default_generation,
@@ -753,7 +753,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_4b_chat,
+    ModelType.qwen1half_4b_chat,
     'qwen/Qwen1.5-4B-Chat',
     LoRATM.qwen2,
     TemplateType.chatml,
@@ -761,7 +761,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_7b,
+    ModelType.qwen1half_7b,
     'qwen/Qwen1.5-7B',
     LoRATM.qwen2,
     TemplateType.default_generation,
@@ -769,7 +769,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_7b_chat,
+    ModelType.qwen1half_7b_chat,
     'qwen/Qwen1.5-7B-Chat',
     LoRATM.qwen2,
     TemplateType.chatml,
@@ -777,7 +777,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_14b,
+    ModelType.qwen1half_14b,
     'qwen/Qwen1.5-14B',
     LoRATM.qwen2,
     TemplateType.default_generation,
@@ -785,7 +785,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_14b_chat,
+    ModelType.qwen1half_14b_chat,
     'qwen/Qwen1.5-14B-Chat',
     LoRATM.qwen2,
     TemplateType.chatml,
@@ -793,7 +793,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_72b,
+    ModelType.qwen1half_72b,
     'qwen/Qwen1.5-72B',
     LoRATM.qwen2,
     TemplateType.default_generation,
@@ -801,7 +801,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen15_72b_chat,
+    ModelType.qwen1half_72b_chat,
     'qwen/Qwen1.5-72B-Chat',
     LoRATM.qwen2,
     TemplateType.chatml,
@@ -1062,6 +1062,174 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         load_model,
         model_config=model_config,
         **kwargs)
+
+
+@register_model(
+    ModelType.qwen1half_0_5b_chat_int4,
+    'qwen/Qwen1.5-0_5B-Chat-GPTQ-Int4',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_0_5b_chat_int8,
+    'qwen/Qwen1.5-0_5B-Chat-GPTQ-Int8',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_1_8b_chat_int4,
+    'qwen/Qwen1.5-1_8B-Chat-GPTQ-Int4',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_1_8b_chat_int8,
+    'qwen/Qwen1.5-1_8B-Chat-GPTQ-Int8',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_4b_chat_int4,
+    'qwen/Qwen1.5-4B-Chat-GPTQ-Int4',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_4b_chat_int8,
+    'qwen/Qwen1.5-4B-Chat-GPTQ-Int8',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_7b_chat_int4,
+    'qwen/Qwen1.5-7B-Chat-GPTQ-Int4',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_7b_chat_int8,
+    'qwen/Qwen1.5-7B-Chat-GPTQ-Int8',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_14b_chat_int4,
+    'qwen/Qwen1.5-14B-Chat-GPTQ-Int4',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_14b_chat_int8,
+    'qwen/Qwen1.5-14B-Chat-GPTQ-Int8',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_72b_chat_int4,
+    'qwen/Qwen1.5-72B-Chat-GPTQ-Int4',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.qwen1half_72b_chat_int8,
+    'qwen/Qwen1.5-72B-Chat-GPTQ-Int8',
+    LoRATM.qwen2,
+    TemplateType.chatml,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+def get_model_tokenizer_with_flash_attn_intx(model_dir: str,
+                                             torch_dtype: Dtype,
+                                             model_kwargs: Dict[str, Any],
+                                             load_model: bool = True,
+                                             model_config=None,
+                                             **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if version.parse(transformers.__version__) >= version.parse('4.36'):
+        if use_flash_attn:
+            model_config._attn_implementation = 'flash_attention_2'
+    else:
+        model_config._flash_attn_2_enabled = use_flash_attn
+
+    logger.info('use gptq, ignore bnb arguments')
+    bits = kwargs.pop('bits')
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=bits, use_exllama=False)
+    else:
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=bits, disable_exllama=True)
+
+    # fix quantlinear bug
+    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
+    __old_forward = QuantLinear.forward
+
+    def _new_forward(self, x):
+        if not self.training or not self.autogptq_cuda_available:
+            return self.__old_forward(x)
+        # fix sft no grad
+        self.autogptq_cuda_available = False
+        res = self.__old_forward(x)
+        self.autogptq_cuda_available = True
+        return res
+
+    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
+        QuantLinear.__old_forward = __old_forward
+        QuantLinear.forward = _new_forward
+    get_qwen_function = kwargs.pop('get_qwen_function',
+                                   get_model_tokenizer_with_flash_attn)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+                                         load_model, **kwargs)
+    return model, tokenizer
 
 
 @register_model(
