@@ -181,7 +181,7 @@ class SftArguments:
     check_model_is_latest: bool = True
 
     logging_dir: Optional[str] = None
-    report_to: List[str] = field(default_factory=lambda: ['all'])
+    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
     evaluation_strategy: Literal['steps', 'no'] = 'steps'
