@@ -714,7 +714,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 @register_model(
     ModelType.qwen1half_0_5b,
-    'qwen/Qwen1.5-0_5B',
+    'qwen/Qwen1.5-0.5B',
     LoRATM.qwen1half,
     TemplateType.default_generation,
     support_flash_attn=True,
@@ -722,7 +722,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.37'])
 @register_model(
     ModelType.qwen1half_0_5b_chat,
-    'qwen/Qwen1.5-0_5B-Chat',
+    'qwen/Qwen1.5-0.5B-Chat',
     LoRATM.qwen1half,
     TemplateType.chatml,
     support_flash_attn=True,
@@ -730,7 +730,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.37'])
 @register_model(
     ModelType.qwen1half_1_8b,
-    'qwen/Qwen1.5-1_8B',
+    'qwen/Qwen1.5-1.8B',
     LoRATM.qwen1half,
     TemplateType.default_generation,
     support_flash_attn=True,
@@ -738,7 +738,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.37'])
 @register_model(
     ModelType.qwen1half_1_8b_chat,
-    'qwen/Qwen1.5-1_8B-Chat',
+    'qwen/Qwen1.5-1.8B-Chat',
     LoRATM.qwen1half,
     TemplateType.chatml,
     support_flash_attn=True,
@@ -1066,7 +1066,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 @register_model(
     ModelType.qwen1half_0_5b_chat_int4,
-    'qwen/Qwen1.5-0_5B-Chat-GPTQ-Int4',
+    'qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4',
     LoRATM.qwen1half,
     TemplateType.chatml,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -1076,7 +1076,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     support_vllm=True)
 @register_model(
     ModelType.qwen1half_0_5b_chat_int8,
-    'qwen/Qwen1.5-0_5B-Chat-GPTQ-Int8',
+    'qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8',
     LoRATM.qwen1half,
     TemplateType.chatml,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -1086,7 +1086,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     support_vllm=True)
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
-    'qwen/Qwen1.5-1_8B-Chat-GPTQ-Int4',
+    'qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4',
     LoRATM.qwen1half,
     TemplateType.chatml,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -1096,7 +1096,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     support_vllm=True)
 @register_model(
     ModelType.qwen1half_1_8b_chat_int8,
-    'qwen/Qwen1.5-1_8B-Chat-GPTQ-Int8',
+    'qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8',
     LoRATM.qwen1half,
     TemplateType.chatml,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
