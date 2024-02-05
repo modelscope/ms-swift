@@ -241,7 +241,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def get_eval_dataloader(self, eval_dataset):
         if not use_torchacc():
-            return super().get_train_dataloader(eval_dataset)
+            return super().get_eval_dataloader(eval_dataset)
         else:
             import torchacc as ta
             if trainer.is_datasets_available():
@@ -280,7 +280,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def get_test_dataloader(self, test_dataset):
         if not use_torchacc():
-            return super().get_train_dataloader(test_dataset)
+            return super().get_test_dataloader(test_dataset)
         else:
             import torchacc as ta
             if trainer.is_datasets_available():
