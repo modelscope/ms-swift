@@ -1,4 +1,5 @@
 import os
+import re
 from typing import List
 
 from datasets import concatenate_datasets
@@ -9,13 +10,21 @@ from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map,
 from swift.utils import stat_array
 
 
-def write_dataset_info(fpath: str) -> None:
-    res_text_list = []
+def write_dataset_info() -> None:
+    fpath = 'docs/source/LLM/支持的模型和数据集.md'
     if os.path.exists(fpath):
         with open(fpath, 'r', encoding='utf-8') as f:
-            text_list = f.readlines()
+            text = f.read()
+        match_ = re.search(r'\| Dataset Name \|', text)
+        assert match_ is not None
+        pre_text = text[:match_.start()]
+        text = text[match_.start():]
+        text_list = [t for t in text.split('\n') if len(t.strip()) > 0]
     else:
         text_list = []
+
+    res_text_list = []
+
     res_text_list.append(
         '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags |'
     )
@@ -86,9 +95,11 @@ def write_dataset_info(fpath: str) -> None:
         res_text_list.append(
             f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
             f'{val_size}|{stat_str}|{tags_str}|')
-        with open(fpath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(res_text_list))
+    text = '\n'.join(res_text_list)
+    text = pre_text + text + '\n'
+    with open(fpath, 'w', encoding='utf-8') as f:
+        f.write(text)
 
 
 if __name__ == '__main__':
-    write_dataset_info('dataset_info.md')
+    write_dataset_info()

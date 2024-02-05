@@ -47,6 +47,7 @@ logger = get_logger()
 
 class DatasetName:
     # general
+    ms_bench = 'ms-bench'  # used for mixed training
     alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
     multi_alpaca_all = 'multi-alpaca-all'
@@ -59,12 +60,13 @@ class DatasetName:
     gpt4all_en = 'gpt4all-en'
     sharegpt_en = 'sharegpt-en'
     sharegpt_zh = 'sharegpt-zh'
-    tutu_v2_sft_mixture = 'tutu-v2-sft-mixture'
+    tulu_v2_sft_mixture = 'tulu-v2-sft-mixture'
     wikipedia_zh = 'wikipedia-zh'
     open_orca = 'open-orca'
     open_orca_gpt4 = 'open-orca-gpt4'
     sharegpt_gpt4 = 'sharegpt-gpt4'
     # agent
+    ms_agent = 'ms-agent'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -119,12 +121,6 @@ class DatasetName:
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
     stack_exchange_paired = 'stack-exchange-paired'
-
-    # A dataset used for mixed training
-    ms_bench = 'ms-bench'
-
-    # A dataset for agent training
-    ms_agent = 'ms-agent'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -436,14 +432,14 @@ register_dataset(
     'iic/ms_bench', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'benchmark', '🔥'])
+    tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.ms_agent,
     'iic/ms_agent', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'agent', '🔥'])
+    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.damo_agent_mini_zh,
@@ -452,7 +448,7 @@ register_dataset(
         repair_conversations=partial(
             _repair_agent_conversations, use_mini=True)),
     get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
+    tags=['chat', 'agent', 'multi-round'])
 register_dataset(
     DatasetName.damo_agent_zh,
     'damo/MSAgent-Bench', ['train'], ['validation'],
@@ -887,7 +883,7 @@ register_dataset(
         'gpt',
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
+    tags=['chat', 'agent', 'multi-round'])
 
 register_dataset(
     DatasetName.codefuse_evol_instruction_zh,
@@ -942,11 +938,11 @@ register_dataset(
     tags=['text-generation', 'classification', '🔥'])
 
 register_dataset(
-    DatasetName.tutu_v2_sft_mixture,
+    DatasetName.tulu_v2_sft_mixture,
     'AI-ModelScope/tulu-v2-sft-mixture', ['train'], [],
     None,
     get_dataset_from_repo,
-    tag=['chat', 'multilingual', 'general', 'multi-round'])
+    tags=['chat', 'multilingual', 'general', 'multi-round', '🔥'])
 register_dataset(
     DatasetName.webnovel_zh,
     'AI-ModelScope/webnovel_cn', ['train'], [],
