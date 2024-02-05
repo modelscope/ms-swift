@@ -70,7 +70,7 @@ class SftArguments:
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
-    use_loss_scale: Optional[bool] = True
+    use_loss_scale: Optional[bool] = False
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
