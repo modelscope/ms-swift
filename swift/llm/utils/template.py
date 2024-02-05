@@ -177,7 +177,7 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
-        self.use_loss_scale = kwargs.get('use_loss_scale', True)
+        self.use_loss_scale = kwargs.get('use_loss_scale', False)
         for key in [
                 'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
         ]:
@@ -363,8 +363,9 @@ class Template:
         inputs = {
             'input_ids': input_ids,
             'labels': labels,
-            'loss_scale': loss_scale
         }
+        if self.use_loss_scale:
+            inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
 
     def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
