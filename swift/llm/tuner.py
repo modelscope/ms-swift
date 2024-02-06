@@ -35,7 +35,7 @@ def prepare_model(model, args: SftArguments):
                 'lora_alpha': args.lora_alpha,
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
-                'modules_to_save': args.modules_to_save,
+                'modules_to_save': args.lora_modules_to_save,
                 'layers_to_transform': args.lora_layers_to_transform,
                 'layers_pattern': args.lora_layers_pattern,
                 'rank_pattern': args.lora_rank_pattern,
@@ -105,7 +105,7 @@ def prepare_model(model, args: SftArguments):
                     task_type='CAUSAL_LM',
                     target_modules=args.ia3_target_modules,
                     feedforward_modules=args.ia3_feedforward_modules or [],
-                    modules_to_save=args.modules_to_save,
+                    modules_to_save=args.ia3_modules_to_save,
                 )
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')

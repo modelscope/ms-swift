@@ -25,6 +25,7 @@ def get_vllm_engine(model_type: str,
                     *,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
+                    max_model_len: Optional[int] = None,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
                     **kwargs) -> LLMEngine:
@@ -70,6 +71,7 @@ def get_vllm_engine(model_type: str,
         dtype=dtype_mapping[torch_dtype],
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
+        max_model_len=max_model_len,
         disable_log_stats=disable_log_stats,
         **engine_kwargs)
     try:
@@ -325,6 +327,7 @@ def prepare_vllm_engine_template(
         args.torch_dtype,
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
+        max_model_len=args.max_model_len,
         use_async=use_async,
         **kwargs)
     tokenizer = llm_engine.tokenizer
