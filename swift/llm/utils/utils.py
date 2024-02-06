@@ -342,7 +342,7 @@ def print_example(example: Dict[str, Any],
 def find_all_linears(model: Module,
                      quantization_bit: int,
                      model_type: str,
-                     find_embedding: bool = True) -> List[str]:
+                     find_embedding: bool = False) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm'):

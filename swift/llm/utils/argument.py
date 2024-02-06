@@ -205,14 +205,18 @@ class SftArguments:
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
 
-    def prepare_target_modules(self, target_modules):
-        if not target_modules:
-            return target_modules
+    def _prepare_target_modules(self, target_modules):
         if isinstance(target_modules, str):
             target_modules = [target_modules]
-        if len(target_modules) == 1:
+        if len(target_modules) == 0:
+            return target_modules
+        elif len(target_modules) == 1:
             if ',' in target_modules[0]:
                 target_modules = target_modules.split(',')
+        if 'ALL_WITH_EMBEDDING' in target_modules:
+            assert len(target_modules) == 1
+            target_modules[0] = 'ALL'
+            self.find_embedding = True
         return target_modules
 
     def __post_init__(self) -> None:
@@ -233,12 +237,17 @@ class SftArguments:
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
-        self.lora_target_modules = self.prepare_target_modules(
-            self.lora_target_modules)
-        self.ia3_target_modules = self.prepare_target_modules(
-            self.ia3_target_modules)
-        self.ia3_feedforward_modules = self.prepare_target_modules(
-            self.ia3_feedforward_modules)
+
+        self.find_embedding = False
+        if self.sft_type == 'ia3':
+            self.ia3_target_modules = self._prepare_target_modules(
+                self.ia3_target_modules)
+            self.ia3_feedforward_modules = self._prepare_target_modules(
+                self.ia3_feedforward_modules)
+        else:
+            self.lora_target_modules = self._prepare_target_modules(
+                self.lora_target_modules)
+
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
