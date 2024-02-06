@@ -99,17 +99,16 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
+    # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
+    lora_modules_to_save: List[str] = field(default_factory=list)
+    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
 
     use_rslora: bool = False
-    lora_layers_to_transform: List[int] = None
-    lora_layers_pattern: List[str] = None
+    lora_layers_to_transform: Optional[List[int]] = None
+    lora_layers_pattern: Optional[List[str]] = None
     lora_rank_pattern: Dict = field(default_factory=dict)
     lora_alpha_pattern: Dict = field(default_factory=dict)
     lora_loftq_config: Dict = field(default_factory=dict)
-    # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
-    lora_modules_to_save: List[str] = field(default_factory=list)
-    modules_to_save: List[str] = field(default_factory=list)
-    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
     # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
@@ -121,7 +120,8 @@ class SftArguments:
     adalora_orth_reg_weight: float = 0.5
     # ia3
     ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
-    ia3_feedforward_modules: List[str] = None
+    ia3_feedforward_modules: List[str] = field(default_factory=list)
+    ia3_modules_to_save: List[str] = field(default_factory=list)
 
     neftune_noise_alpha: float = 5.  # e.g. 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
@@ -258,9 +258,6 @@ class SftArguments:
                     'For example: `--lora_target_modules ALL`. '
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
-
-        if not self.modules_to_save:
-            self.modules_to_save = self.lora_modules_to_save
 
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         world_size = 1
