@@ -100,6 +100,7 @@ def get_vllm_engine(model_type: str,
     if isinstance(llm_engine.tokenizer, PreTrainedTokenizerBase):
         llm_engine.tokenizer = tokenizer
     else:
+        # compatible with vllm==0.3.*
         llm_engine.tokenizer.tokenizer = tokenizer
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
