@@ -543,7 +543,6 @@ class InferArguments:
         if self.neftune_noise_alpha <= 0:
             self.neftune_noise_alpha = None
 
-
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
         """Check the checkpoint dir is correct, which means it must contains a `configuration.json` file.
