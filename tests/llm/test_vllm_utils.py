@@ -16,7 +16,7 @@ class TestVllmUtils(unittest.TestCase):
         model_type = ModelType.qwen_7b_chat
         llm_engine = get_vllm_engine(model_type, torch.float16)
         template_type = get_default_template_type(model_type)
-        template = get_template(template_type, llm_engine.tokenizer)
+        template = get_template(template_type, llm_engine.hf_tokenizer)
         request_list = [{'query': '浙江的省会在哪？'}, {'query': '你好!'}]
         # test inference_vllm
         response_list = inference_vllm(

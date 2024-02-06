@@ -591,13 +591,15 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     function_kwargs={
         'get_baichuan2_function': get_model_tokenizer_baichuan2_13b
     },
-    torch_dtype=torch.bfloat16)
+    torch_dtype=torch.bfloat16,
+    requires=['bitsandbytes<0.41.2', 'accelerate<0.26'])
 @register_model(
     ModelType.baichuan2_7b_chat_int4,
     'baichuan-inc/Baichuan2-7B-Chat-4bits',
     LoRATM.baichuan,
     TemplateType.baichuan,
-    torch_dtype=torch.bfloat16)
+    torch_dtype=torch.bfloat16,
+    requires=['bitsandbytes<0.41.2', 'accelerate<0.26'])
 def get_model_tokenizer_baichuan2_int4(model_dir: str,
                                        torch_dtype: Dtype,
                                        model_kwargs: Dict[str, Any],

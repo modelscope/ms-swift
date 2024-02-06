@@ -11,24 +11,37 @@ from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           NEFTuneConfig, Swift)
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linears, is_adapter
+from .utils import SftArguments, find_all_linears, find_embedding, is_adapter
 
 logger = get_logger()
+
+
+def handle_target_modules_all(model, args: SftArguments) -> None:
+    if args.sft_type == 'ia3':
+        target_modules = args.ia3_target_modules
+        assert len(args.ia3_feedforward_modules) > 0, (
+            'Setting ia3_target_modules to `ALL` '
+            'need to pass MLP linear names to `ia3_feedforward_modules`')
+    else:
+        target_modules = args.lora_target_modules
+    if args.lora_use_embedding:
+        target_modules += find_embedding(model)
+    if args.lora_use_all:
+        target_modules += find_all_linears(model, args.quantization_bit,
+                                           args.model_type)
+    if args.sft_type == 'ia3':
+        args.ia3_target_modules = target_modules
+        logger.info(f'ia3_target_modules: {args.ia3_target_modules}')
+    else:
+        args.lora_target_modules = target_modules
+        logger.info(f'lora_target_modules: {args.lora_target_modules}')
 
 
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
-            if 'ALL' in args.lora_target_modules:
-                assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linears(
-                    model,
-                    args.quantization_bit,
-                    args.model_type,
-                    find_embedding=(args.sft_type != 'adalora'))
-                logger.info(
-                    f'Setting lora_target_modules: {args.lora_target_modules}')
+            handle_target_modules_all(model, args)
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_modules,
@@ -89,18 +102,6 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, adalora_config)
                 logger.info(f'adalora_config: {adalora_config}')
             elif args.sft_type == 'ia3':
-                if 'ALL' in args.ia3_target_modules:
-                    assert len(args.ia3_target_modules) == 1
-                    assert args.ia3_feedforward_modules, 'Setting ia3_target_modules to `ALL` ' \
-                                                         'need to pass MLP linear names to `ia3_feedforward_modules`'
-                    args.ia3_target_modules = find_all_linears(
-                        model,
-                        args.quantization_bit,
-                        args.model_type,
-                        find_embedding=False)
-                    logger.info(
-                        f'Setting ia3_target_modules: {args.ia3_target_modules}'
-                    )
                 ia3_config = IA3Config(
                     task_type='CAUSAL_LM',
                     target_modules=args.ia3_target_modules,

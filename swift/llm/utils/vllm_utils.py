@@ -21,13 +21,6 @@ from .utils import _is_chinese_char
 logger = get_logger()
 
 
-def _get_vllm_tokenizer(vllm_engine: LLMEngine) -> PreTrainedTokenizerBase:
-    tokenizer = vllm_engine.tokenizer
-    if not isinstance(tokenizer, PreTrainedTokenizerBase):
-        tokenizer = tokenizer.tokenizer
-    return tokenizer
-
-
 def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
@@ -97,11 +90,11 @@ def get_vllm_engine(model_type: str,
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
-    if isinstance(llm_engine.tokenizer, PreTrainedTokenizerBase):
-        llm_engine.tokenizer = tokenizer
-    else:
-        # compatible with vllm==0.3.*
+    # compatible with vllm==0.3.*
+    if hasattr(llm_engine, 'tokenizer') and not isinstance(
+            llm_engine.tokenizer, PreTrainedTokenizerBase):
         llm_engine.tokenizer.tokenizer = tokenizer
+    llm_engine.hf_tokenizer = tokenizer
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
@@ -342,7 +335,7 @@ def prepare_vllm_engine_template(
         max_model_len=args.max_model_len,
         use_async=use_async,
         **kwargs)
-    tokenizer = _get_vllm_tokenizer(llm_engine)
+    tokenizer = llm_engine.hf_tokenizer
     if use_async:
         model_config = asyncio.run(llm_engine.get_model_config())
         llm_engine.model_config = model_config

@@ -42,7 +42,7 @@ from swift.llm import (
 model_type = ModelType.qwen_7b_chat
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
-template = get_template(template_type, llm_engine.tokenizer)
+template = get_template(template_type, llm_engine.hf_tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
 llm_engine.generation_config.max_new_tokens = 256
 
@@ -84,7 +84,7 @@ from swift.llm import (
 model_type = ModelType.qwen_7b_chat
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
-template = get_template(template_type, llm_engine.tokenizer)
+template = get_template(template_type, llm_engine.hf_tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
 llm_engine.generation_config.max_new_tokens = 256
 
@@ -132,7 +132,7 @@ from swift.llm import (
 model_type = ModelType.chatglm3_6b
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
-template = get_template(template_type, llm_engine.tokenizer)
+template = get_template(template_type, llm_engine.hf_tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
 llm_engine.generation_config.max_new_tokens = 256
 
@@ -191,7 +191,7 @@ model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
 llm_engine = get_vllm_engine(model_type, model_dir=model_dir)
-tokenizer = llm_engine.tokenizer
+tokenizer = llm_engine.hf_tokenizer
 template = get_template(template_type, tokenizer)
 query = '你好'
 resp = inference_vllm(llm_engine, template, [{'query': query}])[0]
