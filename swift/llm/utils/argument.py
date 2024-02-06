@@ -540,8 +540,8 @@ class InferArguments:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
-        if args.neftune_noise_alpha <= 0:
-            args.neftune_noise_alpha = None
+        if self.neftune_noise_alpha <= 0:
+            self.neftune_noise_alpha = None
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
