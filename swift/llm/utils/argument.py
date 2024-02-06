@@ -66,7 +66,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
-    train_dataset_mix_ratio: float = None
+    train_dataset_mix_ratio: Optional[float] = None
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
@@ -123,7 +123,7 @@ class SftArguments:
     ia3_feedforward_modules: List[str] = field(default_factory=list)
     ia3_modules_to_save: List[str] = field(default_factory=list)
 
-    neftune_noise_alpha: float = 5.  # e.g. 0, 5, 10, 15
+    neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
@@ -387,8 +387,6 @@ class SftArguments:
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(
                 f'{self.model_type} not support gradient_checkpointing.')
-        if self.neftune_noise_alpha <= 0:
-            self.neftune_noise_alpha = None
 
 
 @dataclass
