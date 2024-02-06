@@ -32,7 +32,6 @@ def handle_target_modules_all(model, args: SftArguments):
             args.model_type,
             find_embedding=args.find_embedding)
         if args.sft_type == 'ia3':
-
             args.ia3_target_modules = target_modules
             logger.info(
                 f'Setting ia3_target_modules: {args.ia3_target_modules}')
