@@ -543,6 +543,7 @@ class InferArguments:
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
 
+
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
         """Check the checkpoint dir is correct, which means it must contains a `configuration.json` file.
