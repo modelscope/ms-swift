@@ -14,4 +14,6 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --max_grad_norm=1 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
+  --checkpointing_steps=500 \
+  --checkpoints_total_limit 2 \
   --output_dir="train_text_to_image" \

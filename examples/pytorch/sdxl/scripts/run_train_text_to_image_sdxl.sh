@@ -3,7 +3,6 @@ accelerate launch train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path="AI-ModelScope/stable-diffusion-xl-base-1.0" \
   --pretrained_vae_model_name_or_path="AI-ModelScope/sdxl-vae-fp16-fix" \
   --dataset_name="AI-ModelScope/pokemon-blip-captions" \
-  --enable_xformers_memory_efficient_attention \
   --resolution=512 \
   --center_crop \
   --random_flip \
