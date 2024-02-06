@@ -796,7 +796,7 @@ def _check_path(
 def handle_path(args: Union[SftArguments, InferArguments]) -> None:
     check_exist_path = [
         'model_cache_dir', 'ckpt_dir', 'resume_from_checkpoint',
-        'deepspeed_config_path', 'custom_train_dataset_path',
+        'custom_train_dataset_path',
         'custom_val_dataset_path'
     ]
     if args.model_id_or_path is not None and (
