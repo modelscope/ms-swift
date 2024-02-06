@@ -299,7 +299,6 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
-
 def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase,
                           input_ids: List[int], **tokenizer_kwargs) -> str:
     if len(input_ids) == 0:
