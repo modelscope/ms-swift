@@ -387,6 +387,8 @@ class SftArguments:
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(
                 f'{self.model_type} not support gradient_checkpointing.')
+        if self.neftune_noise_alpha <= 0:
+            self.neftune_noise_alpha = None
 
 
 @dataclass
@@ -540,8 +542,6 @@ class InferArguments:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
-        if self.neftune_noise_alpha <= 0:
-            self.neftune_noise_alpha = None
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
