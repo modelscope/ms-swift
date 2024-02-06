@@ -208,7 +208,7 @@ class TestRun(unittest.TestCase):
             return
         for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
             sft_args = SftArguments(
-                model_type=ModelType.qwen_7b_chat,
+                model_type=ModelType.qwen1half_1_8b_chat_int4,
                 dataset=dataset,  # no dataset
                 train_dataset_sample=100,
                 dtype='fp16',
