@@ -562,7 +562,8 @@ class SwiftMixin:
                 for adapter_name in adapters.keys():
                     sub_folder = os.path.join(self.state.best_model_checkpoint,
                                               adapter_name)
-                    state_dict = SwiftModel.load_state_file(sub_folder, device='cpu')
+                    state_dict = SwiftModel.load_state_file(
+                        sub_folder, device='cpu')
                     if state_dict is not None:
                         self.model.load_state_dict(
                             state_dict,
