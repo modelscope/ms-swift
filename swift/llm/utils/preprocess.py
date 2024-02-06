@@ -95,6 +95,8 @@ class ConversationsPreprocessor:
             try:
                 conversations = d[self.conversations_key]
                 conversations = self.repair_conversations(conversations)
+                if conversations is None:
+                    continue
                 lo = 0
                 sys = None
                 h: History = []
