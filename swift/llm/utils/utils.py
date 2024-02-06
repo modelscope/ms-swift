@@ -339,10 +339,17 @@ def print_example(example: Dict[str, Any],
         logger.info(f'[LABLES] {labels_str}')
 
 
-def find_all_linears(model: Module,
-                     quantization_bit: int,
-                     model_type: str,
-                     find_embedding: bool = False) -> List[str]:
+def find_embedding(model: Module) -> List[str]:
+    target_module_names = set()
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Embedding):
+            module_name = '.'.join(name.split('.')[-2:])
+            target_module_names.add(module_name)
+    return list(target_module_names)
+
+
+def find_all_linears(model: Module, quantization_bit: int,
+                     model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type.startswith('chatglm'):
@@ -366,9 +373,7 @@ def find_all_linears(model: Module,
             linear_cls = (Linear4bit, AutoGPTQQuantLinear)
     target_module_names = set()
     for name, module in model.named_modules():
-        target_type = (linear_cls,
-                       torch.nn.Embedding) if find_embedding else linear_cls
-        if isinstance(module, target_type):
+        if isinstance(module, linear_cls):
             module_name = '.'.join(name.split('.')[-2:])
             if head_module_name not in module_name:
                 target_module_names.add(module_name)
