@@ -218,6 +218,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                             pad_to_multiple_of=pad_to_multiple_of,
                             padding_to=padding_to,
                             bucket_sizes=bucket_sizes)
+    trian_batch_size = args.batch_size
+    eval_batch_size = args.eval_batch_size
+    if use_torchacc():
+        trian_batch_size *= world_size
+        eval_batch_size *= world_size
+    training_args.per_device_train_batch_size = trian_batch_size
+    training_args.per_device_eval_batch_size = eval_batch_size
+    training_args.group_by_length=use_torchacc()
 
     # Trainer
     logger.info(f'training_args: {training_args}')
