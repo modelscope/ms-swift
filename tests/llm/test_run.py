@@ -50,7 +50,7 @@ class TestRun(unittest.TestCase):
             sft_args = SftArguments(
                 model_type=model_type,
                 template_type='AUTO',
-                lora_target_modules='ALL',
+                lora_target_modules=['AUTO', 'EMBEDDING'],
                 quantization_bit=quantization_bit,
                 batch_size=2,
                 eval_steps=5,
@@ -214,7 +214,7 @@ class TestRun(unittest.TestCase):
                 dtype='fp16',
                 eval_steps=5,
                 output_dir='output',
-                lora_target_modules='ALL',
+                lora_target_modules=['ALL', 'EMBEDDING'],
                 lazy_tokenize=True,
                 max_length=512,
                 self_cognition_sample=100,

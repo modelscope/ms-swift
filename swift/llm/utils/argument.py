@@ -66,7 +66,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
-    train_dataset_mix_ratio: float = None
+    train_dataset_mix_ratio: Optional[float] = None
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
@@ -123,7 +123,7 @@ class SftArguments:
     ia3_feedforward_modules: List[str] = field(default_factory=list)
     ia3_modules_to_save: List[str] = field(default_factory=list)
 
-    neftune_noise_alpha: float = 5.  # e.g. 0, 5, 10, 15
+    neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
@@ -205,14 +205,26 @@ class SftArguments:
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
 
-    def prepare_target_modules(self, target_modules):
-        if not target_modules:
-            return target_modules
+    def _prepare_target_modules(self, target_modules):
         if isinstance(target_modules, str):
             target_modules = [target_modules]
-        if len(target_modules) == 1:
+        if len(target_modules) == 0:
+            return target_modules
+        elif len(target_modules) == 1:
             if ',' in target_modules[0]:
                 target_modules = target_modules.split(',')
+        if 'AUTO' in target_modules:
+            target_modules.remove('AUTO')
+            target_modules.append('DEFAULT')
+        if 'DEFAULT' in target_modules:
+            target_modules.remove('DEFAULT')
+            target_modules += get_default_lora_target_modules(self.model_type)
+        if 'EMBEDDING' in target_modules:
+            target_modules.remove('EMBEDDING')
+            self.lora_use_embedding = True
+        if 'ALL' in target_modules:
+            target_modules.remove('ALL')
+            self.lora_use_all = True
         return target_modules
 
     def __post_init__(self) -> None:
@@ -233,12 +245,22 @@ class SftArguments:
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
-        self.lora_target_modules = self.prepare_target_modules(
-            self.lora_target_modules)
-        self.ia3_target_modules = self.prepare_target_modules(
-            self.ia3_target_modules)
-        self.ia3_feedforward_modules = self.prepare_target_modules(
-            self.ia3_feedforward_modules)
+
+        self.lora_use_embedding = False
+        self.lora_use_all = False
+        if self.sft_type == 'ia3':
+            self.ia3_feedforward_modules = self._prepare_target_modules(
+                self.ia3_feedforward_modules)
+            self.ia3_target_modules = self._prepare_target_modules(
+                self.ia3_target_modules)
+        else:
+            self.lora_target_modules = self._prepare_target_modules(
+                self.lora_target_modules)
+        if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
+            raise ValueError(
+                '`adalora` and `ia3` do not support setting embedding as target_modules.'
+            )
+
         if self.self_cognition_sample > 0:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
@@ -252,7 +274,7 @@ class SftArguments:
                     v = v[0]
                 if isinstance(v, str):
                     setattr(self, k, [v, v])
-            if self.sft_type == 'lora' and 'ALL' not in self.lora_target_modules:
+            if self.sft_type == 'lora' and not self.lora_use_all:
                 logger.warning(
                     'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
                     'For example: `--lora_target_modules ALL`. '
@@ -326,14 +348,6 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if 'DEFAULT' in self.lora_target_modules or 'AUTO' in self.lora_target_modules:
-            assert len(self.lora_target_modules) == 1
-            self.lora_target_modules = get_default_lora_target_modules(
-                self.model_type)
-        if 'DEFAULT' in self.ia3_target_modules or 'AUTO' in self.ia3_target_modules:
-            assert len(self.ia3_target_modules) == 1
-            self.ia3_target_modules = get_default_lora_target_modules(
-                self.model_type)
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
@@ -387,8 +401,6 @@ class SftArguments:
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(
                 f'{self.model_type} not support gradient_checkpointing.')
-        if self.neftune_noise_alpha <= 0:
-            self.neftune_noise_alpha = None
 
 
 @dataclass
