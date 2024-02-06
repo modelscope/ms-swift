@@ -249,6 +249,9 @@ eval_human: bool = False  # False: eval val_dataset # 是否使用人工输入�
 
 seed: int = 42 # 随机种子
 
+merge_lora_and_save: bool = False # Merge lora into the MotionAdapter and save the model.
+replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora_and_save` is True.
+
 # other
 ignore_args_error: bool = False  # True: notebook compatibility
 
@@ -272,4 +275,5 @@ beta_end: int = 0.012 # 推理pipeline参数
 beta_schedule: str = 'linear' # 推理pipeline参数
 steps_offset: int = 1 # 推理pipeline参数
 clip_sample: bool = False # 推理pipeline参数
+
 ```

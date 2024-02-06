@@ -42,7 +42,9 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
         motion_adapter = MotionAdapter.from_pretrained(
             args.motion_adapter_id_or_path)
     if args.sft_type == 'full':
-        motion_adapter = MotionAdapter.from_pretrained(args.ckpt_dir)
+        motion_adapter_dir = args.ckpt_dir if args.ckpt_dir is not None else os.path.join(
+            pretrained_model_path, 'motion_adapter')
+        motion_adapter = MotionAdapter.from_pretrained(motion_adapter_dir)
 
     validation_pipeline = AnimateDiffPipeline.from_pretrained(
         pretrained_model_path,
@@ -51,7 +53,25 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
     validation_pipeline.scheduler = noise_scheduler
 
     if not args.sft_type == 'full':
-        Swift.from_pretrained(validation_pipeline.unet, args.ckpt_dir)
+        model = Swift.from_pretrained(validation_pipeline.unet, args.ckpt_dir)
+        if args.merge_lora_and_save:
+            ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
+            merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
+            logger.info(f'merged_lora_path: `{merged_lora_path}`')
+            logger.info("Setting args.sft_type: 'full'")
+            logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
+            args.sft_type = 'full'
+            args.ckpt_dir = merged_lora_path
+            if os.path.exists(args.ckpt_dir) and not args.replace_if_exists:
+                logger.warn(
+                    f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
+                    'skipping the saving process. '
+                    'you can pass `replace_if_exists=True` to overwrite it.')
+                return
+
+            Swift.merge_and_unload(model)
+            validation_pipeline.unet = model.model
+            validation_pipeline.save_pretrained(args.ckpt_dir)
 
     validation_pipeline.enable_vae_slicing()
     validation_pipeline.enable_model_cpu_offload()

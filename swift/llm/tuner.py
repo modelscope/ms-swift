@@ -1,27 +1,32 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import types
 
 import torch
 import transformers
 from packaging import version
 
 from swift.trainers import TrainerCallback
-from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, NEFTuneConfig, Swift)
+from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
+                          LongLoRAModelType, LoraConfig, LoRAConfig,
+                          NEFTuneConfig, Swift)
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linear_for_lora, is_lora
+from .utils import SftArguments, find_all_linears, is_adapter
 
 logger = get_logger()
 
 
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
-    if is_lora(args.sft_type):
+    if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
             if 'ALL' in args.lora_target_modules:
                 assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linear_for_lora(
-                    model, args.quantization_bit, args.model_type)
+                args.lora_target_modules = find_all_linears(
+                    model,
+                    args.quantization_bit,
+                    args.model_type,
+                    find_embedding=(args.sft_type != 'adalora'))
                 logger.info(
                     f'Setting lora_target_modules: {args.lora_target_modules}')
             lora_kwargs = {
@@ -31,6 +36,11 @@ def prepare_model(model, args: SftArguments):
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
                 'modules_to_save': args.lora_modules_to_save,
+                'layers_to_transform': args.lora_layers_to_transform,
+                'layers_pattern': args.lora_layers_pattern,
+                'rank_pattern': args.lora_rank_pattern,
+                'alpha_pattern': args.lora_alpha_pattern,
+                'loftq_config': args.lora_loftq_config,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
@@ -62,6 +72,43 @@ def prepare_model(model, args: SftArguments):
                     **lora_kwargs)
                 model = Swift.prepare_model(model, qalora_config)
                 logger.info(f'qalora_config: {qalora_config}')
+            elif args.sft_type == 'adalora':
+                lora_kwargs['rank_pattern'] = None
+                adalora_config = AdaLoraConfig(
+                    task_type='CAUSAL_LM',
+                    **lora_kwargs,
+                    target_r=args.adalora_target_r,
+                    init_r=args.adalora_init_r,
+                    tinit=args.adalora_tinit,
+                    tfinal=args.adalora_tfinal,
+                    deltaT=args.adalora_deltaT,
+                    beta1=args.adalora_beta1,
+                    beta2=args.adalora_beta2,
+                    orth_reg_weight=args.adalora_orth_reg_weight,
+                )
+                model = Swift.prepare_model(model, adalora_config)
+                logger.info(f'adalora_config: {adalora_config}')
+            elif args.sft_type == 'ia3':
+                if 'ALL' in args.ia3_target_modules:
+                    assert len(args.ia3_target_modules) == 1
+                    assert args.ia3_feedforward_modules, 'Setting ia3_target_modules to `ALL` ' \
+                                                         'need to pass MLP linear names to `ia3_feedforward_modules`'
+                    args.ia3_target_modules = find_all_linears(
+                        model,
+                        args.quantization_bit,
+                        args.model_type,
+                        find_embedding=False)
+                    logger.info(
+                        f'Setting ia3_target_modules: {args.ia3_target_modules}'
+                    )
+                ia3_config = IA3Config(
+                    task_type='CAUSAL_LM',
+                    target_modules=args.ia3_target_modules,
+                    feedforward_modules=args.ia3_feedforward_modules or [],
+                    modules_to_save=args.ia3_modules_to_save,
+                )
+                model = Swift.prepare_model(model, ia3_config)
+                logger.info(f'ia3_config: {ia3_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
@@ -92,12 +139,29 @@ def prepare_model(model, args: SftArguments):
         logger.info(f'neftune_config: {neftune_config}')
 
     class TrainerAdapterCallback(TrainerCallback):
+
+        def __init__(self):
+            self.global_step = 0
+
         # offload original_modules to cpu, to save memory
-        def on_train_begin(*args, **kwargs):
+        def on_train_begin(self, _args, state, control, **kwargs):
             if hasattr(model, 'set_active_adapters'):
                 model.set_active_adapters(model.adapters.keys(), offload='cpu')
+            if args.sft_type == 'adalora':
+                model.peft_config['default'].total_step = state.max_steps
+
+                def zero_grad(_self, *args, **kwargs):
+                    _self.update_and_allocate(self.global_step + 1)
+                    _self._zero_grad(*args, **kwargs)
+
+                model._zero_grad = model.zero_grad
+                model.zero_grad = types.MethodType(zero_grad, model)
+
+        def on_step_end(self, _args, state, control, **kwargs):
+            if args.sft_type == 'adalora':
+                self.global_step = state.global_step
 
     callbacks = []
-    if is_lora(args.sft_type) and args.tuner_backend == 'swift':
+    if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback())
     return model, callbacks

@@ -1,16 +1,17 @@
+import re
 from typing import Dict, List, Tuple
 
 from swift.llm import MODEL_MAPPING, ModelType
 
 
-def get_model_info_table2() -> None:
+def get_model_info_table() -> List[str]:
     model_name_list = ModelType.get_model_name_list()
     result = (
         '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
         ' Support Flash Attn | Support VLLM | Requires |\n'
         '| ---------  | -------- | --------------------------- | ---------------- |'
         ' ------------------ | ------------ | -------- |\n')
-    res = []
+    res: List[str] = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
     for model_name in model_name_list:
         model_info = MODEL_MAPPING[model_name]
@@ -32,18 +33,67 @@ def get_model_info_table2() -> None:
         url = f'https://modelscope.cn/models/{r[1]}/summary'
         text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|\n'
     result += text
-    return result
-
-
-if __name__ == '__main__':
-    result = get_model_info_table2()
+    #
     fpath = 'docs/source/LLM/支持的模型和数据集.md'
     with open(fpath, 'r') as f:
         text = f.read()
     start_idx = text.find('| Model Type |')
     end_idx = text.find('## 数据集')
-    result += '\n\n'
-    output = text[:start_idx] + result + text[end_idx:]
+    output = text[:start_idx] + result + '\n\n' + text[end_idx:]
     with open(fpath, 'w') as f:
         text = f.write(output)
-    print()
+    return res
+
+
+def get_model_info_readme_zh(data: List[str]) -> None:
+    fpath = 'README_CN.md'
+    with open(fpath, 'r') as f:
+        text = f.read()
+    start_idx = text.find('  - 多模态:')
+    end_idx = text.find('- 支持的数据集:')
+    text = text[start_idx:end_idx]
+    match_list = re.findall(r'- (.+)( 系列)?: (.+)', text)
+    model_list = []
+    for match in match_list:
+        model_list += match[2].strip('.').split(',')
+    model_list_2 = []
+    for model in model_list:
+        model = model.strip()
+        model_match = re.search(r'\[(.+)\]\(.+\)', model)
+        if model_match is not None:
+            model = model_match.group(1)
+        model_list_2.append(model)
+    model_list = model_list_2
+    model_type_list = [d[0] for d in data]
+    print(set(model_type_list) - set(model_list))
+    print(set(model_list) - set(model_type_list))
+
+
+def get_model_info_readme_en(data: List[str]) -> None:
+    fpath = 'README.md'
+    with open(fpath, 'r') as f:
+        raw_text = f.read()
+    start_idx = raw_text.find('  - Multi-Modal:')
+    end_idx = raw_text.find('- Supported Datasets:')
+    text = raw_text[start_idx:end_idx]
+    match_list = re.findall(r'- (.+)( series)?: (.+)', text)
+    model_list = []
+    for match in match_list:
+        model_list += match[2].strip('.').split(',')
+    model_list_2 = []
+    for model in model_list:
+        model = model.strip()
+        model_match = re.search(r'\[(.+)\]\(.+\)', model)
+        if model_match is not None:
+            model = model_match.group(1)
+        model_list_2.append(model)
+    model_list = model_list_2
+    model_type_list = [d[0] for d in data]
+    print(set(model_type_list) - set(model_list))
+    print(set(model_list) - set(model_type_list))
+
+
+if __name__ == '__main__':
+    result = get_model_info_table()
+    result_en = get_model_info_readme_en(result)
+    result_zh = get_model_info_readme_zh(result)

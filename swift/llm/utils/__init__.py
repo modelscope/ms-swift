@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import (AppUIArguments, DeployArguments, DPOArguments,
-                       InferArguments, RomeArguments, SftArguments, is_lora)
+                       InferArguments, RomeArguments, SftArguments, is_adapter)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, add_self_cognition_dataset, get_dataset,
@@ -28,12 +28,12 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice,
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        StopWords, Template, TemplateType, get_template,
                        register_template)
-from .utils import (LazyLLMDataset, LLMDataset, data_collate_fn, dataset_map,
-                    download_dataset, find_all_linear_for_lora, get_time_info,
-                    history_to_messages, inference, inference_stream,
-                    is_vllm_available, limit_history_length,
-                    messages_to_history, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
+                    find_all_linears, get_time_info, history_to_messages,
+                    inference, inference_stream, is_vllm_available,
+                    limit_history_length, messages_to_history, print_example,
+                    safe_tokenizer_decode, set_generation_config,
+                    sort_by_max_length, stat_dataset, to_device)
 
 try:
     if is_vllm_available():

@@ -17,8 +17,9 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, InferArguments, ModelType, SftArguments,
-                       infer_main, merge_lora_main, sft_main)
+from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType,
+                       SftArguments, dpo_main, infer_main, merge_lora_main,
+                       sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -49,6 +50,7 @@ class TestRun(unittest.TestCase):
             sft_args = SftArguments(
                 model_type=model_type,
                 template_type='AUTO',
+                lora_target_modules='ALL',
                 quantization_bit=quantization_bit,
                 batch_size=2,
                 eval_steps=5,
@@ -60,11 +62,11 @@ class TestRun(unittest.TestCase):
                 output_dir=output_dir,
                 gradient_checkpointing=True)
             self.assertTrue(sft_args.gradient_accumulation_steps == 8)
+            torch.cuda.empty_cache()
             output = sft_main(sft_args)
             print(output)
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
-            torch.cuda.empty_cache()
             if __name__ == '__main__':
                 infer_args = InferArguments(
                     ckpt_dir=best_model_checkpoint,
@@ -74,9 +76,9 @@ class TestRun(unittest.TestCase):
                     }[quantization_bit],
                     load_dataset_config=NO_EVAL_HUMAN,
                     show_dataset_sample=5)
+                torch.cuda.empty_cache()
                 result = infer_main(infer_args)
                 print(result)
-                torch.cuda.empty_cache()
         # if __name__ == '__main__':
         #     app_ui_main(infer_args)
 
@@ -91,6 +93,7 @@ class TestRun(unittest.TestCase):
                 bool_var = True
             else:
                 bool_var = False
+            torch.cuda.empty_cache()
             output = sft_main([
                 '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
                 '--tuner_backend', tuner_backend, '--train_dataset_sample',
@@ -103,12 +106,12 @@ class TestRun(unittest.TestCase):
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
-            torch.cuda.empty_cache()
             load_dataset_config = str(bool_var or NO_EVAL_HUMAN)
             if load_dataset_config:
                 show_dataset_sample = 2
             else:
                 show_dataset_sample = -1
+            torch.cuda.empty_cache()
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
                 str(show_dataset_sample), '--max_new_tokens', '100',
@@ -119,7 +122,6 @@ class TestRun(unittest.TestCase):
             ])
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
-            torch.cuda.empty_cache()
         self.assertTrue(abs(losses[0] - losses[1]) < 5e-4)
         print(f'swift_loss: {losses[0]}')
         print(f'peft_loss: {losses[1]}')
@@ -137,17 +139,18 @@ class TestRun(unittest.TestCase):
                 template_type='AUTO',
                 eval_steps=5,
                 check_dataset_strategy='warning',
+                lora_target_modules='ALL',
                 train_dataset_sample=200,
                 dataset=[dataset],
                 output_dir=output_dir,
                 gradient_checkpointing=True,
                 lazy_tokenize=True,
                 disable_tqdm=True)
+            torch.cuda.empty_cache()
             output = sft_main(sft_args)
             print(output)
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
-            torch.cuda.empty_cache()
             infer_args = InferArguments(
                 ckpt_dir=best_model_checkpoint,
                 load_dataset_config=True,
@@ -157,9 +160,9 @@ class TestRun(unittest.TestCase):
                 }[model_type],
                 show_dataset_sample=5)
             # merge_lora_main(infer_args)  # TODO: ERROR FIX
+            torch.cuda.empty_cache()
             result = infer_main(infer_args)
             print(result)
-            torch.cuda.empty_cache()
 
     def test_custom_dataset(self):
         if not __name__ == '__main__':
@@ -180,8 +183,8 @@ class TestRun(unittest.TestCase):
                 os.path.join(folder, fname) for fname in train_dataset_fnames
             ],
             check_dataset_strategy='warning')
-        best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
         torch.cuda.empty_cache()
+        best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
         for load_args_from_ckpt_dir in [True, False]:
             kwargs = {}
             if load_args_from_ckpt_dir is False:
@@ -196,8 +199,8 @@ class TestRun(unittest.TestCase):
                     os.path.join(folder, fname) for fname in val_dataset_fnames
                 ],
                 **kwargs)
-            infer_main(infer_args)
             torch.cuda.empty_cache()
+            infer_main(infer_args)
 
     def test_self_cognition(self):
         if not __name__ == '__main__':
@@ -205,19 +208,21 @@ class TestRun(unittest.TestCase):
             return
         for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
             sft_args = SftArguments(
-                model_type=ModelType.qwen_7b_chat,
+                model_type=ModelType.qwen1half_1_8b_chat_int4,
                 dataset=dataset,  # no dataset
                 train_dataset_sample=100,
                 dtype='fp16',
                 eval_steps=5,
                 output_dir='output',
                 lora_target_modules='ALL',
+                lazy_tokenize=True,
+                max_length=512,
                 self_cognition_sample=100,
                 model_name=['小黄', 'Xiao Huang'],
                 model_author=['魔搭', 'ModelScope'],
                 use_flash_attn=False)
-            output = sft_main(sft_args)
             torch.cuda.empty_cache()
+            output = sft_main(sft_args)
             last_model_checkpoint = output['last_model_checkpoint']
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'last_model_checkpoint: {last_model_checkpoint}')
@@ -231,9 +236,119 @@ class TestRun(unittest.TestCase):
                 verbose=False,
                 load_dataset_config=True)
             # merge_lora_main(infer_args)
+            torch.cuda.empty_cache()
             result = infer_main(infer_args)
             print(result)
-            torch.cuda.empty_cache()
+
+    def test_cogagent_instruct(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.cogagent_18b_instruct,
+                dataset=DatasetName.coco_mini_en_2,
+                train_dataset_sample=100,
+                lora_target_modules='ALL',
+                eval_steps=5,
+                quantization_bit=4))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_xcomposer_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.internlm_xcomposer2_7b_chat,
+                dataset=DatasetName.coco_mini_en,
+                lora_target_modules='DEFAULT',
+                train_dataset_sample=100,
+                eval_steps=5))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_yi_vl_6b_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        torch.cuda.empty_cache()
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.yi_vl_6b_chat,
+                #   dataset=DatasetName.capcha_images,
+                lora_target_modules='ALL',
+                train_dataset_sample=100,
+                eval_steps=5,
+                custom_train_dataset_path=[
+                    os.path.join(folder, 'multi_modal.jsonl')
+                ],
+                lazy_tokenize=False))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_dpo(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
+        output = dpo_main(
+            DPOArguments(
+                model_type=ModelType.qwen_1_8b_chat,
+                sft_type='full',
+                dataset=DatasetName.hh_rlhf,
+                train_dataset_sample=100,
+                eval_steps=5))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint,
+                load_dataset_config=True,
+                val_dataset_sample=2))
+
+    def test_pai_compat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        from swift.llm import sft_main, infer_main
+        os.environ['PAI_TRAINING_JOB_ID'] = '123456'
+        folder = os.path.join(os.path.dirname(__file__), 'config')
+        tensorboard_dir = os.path.join('output/pai_test', 'pai_tensorboard')
+        os.environ['PAI_OUTPUT_TENSORBOARD'] = tensorboard_dir
+        sft_json = os.path.join(folder, 'sft.json')
+        infer_json = os.path.join(folder, 'infer.json')
+        output = sft_main([sft_json])
+        print()
+        infer_args = {
+            'ckpt_dir': output['best_model_checkpoint'],
+            'val_dataset_sample': 2,
+            'load_dataset_config': True,
+        }
+        import json
+        with open(infer_json, 'w') as f:
+            json.dump(infer_args, f, ensure_ascii=False, indent=4)
+        infer_main([infer_json])
+        os.environ.pop('PAI_TRAINING_JOB_ID')
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
@@ -275,8 +390,6 @@ class TestTrainer(unittest.TestCase):
         self.tmp_dir = self._tmp_dir.name
         # self.tmp_dir = 'test'
         logger.info(f'self.tmp_dir: {self.tmp_dir}')
-        self.hub_model_id = 'test_trainer2'
-        logger.info(f'self.hub_model_id: {self.hub_model_id}')
 
     def tearDown(self):
         if os.path.isdir(self.tmp_dir):
@@ -286,6 +399,8 @@ class TestTrainer(unittest.TestCase):
         # logger.info(f'delete model: {self.hub_model_id}')
 
     def test_trainer(self):
+        self.hub_model_id = 'test_trainer2'
+        logger.info(f'self.hub_model_id: {self.hub_model_id}')
         self.tmp_dir = 'output/damo/nlp_structbert_backbone_base_std'
         push_to_hub = True
         if not __name__ == '__main__':

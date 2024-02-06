@@ -1,5 +1,5 @@
-# Experimental environment: V100, A10, 3090
-# 18GB GPU memory
+# Experimental environment: A100
+# 24GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
@@ -10,15 +10,17 @@ python llm_sft.py \
     --template_type qwen \
     --dtype AUTO \
     --output_dir output \
-    --dataset blossom-math-zh \
+    --dataset ms-agent \
+    --use_loss_scale true \
+    --train_dataset_mix_ratio 2.0 \
     --train_dataset_sample -1 \
-    --num_train_epochs 1 \
+    --num_train_epochs 2 \
     --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules DEFAULT \
+    --lora_target_modules ALL \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
@@ -31,6 +33,9 @@ python llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
+    --self_cognition_sample 3000 \
+    --model_name 卡卡罗特 \
+    --model_author 陶白白 \
     --push_to_hub false \
     --hub_model_id qwen-7b-chat-lora \
     --hub_private_repo true \

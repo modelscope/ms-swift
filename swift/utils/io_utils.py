@@ -4,6 +4,7 @@ from typing import Any, List
 import json
 
 from .logger import get_logger
+from .utils import check_json_format
 
 logger = get_logger()
 
@@ -28,6 +29,7 @@ def write_to_jsonl(fpath: str,
 
 
 def append_to_jsonl(fpath: str, obj: Any, encoding: str = 'utf-8') -> None:
+    obj = check_json_format(obj)
     try:
         with open(fpath, 'a', encoding=encoding) as f:
             f.write(f'{json.dumps(obj, ensure_ascii=False)}\n')

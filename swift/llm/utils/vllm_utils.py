@@ -8,6 +8,7 @@ import torch
 from modelscope import GenerationConfig, snapshot_download
 from torch import dtype as Dtype
 from tqdm import tqdm
+from transformers import PreTrainedTokenizerBase
 from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
                   SamplingParams)
 
@@ -20,11 +21,19 @@ from .utils import _is_chinese_char
 logger = get_logger()
 
 
+def _get_vllm_tokenizer(vllm_engine: LLMEngine) -> PreTrainedTokenizerBase:
+    tokenizer = vllm_engine.tokenizer
+    if not isinstance(tokenizer, PreTrainedTokenizerBase):
+        tokenizer = tokenizer.tokenizer
+    return tokenizer
+
+
 def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
+                    max_model_len: Optional[int] = None,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
                     **kwargs) -> LLMEngine:
@@ -70,6 +79,7 @@ def get_vllm_engine(model_type: str,
         dtype=dtype_mapping[torch_dtype],
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
+        max_model_len=max_model_len,
         disable_log_stats=disable_log_stats,
         **engine_kwargs)
     try:
@@ -77,11 +87,21 @@ def get_vllm_engine(model_type: str,
         destroy_model_parallel()
     except ImportError:
         pass
-    llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    try:
+        llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    except ValueError:
+        logger.warning(
+            f'The current version of VLLM does not support {model_type}. '
+            'Please upgrade VLLM or specify `--infer_backend pt`.')
+        raise
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
-    llm_engine.tokenizer = tokenizer
+    if isinstance(llm_engine.tokenizer, PreTrainedTokenizerBase):
+        llm_engine.tokenizer = tokenizer
+    else:
+        # compatible with vllm==0.3.*
+        llm_engine.tokenizer.tokenizer = tokenizer
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
@@ -133,7 +153,8 @@ class VllmGenerationConfig(SamplingParams):
         kwargs['top_p'] = top_p
         kwargs['repetition_penalty'] = repetition_penalty
         if num_beams > 1:
-            assert 'use_beam_search' not in kwargs and 'best_of' not in kwargs
+            best_of = kwargs.get('best_of')
+            assert 'use_beam_search' not in kwargs and best_of is None
             kwargs['use_beam_search'] = True
             kwargs['best_of'] = num_beams
         kwargs['n'] = n
@@ -195,7 +216,7 @@ def inference_stream_vllm(
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -260,7 +281,7 @@ def inference_vllm(llm_engine: LLMEngine,
         if history is None:
             history = []
         request['history'] = history
-        inputs = template.encode(request)
+        inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -318,9 +339,10 @@ def prepare_vllm_engine_template(
         args.torch_dtype,
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
+        max_model_len=args.max_model_len,
         use_async=use_async,
         **kwargs)
-    tokenizer = llm_engine.tokenizer
+    tokenizer = _get_vllm_tokenizer(llm_engine)
     if use_async:
         model_config = asyncio.run(llm_engine.get_model_config())
         llm_engine.model_config = model_config

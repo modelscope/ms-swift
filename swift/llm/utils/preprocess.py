@@ -95,11 +95,10 @@ class ConversationsPreprocessor:
             try:
                 conversations = d[self.conversations_key]
                 conversations = self.repair_conversations(conversations)
-                if conversations is None:
-                    continue
                 lo = 0
                 sys = None
                 h: History = []
+                assert len(conversations) >= 2
                 if conversations[0][self.from_key] == self.system_role:
                     has_system = True
                     lo += 1

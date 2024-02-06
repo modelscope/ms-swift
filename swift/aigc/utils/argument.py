@@ -172,5 +172,8 @@ class AnimateDiffInferArguments:
     steps_offset: int = 1
     clip_sample: bool = False
 
+    merge_lora_and_save: bool = False
+    replace_if_exists: bool = False
+
     def __post_init__(self) -> None:
         pass

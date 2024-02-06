@@ -16,12 +16,13 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          is_master, plot_images, preprocess_logits_for_metrics,
                          seed_everything, show_layers)
 from .tuner import prepare_model
-from .utils import (LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, data_collate_fn, dataset_map,
+from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
+                    add_self_cognition_dataset, dataset_map,
                     get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
+from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
 
@@ -33,6 +34,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
+
+    if args.gpu_memory_fraction:
+        for device_id in range(torch.cuda.device_count()):
+            torch.cuda.set_per_process_memory_fraction(
+                max(min(args.gpu_memory_fraction, 1.0), 0.01),
+                device=device_id)
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True}
@@ -88,9 +95,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         random_state,
         check_dataset_strategy=args.check_dataset_strategy)
     val_dataset_sample = args.val_dataset_sample
+    mix_dataset_sample = 0 if not args.train_dataset_mix_ratio else round(
+        len(train_dataset) * args.train_dataset_mix_ratio)
     if train_dataset is not None and args.train_dataset_sample >= 0:
-        train_dataset_sample = min(args.train_dataset_sample,
+        total_dataset_sample = min(args.train_dataset_sample,
                                    train_dataset.shape[0])
+        train_dataset_sample = total_dataset_sample
+        if args.train_dataset_mix_ratio:
+            train_dataset_sample = round(
+                1. / (1 + args.train_dataset_mix_ratio) * total_dataset_sample)
+            mix_dataset_sample = total_dataset_sample - train_dataset_sample
         if train_dataset.shape[0] > train_dataset_sample:
             logger.info(f'train_dataset_sample: {train_dataset_sample}')
             train_idxs = random_state.permutation(train_dataset_sample)
@@ -102,6 +116,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset.shape[0] > val_dataset_sample:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_dataset = val_dataset.select(range(val_dataset_sample))
+
+    train_dataset = handle_dataset_mixture(args, train_dataset,
+                                           mix_dataset_sample)
+
     # add self-cognition dataset
     if args.self_cognition_sample > 0:
         train_dataset = add_self_cognition_dataset(train_dataset,
@@ -111,15 +129,19 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
-    template: Template = get_template(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        args.truncation_strategy,
-        model=model)
+    template_kwargs = {}
+    template_info = TEMPLATE_MAPPING[args.template_type]
+    use_model = template_info.get('use_model', False)
+    if use_model:
+        template_kwargs['model'] = model
+    template_kwargs['use_loss_scale'] = args.use_loss_scale
+    template: Template = get_template(args.template_type, tokenizer,
+                                      args.system, args.max_length,
+                                      args.truncation_strategy,
+                                      **template_kwargs)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
+    logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
     if not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
@@ -131,19 +153,21 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
-        print_example(train_dataset[0], tokenizer)
+        td0, tkwargs0 = train_dataset.data[0]
+        print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
         dataset_info = None
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template)
-        val_dataset = LazyLLMDataset(val_dataset, template)
+        if val_dataset is not None:
+            val_dataset = LazyLLMDataset(val_dataset, template)
 
-    data_collator = partial(
-        data_collate_fn,
-        tokenizer=tokenizer,
-        padding_to=args.max_length if args.sft_type == 'longlora' else None)
+    padding_to = args.max_length if args.sft_type == 'longlora' else None
+    data_collator = partial(template.data_collator, padding_to=padding_to)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
     load_best_model_at_end = True
@@ -185,6 +209,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
+        dataloader_pin_memory=args.dataloader_pin_memory,
         load_best_model_at_end=load_best_model_at_end,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
@@ -280,8 +305,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
-        tb_dir = os.path.join(args.output_dir, 'runs')
-        plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
+        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()

@@ -4,10 +4,16 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from torch import Tensor, nn
+from torch.nn import CrossEntropyLoss
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
+from transformers.modeling_utils import unwrap_model
+from transformers.models.auto.modeling_auto import \
+    MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.utils import is_peft_available
 
 from swift.utils import lower_bound
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
@@ -62,6 +68,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 prediction_loss_only=prediction_loss_only,
                 ignore_keys=ignore_keys)
 
+        inputs.pop('loss_scale', None)
         has_labels = 'labels' in inputs
         inputs = self._prepare_inputs(inputs)
 
@@ -173,16 +180,71 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
+    def compute_scaled_loss(self, labels: torch.Tensor,
+                            lm_logits: torch.Tensor,
+                            loss_scale: torch.Tensor) -> torch.Tensor:
+        device = lm_logits.device
+        # Shift so that tokens < n predict n
+        shift_logits = lm_logits[..., :-1, :]
+        shift_labels = labels[..., 1:]
+        shift_scale = loss_scale[..., 1:]
+        # Save memory
+        masks = shift_labels != -100
+        shift_logits = shift_logits[masks]
+        shift_labels = shift_labels[masks].to(device)
+        shift_scale = shift_scale[masks].to(device)
+        # Flatten the tokens
+        loss_fct = CrossEntropyLoss(reduction='none')
+        loss = loss_fct(shift_logits, shift_labels)
+        loss = shift_scale * loss
+        return loss.mean()
+
     def compute_loss(self, model, inputs, return_outputs=None):
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
-        loss, outputs = super().compute_loss(model, inputs, True)
+
+        labels = None
+        loss_scale = None
+        if 'loss_scale' in inputs:
+            labels = inputs.pop('labels')
+            loss_scale = inputs.pop('loss_scale')
+
+        if self.label_smoother is not None and 'labels' in inputs:
+            labels = inputs.pop('labels')
+
+        outputs = model(**inputs)
+        if loss_scale is not None:
+            outputs['loss'] = self.compute_scaled_loss(labels, outputs.logits,
+                                                       loss_scale)
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None and loss_scale is None:
+            unwrapped_model = unwrap_model(model)
+            if is_peft_available() and isinstance(unwrapped_model, PeftModel):
+                model_name = unwrapped_model.base_model.model._get_name()
+            else:
+                model_name = unwrapped_model._get_name()
+            if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
+
         preds = outputs.logits.argmax(dim=2)[..., :-1]
-        labels = inputs['labels'][..., 1:]
+        if labels is None:
+            labels = inputs['labels']
+        labels = labels[..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
-        acc: Tensor
-        if acc_strategy == 'sentence':
+        acc: Optional[Tensor] = None
+        if preds.shape != labels.shape:
+            pass
+        elif acc_strategy == 'sentence':
             acc_list = []
             for i, m in enumerate(masks):
                 acc_list.append(
@@ -191,7 +253,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             acc = torch.tensor(acc_list, device=preds.device).float().mean()
         else:
             acc = (preds[masks] == labels[masks]).float().mean()
-        if model.training:
+        if model.training and acc is not None:
             if 'acc' not in self._custom_metrics:
                 self._custom_metrics['acc'] = torch.tensor(0.).to(
                     self.args.device)

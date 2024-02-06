@@ -35,7 +35,6 @@ def llm_dpo(args: DPOArguments) -> str:
         model_kwargs['device_map'] = {'': local_rank}
     else:
         model_kwargs['device_map'] = 'auto'
-    # model_kwargs['device_map'] = {'': local_rank}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -58,7 +57,7 @@ def llm_dpo(args: DPOArguments) -> str:
                                            args.torch_dtype, model_kwargs,
                                            **kwargs)
     else:
-        ref_model = deepcopy(model)
+        ref_model = None
 
     logger.info(f'model_config: {model.config}')
     if hasattr(model, 'hf_device_map'):
@@ -199,12 +198,16 @@ def llm_dpo(args: DPOArguments) -> str:
 
     trainer = DPOTrainer(
         model=model,
+        beta=args.beta,
+        label_smoothing=args.label_smoothing,
+        loss_type=args.loss_type,
         ref_model=ref_model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         template=template,
+        sft_beta=args.sft_beta,
         max_prompt_length=args.max_prompt_length,
         max_length=args.max_length,
         test_oom_error=args.test_oom_error,
@@ -234,8 +237,7 @@ def llm_dpo(args: DPOArguments) -> str:
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
-        tb_dir = os.path.join(args.output_dir, 'runs')
-        plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
+        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()

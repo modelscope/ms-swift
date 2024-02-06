@@ -72,7 +72,7 @@ register_template(
     CustomTemplateType.tigerbot,
     Template(['{{SYSTEM}}'],
              ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
-             [['eos_token_id']], ''))
+             [['eos_token_id']]))
 
 
 def _preprocess_stsb(dataset: HfDataset) -> HfDataset:

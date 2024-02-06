@@ -53,5 +53,5 @@ class SelfCog(BaseUI):
         with gr.Accordion(elem_id='self_cognition', open=False):
             with gr.Row():
                 gr.Textbox(elem_id='self_cognition_sample', scale=20)
-                gr.Textbox(elem_id='model_name', scale=20)
-                gr.Textbox(elem_id='model_author', scale=20)
+                gr.Textbox(elem_id='model_name', scale=20, is_list=True)
+                gr.Textbox(elem_id='model_author', scale=20, is_list=True)
