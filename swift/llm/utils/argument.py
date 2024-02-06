@@ -123,7 +123,7 @@ class SftArguments:
     ia3_feedforward_modules: List[str] = field(default_factory=list)
     ia3_modules_to_save: List[str] = field(default_factory=list)
 
-    neftune_noise_alpha: float = 5.  # e.g. 5, 10, 15
+    neftune_noise_alpha: float = 5.  # e.g. 0, 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
