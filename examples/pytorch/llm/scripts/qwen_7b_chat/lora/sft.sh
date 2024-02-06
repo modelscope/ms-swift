@@ -11,6 +11,7 @@ python llm_sft.py \
     --dtype AUTO \
     --output_dir output \
     --dataset ms-agent \
+    --use_loss_scale true \
     --train_dataset_mix_ratio 2.0 \
     --train_dataset_sample -1 \
     --num_train_epochs 2 \

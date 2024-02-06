@@ -70,7 +70,7 @@ class SftArguments:
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
-    use_loss_scale: Optional[bool] = True
+    use_loss_scale: bool = False
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
@@ -99,17 +99,17 @@ class SftArguments:
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
-    use_rslora: bool = False
-    lora_layers_to_transform: List[int] = None
-    lora_layers_pattern: List[str] = None
-    lora_rank_pattern: Dict = field(default_factory=dict)
-    lora_alpha_pattern: Dict = field(default_factory=dict)
-    lora_loftq_config: str = field(default_factory=dict)
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
-    modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
 
+    use_rslora: bool = False
+    lora_layers_to_transform: Optional[List[int]] = None
+    lora_layers_pattern: Optional[List[str]] = None
+    lora_rank_pattern: Dict = field(default_factory=dict)
+    lora_alpha_pattern: Dict = field(default_factory=dict)
+    lora_loftq_config: Dict = field(default_factory=dict)
+    # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
     adalora_tinit: int = 0
@@ -118,14 +118,15 @@ class SftArguments:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-
+    # ia3
     ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
-    ia3_feedforward_modules: List[str] = None
+    ia3_feedforward_modules: List[str] = field(default_factory=list)
+    ia3_modules_to_save: List[str] = field(default_factory=list)
 
-    neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
-
+    neftune_noise_alpha: float = 5.  # e.g. 0, 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
-    deepspeed_config_path: Optional[str] = None  # e.g. 'ds_config/zero2.json'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
+    deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
     num_train_epochs: int = 1
@@ -180,12 +181,13 @@ class SftArguments:
     check_model_is_latest: bool = True
 
     logging_dir: Optional[str] = None
-    report_to: List[str] = field(default_factory=lambda: ['all'])
+    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
     evaluation_strategy: Literal['steps', 'no'] = 'steps'
     save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
+    gpu_memory_fraction: Optional[float] = None
 
     # generation config
     max_new_tokens: int = 2048
@@ -201,8 +203,7 @@ class SftArguments:
     # compatibility. (Deprecated)
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
-
-    gpu_memory_fraction: Optional[float] = None
+    deepspeed_config_path: Optional[str] = None
 
     def prepare_target_modules(self, target_modules):
         if not target_modules:
@@ -219,11 +220,11 @@ class SftArguments:
         if is_pai_training_job():
             handle_pai_compat(self)
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
-        if self.deepspeed_config_path == 'default-zero2':
-            self.deepspeed_config_path = os.path.abspath(
+        if self.deepspeed == 'default-zero2':
+            self.deepspeed = os.path.abspath(
                 os.path.join(ds_config_folder, 'zero2.json'))
-        elif self.deepspeed_config_path == 'default-zero3':
-            self.deepspeed_config_path = os.path.abspath(
+        elif self.deepspeed == 'default-zero3':
+            self.deepspeed = os.path.abspath(
                 os.path.join(ds_config_folder, 'zero3.json'))
         handle_path(self)
         set_model_type(self)
@@ -258,9 +259,6 @@ class SftArguments:
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
 
-        if not self.modules_to_save:
-            self.modules_to_save = self.lora_modules_to_save
-
         self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
         world_size = 1
         if is_dist():
@@ -293,7 +291,7 @@ class SftArguments:
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
-                if self.deepspeed_config_path is None:
+                if self.deepspeed is None:
                     self.save_only_model = False
                 else:
                     self.save_only_model = True
@@ -351,12 +349,13 @@ class SftArguments:
         if self.max_length == -1:
             self.max_length = None
 
-        self.deepspeed = None
-        if self.deepspeed_config_path is not None:
+        if self.deepspeed is not None:
             assert not is_mp(), 'DeepSpeed is not compatible with MP.'
             require_version('deepspeed')
-            with open(self.deepspeed_config_path, 'r', encoding='utf-8') as f:
-                self.deepspeed = json.load(f)
+            if self.deepspeed.endswith('.json') or os.path.isfile(
+                    self.deepspeed):
+                with open(self.deepspeed, 'r', encoding='utf-8') as f:
+                    self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
@@ -388,6 +387,8 @@ class SftArguments:
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(
                 f'{self.model_type} not support gradient_checkpointing.')
+        if self.neftune_noise_alpha <= 0:
+            self.neftune_noise_alpha = None
 
 
 @dataclass
@@ -456,6 +457,7 @@ class InferArguments:
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
+    max_model_len: Optional[int] = None
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
@@ -712,6 +714,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
             args.batch_size = args.per_device_train_batch_size
         if args.per_device_eval_batch_size is not None:
             args.eval_batch_size = args.per_device_eval_batch_size
+        if args.deepspeed_config_path is not None:
+            args.deepspeed = args.deepspeed_config_path
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:

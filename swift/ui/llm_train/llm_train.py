@@ -191,7 +191,7 @@ class LLMTrain(BaseUI):
                     gr.Slider(
                         elem_id='neftune_noise_alpha',
                         minimum=0.0,
-                        maximum=10.0,
+                        maximum=20.0,
                         step=0.5,
                         scale=4)
                 with gr.Row():
