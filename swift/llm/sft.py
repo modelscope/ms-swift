@@ -191,12 +191,17 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if key in parameters:
             kwargs[key] = getattr(args, key)
 
+    trian_batch_size = args.batch_size
+    eval_batch_size = args.eval_batch_size
+    if use_torchacc():
+        trian_batch_size *= world_size
+        eval_batch_size *= world_size
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.output_dir,
         evaluation_strategy=evaluation_strategy,
         logging_dir=args.logging_dir,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.eval_batch_size,
+        per_device_train_batch_size=trian_batch_size,
+        per_device_eval_batch_size=eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -243,6 +248,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         acc_strategy=args.acc_strategy,
         save_safetensors=args.save_safetensors,
         logging_first_step=True,
+        group_by_length=use_torchacc(),
         **kwargs)
 
     if args.gradient_checkpointing:

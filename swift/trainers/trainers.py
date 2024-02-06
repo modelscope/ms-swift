@@ -5,11 +5,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import Tensor, nn
+from torch.utils.data import DataLoader
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
 
-from swift.utils import lower_bound, use_torchacc
+from swift.utils import use_torchacc
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
                        ProgressCallbackNew)
 from .mixin import PushToMsHubMixin, SwiftMixin
@@ -191,16 +192,127 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                                                     m]).to(torch.int64).item())
             acc = torch.tensor(acc_list, device=preds.device).float().mean()
         else:
-            if not use_torchacc():
-                acc = (preds[masks] == labels[masks]).float().mean()
-            else:
-                acc = (preds == labels).float().mean()
+            acc = (torch.masked_select(preds, masks) == torch.masked_select(
+                labels, masks)).float().mean()
         if model.training:
             if 'acc' not in self._custom_metrics:
                 self._custom_metrics['acc'] = self._acc
             self._custom_metrics['acc'] = self._custom_metrics[
                 'acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
+
+    def get_train_dataloader(self):
+        if not use_torchacc():
+            return super().get_train_dataloader()
+        else:
+            import torchacc as ta
+            if trainer.is_datasets_available():
+                import datasets
+
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+
+            train_dataset = self.train_dataset
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(
+                    train_dataset, datasets.Dataset):
+                train_dataset = self._remove_unused_columns(
+                    train_dataset, description='training')
+            else:
+                data_collator = self._get_collator_with_removed_columns(
+                    data_collator, description='training')
+            dataloader_params = {
+                'batch_size': self._train_batch_size,
+                'collate_fn': data_collator,
+                'num_workers': self.args.dataloader_num_workers,
+                'pin_memory': self.args.dataloader_pin_memory,
+                'persistent_workers': self.args.dataloader_persistent_workers,
+            }
+
+            if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+                dataloader_params['sampler'] = self._get_train_sampler()
+                dataloader_params['drop_last'] = self.args.dataloader_drop_last
+                dataloader_params['worker_init_fn'] = trainer.seed_worker
+
+            return ta.AsyncLoader(
+                DataLoader(train_dataset, **dataloader_params),
+                self.args.device)
+
+    def get_eval_dataloader(self, eval_dataset):
+        if not use_torchacc():
+            return super().get_eval_dataloader(eval_dataset)
+        else:
+            import torchacc as ta
+            if trainer.is_datasets_available():
+                import datasets
+
+            if eval_dataset is None and self.eval_dataset is None:
+                raise ValueError(
+                    'Trainer: evaluation requires an eval_dataset.')
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(
+                    eval_dataset, datasets.Dataset):
+                eval_dataset = self._remove_unused_columns(
+                    eval_dataset, description='evaluation')
+            else:
+                data_collator = self._get_collator_with_removed_columns(
+                    data_collator, description='evaluation')
+
+            dataloader_params = {
+                'batch_size': self.args.eval_batch_size,
+                'collate_fn': data_collator,
+                'num_workers': self.args.dataloader_num_workers,
+                'pin_memory': self.args.dataloader_pin_memory,
+                'persistent_workers': self.args.dataloader_persistent_workers,
+            }
+
+            if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
+                dataloader_params['sampler'] = self._get_eval_sampler(
+                    eval_dataset)
+                dataloader_params['drop_last'] = self.args.dataloader_drop_last
+
+            return ta.AsyncLoader(
+                DataLoader(eval_dataset, **dataloader_params),
+                self.args.device)
+
+    def get_test_dataloader(self, test_dataset):
+        if not use_torchacc():
+            return super().get_test_dataloader(test_dataset)
+        else:
+            import torchacc as ta
+            if trainer.is_datasets_available():
+                import datasets
+
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(
+                    test_dataset, datasets.Dataset):
+                test_dataset = self._remove_unused_columns(
+                    test_dataset, description='test')
+            else:
+                data_collator = self._get_collator_with_removed_columns(
+                    data_collator, description='test')
+
+            dataloader_params = {
+                'batch_size': self.args.eval_batch_size,
+                'collate_fn': data_collator,
+                'num_workers': self.args.dataloader_num_workers,
+                'pin_memory': self.args.dataloader_pin_memory,
+                'persistent_workers': self.args.dataloader_persistent_workers,
+            }
+
+            if not isinstance(test_dataset, torch.utils.data.IterableDataset):
+                dataloader_params['sampler'] = self._get_eval_sampler(
+                    test_dataset)
+                dataloader_params['drop_last'] = self.args.dataloader_drop_last
+
+            # We use the same batch_size as for eval.
+            return ta.AsyncLoader(
+                DataLoader(test_dataset, **dataloader_params),
+                self.args.device)
 
 
 # monkey patching
