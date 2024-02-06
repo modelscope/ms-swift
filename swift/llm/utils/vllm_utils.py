@@ -91,7 +91,7 @@ def get_vllm_engine(model_type: str,
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     # compatible with vllm==0.3.*
-    if hasattr(llm_engine, 'tokenizer') and isinstance(
+    if hasattr(llm_engine, 'tokenizer') and not isinstance(
             llm_engine.tokenizer, PreTrainedTokenizerBase):
         llm_engine.tokenizer.tokenizer = tokenizer
     llm_engine.hf_tokenizer = tokenizer
