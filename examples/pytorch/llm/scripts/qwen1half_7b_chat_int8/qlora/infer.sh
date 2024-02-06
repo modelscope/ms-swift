@@ -2,7 +2,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "output/qwen-7b-chat-int8/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/qwen1half-7b-chat-int8/vx_xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 4096 \
     --use_flash_attn false \
