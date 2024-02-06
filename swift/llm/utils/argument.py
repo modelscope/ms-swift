@@ -105,7 +105,7 @@ class SftArguments:
     lora_layers_pattern: List[str] = None
     lora_rank_pattern: Dict = field(default_factory=dict)
     lora_alpha_pattern: Dict = field(default_factory=dict)
-    lora_loftq_config: str = field(default_factory=dict)
+    lora_loftq_config: Dict = field(default_factory=dict)
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
     modules_to_save: List[str] = field(default_factory=list)
@@ -123,7 +123,7 @@ class SftArguments:
     ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     ia3_feedforward_modules: List[str] = None
 
-    neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
+    neftune_noise_alpha: float = 5.  # e.g. 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
@@ -458,6 +458,7 @@ class InferArguments:
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
+    max_model_len: Optional[int] = None
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
@@ -542,6 +543,9 @@ class InferArguments:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        if args.neftune_noise_alpha <= 0:
+            args.neftune_noise_alpha = None
+
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
