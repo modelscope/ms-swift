@@ -267,8 +267,8 @@ app_ui_main(infer_args)
     - 音频: aishell1-zh, 🔥aishell1-mini-zh.
   - 自定义数据集
 - 支持的对话模板:
-  - 文本生成: default-generation, default-generation-bos, chatglm-generation.
-  - 对话: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, yi-vl, internlm-xcomposer2, openbmb.
+  - 文本生成: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
+  - 对话: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, orion, openbmb, chatml.
 
 
 ## 🔥SCEdit

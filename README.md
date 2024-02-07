@@ -268,8 +268,8 @@ app_ui_main(infer_args)
     - Audio: aishell1-zh, 🔥aishell1-mini-zh.
   - Custom Dataset
 - Supported Templates:
-  - Text Generation: default-generation, default-generation-bos, chatglm-generation.
-  - Chat: default, qwen, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, yi, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, yi-vl, internlm-xcomposer2, openbmb.
+  - Text Generation: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
+  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, orion, openbmb, chatml.
 
 
 ## 🔥SCEdit
