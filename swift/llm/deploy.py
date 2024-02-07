@@ -121,7 +121,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
+    if isinstance(template.suffix[-1],
+                  str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
     created_time = int(time.time())
     result_generator = llm_engine.generate(None, generation_config, request_id,

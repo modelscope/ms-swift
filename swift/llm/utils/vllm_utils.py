@@ -210,7 +210,8 @@ def inference_stream_vllm(
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
+    if isinstance(template.suffix[-1],
+                  str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
     for i, request in enumerate(request_list):
@@ -279,7 +280,8 @@ def inference_vllm(llm_engine: LLMEngine,
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
+    if isinstance(template.suffix[-1],
+                  str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
     for i, request in enumerate(request_list):
