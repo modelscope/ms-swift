@@ -622,6 +622,8 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
     if device_map != 'auto':
         accelerate.infer_auto_device_map = _old_infer_auto_device_map
     if model is not None:
+        model.config.quantization_config = BitsAndBytesConfig(
+            **model.config.quantization_config)
         model.train()
         model._is_quantized_training_enabled = True
         model.is_loaded_in_4bit = True
@@ -1186,52 +1188,15 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     function_kwargs={'bits': 8},
     support_flash_attn=True,
     support_vllm=True)
-def get_model_tokenizer_with_flash_attn_intx(model_dir: str,
-                                             torch_dtype: Dtype,
-                                             model_kwargs: Dict[str, Any],
-                                             load_model: bool = True,
-                                             model_config=None,
-                                             **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(
-            model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if version.parse(transformers.__version__) >= version.parse('4.36'):
-        if use_flash_attn:
-            model_config._attn_implementation = 'flash_attention_2'
-    else:
-        model_config._flash_attn_2_enabled = use_flash_attn
+def get_model_tokenizer_with_qwen1half_intx(model_dir: str,
+                                            torch_dtype: Dtype,
+                                            model_kwargs: Dict[str, Any],
+                                            load_model: bool = True,
+                                            **kwargs):
 
-    logger.info('use gptq, ignore bnb arguments')
-    bits = kwargs.pop('bits')
-    if version.parse(transformers.__version__) >= version.parse('4.35'):
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, use_exllama=False)
-    else:
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, disable_exllama=True)
-
-    # fix quantlinear bug
-    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
-    __old_forward = QuantLinear.forward
-
-    def _new_forward(self, x):
-        if not self.training or not self.autogptq_cuda_available:
-            return self.__old_forward(x)
-        # fix sft no grad
-        self.autogptq_cuda_available = False
-        res = self.__old_forward(x)
-        self.autogptq_cuda_available = True
-        return res
-
-    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
-        QuantLinear.__old_forward = __old_forward
-        QuantLinear.forward = _new_forward
-    get_qwen_function = kwargs.pop('get_qwen_function',
-                                   get_model_tokenizer_with_flash_attn)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
+    kwargs['get_qwen_function'] = get_model_tokenizer_with_flash_attn
+    return get_model_tokenizer_qwen_intx(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
-    return model, tokenizer
 
 
 @register_model(
