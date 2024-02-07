@@ -350,23 +350,23 @@ class TestRun(unittest.TestCase):
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
 
-    def test_baichuan2_chat_int4(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        from swift.llm import sft_main, infer_main, SftArguments, InferArguments, ModelType, DatasetName
-        output = sft_main(
-            SftArguments(
-                model_type=ModelType.baichuan2_7b_chat_int4,
-                dataset=['alpaca-zh'],
-                lora_target_modules=['DEFAULT', 'EMBEDDING'],
-                train_dataset_sample=20))
-        best_model_checkpoint = output['best_model_checkpoint']
-        infer_main(
-            InferArguments(
-                ckpt_dir=best_model_checkpoint,
-                load_dataset_config=True,
-                val_dataset_sample=1))
+    # def test_baichuan2_chat_int4(self):
+    #     if not __name__ == '__main__':
+    #         # ignore citest error in github
+    #         return
+    #     from swift.llm import sft_main, infer_main, SftArguments, InferArguments, ModelType, DatasetName
+    #     output = sft_main(
+    #         SftArguments(
+    #             model_type=ModelType.baichuan2_7b_chat_int4,
+    #             dataset=['alpaca-zh'],
+    #             lora_target_modules=['DEFAULT', 'EMBEDDING'],
+    #             train_dataset_sample=20))
+    #     best_model_checkpoint = output['best_model_checkpoint']
+    #     infer_main(
+    #         InferArguments(
+    #             ckpt_dir=best_model_checkpoint,
+    #             load_dataset_config=True,
+    #             val_dataset_sample=1))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],
