@@ -65,18 +65,18 @@ class ModelType:
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
     # qwen1.5 autogptq
-    qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
-    qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
     qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
-    qwen1half_4b_chat_int8 = 'qwen1half-4b-chat-int8'
     qwen1half_4b_chat_int4 = 'qwen1half-4b-chat-int4'
-    qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
     qwen1half_7b_chat_int4 = 'qwen1half-7b-chat-int4'
-    qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
     qwen1half_14b_chat_int4 = 'qwen1half-14b-chat-int4'
-    qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
     qwen1half_72b_chat_int4 = 'qwen1half-72b-chat-int4'
+    qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
+    qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
+    qwen1half_4b_chat_int8 = 'qwen1half-4b-chat-int8'
+    qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
+    qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
+    qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -725,26 +725,10 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen1half_0_5b_chat,
-    'qwen/Qwen1.5-0.5B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37'])
-@register_model(
     ModelType.qwen1half_1_8b,
     'qwen/Qwen1.5-1.8B',
     LoRATM.qwen1half,
     TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37'])
-@register_model(
-    ModelType.qwen1half_1_8b_chat,
-    'qwen/Qwen1.5-1.8B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
@@ -757,26 +741,10 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen1half_4b_chat,
-    'qwen/Qwen1.5-4B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37'])
-@register_model(
     ModelType.qwen1half_7b,
     'qwen/Qwen1.5-7B',
     LoRATM.qwen1half,
     TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37'])
-@register_model(
-    ModelType.qwen1half_7b_chat,
-    'qwen/Qwen1.5-7B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
@@ -789,26 +757,10 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
-    ModelType.qwen1half_14b_chat,
-    'qwen/Qwen1.5-14B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37'])
-@register_model(
     ModelType.qwen1half_72b,
     'qwen/Qwen1.5-72B',
     LoRATM.qwen1half,
     TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37'])
-@register_model(
-    ModelType.qwen1half_72b_chat,
-    'qwen/Qwen1.5-72B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
@@ -1069,6 +1021,65 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
+    ModelType.qwen1half_0_5b_chat,
+    'qwen/Qwen1.5-0.5B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_1_8b_chat,
+    'qwen/Qwen1.5-1.8B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_4b_chat,
+    'qwen/Qwen1.5-4B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_7b_chat,
+    'qwen/Qwen1.5-7B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_14b_chat,
+    'qwen/Qwen1.5-14B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_72b_chat,
+    'qwen/Qwen1.5-72B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+def get_model_tokenizer_qwen1half(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    kwargs['eos_token'] = '<|im_end|>'
+    return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
+                                               model_kwargs, load_model,
+                                               **kwargs)
+
+
+@register_model(
     ModelType.qwen1half_0_5b_chat_int4,
     'qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4',
     LoRATM.qwen1half,
@@ -1188,13 +1199,12 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     function_kwargs={'bits': 8},
     support_flash_attn=True,
     support_vllm=True)
-def get_model_tokenizer_with_qwen1half_intx(model_dir: str,
-                                            torch_dtype: Dtype,
-                                            model_kwargs: Dict[str, Any],
-                                            load_model: bool = True,
-                                            **kwargs):
-
-    kwargs['get_qwen_function'] = get_model_tokenizer_with_flash_attn
+def get_model_tokenizer_qwen1half_intx(model_dir: str,
+                                       torch_dtype: Dtype,
+                                       model_kwargs: Dict[str, Any],
+                                       load_model: bool = True,
+                                       **kwargs):
+    kwargs['get_qwen_function'] = get_model_tokenizer_qwen1half
     return get_model_tokenizer_qwen_intx(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
 
@@ -2169,7 +2179,7 @@ def get_model_tokenizer(
         if is_dist() and is_local_master():
             dist.barrier()
     model_dir = os.path.expanduser(model_dir)
-    assert os.path.isdir(model_dir)
+    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     if model_info.get('torch_dtype') is not None:
         model_torch_dtype = model_info['torch_dtype']
         if torch_dtype is None:

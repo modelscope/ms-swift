@@ -207,12 +207,24 @@ app_ui_main(infer_args)
     - [cogagent](https://github.com/THUDM/CogVLM) 系列: cogagent-18b-chat, cogagent-18b-instruct.
     - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b-chat.
   - 通用:
-    - [qwen](https://github.com/QwenLM/Qwen) 系列: qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8, qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8, qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8, qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
-    - [qwen1.5](https://github.com/QwenLM/Qwen1.5) series: qwen1half-0_5b, qwen1half-0_5b-chat, qwen1half-0_5b-chat-int4, qwen1half-0_5b-chat-int8, qwen1half-1_8b, qwen1half-1_8b-chat, qwen1half-1_8b-chat-int4, qwen1half-1_8b-chat-int8, qwen1half-4b, qwen1half-4b-chat, qwen1half-4b-chat-int4, qwen1half-4b-chat-int8, qwen1half-7b, qwen1half-7b-chat, qwen1half-7b-chat-int4, qwen1half-7b-chat-int8, qwen1half-14b, qwen1half-14b-chat, qwen1half-14b-chat-int4, qwen1half-14b-chat-int8, qwen1half-72b, qwen1half-72b-chat, qwen1half-72b-chat-int4, qwen1half-72b-chat-int8.
+    - [qwen](https://github.com/QwenLM/Qwen) 系列:
+      - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.
+      - qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8.
+      - qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8.
+      - qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
+    - [qwen1.5](https://github.com/QwenLM/Qwen1.5) 系列:
+      - qwen1half-0_5b, qwen1half-0_5b-chat, qwen1half-0_5b-chat-int4, qwen1half-0_5b-chat-int8.
+      - qwen1half-1_8b, qwen1half-1_8b-chat, qwen1half-1_8b-chat-int4, qwen1half-1_8b-chat-int8.
+      - qwen1half-4b, qwen1half-4b-chat, qwen1half-4b-chat-int4, qwen1half-4b-chat-int8.
+      - qwen1half-7b, qwen1half-7b-chat, qwen1half-7b-chat-int4, qwen1half-7b-chat-int8.
+      - qwen1half-14b, qwen1half-14b-chat, qwen1half-14b-chat-int4, qwen1half-14b-chat-int8.
+      - qwen1half-72b, qwen1half-72b-chat, qwen1half-72b-chat-int4, qwen1half-72b-chat-int8.
     - [chatglm](https://github.com/THUDM/ChatGLM-6B) 系列: chatglm2-6b, chatglm2-6b-32k, chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
     - [llama](https://github.com/facebookresearch/llama) 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat.
     - [yi](https://github.com/01-ai/Yi) 系列: yi-6b, yi-6b-200k, yi-6b-chat, yi-34b, yi-34b-200k, yi-34b-chat.
-    - [internlm](https://github.com/InternLM/InternLM) 系列: internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat, internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
+    - [internlm](https://github.com/InternLM/InternLM) 系列:
+      - internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat.
+      - internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
     - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) 系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
     - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) 系列: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat.
     - [mistral](https://github.com/mistralai/mistral-src) 系列: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
