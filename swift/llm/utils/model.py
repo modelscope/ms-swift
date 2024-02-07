@@ -1189,14 +1189,15 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 def get_model_tokenizer_with_qwen1half_intx(model_dir: str,
-                                             torch_dtype: Dtype,
-                                             model_kwargs: Dict[str, Any],
-                                             load_model: bool = True,
-                                             **kwargs):
-    
+                                            torch_dtype: Dtype,
+                                            model_kwargs: Dict[str, Any],
+                                            load_model: bool = True,
+                                            **kwargs):
+
     kwargs['get_qwen_function'] = get_model_tokenizer_with_flash_attn
     return get_model_tokenizer_qwen_intx(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
+
 
 @register_model(
     ModelType.internlm2_math_7b,
