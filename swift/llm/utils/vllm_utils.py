@@ -5,7 +5,9 @@ from copy import deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
+import vllm
 from modelscope import GenerationConfig, snapshot_download
+from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
@@ -93,9 +95,15 @@ def get_vllm_engine(model_type: str,
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     # compatible with vllm==0.3.*
-    if hasattr(llm_engine, 'tokenizer') and not isinstance(
-            llm_engine.tokenizer, PreTrainedTokenizerBase):
-        llm_engine.tokenizer.tokenizer = tokenizer
+    if version.parse(vllm.__version__) >= version.parse('0.3.0'):
+        if use_async:
+            _engine = llm_engine.engine
+        else:
+            _engine = llm_engine
+        assert hasattr(_engine, 'tokenizer') and not isinstance(
+            _engine.tokenizer, PreTrainedTokenizerBase)
+        _engine.tokenizer.tokenizer = tokenizer
+
     llm_engine.hf_tokenizer = tokenizer
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
