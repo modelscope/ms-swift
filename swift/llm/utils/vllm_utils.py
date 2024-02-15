@@ -100,8 +100,7 @@ def get_vllm_engine(model_type: str,
             _engine = llm_engine.engine
         else:
             _engine = llm_engine
-        assert hasattr(_engine, 'tokenizer') and not isinstance(
-            _engine.tokenizer, PreTrainedTokenizerBase)
+        assert not isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
         _engine.tokenizer.tokenizer = tokenizer
 
     llm_engine.hf_tokenizer = tokenizer
