@@ -95,7 +95,7 @@ def get_vllm_engine(model_type: str,
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
     # compatible with vllm==0.3.*
-    if version.parse(vllm.__version__) >= version.parse('0.3.0'):
+    if version.parse(vllm.__version__) >= version.parse('0.3'):
         if use_async:
             _engine = llm_engine.engine
         else:
