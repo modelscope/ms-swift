@@ -137,7 +137,7 @@ class ModelType:
     deepseek_moe_16b_chat = 'deepseek-moe-16b-chat'
     deepseek_67b = 'deepseek-67b'
     deepseek_67b_chat = 'deepseek-67b-chat'
-   # deepseek-coder
+    # deepseek-coder
     deepseek_coder_1_3b = 'deepseek-coder-1_3b'
     deepseek_coder_1_3b_instruct = 'deepseek-coder-1_3b-instruct'
     deepseek_coder_6_7b = 'deepseek-coder-6_7b'
