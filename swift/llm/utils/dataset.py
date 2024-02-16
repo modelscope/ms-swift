@@ -987,8 +987,8 @@ register_dataset(
 
 register_dataset(
     DatasetName.sharegpt_gpt4_mini,
-    'AI-ModelScope/sharegpt_gpt4',
-    ['train'], None,
+    'AI-ModelScope/sharegpt_gpt4', ['train'],
+    None,
     ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'multilingual', 'general', 'multi-round', 'gpt4', '🔥'])
