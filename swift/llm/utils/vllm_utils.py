@@ -94,14 +94,18 @@ def get_vllm_engine(model_type: str,
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
+
+    if use_async:
+        _engine = llm_engine.engine
+    else:
+        _engine = llm_engine
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
-        if use_async:
-            _engine = llm_engine.engine
-        else:
-            _engine = llm_engine
         assert not isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
         _engine.tokenizer.tokenizer = tokenizer
+    else:
+        assert isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
+        _engine.tokenizer = tokenizer
 
     llm_engine.hf_tokenizer = tokenizer
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
