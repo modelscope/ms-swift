@@ -212,7 +212,7 @@ class SftArguments:
             return target_modules
         elif len(target_modules) == 1:
             if ',' in target_modules[0]:
-                target_modules = target_modules.split(',')
+                target_modules = target_modules[0].split(',')
         if 'AUTO' in target_modules:
             target_modules.remove('AUTO')
             target_modules.append('DEFAULT')

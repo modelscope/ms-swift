@@ -47,7 +47,7 @@ import torch
 
 from swift.llm import (
     DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora_main
+    infer_main, sft_main, app_ui_main, merge_lora
 )
 
 model_type = ModelType.qwen_7b_chat
@@ -65,7 +65,7 @@ infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_dataset_config=True,
     val_dataset_sample=10)
-# merge_lora_main(infer_args)
+# merge_lora(infer_args, device_map='cpu')
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
 

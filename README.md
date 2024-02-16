@@ -164,7 +164,7 @@ Here is a simple introduction of web-ui:
 # pip install ms-swift -U
 
 # Experimental environment: A10, 3090, V100, ...
-# 12GB GPU memory
+# 8GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -172,10 +172,10 @@ import torch
 
 from swift.llm import (
     DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora_main
+    infer_main, sft_main, app_ui_main, merge_lora
 )
 
-model_type = ModelType.qwen_1_8b
+model_type = ModelType.qwen1half_0_5b
 sft_args = SftArguments(
     model_type=model_type,
     train_dataset_sample=2000,
@@ -190,7 +190,7 @@ infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_dataset_config=True,
     val_dataset_sample=10)
-# merge_lora_main(infer_args)
+merge_lora(infer_args, device_map='cpu')
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
 
