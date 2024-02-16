@@ -210,11 +210,10 @@ class ModelType:
     seqgpt_560m = 'seqgpt-560m'
     sus_34b_chat = 'sus-34b-chat'
 
-    # financial
+    # tongyi-finance
     tongyi_finance_14b = 'tongyi-finance-14b'
     tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
     tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
-
     # codefuse
     codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
     codefuse_codegeex2_6b_chat = 'codefuse-codegeex2-6b-chat'
