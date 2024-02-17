@@ -84,13 +84,7 @@ def get_vllm_engine(model_type: str,
         pass
     # fix HTTPError bug (use model_dir)
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
-    try:
-        llm_engine = llm_engine_cls.from_engine_args(engine_args)
-    except ValueError:
-        logger.warning(
-            f'The current version of VLLM does not support {model_type}. '
-            'Please upgrade VLLM or specify `--infer_backend pt`.')
-        raise
+    llm_engine = llm_engine_cls.from_engine_args(engine_args)
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
