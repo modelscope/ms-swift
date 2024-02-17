@@ -65,6 +65,7 @@ class DatasetName:
     open_orca = 'open-orca'
     open_orca_gpt4 = 'open-orca-gpt4'
     sharegpt_gpt4 = 'sharegpt-gpt4'
+    sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     # agent
     ms_agent = 'ms-agent'
     damo_agent_zh = 'damo-agent-zh'
@@ -942,7 +943,7 @@ register_dataset(
     'AI-ModelScope/tulu-v2-sft-mixture', ['train'], [],
     None,
     get_dataset_from_repo,
-    tags=['chat', 'multilingual', 'general', 'multi-round', '🔥'])
+    tags=['chat', 'multilingual', 'general', 'multi-round'])
 register_dataset(
     DatasetName.webnovel_zh,
     'AI-ModelScope/webnovel_cn', ['train'], [],
@@ -983,6 +984,14 @@ register_dataset(
     RenameColumnsPreprocessor({'question': 'query'}),
     get_dataset_from_repo,
     tags=['chat', 'multilingual', 'general'])
+
+register_dataset(
+    DatasetName.sharegpt_gpt4_mini,
+    'AI-ModelScope/sharegpt_gpt4', ['train'],
+    None,
+    ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'multilingual', 'general', 'multi-round', 'gpt4', '🔥'])
 register_dataset(
     DatasetName.sharegpt_gpt4,
     'AI-ModelScope/sharegpt_gpt4',
