@@ -137,6 +137,17 @@ class ModelType:
     deepseek_moe_16b_chat = 'deepseek-moe-16b-chat'
     deepseek_67b = 'deepseek-67b'
     deepseek_67b_chat = 'deepseek-67b-chat'
+    # deepseek-coder
+    deepseek_coder_1_3b = 'deepseek-coder-1_3b'
+    deepseek_coder_1_3b_instruct = 'deepseek-coder-1_3b-instruct'
+    deepseek_coder_6_7b = 'deepseek-coder-6_7b'
+    deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
+    deepseek_coder_33b = 'deepseek-coder-33b'
+    deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
+    # deepseek-math
+    deepseek_math_7b = 'deepseek-math-7b'
+    deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
+    deepseek_math_7b_chat = 'deepseek-math-7b-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
@@ -199,23 +210,14 @@ class ModelType:
     seqgpt_560m = 'seqgpt-560m'
     sus_34b_chat = 'sus-34b-chat'
 
-    # domain-specific
-    # financial
+    # tongyi-finance
     tongyi_finance_14b = 'tongyi-finance-14b'
     tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
     tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
-    # coding
     # codefuse
     codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
     codefuse_codegeex2_6b_chat = 'codefuse-codegeex2-6b-chat'
     codefuse_qwen_14b_chat = 'codefuse-qwen-14b-chat'
-    # deepseek-coder
-    deepseek_coder_1_3b = 'deepseek-coder-1_3b'
-    deepseek_coder_1_3b_instruct = 'deepseek-coder-1_3b-instruct'
-    deepseek_coder_6_7b = 'deepseek-coder-6_7b'
-    deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
-    deepseek_coder_33b = 'deepseek-coder-33b'
-    deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
     # phi
     phi2_3b = 'phi2-3b'
     # cogagent
@@ -716,6 +718,27 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.deepseek_math_7b_instruct,
+    'deepseek-ai/deepseek-math-7b-instruct',
+    LoRATM.llama2,
+    TemplateType.deepseek,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.deepseek_math_7b_chat,
+    'deepseek-ai/deepseek-math-7b-rl',
+    LoRATM.llama2,
+    TemplateType.deepseek,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.deepseek_math_7b,
+    'deepseek-ai/deepseek-math-7b-base',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen1half_0_5b,
     'qwen/Qwen1.5-0.5B',
