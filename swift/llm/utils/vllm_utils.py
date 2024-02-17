@@ -35,9 +35,6 @@ def get_vllm_engine(model_type: str,
     if engine_kwargs is None:
         engine_kwargs = {}
     model_info = MODEL_MAPPING[model_type]
-    support_vllm = model_info.get('support_vllm', False)
-    if not support_vllm:
-        raise ValueError(f'vllm not support `{model_type}`')
     model_id_or_path = model_info['model_id_or_path']
     ignore_file_pattern = model_info['ignore_file_pattern']
     model_dir = kwargs.get('model_dir', None)
