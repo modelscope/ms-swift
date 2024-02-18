@@ -147,8 +147,11 @@ class SwiftModel(nn.Module):
         Returns:
             The state dict to be saved.
         """
-        state_dict = self.model.state_dict(
-            destination=destination, prefix=prefix, keep_vars=keep_vars)
+        if 'state_dict' in kwargs:
+            state_dict = kwargs['state_dict']
+        else:
+            state_dict = self.model.state_dict(
+                destination=destination, prefix=prefix, keep_vars=keep_vars)
         if not self.has_additional_modules:
             return state_dict
 
@@ -425,13 +428,18 @@ class SwiftModel(nn.Module):
         adapter_names = adapter_name if isinstance(
             adapter_name, list) or adapter_name is None else [adapter_name]
 
+        state_dict_kwargs = {}
+        if 'state_dict' in kwargs:
+            state_dict_kwargs['state_dict'] = kwargs['state_dict']
         for adapter_name, output in self.adapters.items():
             if adapter_names is not None and adapter_name not in adapter_names:
                 continue
 
             # save only the trainable weights
             output_state_dict = self.state_dict(
-                adapter_name=adapter_name, save_extra_states=False)
+                adapter_name=adapter_name,
+                save_extra_states=False,
+                **state_dict_kwargs)
             output_dir = os.path.join(save_directory, adapter_name)
             os.makedirs(output_dir, exist_ok=True)
             if output_state_dict and output.config.has_additional_modules:
@@ -440,7 +448,7 @@ class SwiftModel(nn.Module):
             output.config.save_pretrained(output_dir)
 
         output_state_dict = self.state_dict(
-            save_extra_states=True, save_adapter=False)
+            save_extra_states=True, save_adapter=False, **state_dict_kwargs)
         if len(output_state_dict) > 0:
             if self.has_additional_modules:
                 self._save_state_dict(output_state_dict, save_directory,
