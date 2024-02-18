@@ -429,7 +429,8 @@ class SwiftModel(nn.Module):
             adapter_name, list) or adapter_name is None else [adapter_name]
 
         state_dict_kwargs = {}
-        if 'state_dict' in kwargs:
+        state_dict = kwargs.get('state_dict')
+        if state_dict is not None:
             state_dict_kwargs['state_dict'] = kwargs['state_dict']
         for adapter_name, output in self.adapters.items():
             if adapter_names is not None and adapter_name not in adapter_names:
