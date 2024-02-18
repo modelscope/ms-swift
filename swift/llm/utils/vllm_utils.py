@@ -35,9 +35,6 @@ def get_vllm_engine(model_type: str,
     if engine_kwargs is None:
         engine_kwargs = {}
     model_info = MODEL_MAPPING[model_type]
-    support_vllm = model_info.get('support_vllm', False)
-    if not support_vllm:
-        raise ValueError(f'vllm not support `{model_type}`')
     model_id_or_path = model_info['model_id_or_path']
     ignore_file_pattern = model_info['ignore_file_pattern']
     model_dir = kwargs.get('model_dir', None)
@@ -84,13 +81,7 @@ def get_vllm_engine(model_type: str,
         pass
     # fix HTTPError bug (use model_dir)
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
-    try:
-        llm_engine = llm_engine_cls.from_engine_args(engine_args)
-    except ValueError:
-        logger.warning(
-            f'The current version of VLLM does not support {model_type}. '
-            'Please upgrade VLLM or specify `--infer_backend pt`.')
-        raise
+    llm_engine = llm_engine_cls.from_engine_args(engine_args)
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
