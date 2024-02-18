@@ -1237,79 +1237,91 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-math-base-7b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_math_20b,
     'Shanghai_AI_Laboratory/internlm2-math-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_math_7b_chat,
     'Shanghai_AI_Laboratory/internlm2-math-7b',
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_math_20b_chat,
     'Shanghai_AI_Laboratory/internlm2-math-20b',
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_7b_sft_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-7b-sft',
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_7b_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-7b',
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_20b_sft_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-20b-sft',
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_20b_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-20b',
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_7b,
     'Shanghai_AI_Laboratory/internlm2-7b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_7b_base,
     'Shanghai_AI_Laboratory/internlm2-base-7b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_20b,
     'Shanghai_AI_Laboratory/internlm2-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_20b_base,
     'Shanghai_AI_Laboratory/internlm2-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_internlm2(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
