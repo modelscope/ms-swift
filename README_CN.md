@@ -257,8 +257,8 @@ app_ui_main(infer_args)
     - Agent: 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en.
     - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - 代码: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
-    - 医疗: medical-en, medical-zh, medical-mini-zh.
-    - 法律: 🔥lawyer-llama-zh, tigerbot-law-zh.
+    - 医疗: medical-en, medical-zh, medical-mini-zh, disc-med-sft-zh.
+    - 法律: 🔥lawyer-llama-zh, tigerbot-law-zh, disc-law-sft-zh.
     - 数学: 🔥blossom-math-zh, school-math-zh, open-platypus-en.
     - SQL: text2sql-en, 🔥sql-create-context-en.
     - 文本生成: 🔥advertise-gen-zh, 🔥dureader-robust-zh.

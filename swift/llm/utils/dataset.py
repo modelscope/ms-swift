@@ -80,9 +80,11 @@ class DatasetName:
     medical_en = 'medical-en'
     medical_zh = 'medical-zh'
     medical_mini_zh = 'medical-mini-zh'
+    disc_med_sft_zh = 'disc-med-sft-zh'
     # law
     lawyer_llama_zh = 'lawyer-llama-zh'
     tigerbot_law_zh = 'tigerbot-law-zh'
+    disc_law_sft_zh = 'disc-law-sft-zh'
     # math
     blossom_math_zh = 'blossom-math-zh'
     school_math_zh = 'school-math-zh'
@@ -1001,6 +1003,21 @@ register_dataset(
     ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'multilingual', 'general', 'multi-round'])
+
+register_dataset(
+    DatasetName.disc_med_sft_zh, 'AI-ModelScope/DISC-Med-SFT', ['train'], None,
+    ConversationsPreprocessor(
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        error_strategy='delete'), get_dataset_from_repo)
+
+register_dataset(
+    DatasetName.disc_law_sft_zh, 'AI-ModelScope/DISC-Law-SFT', ['train'], None,
+    RenameColumnsPreprocessor({
+        'input': 'query',
+        'output': 'response'
+    }), get_dataset_from_repo)
 
 
 def add_self_cognition_dataset(
