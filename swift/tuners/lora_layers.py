@@ -507,6 +507,7 @@ class LoraModel(_LoraModel):
             target_name,
             parent,
             current_key,
+            **optional_kwargs,
     ):
         """
         Override code:
