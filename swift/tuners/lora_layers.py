@@ -8,6 +8,7 @@ import warnings
 from itertools import chain
 from typing import Dict, List
 
+from packaging import version
 import peft
 import torch
 import torch.nn as nn
@@ -16,7 +17,6 @@ from peft.import_utils import is_bnb_4bit_available, is_bnb_available
 from peft.tuners.lora import Conv2d as _Conv2d
 from peft.tuners.lora import Embedding as _Embedding
 from peft.tuners.lora import Linear as _Linear
-from peft.tuners.lora import LoraLayer
 from peft.tuners.lora import LoraModel as _LoraModel
 from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
@@ -28,6 +28,10 @@ from swift import get_logger
 from .utils import ActivationMixin, ModulesToSaveWrapper, SwiftAdapter
 
 logger = get_logger()
+
+
+def is_auto_awq_available():
+    return importlib.util.find_spec("awq") is not None and importlib.util.find_spec("peft.tuners.lora.awq") is not None
 
 
 def is_auto_gptq_available():
@@ -124,6 +128,22 @@ if is_bnb_4bit_available():
             **kwargs,
         ):
             super(Linear4bit, self).__init__(module_key)
+            self.set_activation(args[1], True)
+            super(ActivationMixin, self).__init__(*args, **kwargs)
+
+
+if is_auto_awq_available():
+    from peft.tuners.lora.awq import AwqLoraLinear as _AwqLoraLinear
+
+    class AwqLoraLinear(LoRAActivationMixin, _AwqLoraLinear):
+
+        def __init__(
+            self,
+            *args,
+            module_key: str,
+            **kwargs,
+        ):
+            super(AwqLoraLinear, self).__init__(module_key)
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
@@ -263,6 +283,8 @@ class LoraModel(_LoraModel):
 
         peft_config = self._prepare_adapter_config(peft_config, model_config)
 
+        # update peft_config.target_modules if required
+        peft_config = _maybe_include_all_linear_layers(peft_config, model)
         for key in key_list:
             # Check for modules_to_save in case
             if _check_for_modules_to_save and any(
@@ -284,16 +306,10 @@ class LoraModel(_LoraModel):
             if not self._check_target_module_exists(peft_config, key):
                 continue
 
+            self.targeted_module_names.append(key)
             is_target_modules_in_base_model = True
             parent, target, target_name = _get_submodules(model, key)
-
-            optional_kwargs = {
-                'loaded_in_8bit': getattr(model, 'is_loaded_in_8bit', False),
-                'loaded_in_4bit': getattr(model, 'is_loaded_in_4bit', False),
-                'current_key': key,
-            }
-            self._create_and_replace(peft_config, adapter_name, target,
-                                     target_name, parent, **optional_kwargs)
+            self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
         if not is_target_modules_in_base_model:
             raise ValueError(

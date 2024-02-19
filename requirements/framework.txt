@@ -8,7 +8,7 @@ nltk
 numpy
 optimum
 pandas
-peft>=0.7.1,<0.8.0
+peft>=0.8.0
 requests
 rouge
 safetensors
