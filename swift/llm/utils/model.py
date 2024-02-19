@@ -77,6 +77,9 @@ class ModelType:
     qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
     qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
     qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
+    # qwen1.5 awq
+    qwen1half_7b_chat_awq = 'qwen/Qwen1.5-7B-Chat-AWQ'
+
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -1043,6 +1046,14 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         **kwargs)
 
 
+@register_model(
+    ModelType.qwen1half_7b_chat_awq,
+    'qwen/Qwen1.5-7B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
 @register_model(
     ModelType.qwen1half_0_5b_chat,
     'qwen/Qwen1.5-0.5B-Chat',
