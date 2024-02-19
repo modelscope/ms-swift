@@ -118,6 +118,31 @@ if is_bnb_available():
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
+    def dispatch_bnb_8bit(target: torch.nn.Module, adapter_name: str, module_key: str, **kwargs):
+        new_module = None
+
+        if isinstance(target, BaseTunerLayer):
+            target_base_layer = target.get_base_layer()
+        else:
+            target_base_layer = target
+
+        loaded_in_8bit = kwargs.get("loaded_in_8bit", False)
+        if loaded_in_8bit and isinstance(target_base_layer, bnb.nn.Linear8bitLt):
+            eightbit_kwargs = kwargs.copy()
+            eightbit_kwargs.update(
+                {
+                    "has_fp16_weights": target.state.has_fp16_weights,
+                    "memory_efficient_backward": target.state.memory_efficient_backward,
+                    "threshold": target.state.threshold,
+                    "index": target.index,
+                }
+            )
+            new_module = Linear8bitLt(target, adapter_name, module_key=module_key, **eightbit_kwargs)
+
+        return new_module
+
+    dispatchers.append(dispatch_bnb_8bit)
+
 
 if is_bnb_4bit_available():
     from peft.tuners.lora.bnb import Linear4bit as _Linear4bit
@@ -133,6 +158,31 @@ if is_bnb_4bit_available():
             super(Linear4bit, self).__init__(module_key)
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
+
+    def dispatch_bnb_4bit(target: torch.nn.Module, adapter_name: str, module_key: str, **kwargs):
+        new_module = None
+
+        if isinstance(target, BaseTunerLayer):
+            target_base_layer = target.get_base_layer()
+        else:
+            target_base_layer = target
+
+        loaded_in_4bit = kwargs.get("loaded_in_4bit", False)
+        if loaded_in_4bit and is_bnb_4bit_available() and isinstance(target_base_layer, bnb.nn.Linear4bit):
+            fourbit_kwargs = kwargs.copy()
+            fourbit_kwargs.update(
+                {
+                    "compute_dtype": target_base_layer.compute_dtype,
+                    "compress_statistics": target_base_layer.weight.compress_statistics,
+                    "quant_type": target_base_layer.weight.quant_type,
+                }
+            )
+            new_module = Linear4bit(target, adapter_name, module_key=module_key, **fourbit_kwargs)
+
+        return new_module
+
+
+    dispatchers.append(dispatch_bnb_4bit)
 
 
 if is_auto_awq_available():
@@ -567,7 +617,7 @@ class LoraModel(_LoraModel):
                     # adding an additional adapter: it is not automatically trainable
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
-                self._convert_dtype(target, lora_config.lora_dtype)
+                self._convert_dtype(new_module, lora_config.lora_dtype)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
