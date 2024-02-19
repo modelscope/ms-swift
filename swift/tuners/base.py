@@ -147,9 +147,8 @@ class SwiftModel(nn.Module):
         Returns:
             The state dict to be saved.
         """
-        if 'state_dict' in kwargs:
-            state_dict = kwargs['state_dict']
-        else:
+        state_dict = kwargs.get('state_dict')
+        if state_dict is None:
             state_dict = self.model.state_dict(
                 destination=destination, prefix=prefix, keep_vars=keep_vars)
         if not self.has_additional_modules:
