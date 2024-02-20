@@ -338,11 +338,12 @@ def dispatch_megatron(
 
     if lora_config.megatron_config:
         megatron_core = importlib.import_module(lora_config.megatron_core)
+        linears = (megatron_core.tensor_parallel.ColumnParallelLinear,
+                   megatron_core.tensor_parallel.RowParallelLinear)
     else:
         megatron_core = None
+        linears = None
 
-    linears = (megatron_core.tensor_parallel.ColumnParallelLinear,
-               megatron_core.tensor_parallel.RowParallelLinear)
     if megatron_core and isinstance(target_base_layer, linears):
         megatron_kwargs = kwargs.copy()
         megatron_config = lora_config.megatron_config
