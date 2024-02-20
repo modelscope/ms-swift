@@ -9,6 +9,7 @@ from transformers.trainer_callback import (DefaultFlowCallback,
 from transformers.trainer_utils import IntervalStrategy, has_length
 
 from swift.trainers import TrainingArguments
+from swift.utils import is_pai_training_job
 
 
 class ProgressCallbackNew(ProgressCallback):
@@ -47,7 +48,7 @@ class ProgressCallbackNew(ProgressCallback):
         for k, v in logs.items():
             if isinstance(v, float):
                 logs[k] = round(logs[k], 8)
-        if state.is_local_process_zero and self.training_bar is not None:
+        if not is_pai_training_job() and state.is_local_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             with open(jsonl_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(logs) + '\n')
@@ -77,7 +78,7 @@ class PrinterCallbackNew(TrainerCallback):
         for k, v in logs.items():
             if isinstance(v, float):
                 logs[k] = round(logs[k], 8)
-        if state.is_local_process_zero:
+        if not is_pai_training_job() and state.is_local_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             with open(jsonl_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(logs) + '\n')
