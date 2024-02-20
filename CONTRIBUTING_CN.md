@@ -18,7 +18,7 @@
 
 ## 📖 代码规约
 
-请查看我们的[代码规约文档](https://github.com/modelscope/swift/blob/main/CODE_OF_CONDUCT.md). 
+请查看我们的[代码规约文档](https://github.com/modelscope/swift/blob/main/CODE_OF_CONDUCT.md).
 
 ## 贡献流程
 
