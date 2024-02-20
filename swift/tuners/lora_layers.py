@@ -587,7 +587,7 @@ class LoraModel(_LoraModel):
         3. Support skipping NonDynamicallyQuantizableLinear
         4. Add current_key argument to _create_new_module
         5. Use Class type defined here
-        6. Allow new_module is None
+        6. Allow new_module being None
         """
         if current_key is None:
             raise ValueError("Current Key shouldn't be `None`")
