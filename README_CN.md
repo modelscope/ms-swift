@@ -162,7 +162,7 @@ swift web-ui
 
 ### 快速开始
 ```python
-# pip install ms-swift -U
+# pip install ms-swift[llm] -U
 
 # Experimental environment: A10, 3090, V100, ...
 # 8GB GPU memory
