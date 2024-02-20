@@ -162,7 +162,7 @@ Here is a simple introduction of web-ui:
 
 ### Quick Start
 ```python
-# pip install ms-swift -U
+# pip install ms-swift[llm] -U
 
 # Experimental environment: A10, 3090, V100, ...
 # 8GB GPU memory
