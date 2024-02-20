@@ -315,7 +315,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
     train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
-    if is_master():
+    if is_master() and not use_torchacc():
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
         tb_dir = os.path.join(args.output_dir, 'runs')

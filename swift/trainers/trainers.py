@@ -205,6 +205,31 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if not use_torchacc():
             return super().get_train_dataloader()
         else:
+            # patch skip_first_batches for customized dataloader.
+            def acc_skip_first_batches(dataloader, num_batches=0):
+                from accelerate.data_loader import SkipBatchSampler
+                batch_sampler = SkipBatchSampler(
+                    dataloader._loader.batch_sampler, skip_batches=num_batches)
+                dataset = dataloader.dataset
+                dataloader_params = {
+                    'collate_fn': data_collator,
+                    'num_workers': self.args.dataloader_num_workers,
+                    'pin_memory': self.args.dataloader_pin_memory,
+                    'persistent_workers':
+                    self.args.dataloader_persistent_workers,
+                }
+
+                if not isinstance(train_dataset,
+                                  torch.utils.data.IterableDataset):
+                    dataloader_params['batch_sampler'] = batch_sampler
+                    dataloader_params['worker_init_fn'] = trainer.seed_worker
+
+                return ta.AsyncLoader(
+                    DataLoader(dataset, **dataloader_params), self.args.device)
+
+            trainer.skip_first_batches = acc_skip_first_batches
+
+            # dataloader for TorchAcc.
             import torchacc as ta
             if trainer.is_datasets_available():
                 import datasets
