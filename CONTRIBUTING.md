@@ -3,23 +3,29 @@
 _Welcome to offer PRs, bug reports, documentation supplements or other types of contributions to SWIFT!_
 
 ## Table of Contents
-[Contributor](#contributor)
-[Code of Conduct](#code-of-conduct)
-[Contribution Process](#contribution-process)
+[Contributor](#🏅 contributor)
+[Code of Conduct](#📖 code-of-conduct)
+[Contribution Process](#🔁 contribution-process)
+[Hardware support](#✅ Hardware support)
 
-## Contributor
+## 🏅 Contributor
 
-## Code of Conduct
+## 📖 Code of Conduct
 Please refer to our [Code of Conduct documentation](https://github.com/modelscope/swift/blob/main/CODE_OF_CONDUCT.md).
 
-## Contribution Process
+## 🔁 Contribution Process
 ### What We Need
 - ROADMAP: We provide a [ROADMAP](https://github.com/modelscope/swift/blob/main/ROADMAP.md) for each iteration of SWIFT, contributors can check our ROADMAP to understand our development progress and plans. Features in **To be Assigned** is available for all developers.
 - New Technologies and New Models: SWIFT needs to support more open-source models and datasets, or new technologies that we have not paid attention to. If you are interested please submit a PR to us.
 - Technical Propagation: If you are interested in technical propagation, you are welcome to help us write tutorials, documents or videos on any website, and send us the link, we can forward it to more developers.
 - Community Contribution: You can write technical articles related to SWIFT, and submit them to us. After review and approval, we will publish them on the official ModelScope accounts (Zhihu, WeChat, etc.), with your name assigned.
 
+### **Certificates**
+
+If needed, we will issue electronic certificates to contributors on behalf of the ModelScope community, to encourage your selfless contributions.
+
 ### Submitting PR (Pull Requests)
+
 Any feature development is carried out in the form of Fork and then PR on GitHub.
 1. Fork: Go to the [SWIFT](https://github.com/modelscope/swift) page and click the **Fork button**. After completion, a SWIFT code repository will be cloned under your personal organization.
 2. Clone: Clone the code repository generated in the first step to your local machine and **create a new branch** for development. During development, please click the **Sync Fork button** in time to synchronize with the `main` branch to prevent code expiration and conflicts.
@@ -53,7 +59,7 @@ python tests/llm/test_run.py
 ```
 Please make sure this test can pass normally.
 
-## Hardware support
+## ✅ Hardware support
 
 SWIFT will provide hardware support for developers, including free GPUs. If needed, please email us ([contact@modelscope.cn](mailto:contact@modelscope.cn)) or join our WeChat group:
 
