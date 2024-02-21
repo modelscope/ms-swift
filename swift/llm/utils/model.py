@@ -956,7 +956,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.openbuddy,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    support_gradient_checkpointing=False)
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
     'OpenBuddy/openbuddy-mistral-7b-v17.1-32k',
