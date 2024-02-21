@@ -228,7 +228,7 @@ app_ui_main(infer_args)
       - internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat.
       - internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
     - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) 系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
-    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) 系列: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat.
+    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) 系列: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat, openbuddy-mixtral-moe-7b-chat.
     - [mistral](https://github.com/mistralai/mistral-src) 系列: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
     - [mixtral](https://github.com/mistralai/mistral-src) 系列: mixtral-moe-7b, mixtral-moe-7b-instruct.
     - [baichuan](https://github.com/baichuan-inc/Baichuan2) 系列: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4.
