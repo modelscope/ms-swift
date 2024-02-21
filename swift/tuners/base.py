@@ -117,24 +117,28 @@ class SwiftModel(nn.Module):
                                 f'{module_name}.modules_to_save.{adapter_name}'
                             )
                             break
-                    if key.startswith('base_model.model.'):
-                        state_dict.pop(key, None)
-                        key = key[len('base_model.model.'):]
-                    if f'lora_A.{adapter_name}.' not in key and 'lora_A' in key:
-                        state_dict.pop(key, None)
-                        key = key.replace('lora_A.', f'lora_A.{adapter_name}.')
-                    if f'lora_B.{adapter_name}.' not in key and 'lora_B' in key:
-                        state_dict.pop(key, None)
-                        key = key.replace('lora_B.', f'lora_B.{adapter_name}.')
-                    if f'lora_embedding_A.{adapter_name}.' not in key and 'lora_embedding_A' in key:
-                        state_dict.pop(key, None)
-                        key = key.replace('lora_embedding_A.',
-                                          f'lora_embedding_A.{adapter_name}.')
-                    if f'lora_embedding_B.{adapter_name}.' not in key and 'lora_embedding_B' in key:
-                        state_dict.pop(key, None)
-                        key = key.replace('lora_embedding_B.',
-                                          f'lora_embedding_B.{adapter_name}.')
                     state_dict[key] = value
+
+            for key, value in copy(state_dict).items():
+                if key.startswith('base_model.model.'):
+                    state_dict.pop(key, None)
+                    key = key[len('base_model.model.'):]
+                if f'lora_A.{adapter_name}.' not in key and 'lora_A' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_A.', f'lora_A.{adapter_name}.')
+                if f'lora_B.{adapter_name}.' not in key and 'lora_B' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_B.', f'lora_B.{adapter_name}.')
+                if f'lora_embedding_A.{adapter_name}.' not in key and 'lora_embedding_A' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_embedding_A.',
+                                      f'lora_embedding_A.{adapter_name}.')
+                if f'lora_embedding_B.{adapter_name}.' not in key and 'lora_embedding_B' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_embedding_B.',
+                                      f'lora_embedding_B.{adapter_name}.')
+                state_dict[key] = value
+
         incompatible_keys = self.base_model.load_state_dict(state_dict, False)
         if incompatible_keys and len(incompatible_keys[1]) > 0:
             logger.error(
@@ -175,7 +179,7 @@ class SwiftModel(nn.Module):
             state_dict = self.base_model.state_dict(
                 destination=destination, prefix=prefix, keep_vars=keep_vars)
         state_dict = {
-            key['base_model.':] if key.startswith('base_model.') else key:
+            key[len('base_model.'):] if key.startswith('base_model.') else key:
             value
             for key, value in state_dict.items()
         }
