@@ -8,9 +8,10 @@ from time import time
 import torch
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
+from peft import PeftModel
 from peft.utils import WEIGHTS_NAME
 
-from swift import AdaLoraConfig, LoraConfig, Swift
+from swift import AdaLoraConfig, LoraConfig, LoRAConfig, Swift
 
 
 class TestPeft(unittest.TestCase):
@@ -38,6 +39,26 @@ class TestPeft(unittest.TestCase):
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(
+                all(
+                    torch.isclose(state_dict[key],
+                                  state_dict2[key]).flatten().detach().cpu()))
+
+    def test_lora_reload_by_peft(self):
+        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
+        model = SbertForSequenceClassification(SbertConfig())
+        model2 = copy.deepcopy(model)
+        model = Swift.prepare_model(model, lora_config)
+        model.save_pretrained(self.tmp_dir)
+        model2 = PeftModel.from_pretrained(model2, self.tmp_dir)
+        state_dict = model.state_dict()
+        state_dict2 = model2.state_dict()
+        state_dict2 = {
+            key[len('base_model.model.'):]: value
+            for key, value in state_dict2.items() if 'lora' in key
+        }
         for key in state_dict:
             self.assertTrue(key in state_dict2)
             self.assertTrue(
