@@ -278,7 +278,7 @@ class SwiftModel(nn.Module):
         Returns:
             The `SwiftModel` instance.
         """
-        peft_format = kwargs.pop('peft_format', True)
+        peft_format = kwargs.pop('peft_format', False)
         adapters = {}
         model_dir = model_id
         extra_state_keys = kwargs.pop('extra_state_keys', None)
@@ -457,7 +457,7 @@ class SwiftModel(nn.Module):
             safe_serialization (`bool`): Use safe tensors to save the weights, default False.
             adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `None` to save all.
         """
-        peft_format = kwargs.pop('peft_format', True)
+        peft_format = kwargs.pop('peft_format', False)
         if os.path.isfile(save_directory):
             raise ValueError(
                 f'Provided path ({save_directory}) should be a directory, not a file'
