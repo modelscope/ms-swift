@@ -48,6 +48,7 @@ logger = get_logger()
 class DatasetName:
     # general
     ms_bench = 'ms-bench'  # used for mixed training
+    ms_bench_mini = 'ms-bench-mini'
     alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
     multi_alpaca_all = 'multi-alpaca-all'
@@ -124,6 +125,9 @@ class DatasetName:
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
     stack_exchange_paired = 'stack-exchange-paired'
+
+    # for awq
+    pileval = 'pileval'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -430,12 +434,33 @@ def _repair_agent_conversations(conversations: str,
     return conversations
 
 
+def _repair_ms_bench(conversations: str) -> Dict[str, str]:
+    conversations = ast.literal_eval(conversations)
+    default_system = 'You are a helpful assistant.'
+    if conversations[0]['from'] == 'system' and conversations[0]['value'] == default_system:
+        conversations.pop(0)
+    # skip MOSS
+    for c in conversations:
+        value = c['value'].lower()
+        if 'moss' in value or 'human:' in value or 'assistant:' in value:
+            return
+    return conversations
+
 register_dataset(
     DatasetName.ms_bench,
     'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(error_strategy='delete'),
+    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round', '🔥'])
+
+register_dataset(
+    DatasetName.ms_bench_mini,
+    'iic/ms_bench', ['train'], [],
+    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    get_dataset_from_repo,
+    function_kwargs={'train_dataset_sample': 20000},
+    tags=['chat', 'general', 'multi-round', '🔥'])
+
 
 register_dataset(
     DatasetName.ms_agent,
@@ -1018,6 +1043,11 @@ register_dataset(
         'input': 'query',
         'output': 'response'
     }), get_dataset_from_repo)
+
+register_dataset(DatasetName.pileval, 'huangjintao/pile-val-backup', ['train'],
+                 None, RenameColumnsPreprocessor({
+                     'text': 'response',
+                 }), get_dataset_from_repo)
 
 
 def add_self_cognition_dataset(
