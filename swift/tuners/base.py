@@ -101,6 +101,10 @@ class SwiftModel(nn.Module):
                             for extra_key in self.extra_state_keys):
                         p.requires_grad = True
 
+    @property
+    def model(self):
+        return self.base_model
+
     def load_state_dict(self,
                         state_dict,
                         strict=True,
@@ -215,12 +219,12 @@ class SwiftModel(nn.Module):
             for key, value in state_dicts.items():
                 if not key.startswith('base_model.model.'):
                     key = 'base_model.model.' + key
-                    key = key.replace(f'lora_A.{adapter_name}.', 'lora_A.')
-                    key = key.replace(f'lora_B.{adapter_name}.', 'lora_B.')
-                    key = key.replace(f'lora_embedding_A.{adapter_name}.',
-                                      'lora_embedding_A.')
-                    key = key.replace(f'lora_embedding_B.{adapter_name}.',
-                                      'lora_embedding_B.')
+                key = key.replace(f'lora_A.{adapter_name}.', 'lora_A.')
+                key = key.replace(f'lora_B.{adapter_name}.', 'lora_B.')
+                key = key.replace(f'lora_embedding_A.{adapter_name}.',
+                                  'lora_embedding_A.')
+                key = key.replace(f'lora_embedding_B.{adapter_name}.',
+                                  'lora_embedding_B.')
                 new_state_dict[key] = value
             state_dicts = new_state_dict
         return state_dicts
