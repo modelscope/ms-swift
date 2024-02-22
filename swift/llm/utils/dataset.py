@@ -437,7 +437,8 @@ def _repair_agent_conversations(conversations: str,
 def _repair_ms_bench(conversations: str) -> Dict[str, str]:
     conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
-    if conversations[0]['from'] == 'system' and conversations[0]['value'] == default_system:
+    if conversations[0]['from'] == 'system' and conversations[0][
+            'value'] == default_system:
         conversations.pop(0)
     # skip MOSS
     for c in conversations:
@@ -446,21 +447,23 @@ def _repair_ms_bench(conversations: str) -> Dict[str, str]:
             return
     return conversations
 
+
 register_dataset(
     DatasetName.ms_bench,
     'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    ConversationsPreprocessor(
+        repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.ms_bench_mini,
     'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    ConversationsPreprocessor(
+        repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     function_kwargs={'train_dataset_sample': 20000},
     tags=['chat', 'general', 'multi-round', '🔥'])
-
 
 register_dataset(
     DatasetName.ms_agent,
@@ -835,7 +838,7 @@ register_dataset(
         'history': '_'
     }),
     get_dataset_from_repo,
-    tags=['chat', 'law', '🔥'])
+    tags=['chat', 'law'])
 
 
 def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
@@ -862,7 +865,7 @@ register_dataset(
     None,
     _preprocess_tigerbot_law,
     get_dataset_from_repo,
-    tags=['text-generation', 'law', 'pretrained', '🔥'])
+    tags=['text-generation', 'law', 'pretrained'])
 
 
 def _preprocess_leetcode_python(dataset: HfDataset) -> HfDataset:
@@ -1030,24 +1033,37 @@ register_dataset(
     tags=['chat', 'multilingual', 'general', 'multi-round'])
 
 register_dataset(
-    DatasetName.disc_med_sft_zh, 'AI-ModelScope/DISC-Med-SFT', ['train'], None,
+    DatasetName.disc_med_sft_zh,
+    'AI-ModelScope/DISC-Med-SFT', ['train'],
+    None,
     ConversationsPreprocessor(
         conversations_key='conversation',
         from_key='role',
         value_key='content',
-        error_strategy='delete'), get_dataset_from_repo)
+        error_strategy='delete'),
+    get_dataset_from_repo,
+    tag=['chat', 'medical', '🔥'])
 
 register_dataset(
-    DatasetName.disc_law_sft_zh, 'AI-ModelScope/DISC-Law-SFT', ['train'], None,
+    DatasetName.disc_law_sft_zh,
+    'AI-ModelScope/DISC-Law-SFT', ['train'],
+    None,
     RenameColumnsPreprocessor({
         'input': 'query',
         'output': 'response'
-    }), get_dataset_from_repo)
+    }),
+    get_dataset_from_repo,
+    tag=['chat', 'law', '🔥'])
 
-register_dataset(DatasetName.pileval, 'huangjintao/pile-val-backup', ['train'],
-                 None, RenameColumnsPreprocessor({
-                     'text': 'response',
-                 }), get_dataset_from_repo)
+register_dataset(
+    DatasetName.pileval,
+    'huangjintao/pile-val-backup', ['train'],
+    None,
+    RenameColumnsPreprocessor({
+        'text': 'response',
+    }),
+    get_dataset_from_repo,
+    tag=['text-generation', 'awq'])
 
 
 def add_self_cognition_dataset(

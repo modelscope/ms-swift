@@ -260,8 +260,8 @@ app_ui_main(infer_args)
     - Agent: 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en.
     - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - Coding: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
-    - Medical: medical-en, medical-zh, medical-mini-zh, disc-med-sft-zh.
-    - Law: 🔥lawyer-llama-zh, tigerbot-law-zh, disc-law-sft-zh.
+    - Medical: medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.
+    - Law: lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.
     - Math: 🔥blossom-math-zh, school-math-zh, open-platypus-en.
     - SQL: text2sql-en, 🔥sql-create-context-en.
     - Text Generation: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
