@@ -53,6 +53,7 @@ class SwiftConfig:
         os.makedirs(save_directory, exist_ok=True)
 
         output_dict = self.__dict__
+        output_dict.update(kwargs)
         output_path = os.path.join(save_directory, CONFIG_NAME)
 
         # save it
