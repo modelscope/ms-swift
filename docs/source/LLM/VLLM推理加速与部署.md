@@ -21,7 +21,7 @@ pip install -e .[llm]
 pip install vllm -U
 pip install openai -U
 
-# 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
