@@ -155,6 +155,7 @@ class ModelType:
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
+    openbuddy_mixtral_moe_7b_chat = 'openbuddy-mixtral-moe-7b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_instruct = 'mistral-7b-instruct'
@@ -949,8 +950,17 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
+    ModelType.openbuddy_mixtral_moe_7b_chat,
+    'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+@register_model(
     ModelType.openbuddy_mistral_7b_chat,
-    'OpenBuddy/openbuddy-mistral-7b-v13.1',
+    'OpenBuddy/openbuddy-mistral-7b-v17.1-32k',
     LoRATM.llama2,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],
