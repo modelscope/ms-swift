@@ -148,6 +148,14 @@ class ModelType:
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
     deepseek_math_7b_chat = 'deepseek-math-7b-chat'
+    # gemma
+    gemma_2b = 'gemma-2b'
+    gemma_7b = 'gemma-7b'
+    gemma_2b_instruct = 'gemma-2b-instruct'
+    gemma_7b_instruct = 'gemma-7b-instruct'
+    # openbmb
+    openbmb_minicpm_2b_sft_chat = 'openbmb-minicpm-2b-sft-chat'
+    openbmb_minicpm_2b_chat = 'openbmb-minicpm-2b-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
@@ -155,6 +163,7 @@ class ModelType:
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
+    openbuddy_mixtral_moe_7b_chat = 'openbuddy-mixtral-moe-7b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_instruct = 'mistral-7b-instruct'
@@ -200,9 +209,6 @@ class ModelType:
     # skywork
     skywork_13b = 'skywork-13b'
     skywork_13b_chat = 'skywork-13b-chat'
-    # openbmb
-    openbmb_minicpm_2b_sft_chat = 'openbmb-minicpm-2b-sft-chat'
-    openbmb_minicpm_2b_chat = 'openbmb-minicpm-2b-chat'
     # zephyr
     zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
     # other
@@ -719,6 +725,42 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.gemma_2b,
+    'AI-ModelScope/gemma-2b',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.38'],
+    ignore_file_pattern=[r'.+\.gguf$'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.gemma_7b,
+    'AI-ModelScope/gemma-7b',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.38'],
+    ignore_file_pattern=[r'.+\.gguf$'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.gemma_2b_instruct,
+    'AI-ModelScope/gemma-2b-it',
+    LoRATM.llama2,
+    TemplateType.gemma,
+    requires=['transformers>=4.38'],
+    ignore_file_pattern=[r'.+\.gguf$'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.gemma_7b_instruct,
+    'AI-ModelScope/gemma-7b-it',
+    LoRATM.llama2,
+    TemplateType.gemma,
+    requires=['transformers>=4.38'],
+    ignore_file_pattern=[r'.+\.gguf$'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
     ModelType.deepseek_math_7b_instruct,
     'deepseek-ai/deepseek-math-7b-instruct',
     LoRATM.llama2,
@@ -949,8 +991,17 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
+    ModelType.openbuddy_mixtral_moe_7b_chat,
+    'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k',
+    LoRATM.llama2,
+    TemplateType.openbuddy,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+@register_model(
     ModelType.openbuddy_mistral_7b_chat,
-    'OpenBuddy/openbuddy-mistral-7b-v13.1',
+    'OpenBuddy/openbuddy-mistral-7b-v17.1-32k',
     LoRATM.llama2,
     TemplateType.openbuddy,
     requires=['transformers>=4.34'],

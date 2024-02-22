@@ -62,6 +62,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
+- 2024.02.22: Support gemma series: gemma-2b, [gemma-2b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/gemma_2b_instruct), gemma-7b, gemma-7b-instruct.
 - 2024.02.16: Support deepseek-math series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
 - 🔥2024.02.05: Support **Qwen1.5** series, To view all supported Qwen1.5 models please check [Model List](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B). The [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8) fine-tuned scripts are provided.
 - 2024.02.05: Support the training of **SDXL**, **SD**, **ControlNet**, or techniques like **DreamBooth**, you can check the [training scripts](https://github.com/modelscope/swift/tree/main/examples/pytorch/sdxl/scripts) for details.
@@ -162,7 +163,7 @@ Here is a simple introduction of web-ui:
 
 ### Quick Start
 ```python
-# pip install ms-swift -U
+# pip install ms-swift[llm] -U
 
 # Experimental environment: A10, 3090, V100, ...
 # 8GB GPU memory
@@ -229,14 +230,15 @@ app_ui_main(infer_args)
       - internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat.
       - internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
     - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) series: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
-    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) series: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat.
+    - [gemma](https://github.com/google/gemma_pytorch) series: gemma-2b, gemma-2b-instruct, gemma-7b, gemma-7b-instruct.
+    - [openbmb-minicpm](https://github.com/OpenBMB/mlc-MiniCPM) series: openbmb-minicpm-2b-sft-chat, openbmb-minicpm-2b-chat.
+    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) series: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat, openbuddy-mixtral-moe-7b-chat.
     - [mistral](https://github.com/mistralai/mistral-src) series: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
     - [mixtral](https://github.com/mistralai/mistral-src) series: mixtral-moe-7b, mixtral-moe-7b-instruct.
     - [baichuan](https://github.com/baichuan-inc/Baichuan2) series: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4.
     - [yuan](https://github.com/IEIT-Yuan/Yuan-2.0) series: yuan2-2b-instruct, yuan2-2b-janus-instruct, yuan2-51b-instruct, yuan2-102b-instruct.
     - [xverse](https://github.com/xverse-ai/XVERSE-13B) series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat, xverse-65b, xverse-65b-v2, xverse-65b-chat, xverse-13b-256k.
     - [orion](https://github.com/OrionStarAI/OrionStar-Yi-34B-Chat) series: orion-14b, orion-14b-chat.
-    - [openbmb-minicpm](https://github.com/OpenBMB/mlc-MiniCPM) 系列: openbmb-minicpm-2b-sft-chat, openbmb-minicpm-2b-chat.
     - [bluelm](https://github.com/vivo-ai-lab/BlueLM) series: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k.
     - [zephyr](https://github.com/huggingface/alignment-handbook) series: zephyr-7b-beta-chat.
     - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) series: ziya2-13b, ziya2-13b-chat.
@@ -254,12 +256,12 @@ app_ui_main(infer_args)
     - [deepseek-math](https://github.com/deepseek-ai/DeepSeek-Math) series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
 - Supported Datasets: [[Detailed Info]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
   - NLP:
-    - General: 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini.
+    - General: 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini.
     - Agent: 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en.
     - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - Coding: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
-    - Medical: medical-en, medical-zh, medical-mini-zh, disc-med-sft-zh.
-    - Law: 🔥lawyer-llama-zh, tigerbot-law-zh, disc-law-sft-zh.
+    - Medical: medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.
+    - Law: lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.
     - Math: 🔥blossom-math-zh, school-math-zh, open-platypus-en.
     - SQL: text2sql-en, 🔥sql-create-context-en.
     - Text Generation: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
@@ -477,6 +479,7 @@ The config/weights stored in the output dir is the config of `extra_state_keys` 
   ModelScope Library is the model library of ModelScope project, which contains a large number of popular models.
 
 - [Contribute your own model to ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
+
 
 ## License
 
