@@ -32,13 +32,17 @@ class TestExtraStateDict(unittest.TestCase):
             model, lora_config, extra_state_keys=['classifier.*'])
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(
-            os.path.isfile(os.path.join(self.tmp_dir, 'adapter_model.bin')))
+            os.path.isfile(
+                os.path.join(self.tmp_dir, 'extra_states',
+                             'adapter_model.bin')))
         state_dict = torch.load(
-            os.path.join(self.tmp_dir, 'adapter_model.bin'))
+            os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.bin'))
         self.assertTrue(any('classifier' in key for key in state_dict))
         state_dict['classifier.weight'] = torch.ones_like(
             state_dict['classifier.weight']) * 2.0
-        with open(os.path.join(self.tmp_dir, 'adapter_model.bin'), 'wb') as f:
+        with open(
+                os.path.join(self.tmp_dir, 'extra_states',
+                             'adapter_model.bin'), 'wb') as f:
             torch.save(state_dict, f)
         model = Model.from_pretrained(
             'damo/nlp_structbert_sentence-similarity_chinese-base')
