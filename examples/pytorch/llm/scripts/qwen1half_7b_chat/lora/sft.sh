@@ -8,7 +8,7 @@ python llm_sft.py \
     --tuner_backend swift \
     --dtype AUTO \
     --output_dir output \
-    --dataset ms-bench \
+    --dataset ms-bench-mini \
     --train_dataset_sample 5000 \
     --num_train_epochs 2 \
     --max_length 1024 \
