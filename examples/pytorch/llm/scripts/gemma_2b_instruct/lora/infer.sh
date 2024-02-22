@@ -1,4 +1,4 @@
-# Experimental environment: A100
+# Experimental environment: V100, A10, 3090
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir "output/gemma-2b-instruct/vx_xxx/checkpoint-xxx" \
