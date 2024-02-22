@@ -594,6 +594,11 @@ class SwiftMixin:
                 logs[k] = round(
                     v_scalar /
                     (self.state.global_step - self._globalstep_last_logged), 8)
+            if version.parse(
+                    transformers.__version__) >= version.parse('4.38'):
+                grad_norm = args[0]
+                if grad_norm is not None:
+                    logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
 
             tr_loss -= tr_loss
