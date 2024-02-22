@@ -51,7 +51,7 @@ class TestPeft(unittest.TestCase):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
         model = Swift.prepare_model(model, lora_config)
-        model.save_pretrained(self.tmp_dir)
+        model.save_pretrained(self.tmp_dir, peft_format=True)
         model2 = PeftModel.from_pretrained(model2, self.tmp_dir)
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()

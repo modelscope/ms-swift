@@ -278,33 +278,32 @@ class SwiftModel(nn.Module):
         Returns:
             The `SwiftModel` instance.
         """
-        peft_format = kwargs.pop('peft_format', False)
         adapters = {}
         model_dir = model_id
-        extra_state_keys = kwargs.pop('extra_state_keys', None)
-        config_file = os.path.join(model_dir, CONFIG_NAME)
-        if extra_state_keys is None and os.path.isfile(config_file):
-            with open(config_file, 'r') as file:
-                _json = json.load(file)
-                extra_state_keys = _json.get('extra_state_keys')
+        if not os.path.exists(model_dir):
+            model_dir = snapshot_download(model_dir, revision=revision)
         if os.path.isfile(model_dir):
             raise ValueError(
-                f'Please pass in a local dir or a model id, not a local file: {model_id}'
+                f'Please pass in a local dir or a model id, not a local file: {model_dir}'
             )
-        if not os.path.exists(model_id):
-            model_dir = snapshot_download(model_id, revision=revision)
+        extra_state_keys = kwargs.pop('extra_state_keys', None)
+        if extra_state_keys is None and os.path.isfile(
+                os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME)):
+            with open(
+                    os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME),
+                    'r') as file:
+                _json = json.load(file)
+                extra_state_keys = _json.get('extra_state_keys')
         if adapter_name is None:
             adapter_name = [
-                sub_dir for sub_dir in os.listdir(model_dir)
-                if os.path.isdir(os.path.join(model_dir, sub_dir)) and
+                sub_dir for sub_dir in os.listdir(model_dir) if
                 os.path.isfile(os.path.join(model_dir, sub_dir, CONFIG_NAME))
+                and sub_dir != cls.EXTRA_STATE_DIR
             ]
         for _name in adapter_name if isinstance(adapter_name,
                                                 list) else [adapter_name] \
                 if isinstance(adapter_name, str) else adapter_name.keys():
-            sub_folder = os.path.join(
-                model_dir,
-                _name) if _name != 'default' or not peft_format else model_dir
+            sub_folder = os.path.join(model_dir, _name)
             config_file = os.path.join(sub_folder, CONFIG_NAME)
 
             if not os.path.isfile(config_file):
