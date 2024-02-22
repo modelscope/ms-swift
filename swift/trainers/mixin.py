@@ -115,7 +115,7 @@ class PushToMsHubMixin:
 
     def init_hf_repo(self) -> None:
         """init ms repo. Compatible with transformers>=4.34"""
-        self.init_git_repo()
+        self.init_git_repo(at_init=True)
 
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
@@ -578,8 +578,7 @@ class SwiftMixin:
         except ValueError as e:
             logger.warning(e)
 
-    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,
-                                 ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
             self.control.should_log = False
             logs: Dict[str, float] = {}
@@ -601,5 +600,4 @@ class SwiftMixin:
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
             self.log(logs)
-        super()._maybe_log_save_evaluate(tr_loss, model, trial, epoch,
-                                         ignore_keys_for_eval)
+        super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
