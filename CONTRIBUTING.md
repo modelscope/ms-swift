@@ -20,7 +20,7 @@ Please refer to our [Code of Conduct documentation](./CODE_OF_CONDUCT.md).
 ### Incentives
 - we will issue electronic certificates to contributors on behalf of the ModelScope community, to encourage your selfless contributions.
 - We will offer small souvenirs related to the ModelScope Community.
-- We will provide free A10 computing power during the development period. For more details, please refer to [Hardware-support section](#-Hardware-support).
+- We will provide free A10 computing power during the development period. For more details, please refer to [Hardware-support](#-Hardware-support) section.
 
 ### Submitting PR (Pull Requests)
 
