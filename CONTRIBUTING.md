@@ -3,10 +3,10 @@
 _Welcome to offer PRs, bug reports, documentation supplements or other types of contributions to SWIFT!_
 
 ## Table of Contents
-[Contributor](#-contributor)
-[Code of Conduct](#-code-of-conduct)
-[Contribution Process](#-contribution-process)
-[Hardware support](#-Hardware-support)
+- [Contributor](#-contributor)
+- [Code of Conduct](#-code-of-conduct)
+- [Contribution Process](#-contribution-process)
+- [Hardware support](#-Hardware-support)
 
 ## 📖 Code of Conduct
 Please refer to our [Code of Conduct documentation](./CODE_OF_CONDUCT.md).
