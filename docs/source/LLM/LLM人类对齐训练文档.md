@@ -45,7 +45,7 @@ torchrun \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  hh-rlhf  \
+    --dataset  hh-rlhf-cn-harmless-base-cn  \
     --train_dataset_sample  -1  \
     --truncation_strategy  truncation_left  \
     --val_dataset_sample  2000  \
