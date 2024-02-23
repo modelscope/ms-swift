@@ -124,6 +124,7 @@ class DatasetName:
 
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
+    hh_rlhf_cn = 'hh-rlhf-cn'
     stack_exchange_paired = 'stack-exchange-paired'
 
     # for awq
@@ -654,7 +655,52 @@ def process_hh_rlhf(dataset):
             'rejected_response': sample['rejected'][len(prompt):],
         }
 
-    return dataset.map(reorganize_row_simple)
+    def reorganize_row(row):
+        import re
+        chosen = row['chosen'].strip()
+        rejected = row['rejected'].strip()
+        parts_chosen = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
+        ]
+        parts_rejected = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
+        ]
+        if parts_chosen[0].startswith('Human:'):
+            assert parts_rejected[0].startswith('Human:')
+            parts_chosen[0] = parts_chosen[0][6:].strip()
+            parts_rejected[0] = parts_rejected[0][6:].strip()
+        history = []
+        idx, s1, s2 = None, None, None
+        for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
+            if s1 == s2:
+                if idx % 2 == 0:
+                    history.append([s1, None])
+                else:
+                    history[-1][-1] = s1
+            else:
+                break
+
+        if idx % 2 == 0:
+            return {
+                'query': None,
+                'response': None,
+                'rejected_response': None,
+                'history': None,
+            }
+        query = history[-1][0]
+        history = history[:-1]
+        response = s1
+        rejected_response = s2
+        return {
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+            'history': history,
+        }
+
+    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
@@ -663,7 +709,17 @@ register_dataset(
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
+
+register_dataset(
+    DatasetName.hh_rlhf_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')],
+    [('harmless_base_cn', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
 
 register_dataset(
     DatasetName.medical_zh,
