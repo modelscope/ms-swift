@@ -41,7 +41,7 @@ from transformers.generation.streamers import BaseStreamer
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, stat_array, upper_bound)
+                         is_local_master, is_master, stat_array, upper_bound,
                          use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
@@ -299,6 +299,7 @@ def stat_dataset(llm_dataset: Dataset) -> str:
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
+
 def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase,
                           input_ids: List[int], **tokenizer_kwargs) -> str:
     if len(input_ids) == 0:
@@ -322,6 +323,7 @@ def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase,
     else:
         result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
     return result_str
+
 
 def print_example(example: Dict[str, Any],
                   tokenizer: PreTrainedTokenizerBase,

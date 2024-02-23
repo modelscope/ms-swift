@@ -35,7 +35,8 @@ from transformers.training_args import TrainingArguments
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, create_ms_repo, get_logger
+from swift.utils import (check_json_format, create_ms_repo, get_logger,
+                         use_torchacc)
 from swift.utils.constants import Invoke
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import (can_return_loss, find_labels, get_function,
@@ -359,6 +360,87 @@ class SwiftMixin:
                 indent=2)
         return
 
+    def _save_optimizer_and_scheduler(self, output_dir):
+        if not use_torchacc():
+            return super()._save_optimizer_and_scheduler(output_dir)
+
+        import torch_xla.core.xla_model as xm
+        xm.rendezvous('saving_optimizer_states')
+        torch.save(
+            self.optimizer.state_dict(),
+            os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
+        torch.save(
+            self.lr_scheduler.state_dict(),
+            os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
+
+    def _load_optimizer_and_scheduler(self, checkpoint):
+        if not use_torchacc():
+            return super()._load_optimizer_and_scheduler(checkpoint)
+
+        if checkpoint is None or self.args.save_only_model:
+            return
+        import torch_xla.core.xla_model as xm
+        optimizer_state = torch.load(
+            os.path.join(checkpoint, f'optimizer_{xm.get_ordinal()}.pt'),
+            map_location='cpu')
+        lr_scheduler_state = torch.load(
+            os.path.join(checkpoint, f'scheduler_{xm.get_ordinal()}.pt'),
+            map_location='cpu')
+        xm.send_cpu_data_to_device(optimizer_state, self.args.device)
+        xm.send_cpu_data_to_device(lr_scheduler_state, self.args.device)
+
+        self.optimizer.load_state_dict(optimizer_state)
+        self.lr_scheduler.load_state_dict(lr_scheduler_state)
+
+    def _save_tpu(self, output_dir: Optional[str] = None):
+        if not use_torchacc():
+            return super()._save_tpu(output_dir)
+
+        import torch_xla.core.xla_model as xm
+
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        logger.info(f'Saving model checkpoint to {output_dir}')
+
+        if xm.is_master_ordinal(local=False):
+            os.makedirs(output_dir, exist_ok=True)
+            torch.save(self.args, os.path.join(output_dir,
+                                               'training_args.bin'))
+        model = self.model._get_underlay_model().module.module
+        supported_classes = (PreTrainedModel, PeftModel)
+        save_safetensors = self.args.save_safetensors
+        # Save a trained model and configuration using `save_pretrained()`.
+        # They can then be reloaded using `from_pretrained()`
+        xm.rendezvous('saving_checkpoint')
+        out_dir = os.path.join(output_dir, f'{xm.get_ordinal()}')
+        if not isinstance(model, supported_classes):
+            state_dict = model.state_dict()
+            _unwrap_model = unwrap_model(model)
+            if isinstance(_unwrap_model, supported_classes):
+                _unwrap_model.save_pretrained(
+                    out_dir, safe_serialization=save_safetensors)
+            else:
+                logger.info(
+                    'Trainer.model is not a `PreTrainedModel`, only saving its state dict.'
+                )
+                if save_safetensors:
+                    safetensors.torch.save_file(
+                        state_dict, os.path.join(out_dir, 'model.safetensors'))
+                else:
+                    torch.save(state_dict,
+                               os.path.join(out_dir, 'pytorch_model.bin'))
+        else:
+            model.save_pretrained(out_dir, safe_serialization=save_safetensors)
+        # save shard_metadata for consolidation.
+        shard_meta = self.model._get_underlay_model().get_shard_metadata()
+        xm.save(shard_meta, os.path.join(out_dir, 'shard_meta.pth'))
+        xm.rendezvous('saving_checkpoint_done')
+
+        if self.tokenizer is not None and self.args.should_save:
+            self.tokenizer.save_pretrained(
+                output_dir,
+                is_main_process=xm.is_master_ordinal(local=False),
+                save_function=xm.save)
+
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
         # If we are executing this function, we are the process zero, so we don't check for that.
@@ -491,7 +573,14 @@ class SwiftMixin:
                               model=None) -> None:
         if model is None:
             model = self.model
-        if not isinstance(model, SwiftModel):
+        supported_classes = (SwiftModel, PeftModel)
+        if use_torchacc():
+            # Loading checkpoint of TorchAcc has been done in tuner.py when
+            # sft_type if 'full'.
+            model = model._get_underlay_model().module.module
+            if isinstance(model, PreTrainedModel):
+                return
+        if not isinstance(model, supported_classes):
             # Avoid throwing exceptions
             return super()._load_from_checkpoint(resume_from_checkpoint, model)
 
