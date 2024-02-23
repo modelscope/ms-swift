@@ -3,7 +3,7 @@
 # Note: TorchAcc is currently only available internally.
 
 export USE_TORCHACC=1
-export XLA_FLAGS='--xla_multiheap_size_constraint_per_heap=4831838208 --xla_disable_hlo_passes=all-gather-combiner,all-reduce-combiner,reduce-scatter-combiner'
+export XLA_FLAGS='--xla_gpu_force_compilation_parallelism=32 --xla_multiheap_size_constraint_per_heap=4831838208 --xla_disable_hlo_passes=all-gather-combiner,all-reduce-combiner,reduce-scatter-combiner,gpu-convert-async-collectives-to-sync,rematerialization'
 export XLA_IR_SHAPE_CACHE_SIZE=100000000
 export XLA_ALLOCATOR_FRACTION=0.95
 export XLA_EXPERIMENTAL=nonzero:masked_select
@@ -15,9 +15,9 @@ swift sft \
   --model_layer_cls_name QWenBlock \
 	--dataset codefuse-python-en \
 	--sft_type lora \
-  --output_dir output \
+  --output_dir output_qwen_72b \
   --num_train_epochs 1 \
-  --max_length 1024 \
+  --max_length 2048 \
   --batch_size 6 \
   --use_flash_attn true \
   --gradient_accumulation_steps 1 \
@@ -25,6 +25,6 @@ swift sft \
   --tuner_backend 'peft' \
   --eval_steps 2000000 \
   --save_steps 2000000 \
-  --logging_steps 10 \
+  --logging_steps 100 \
   --preprocess_num_proc 1 \
   --dataloader_num_workers 0
