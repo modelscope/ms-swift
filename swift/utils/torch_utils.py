@@ -3,6 +3,8 @@
 import os
 import random
 import socket
+import types
+import einops
 from bisect import bisect_right
 from typing import List, Optional, Tuple
 
@@ -183,3 +185,73 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
 def time_synchronize() -> float:
     torch.cuda.synchronize()
     return time.perf_counter()  # second
+
+def patch_acc_model(model, args):
+    
+    # patah qwen
+    if args.model_type.startswith('qwen'):
+        import torchacc as ta
+        model = ta.patch_qwen_model(model)
+    elif args.model_type.startswith('baichuan'):
+        model = patch_baichuan_model(model)
+
+    return model
+
+def patch_baichuan_model(model):
+
+    def baichuan_attn_forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        bsz, q_len, _ = hidden_states.size()
+
+        proj = self.W_pack(hidden_states)
+        proj = (
+            proj.unflatten(-1, (3, self.hidden_size))
+            .unsqueeze(0)
+            .transpose(0, -2)
+            .squeeze(-2)
+        )
+        query_states = (
+            proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        )
+        key_states = (
+            proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        )
+        value_states = (
+            proj[2].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        )
+
+        kv_seq_len = key_states.shape[-2]
+        if past_key_value is not None:
+            kv_seq_len += past_key_value[0].shape[-2]
+
+        if past_key_value is not None:
+            # reuse k, v, self_attention
+            key_states = torch.cat([past_key_value[0], key_states], dim=2)
+            value_states = torch.cat([past_key_value[1], value_states], dim=2)
+
+        past_key_value = (key_states, value_states) if use_cache else None
+
+        # try:
+        from torchacc.ops import flash_attn_varlen_qkvpacked_xla
+        qkv = torch.stack([query_states, key_states, value_states], dim=2)
+        qkv = qkv.transpose(1, 3)
+        qkv = einops.rearrange(qkv, "b s ... -> (b s) ...")
+        cu_q_lens = torch.arange(
+            0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
+        output = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
+        output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
+        output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
+        return output, None, past_key_value
+        # except:
+            # print('import torchacc failed.')
+    
+    for layer in model.base_model.layers:
+        layer.self_attn.forward = types.MethodType(baichuan_attn_forward, layer.self_attn)
+    
+    return model
