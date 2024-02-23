@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import torch
 from packaging import version
@@ -52,6 +52,20 @@ class LoRAConfig(LoraConfig, SwiftConfig):
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
+
+    def can_be_saved_to_peft(self) -> bool:
+        return not self.use_qa_lora and not self.use_merged_linear \
+            and (not self.lora_dtype or self.lora_dtype == 'fp32')
+
+    def to_peft_config(self) -> LoraConfig:
+        _dict = asdict(self)
+        _dict.pop('use_qa_lora')
+        _dict.pop('enable_lora')
+        _dict.pop('lora_dtype')
+        _dict.pop('use_merged_linear')
+        _dict['peft_type'] = _dict['swift_type']
+        _dict.pop('swift_type')
+        return LoraConfig(**_dict)
 
 
 class LoRA(SwiftAdapter):
