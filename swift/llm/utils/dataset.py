@@ -718,7 +718,7 @@ register_dataset(
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_helpful_base,
@@ -726,7 +726,7 @@ register_dataset(
     [('helpful-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_helpful_online,
@@ -734,7 +734,7 @@ register_dataset(
     [('helpful-online', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_helpful_rejection_sampled,
@@ -742,7 +742,7 @@ register_dataset(
     [('helpful-rejection-sampled', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_red_team_attempts,
@@ -750,7 +750,7 @@ register_dataset(
     [('red-team-attempts', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 
 def process_hh_rlhf_cn(dataset):
@@ -802,7 +802,7 @@ register_dataset(
     [('harmless_base_cn', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_cn_harmless_base_en,
@@ -810,7 +810,7 @@ register_dataset(
     [('harmless_base_en', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_cn_helpful_base_cn,
@@ -818,7 +818,7 @@ register_dataset(
     [('helpful_base_cn', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_cn_helpful_base_en,
@@ -826,7 +826,7 @@ register_dataset(
     [('helpful_base_en', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.medical_zh,
