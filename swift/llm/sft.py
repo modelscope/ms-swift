@@ -15,7 +15,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers, use_torchacc)
+                         seed_everything, show_layers, use_torchacc, patch_acc_model)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template,
@@ -85,7 +85,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         # wrapper the model and make these properties wrong.
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
-        model = ta.patch_qwen_model(model)
+        # model = ta.patch_qwen_model(model)
+        model = patch_acc_model(model, args)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -319,7 +320,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
         tb_dir = os.path.join(args.output_dir, 'runs')
-        plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
+        if os.path.exists(tb_dir):
+            plot_images(images_dir, tb_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
