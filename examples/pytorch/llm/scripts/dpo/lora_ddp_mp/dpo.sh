@@ -8,8 +8,8 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_dpo.py \
-    --model_type  mistral-7b \
-    --ref_model_type  mistral-7b \
+    --model_type  yi-6b-chat \
+    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \

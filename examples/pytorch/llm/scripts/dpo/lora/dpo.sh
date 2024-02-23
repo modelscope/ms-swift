@@ -2,8 +2,8 @@
 # Memory usage: 2 * 20G
 PYTHONPATH=../../.. \
 python llm_dpo.py \
-    --model_type  mistral-7b \
-    --ref_model_type  mistral-7b \
+    --model_type  yi-6b-chat \
+    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \
