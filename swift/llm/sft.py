@@ -22,10 +22,9 @@ from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, dataset_map, get_bucket_sizes,
-                    get_dataset,
-                    get_model_tokenizer, get_template, get_time_info,
-                    print_example, set_generation_config, sort_by_max_length,
-                    stat_dataset)
+                    get_dataset, get_model_tokenizer, get_template,
+                    get_time_info, print_example, set_generation_config,
+                    sort_by_max_length, stat_dataset)
 from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
@@ -212,8 +211,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     bucket_sizes = get_bucket_sizes(
         args.max_length) if use_torchacc() else None
     padding_to = args.max_length if args.sft_type == 'longlora' else None
-    data_collator = partial(template.data_collator, padding_to=padding_to,
-                            bucket_sizes=bucket_sizes)
+    data_collator = partial(
+        template.data_collator,
+        padding_to=padding_to,
+        bucket_sizes=bucket_sizes)
     trian_batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size
     if use_torchacc():
@@ -221,7 +222,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         eval_batch_size *= world_size
     training_args.per_device_train_batch_size = trian_batch_size
     training_args.per_device_eval_batch_size = eval_batch_size
-    training_args.group_by_length=use_torchacc()
+    training_args.group_by_length = use_torchacc()
 
     # Trainer
     logger.info(f'training_args: {training_args}')
@@ -274,7 +275,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
     train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
-    if is_master():
+    if is_master() and not use_torchacc():
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
         plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
