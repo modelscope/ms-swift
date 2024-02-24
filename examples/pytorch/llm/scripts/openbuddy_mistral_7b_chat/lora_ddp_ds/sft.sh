@@ -40,5 +40,5 @@ torchrun \
     --hub_model_id openbuddy-mistral-7b-chat-lora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
-    --deepspeed_config_path default-zero2 \
+    --deepspeed default-zero2 \
     --save_only_model true \
