@@ -10,4 +10,4 @@ python llm_infer.py \
     --top_p 0.7 \
     --repetition_penalty 1. \
     --do_sample true \
-    --merge_lora_and_save false
+    --merge_lora false

@@ -148,7 +148,7 @@ cd examples/pytorch/llm
 - 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](./自定义与拓展.md#注册数据集的方式)
 - 如果你需要**断网**进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
-- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.
+- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.
 - 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`--ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看[scripts文件夹](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts). 如果你想要**自定义sh脚本**, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
 
 ```bash

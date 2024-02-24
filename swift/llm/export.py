@@ -135,14 +135,14 @@ def awq_model_quantize(awq_model, template: Template) -> None:
 def llm_export(args: InferArguments) -> None:
     global _args
     _args = args
-    if args.merge_lora_and_save is False and args.quant_bits <= 0:
+    if args.merge_lora is False and args.quant_bits <= 0:
         info = 'Nothing is being done.'
         if args.sft_type == 'lora':
-            info += ' You can set `--merge_lora_and_save true` to merge LoRA.'
+            info += ' You can set `--merge_lora true` to merge LoRA.'
         info += ' You can set `--quant_bits 4` to perform AWQ-4bits quantization on the model.'
         logger.info(info)
 
-    if args.merge_lora_and_save:
+    if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.quant_bits > 0:
         assert args.quantization_bit == 0

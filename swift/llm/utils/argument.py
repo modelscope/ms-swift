@@ -461,7 +461,7 @@ class InferArguments:
     use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
-    merge_lora_and_save: bool = False
+    merge_lora: bool = False
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
@@ -478,6 +478,7 @@ class InferArguments:
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
+    merge_lora_and_save: Optional[bool] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
@@ -542,7 +543,7 @@ class InferArguments:
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
                 if (self.sft_type == 'full'
-                        or self.sft_type == 'lora' and self.merge_lora_and_save
+                        or self.sft_type == 'lora' and self.merge_lora
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
         if self.infer_backend == 'vllm':
@@ -550,9 +551,9 @@ class InferArguments:
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora':
-                assert self.merge_lora_and_save is True, (
+                assert self.merge_lora is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
-                    'Please set --merge_lora_and_save true.')
+                    'Please set --merge_lora true.')
         template_info = TEMPLATE_MAPPING[self.template_type]
         support_stream = template_info.get('support_stream', True)
         if self.num_beams != 1 or not support_stream:
@@ -716,6 +717,8 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = TemplateType.qwen
     if args.truncation_strategy == 'ignore':
         args.truncation_strategy = 'delete'
+    if args.merge_lora_and_save is not None:
+        args.merge_lora = args.merge_lora_and_save
     if isinstance(args, InferArguments):
         if args.show_dataset_sample != 10 and args.val_dataset_sample == 10:
             # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.

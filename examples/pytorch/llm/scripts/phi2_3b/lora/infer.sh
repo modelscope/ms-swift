@@ -10,4 +10,4 @@ swift infer \
     --temperature 0.1 \
     --top_p 0.7 \
     --repetition_penalty 1. \
-    --merge_lora_and_save false \
+    --merge_lora false \

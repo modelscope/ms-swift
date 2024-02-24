@@ -10,4 +10,4 @@ swift infer \
     --repetition_penalty 1. \
     --stream false \
     --do_sample true \
-    --merge_lora_and_save false \
+    --merge_lora false \

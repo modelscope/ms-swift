@@ -205,7 +205,7 @@ def read_media_file(
 
 
 def llm_infer(args: InferArguments) -> None:
-    if args.merge_lora_and_save:
+    if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm

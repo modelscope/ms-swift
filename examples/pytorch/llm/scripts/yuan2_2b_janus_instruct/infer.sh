@@ -7,4 +7,4 @@ swift infer \
     --use_flash_attn false \
     --max_new_tokens 2048 \
     --do_sample false \
-    --merge_lora_and_save false \
+    --merge_lora false \
