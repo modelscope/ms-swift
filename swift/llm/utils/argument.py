@@ -755,7 +755,8 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
             if args.model_type is None:
                 raise ValueError(
                     f"model_id_or_path: '{model_id_or_path}' is not registered. "
-                    'Please set the `--model_type <model_type>` additionally.')
+                    'Please set `--model_type <model_type>` additionally.')
+            assert args.model_cache_dir is None
         else:
             model_type = model_mapping_reversed[model_id_or_path_lower]
             assert args.model_type is None or args.model_type == model_type
@@ -817,8 +818,8 @@ def _check_path(
 
 def handle_path(args: Union[SftArguments, InferArguments]) -> None:
     check_exist_path = [
-        'model_cache_dir', 'ckpt_dir', 'resume_from_checkpoint',
-        'custom_train_dataset_path', 'custom_val_dataset_path'
+        'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset_path',
+        'custom_val_dataset_path'
     ]
     if args.model_id_or_path is not None and (
             args.model_id_or_path.startswith('~')

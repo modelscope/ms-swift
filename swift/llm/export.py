@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import List, Tuple, Union
 
 import torch
@@ -33,7 +34,7 @@ def prepare_awq_model_template(
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=model_id_or_path,
-        automodel_clas=AutoAWQForCausalLM)
+        automodel_class=AutoAWQForCausalLM)
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -146,9 +147,6 @@ def llm_export(args: InferArguments) -> None:
     if args.quant_bits > 0:
         assert args.quantization_bit == 0
         assert args.sft_type == 'full', 'you need to merge lora'
-        awq_model, template = prepare_awq_model_template(args)
-        awq_model_quantize(awq_model, template)
-
         if args.ckpt_dir is None:
             quant_path = f'{args.model_type}-int{args.quant_bits}'
         else:
@@ -156,6 +154,10 @@ def llm_export(args: InferArguments) -> None:
             quant_path = os.path.join(ckpt_dir,
                                       f'{ckpt_name}-int{args.quant_bits}')
         logger.info(f'Setting quant_path: {quant_path}')
+        assert not os.path.exists(quant_path)
+        awq_model, template = prepare_awq_model_template(args)
+        awq_model_quantize(awq_model, template)
+
         awq_model.save_quantized(quant_path)
         save_checkpoint(None, template.tokenizer, awq_model.model_dir, None,
                         quant_path)
