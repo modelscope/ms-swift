@@ -109,5 +109,3 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 
 
 ## 微调后模型
-
-

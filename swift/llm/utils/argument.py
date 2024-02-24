@@ -542,9 +542,8 @@ class InferArguments:
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
-                if (self.sft_type == 'full'
-                        or self.sft_type == 'lora' and self.merge_lora
-                        and self.quantization_bit == 0):
+                if (self.sft_type == 'full' or self.sft_type == 'lora'
+                        and self.merge_lora and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
