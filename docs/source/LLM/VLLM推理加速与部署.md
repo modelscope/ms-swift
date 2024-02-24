@@ -188,11 +188,11 @@ from swift.llm import (
 )
 from swift.tuners import Swift
 
-model_dir = 'vx_xxx/checkpoint-100-merged'
+ckpt_dir = 'vx_xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
-llm_engine = get_vllm_engine(model_type, model_dir=model_dir)
+llm_engine = get_vllm_engine(model_type, model_id_or_path=ckpt_dir)
 tokenizer = llm_engine.hf_tokenizer
 template = get_template(template_type, tokenizer)
 query = '你好'

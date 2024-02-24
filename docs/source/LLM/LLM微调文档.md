@@ -251,13 +251,13 @@ from swift.llm import (
 )
 from swift.tuners import Swift
 
-model_dir = 'vx_xxx/checkpoint-100'
+ckpt_dir = 'vx_xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
-model = Swift.from_pretrained(model, model_dir, inference_mode=True)
+model = Swift.from_pretrained(model, ckpt_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
 response, history = inference(model, template, query)
@@ -274,12 +274,12 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
 
-model_dir = 'vx_xxx/checkpoint-100-merged'
+ckpt_dir = 'vx_xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'},
-                                       model_dir=model_dir)
+                                       model_id_or_path=ckpt_dir)
 
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'

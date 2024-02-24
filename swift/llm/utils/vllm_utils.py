@@ -33,9 +33,12 @@ def get_vllm_engine(model_type: str,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
                     **kwargs) -> LLMEngine:
-
+    model_dir = kwargs.pop('model_dir', None)
     tokenizer = get_model_tokenizer(
-        model_type, load_model=False, model_id_or_path=model_id_or_path)[1]
+        model_type,
+        load_model=False,
+        model_id_or_path=model_id_or_path,
+        model_dir=model_dir)[1]
     model_dir = tokenizer.model_dir
 
     if engine_kwargs is None:

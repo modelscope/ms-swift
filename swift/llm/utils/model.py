@@ -2237,9 +2237,8 @@ def fix_gradient_checkpointing_warning() -> None:
 def safe_snapshot_download(model_type: str,
                            model_id_or_path: Optional[str] = None,
                            **kwargs) -> str:
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     if model_id_or_path is None:
-        # compat with swift<1.7
-        model_dir = kwargs.pop('model_dir', None)
         if model_dir is not None:
             model_id_or_path = model_dir
         else:
