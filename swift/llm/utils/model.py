@@ -2287,6 +2287,7 @@ def get_model_tokenizer(
                                     load_model, **kwargs)
     if model is not None:
         model.model_type = model_type
+        model.model_dir = model_dir
         fix_transformers_upgrade(model)
         fix_gradient_checkpointing_warning()
     tokenizer.model_type = model_type

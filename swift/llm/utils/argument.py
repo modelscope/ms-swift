@@ -470,6 +470,11 @@ class InferArguments:
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
+    # awq
+    export_quant_bits: int = 0  # e.g. 4
+    quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
+    quant_n_samples: int = 512
+    quant_seqlen: int = 2048
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
