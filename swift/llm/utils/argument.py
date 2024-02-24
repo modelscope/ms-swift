@@ -472,7 +472,7 @@ class InferArguments:
     # awq
     quant_bits: int = 0  # e.g. 4
     quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
-    quant_n_samples: int = 512
+    quant_n_samples: int = 1024
     quant_seqlen: int = 2048
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10

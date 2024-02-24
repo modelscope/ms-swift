@@ -123,6 +123,7 @@ def awq_model_quantize(awq_model, template: Template) -> None:
         'w_bit': _args.quant_bits,
         'version': 'GEMM'
     }
+    logger.info('Start quantizing the model...')
     awq_model.quantize(template.tokenizer, quant_config=quant_config)
     quantizer.get_calib_dataset = _raw_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(

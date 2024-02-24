@@ -204,7 +204,10 @@ print(f"history: {resp['history']}")
 **使用CLI**:
 ```bash
 # merge LoRA增量权重并使用vllm进行推理加速
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 
 # 使用数据集评估
 CUDA_VISIBLE_DEVICES=0 \
@@ -230,7 +233,10 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --model_type qwen-7b-chat --infer_backend vl
 ### 微调后模型
 ```bash
 # merge LoRA增量权重并使用vllm作为backend构建app-ui
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --infer_backend vllm
 ```
 
@@ -469,7 +475,10 @@ response:  成都
 服务端:
 ```bash
 # merge LoRA增量权重并部署
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 

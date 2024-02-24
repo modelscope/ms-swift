@@ -225,8 +225,12 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
 ```bash
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 ```
+对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档/#微调后模型)
 
 ## 推理
 如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
@@ -297,11 +301,14 @@ swift infer \
     --load_dataset_config true \
 
 # Merge LoRA增量权重并推理
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
-    --load_dataset_config true \
+    --load_dataset_config true
 ```
 
 **人工**评估:
@@ -310,7 +317,10 @@ swift infer \
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
 # Merge LoRA增量权重并推理
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
 
@@ -326,6 +336,9 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
 
 # merge LoRA增量权重并使用app-ui
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ```
