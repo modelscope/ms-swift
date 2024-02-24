@@ -33,7 +33,7 @@ def get_vllm_engine(model_type: str,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
                     **kwargs) -> LLMEngine:
-    model_dir = kwargs.pop('model_dir', None)
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
         model_type,
         load_model=False,

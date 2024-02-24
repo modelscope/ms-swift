@@ -2237,8 +2237,9 @@ def fix_gradient_checkpointing_warning() -> None:
 def safe_snapshot_download(model_type: str,
                            model_id_or_path: Optional[str] = None,
                            **kwargs) -> str:
-    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    model_info = MODEL_MAPPING[model_type]
     if model_id_or_path is None:
+        model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
         if model_dir is not None:
             model_id_or_path = model_dir
         else:
@@ -2246,7 +2247,6 @@ def safe_snapshot_download(model_type: str,
 
     if is_dist() and not is_local_master():
         dist.barrier()
-    model_info = MODEL_MAPPING[model_type]
     if model_id_or_path is not None and not os.path.exists(model_id_or_path):
         revision = model_info['revision']
         use_hf = model_info['use_hf']
@@ -2292,7 +2292,9 @@ def get_model_tokenizer(
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
         However, if torch.float32 is retrieved, torch.float16 will be used.
     """
-    model_dir = safe_snapshot_download(model_dir, model_id_or_path, **kwargs)
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    model_dir = safe_snapshot_download(
+        model_type, model_id_or_path, model_dir=model_dir)
 
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']
