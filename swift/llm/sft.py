@@ -60,10 +60,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     kwargs = {}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
-    if args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=args.model_id_or_path,
+        **kwargs)
     logger.debug(f'device_map: {dict(model.hf_device_map)}')
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(

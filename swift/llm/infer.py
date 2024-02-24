@@ -142,13 +142,18 @@ def prepare_model_template(
     kwargs = {}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
+    model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
-        kwargs['model_dir'] = args.ckpt_dir
-    elif args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
 
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path,
+        **kwargs)
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,

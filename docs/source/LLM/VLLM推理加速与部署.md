@@ -10,7 +10,7 @@
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
-# 设置pip全局镜像
+# 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
@@ -167,6 +167,8 @@ history: [('浙江的省会在哪？', '浙江的省会是杭州。'), ('这有�
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-7b-chat --infer_backend vllm
 # yi
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat --infer_backend vllm
+# gptq
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat-int4 --infer_backend vllm
 ```
 
 ### 微调后的模型

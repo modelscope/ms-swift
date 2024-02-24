@@ -23,14 +23,17 @@ def prepare_awq_model_template(
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
-    kwargs = {}
+    model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
-        kwargs['model_dir'] = args.ckpt_dir
-    elif args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    kwargs['automodel_class'] = AutoAWQForCausalLM
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path,
+        automodel_clas=AutoAWQForCausalLM)
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -116,13 +119,13 @@ def awq_model_quantize(awq_model, template: Template) -> None:
     quant_config = {
         'zero_point': True,
         'q_group_size': group_size,
-        'w_bit': _args.export_quant_bits,
+        'w_bit': _args.quant_bits,
         'version': 'GEMM'
     }
     awq_model.quantize(template.tokenizer, quant_config=quant_config)
     quantizer.get_calib_dataset = _raw_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
-        bits=_args.export_quant_bits,
+        bits=_args.quant_bits,
         group_size=group_size,
         zero_point=True,
         version='GEMM')
@@ -131,26 +134,27 @@ def awq_model_quantize(awq_model, template: Template) -> None:
 def llm_export(args: InferArguments) -> None:
     global _args
     _args = args
-    if args.merge_lora_and_save is False and args.export_quant_bits <= 0:
+    if args.merge_lora_and_save is False and args.quant_bits <= 0:
         info = 'Nothing is being done.'
         if args.sft_type == 'lora':
             info += ' You can set `--merge_lora_and_save true` to merge LoRA.'
-        info += ' You can set `--export_quant_bits 4` to perform AWQ-4bits quantization on the model.'
+        info += ' You can set `--quant_bits 4` to perform AWQ-4bits quantization on the model.'
         logger.info(info)
 
     if args.merge_lora_and_save:
         merge_lora(args, device_map='cpu')
-    if args.export_quant_bits > 0:
+    if args.quant_bits > 0:
         assert args.quantization_bit == 0
         assert args.sft_type == 'full', 'you need to merge lora'
         awq_model, template = prepare_awq_model_template(args)
         awq_model_quantize(awq_model, template)
 
         if args.ckpt_dir is None:
-            quant_path = f'{args.model_type}-quant'
+            quant_path = f'{args.model_type}-int{args.quant_bits}'
         else:
             ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
-            quant_path = os.path.join(ckpt_dir, f'{ckpt_name}-quant')
+            quant_path = os.path.join(ckpt_dir,
+                                      f'{ckpt_name}-int{args.quant_bits}')
         logger.info(f'Setting quant_path: {quant_path}')
         awq_model.save_quantized(quant_path)
         save_checkpoint(None, template.tokenizer, awq_model.model_dir, None,

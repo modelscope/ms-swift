@@ -39,7 +39,6 @@ class SftArguments:
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
-    model_cache_dir: Optional[str] = None
 
     sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora',
                       'ia3'] = 'lora'
@@ -204,6 +203,7 @@ class SftArguments:
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
+    model_cache_dir: Optional[str] = None
 
     def _prepare_target_modules(self, target_modules):
         if isinstance(target_modules, str):
@@ -411,7 +411,6 @@ class InferArguments:
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
-    model_cache_dir: Optional[str] = None
 
     sft_type: Literal['lora', 'longlora', 'qalora', 'full'] = 'lora'
     template_type: str = field(
@@ -471,13 +470,14 @@ class InferArguments:
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
     # awq
-    export_quant_bits: int = 0  # e.g. 4
+    quant_bits: int = 0  # e.g. 4
     quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
     quant_n_samples: int = 512
     quant_seqlen: int = 2048
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
+    model_cache_dir: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
@@ -736,8 +736,9 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
-    assert args.model_type is None or args.model_id_or_path is None, (
-        '`model_type` and `model_id_or_path` can only specify one of them.')
+    if args.model_cache_dir is not None and args.model_id_or_path is None:
+        args.model_id_or_path = args.model_cache_dir
+        args.model_cache_dir = None
     if args.model_id_or_path is not None:
         model_mapping_reversed = {
             v['model_id_or_path'].lower(): k
@@ -748,16 +749,20 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         if model_id_or_path_lower not in model_mapping_reversed:
             if isinstance(args,
                           InferArguments) and 'checkpoint' in model_id_or_path:
-                error_msg = 'Please use `--ckpt_dir vx_xxx/checkpoint-xxx` to use the checkpoint.'
-            else:
-                error_msg = f"model_id_or_path: '{model_id_or_path}' is not registered."
-                if os.path.exists(model_id_or_path):
-                    error_msg += (
-                        ' Please use `--model_type <model_type> --model_cache_dir <local_path>` '
-                        'or `--model_id_or_path <model_id> --model_cache_dir <local_path>`'
-                        'to specify the local cache path for the model.')
-            raise ValueError(error_msg)
-        args.model_type = model_mapping_reversed[model_id_or_path_lower]
+                raise ValueError(
+                    'Please use `--ckpt_dir vx_xxx/checkpoint-xxx` to use the checkpoint.'
+                )
+            if args.model_type is None:
+                raise ValueError(
+                    f"model_id_or_path: '{model_id_or_path}' is not registered. "
+                    'Please set the `--model_type <model_type>` additionally.')
+        else:
+            model_type = model_mapping_reversed[model_id_or_path_lower]
+            assert args.model_type is None or args.model_type == model_type
+            args.model_type = model_type
+            logger.info(f'Setting args.model_type: {model_type}')
+            if args.model_cache_dir is not None:
+                args.model_id_or_path = args.model_cache_dir
 
     error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
     if args.model_type is None:
@@ -876,12 +881,6 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
-    sft_model_cache_dir = sft_args.get('model_cache_dir')
-    if args.model_cache_dir is None and sft_model_cache_dir is not None:
-        logger.warning(
-            f'The model_cache_dir for the sft stage is detected as `{sft_model_cache_dir}`, '
-            'but the model_cache_dir for the infer stage is `None`. '
-            'Please check if this item has been omitted.')
 
 
 def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
