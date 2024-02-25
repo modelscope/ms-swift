@@ -4,6 +4,7 @@ import time
 import webbrowser
 from datetime import datetime
 from typing import Dict, List, Tuple, Type, Union
+
 import gradio as gr
 import matplotlib.pyplot as plt
 import psutil
@@ -12,7 +13,8 @@ from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
-from swift.utils import get_logger, read_tensorboard_file, tensorboard_smoothing, TB_COLOR_SMOOTH, TB_COLOR
+from swift.utils import (TB_COLOR, TB_COLOR_SMOOTH, get_logger,
+                         read_tensorboard_file, tensorboard_smoothing)
 
 logger = get_logger()
 
@@ -138,8 +140,7 @@ class Runtime(BaseUI):
             },
             'info': {
                 'zh': '运行中的任务（所有的swift sft命令）',
-                'en':
-                    'All running tasks(started by swift sft)'
+                'en': 'All running tasks(started by swift sft)'
             }
         },
         'refresh_tasks': {
@@ -215,11 +216,15 @@ class Runtime(BaseUI):
                         all_plots.append(gr.Plot(elem_id=name, label=name))
 
                 log_event = base_tab.element('show_log').click(
-                    Runtime.update_log, [], [cls.element('log')] + all_plots).then(
-                        Runtime.wait, [base_tab.element('logging_dir'), base_tab.element('running_tasks')],
-                        [cls.element('log')] + all_plots)
-                
-                base_tab.element('stop_show_log').click(lambda: None, cancels=log_event)
+                    Runtime.update_log, [],
+                    [cls.element('log')] + all_plots).then(
+                        Runtime.wait, [
+                            base_tab.element('logging_dir'),
+                            base_tab.element('running_tasks')
+                        ], [cls.element('log')] + all_plots)
+
+                base_tab.element('stop_show_log').click(
+                    lambda: None, cancels=log_event)
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -234,14 +239,12 @@ class Runtime(BaseUI):
                 )
 
                 base_tab.element('running_tasks').change(
-                    Runtime.task_changed,
-                    [base_tab.element('running_tasks')],
+                    Runtime.task_changed, [base_tab.element('running_tasks')],
                     [
                         value for value in cls.elements().values()
                         if not isinstance(value, (Tab, Accordion))
                     ] + [cls.element('log')] + all_plots,
-                    cancels=log_event
-                )
+                    cancels=log_event)
 
                 base_tab.element('refresh_tasks').click(
                     Runtime.refresh_tasks,
@@ -252,14 +255,14 @@ class Runtime(BaseUI):
                 base_tab.element('kill_task').click(
                     Runtime.kill_task,
                     [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')] + [cls.element('log')] + all_plots,
+                    [base_tab.element('running_tasks')] + [cls.element('log')]
+                    + all_plots,
                     cancels=[log_event],
                 )
 
-
     @classmethod
     def update_log(cls):
-        return [gr.update(visible=True)] * (len(Runtime.sft_plot)+1)
+        return [gr.update(visible=True)] * (len(Runtime.sft_plot) + 1)
 
     @classmethod
     def wait(cls, logging_dir, task):
@@ -344,12 +347,16 @@ class Runtime(BaseUI):
         for proc in psutil.process_iter():
             try:
                 cmdlines = proc.cmdline()
-            except (psutil.ZombieProcess, psutil.AccessDenied, psutil.NoSuchProcess):
+            except (psutil.ZombieProcess, psutil.AccessDenied,
+                    psutil.NoSuchProcess):
                 cmdlines = []
             print(cmdlines)
-            if any([process_name in cmdline for cmdline in cmdlines]) and any([cmd_name == cmdline for cmdline in cmdlines]):
+            if any([process_name in cmdline
+                    for cmdline in cmdlines]) and any(  # noqa
+                        [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
-                if output_dir is not None and any([output_dir == cmdline for cmdline in cmdlines]):
+                if output_dir is not None and any(  # noqa
+                    [output_dir == cmdline for cmdline in cmdlines]):  # noqa
                     selected = Runtime.construct_running_task(proc)
         if not selected:
             if running_task and running_task in process:
@@ -363,7 +370,8 @@ class Runtime(BaseUI):
         pid = proc.pid
         ts = time.time()
         create_time = proc.create_time()
-        create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
+        create_time_formatted = datetime.fromtimestamp(create_time).strftime(
+            '%Y-%m-%d, %H:%M')
 
         def format_time(seconds):
             days = int(seconds // (24 * 3600))
@@ -372,23 +380,24 @@ class Runtime(BaseUI):
             seconds = int(seconds % 60)
 
             if days > 0:
-                time_str = f"{days}d {hours}h {minutes}m {seconds}s"
+                time_str = f'{days}d {hours}h {minutes}m {seconds}s'
             elif hours > 0:
-                time_str = f"{hours}h {minutes}m {seconds}s"
+                time_str = f'{hours}h {minutes}m {seconds}s'
             elif minutes > 0:
-                time_str = f"{minutes}m {seconds}s"
+                time_str = f'{minutes}m {seconds}s'
             else:
-                time_str = f"{seconds}s"
+                time_str = f'{seconds}s'
 
             return time_str
 
-        return f'pid:{pid}/create:{create_time_formatted}/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
+        return f'pid:{pid}/create:{create_time_formatted}' \
+               f'/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
 
     @staticmethod
     def parse_info_from_cmdline(task):
         for i in range(3):
             slash = task.find('/')
-            task = task[slash+1:]
+            task = task[slash + 1:]
         args = task.split('swift sft')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
@@ -403,7 +412,8 @@ class Runtime(BaseUI):
         output_dir = all_args['output_dir']
         os.system(f'pkill -9 -f {output_dir}')
         time.sleep(1)
-        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.sft_plot)+1)
+        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (
+            len(Runtime.sft_plot) + 1)
 
     @staticmethod
     def task_changed(task):
@@ -412,16 +422,16 @@ class Runtime(BaseUI):
         else:
             all_args = {}
         elements = [
-                        value for value in Runtime.elements().values()
-                        if not isinstance(value, (Tab, Accordion))
-                    ]
+            value for value in Runtime.elements().values()
+            if not isinstance(value, (Tab, Accordion))
+        ]
         ret = []
         for e in elements:
             if e.elem_id in all_args:
                 ret.append(gr.update(value=all_args[e.elem_id]))
             else:
                 ret.append(gr.update())
-        return ret + [gr.update(value=None)] * (len(Runtime.sft_plot)+1)
+        return ret + [gr.update(value=None)] * (len(Runtime.sft_plot) + 1)
 
     @staticmethod
     def plot(task):
@@ -449,9 +459,9 @@ class Runtime(BaseUI):
             if len(values) == 0:
                 continue
 
-            plt.close("all")
+            plt.close('all')
             fig = plt.figure()
-            ax = fig.add_subplot(111)
+            ax = fig.add_subplot()
             # _, ax = plt.subplots(1, 1, squeeze=True, figsize=(8, 5), dpi=100)
             ax.set_title(name)
             if len(values) == 1:
@@ -464,5 +474,3 @@ class Runtime(BaseUI):
                 ax.plot(steps, values, color=TB_COLOR_SMOOTH)
             plots.append(fig)
         return plots
-
-
