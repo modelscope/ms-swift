@@ -6,17 +6,17 @@ import torch
 from modelscope import GenerationConfig
 from transformers import AwqConfig, PreTrainedModel
 
-from swift.utils import (get_logger, get_main, get_model_info, seed_everything,
-                         show_layers)
+from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
+                         seed_everything, show_layers)
 from .infer import merge_lora, save_checkpoint
-from .utils import (InferArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, set_generation_config)
+from .utils import (ExportArguments, Template, get_dataset,
+                    get_model_tokenizer, get_template, set_generation_config)
 
 logger = get_logger()
 
 
 def prepare_awq_model_template(
-        args: InferArguments) -> Tuple[PreTrainedModel, Template]:
+        args: ExportArguments) -> Tuple[PreTrainedModel, Template]:
     from awq import AutoAWQForCausalLM
     logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
@@ -133,19 +133,12 @@ def awq_model_quantize(awq_model, template: Template) -> None:
         version='GEMM')
 
 
-def llm_export(args: InferArguments) -> None:
+def llm_export(args: ExportArguments) -> None:
     global _args
-    _args = args
-    if args.merge_lora is False and args.quant_bits <= 0:
-        info = 'Nothing is being done.'
-        if args.sft_type == 'lora':
-            info += ' You can set `--merge_lora true` to merge LoRA.'
-        info += ' You can set `--quant_bits 4` to perform AWQ-4bits quantization on the model.'
-        logger.info(info)
-
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.quant_bits > 0:
+        _args = args
         assert args.quantization_bit == 0
         assert args.sft_type == 'full', 'you need to merge lora'
         if args.dtype == 'AUTO' and args.torch_dtype is None:
@@ -167,6 +160,12 @@ def llm_export(args: InferArguments) -> None:
         awq_model.save_quantized(quant_path)
         save_checkpoint(None, template.tokenizer, awq_model.model_dir,
                         args.ckpt_dir, quant_path)
+        args.ckpt_dir = quant_path
+
+    if args.push_to_hub:
+        assert args.ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
+        push_to_ms_hub(args.ckpt_dir, args.hub_model_id, args.hub_token,
+                       args.hub_private_repo)
 
 
-export_main = get_main(InferArguments, llm_export)
+export_main = get_main(ExportArguments, llm_export)

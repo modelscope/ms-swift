@@ -594,7 +594,9 @@ class DeployArguments(InferArguments):
 
 @dataclass
 class ExportArguments(InferArguments):
-    merge_lora: Optional[bool] = None
+    # The parameter has been defined in InferArguments.
+    # merge_lora: bool = False
+
     # awq
     quant_bits: int = 0  # e.g. 4
     quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
@@ -613,15 +615,6 @@ class ExportArguments(InferArguments):
             'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
         })
     hub_private_repo: bool = False
-
-    def __post_init__(self):
-        super().__post_init__()
-        if self.merge_lora is None:
-            if self.sft_type == 'lora':
-                self.merge_lora = True
-            else:
-                self.merge_lora = False
-            logger.info(f'args.merge_lora: {self.merge_lora}')
 
 
 @dataclass

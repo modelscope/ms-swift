@@ -166,7 +166,8 @@ def get_pai_tensorboard_dir() -> Optional[str]:
     return os.environ.get('PAI_OUTPUT_TENSORBOARD')
 
 
-def subprocess_run(command: List[str], env: Dict[str, str]) -> None:
+def subprocess_run(command: List[str],
+                   env: Optional[Dict[str, str]] = None) -> None:
     resp = subprocess.run(command, env=env)
     resp.check_returncode()
     return resp
