@@ -231,6 +231,7 @@ class LLMTrain(BaseUI):
                             cls.element('running_cmd'),
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
+                            cls.element('running_tasks'),
                         ],
                         queue=True)
 
@@ -341,4 +342,4 @@ class LLMTrain(BaseUI):
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
-        return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.select_task(sft_args.output_dir)
+        return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(sft_args.output_dir)

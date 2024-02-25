@@ -24,23 +24,23 @@ class Runtime(BaseUI):
 
     sft_plot = [
         {
-            'name': 'loss',
+            'name': 'train/loss',
             'smooth': 0.9,
         },
         {
-            'name': 'acc',
+            'name': 'train/acc',
             'smooth': None,
         },
         {
-            'name': 'learning_rate',
+            'name': 'train/learning_rate',
             'smooth': None,
         },
         {
-            'name': 'eval_loss',
+            'name': 'eval/loss',
             'smooth': 0.9,
         },
         {
-            'name': 'eval_acc',
+            'name': 'eval/acc',
             'smooth': None,
         },
     ]
@@ -337,28 +337,32 @@ class Runtime(BaseUI):
             Runtime.handlers.pop(logging_dir)
 
     @staticmethod
-    def refresh_tasks():
-        process_name = "swift sft"
+    def refresh_tasks(output_dir=None):
+        process_name = 'swift'
+        cmd_name = 'sft'
         process = []
+        selected = None
         for proc in psutil.process_iter():
-            if process_name in proc.name():
+            try:
+                cmdlines = proc.cmdline()
+            except psutil.ZombieProcess:
+                cmdlines = []
+            print(cmdlines)
+            if any([process_name in cmdline for cmdline in cmdlines]) and any([cmd_name == cmdline for cmdline in cmdlines]):
                 process.append(Runtime.construct_running_task(proc))
-        return gr.update(choices=process)
-
-    @staticmethod
-    def select_task(output_dir):
-        process_name = "swift sft"
-        for proc in psutil.process_iter():
-            if process_name in proc.name() and output_dir in proc.cmdline():
-                return gr.update(value=Runtime.construct_running_task(proc))
+                if output_dir is not None and any([output_dir == cmdline for cmdline in cmdlines]):
+                    selected = Runtime.construct_running_task(proc)
+        if selected:
+            return gr.update(choices=process, value=selected)
+        else:
+            return gr.update(choices=process)
 
     @staticmethod
     def construct_running_task(proc):
         pid = proc.pid
         ts = time.time()
         create_time = proc.create_time()
-        create_time = ts - create_time
-        create_time = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
+        create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
 
         def format_time(seconds):
             days = int(seconds // (24 * 3600))
@@ -377,7 +381,7 @@ class Runtime(BaseUI):
 
             return time_str
 
-        return f'pid:{pid}/create:{create_time}/running:{format_time(proc.create_time())}/{proc.cmdline()}'
+        return f'pid:{pid}/create:{create_time_formatted}/running:{format_time(ts-create_time)}/{" ".join(proc.cmdline())}'
 
     @staticmethod
     def parse_info_from_cmdline(task):
@@ -385,10 +389,11 @@ class Runtime(BaseUI):
             slash = task.find('/')
             task = task[slash+1:]
         args = task.split('swift sft')[1]
-        args = args.split(' --')
+        args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
-        for i in range(0, len(args), 2):
-            all_args[args[i]] = args[i+1]
+        for i in range(len(args)):
+            splits = args[i].split(' ')
+            all_args[splits[0]] = splits[1]
         return all_args
 
     @staticmethod
@@ -437,13 +442,17 @@ class Runtime(BaseUI):
             smooth = k['smooth']
             if name not in data:
                 plots.append(None)
+                continue
             _data = data[name]
             steps = [d['step'] for d in _data]
             values = [d['value'] for d in _data]
             if len(values) == 0:
                 continue
 
-            _, ax = plt.subplots(1, 1, squeeze=True, figsize=(8, 5), dpi=100)
+            plt.close("all")
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            # _, ax = plt.subplots(1, 1, squeeze=True, figsize=(8, 5), dpi=100)
             ax.set_title(name)
             if len(values) == 1:
                 ax.scatter(steps, values, color=TB_COLOR_SMOOTH)
@@ -453,7 +462,7 @@ class Runtime(BaseUI):
                 ax.plot(steps, values_s, color=TB_COLOR_SMOOTH)
             else:
                 ax.plot(steps, values, color=TB_COLOR_SMOOTH)
-            plots.append(ax)
+            plots.append(fig)
         return plots
 
 
