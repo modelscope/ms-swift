@@ -225,7 +225,7 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ```bash
 # 如果你需要量化, 可以指定`--quant_bits 4`.
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
 ```
 对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档/#微调后模型)
 
@@ -252,7 +252,7 @@ from swift.llm import (
 )
 from swift.tuners import Swift
 
-ckpt_dir = 'vx_xxx/checkpoint-100'
+ckpt_dir = 'vx-xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
@@ -275,7 +275,7 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
 
-ckpt_dir = 'vx_xxx/checkpoint-100-merged'
+ckpt_dir = 'vx-xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
@@ -293,27 +293,29 @@ print(f'history: {history}')
 ```bash
 # 直接推理
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx' \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \
     --load_dataset_config true \
 
 # Merge LoRA增量权重并推理
 # 如果你需要量化, 可以指定`--quant_bits 4`.
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' --load_dataset_config true
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged' --load_dataset_config true
 ```
 
 **人工**评估:
 ```bash
 # 直接推理
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx'
 
 # Merge LoRA增量权重并推理
 # 如果你需要量化, 可以指定`--quant_bits 4`.
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
@@ -325,11 +327,12 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ### 微调后模型
 ```bash
 # 直接使用app-ui
-CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx'
 
 # merge LoRA增量权重并使用app-ui
 # 如果你需要量化, 可以指定`--quant_bits 4`.
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
-CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```

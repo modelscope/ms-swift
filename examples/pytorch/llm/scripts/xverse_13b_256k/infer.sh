@@ -1,7 +1,7 @@
 # Experimental environment: A100
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --ckpt_dir "output/xverse-13b-256k/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/xverse-13b-256k/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 2048 \
     --max_new_tokens 2048 \

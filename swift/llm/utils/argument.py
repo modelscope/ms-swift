@@ -421,7 +421,7 @@ class InferArguments:
         })
     infer_backend: Literal['AUTO', 'vllm', 'pt'] = 'AUTO'
     ckpt_dir: Optional[str] = field(
-        default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
+        default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
@@ -762,7 +762,7 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
             if isinstance(args,
                           InferArguments) and 'checkpoint' in model_id_or_path:
                 raise ValueError(
-                    'Please use `--ckpt_dir vx_xxx/checkpoint-xxx` to use the checkpoint.'
+                    'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
                 )
             if args.model_type is None:
                 raise ValueError(

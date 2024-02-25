@@ -12,5 +12,5 @@ if __name__ == '__main__':
     # or chat
     args = AppUIArguments(model_type=ModelType.qwen_7b_chat_int4)
     # or load from ckpt dir
-    # args = AppUIArguments(ckpt_dir='xxx/vx_xxx/checkpoint-xxx')
+    # args = AppUIArguments(ckpt_dir='xxx/vx-xxx/checkpoint-xxx')
     app_ui_main(args)

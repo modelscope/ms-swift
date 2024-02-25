@@ -143,7 +143,7 @@ class AnimateDiffInferArguments:
         default='lora', metadata={'choices': ['lora', 'full']})
 
     ckpt_dir: Optional[str] = field(
-        default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'})
+        default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42

@@ -140,7 +140,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 **Merge-LoRA & 量化**
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'output/xxx/vx-xxx/checkpoint-xxx' \
+    --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4
 
 ``` 
@@ -148,15 +148,15 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 **推理量化后模型**
 ```shell
 # awq量化模型支持vllm推理加速. 也支持模型部署.
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/vx-xxx/checkpoint-xxx-merged-int4'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-int4'
 ```
 
-**部署**
+**部署量化后模型**
 
-服务端
+服务端:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'output/vx-xxx/checkpoint-xxx-merged-int4'
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-int4'
 ```
 
 测试:
