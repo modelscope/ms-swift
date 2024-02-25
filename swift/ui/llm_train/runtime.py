@@ -347,7 +347,6 @@ class Runtime(BaseUI):
             except (psutil.ZombieProcess, psutil.AccessDenied,
                     psutil.NoSuchProcess):
                 cmdlines = []
-            print(cmdlines)
             if any([process_name in cmdline
                     for cmdline in cmdlines]) and any(  # noqa
                         [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
