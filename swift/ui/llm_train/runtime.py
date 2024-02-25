@@ -4,7 +4,6 @@ import time
 import webbrowser
 from datetime import datetime
 from typing import Dict, List, Tuple, Type, Union
-from fuctional import partial
 import gradio as gr
 import matplotlib.pyplot as plt
 import psutil
@@ -105,6 +104,12 @@ class Runtime(BaseUI):
                 'en': 'Show running status'
             },
         },
+        'stop_show_log': {
+            'value': {
+                'zh': '停止展示运行状态',
+                'en': 'Stop showing running status'
+            },
+        },
         'logging_dir': {
             'label': {
                 'zh': '日志路径',
@@ -187,6 +192,7 @@ class Runtime(BaseUI):
                     gr.Textbox(
                         elem_id='logging_dir', lines=1, scale=20, max_lines=1)
                     gr.Button(elem_id='show_log', scale=2, variant='primary')
+                    gr.Button(elem_id='stop_show_log', scale=2)
                     gr.Textbox(
                         elem_id='tb_url',
                         lines=1,
@@ -206,13 +212,14 @@ class Runtime(BaseUI):
                     all_plots = []
                     for k in Runtime.sft_plot:
                         name = k['name']
-                        all_plots.append(gr.Plot(elem_id=name))
-                states = gr.State([None])
+                        all_plots.append(gr.Plot(elem_id=name, label=name))
 
                 log_event = base_tab.element('show_log').click(
-                    partial(Runtime.update_log, len(all_plots)), [], [cls.element('log')] + all_plots).then(
-                        Runtime.wait, [base_tab.element('logging_dir'), states, base_tab.element('running_tasks')],
+                    Runtime.update_log, [], [cls.element('log')] + all_plots).then(
+                        Runtime.wait, [base_tab.element('logging_dir'), base_tab.element('running_tasks')],
                         [cls.element('log')] + all_plots)
+                
+                base_tab.element('stop_show_log').click(lambda: None, cancels=log_event)
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -232,13 +239,8 @@ class Runtime(BaseUI):
                     [
                         value for value in cls.elements().values()
                         if not isinstance(value, (Tab, Accordion))
-                    ],
-                )
-
-                base_tab.element('running_tasks').change(
-                    Runtime.change_state,
-                    [base_tab.element('running_tasks'), states],
-                    [states],
+                    ] + [cls.element('log')] + all_plots,
+                    cancels=log_event
                 )
 
                 base_tab.element('refresh_tasks').click(
@@ -250,30 +252,29 @@ class Runtime(BaseUI):
                 base_tab.element('kill_task').click(
                     Runtime.kill_task,
                     [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')],
+                    [base_tab.element('running_tasks')] + [cls.element('log')] + all_plots,
                     cancels=[log_event],
                 )
 
 
     @classmethod
-    def update_log(cls,  num_plots):
-        return [gr.update(visible=True)] * (num_plots+1)
+    def update_log(cls):
+        return [gr.update(visible=True)] * (len(Runtime.sft_plot)+1)
 
     @classmethod
-    def wait(cls, logging_dir, states, task):
+    def wait(cls, logging_dir, task):
+        if not logging_dir:
+            return [None] + Runtime.plot(task)
         log_file = os.path.join(logging_dir, 'run.log')
         offset = 0
         latest_data = ''
         lines = collections.deque(
             maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-        output_dir = states[0]
         try:
             with open(log_file, 'r') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
-                    if output_dir != states[0]:
-                        break
                     try:
                         latest_data += input.read()
                     except UnicodeDecodeError:
@@ -281,7 +282,7 @@ class Runtime(BaseUI):
                     if not latest_data:
                         time.sleep(0.5)
                         fail_cnt += 1
-                        if fail_cnt > 20:
+                        if fail_cnt > 50:
                             break
 
                     if '\n' not in latest_data:
@@ -335,9 +336,7 @@ class Runtime(BaseUI):
 
     @staticmethod
     def refresh_tasks(running_task=None):
-        if not running_task:
-            return gr.update()
-        output_dir = running_task if 'pid:' not in running_task else None
+        output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         cmd_name = 'sft'
         process = []
@@ -353,7 +352,7 @@ class Runtime(BaseUI):
                 if output_dir is not None and any([output_dir == cmdline for cmdline in cmdlines]):
                     selected = Runtime.construct_running_task(proc)
         if not selected:
-            if running_task in process:
+            if running_task and running_task in process:
                 selected = running_task
         if not selected and process:
             selected = process[0]
@@ -404,11 +403,14 @@ class Runtime(BaseUI):
         output_dir = all_args['output_dir']
         os.system(f'pkill -9 -f {output_dir}')
         time.sleep(1)
-        return Runtime.refresh_tasks()
+        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.sft_plot)+1)
 
     @staticmethod
     def task_changed(task):
-        all_args = Runtime.parse_info_from_cmdline(task)
+        if task:
+            all_args = Runtime.parse_info_from_cmdline(task)
+        else:
+            all_args = {}
         elements = [
                         value for value in Runtime.elements().values()
                         if not isinstance(value, (Tab, Accordion))
@@ -419,18 +421,12 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=all_args[e.elem_id]))
             else:
                 ret.append(gr.update())
-        return ret
-
-    @staticmethod
-    def change_state(task, states):
-        if not task:
-            return [states]
-        all_args = Runtime.parse_info_from_cmdline(task)
-        states[0] = all_args['output_dir']
-        return [states]
+        return ret + [gr.update(value=None)] * (len(Runtime.sft_plot)+1)
 
     @staticmethod
     def plot(task):
+        if not task:
+            return [None] * len(Runtime.sft_plot)
         all_args = Runtime.parse_info_from_cmdline(task)
         tb_dir = all_args['logging_dir']
         fname = [
