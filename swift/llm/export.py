@@ -165,8 +165,8 @@ def llm_export(args: InferArguments) -> None:
         show_layers(awq_model)
 
         awq_model.save_quantized(quant_path)
-        save_checkpoint(None, template.tokenizer, awq_model.model_dir, None,
-                        quant_path)
+        save_checkpoint(None, template.tokenizer, awq_model.model_dir,
+                        args.ckpt_dir, quant_path)
 
 
 export_main = get_main(InferArguments, llm_export)

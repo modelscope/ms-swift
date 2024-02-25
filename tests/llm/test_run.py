@@ -10,8 +10,10 @@ from functools import partial
 from typing import Any, Dict, List
 
 import torch
+import transformers
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
+from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
@@ -44,6 +46,9 @@ class TestRun(unittest.TestCase):
             quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
+            if quantization_bit == 4 and version.parse(
+                    transformers.__version__) >= version.parse('4.38'):
+                continue
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False
@@ -244,6 +249,9 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
+        quantization_bit = 4
+        if version.parse(transformers.__version__) >= version.parse('4.38'):
+            quantization_bit = 0
         torch.cuda.empty_cache()
         output = sft_main(
             SftArguments(
@@ -252,7 +260,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=100,
                 lora_target_modules='ALL',
                 eval_steps=5,
-                quantization_bit=4))
+                quantization_bit=quantization_bit))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(
