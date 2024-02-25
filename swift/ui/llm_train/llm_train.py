@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+from functools import partial
 from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
@@ -234,6 +235,14 @@ class LLMTrain(BaseUI):
                             cls.element('running_tasks'),
                         ],
                         queue=True)
+                base_tab.element('running_tasks').change(
+                    partial(Runtime.task_changed, base_tab=base_tab),
+                    [base_tab.element('running_tasks')],
+                    [
+                        value for value in base_tab.elements().values()
+                        if not isinstance(value, (Tab, Accordion))
+                    ] + [cls.element('log')] + Runtime.all_plots,
+                    cancels=Runtime.log_event)
 
     @classmethod
     def update_runtime(cls):

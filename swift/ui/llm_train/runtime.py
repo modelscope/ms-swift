@@ -3,6 +3,7 @@ import os.path
 import time
 import webbrowser
 from datetime import datetime
+from functools import partial
 from typing import Dict, List, Tuple, Type, Union
 
 import gradio as gr
@@ -24,6 +25,10 @@ class Runtime(BaseUI):
     handlers: Dict[str, Tuple[List, Tuple]] = {}
 
     group = 'llm_train'
+
+    all_plots = None
+
+    log_event = None
 
     sft_plot = [
         {
@@ -210,21 +215,21 @@ class Runtime(BaseUI):
                     gr.Button(elem_id='kill_task', scale=1)
 
                 with gr.Row():
-                    all_plots = []
+                    cls.all_plots = []
                     for k in Runtime.sft_plot:
                         name = k['name']
-                        all_plots.append(gr.Plot(elem_id=name, label=name))
+                        cls.all_plots.append(gr.Plot(elem_id=name, label=name))
 
-                log_event = base_tab.element('show_log').click(
+                cls.log_event = base_tab.element('show_log').click(
                     Runtime.update_log, [],
-                    [cls.element('log')] + all_plots).then(
+                    [cls.element('log')] + cls.all_plots).then(
                         Runtime.wait, [
                             base_tab.element('logging_dir'),
                             base_tab.element('running_tasks')
-                        ], [cls.element('log')] + all_plots)
+                        ], [cls.element('log')] + cls.all_plots)
 
                 base_tab.element('stop_show_log').click(
-                    lambda: None, cancels=log_event)
+                    lambda: None, cancels=cls.log_event)
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -243,8 +248,8 @@ class Runtime(BaseUI):
                     [
                         value for value in cls.elements().values()
                         if not isinstance(value, (Tab, Accordion))
-                    ] + [cls.element('log')] + all_plots,
-                    cancels=log_event)
+                    ] + [cls.element('log')] + cls.all_plots,
+                    cancels=cls.log_event)
 
                 base_tab.element('refresh_tasks').click(
                     Runtime.refresh_tasks,
@@ -256,8 +261,8 @@ class Runtime(BaseUI):
                     Runtime.kill_task,
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')] + [cls.element('log')]
-                    + all_plots,
-                    cancels=[log_event],
+                    + cls.all_plots,
+                    cancels=[cls.log_event],
                 )
 
     @classmethod
@@ -416,19 +421,23 @@ class Runtime(BaseUI):
             len(Runtime.sft_plot) + 1)
 
     @staticmethod
-    def task_changed(task):
+    def task_changed(task, base_tab):
         if task:
             all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
         elements = [
-            value for value in Runtime.elements().values()
+            value for value in base_tab.elements().values()
             if not isinstance(value, (Tab, Accordion))
         ]
         ret = []
         for e in elements:
             if e.elem_id in all_args:
-                ret.append(gr.update(value=all_args[e.elem_id]))
+                if isinstance(e, gr.Dropdown) and e.multiselect:
+                    arg = all_args[e.elem_id].split(' ')
+                else:
+                    arg = all_args[e.elem_id]
+                ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
         return ret + [gr.update(value=None)] * (len(Runtime.sft_plot) + 1)
