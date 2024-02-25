@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from .hub import create_ms_repo
+from .hub import create_ms_repo, push_to_ms_hub
 from .io_utils import append_to_jsonl, read_from_jsonl, write_to_jsonl
 from .logger import get_logger
 from .metric import (compute_acc_metrics, compute_nlg_metrics,
@@ -16,5 +16,5 @@ from .torch_utils import (activate_model_parameters, broadcast_string,
                           show_layers, time_synchronize)
 from .utils import (add_version_to_work_dir, check_json_format,
                     get_pai_tensorboard_dir, is_pai_training_job, lower_bound,
-                    parse_args, read_multi_line, seed_everything, test_time,
-                    upper_bound)
+                    parse_args, read_multi_line, seed_everything,
+                    subprocess_run, test_time, upper_bound)

@@ -3,10 +3,11 @@ import datetime as dt
 import os
 import random
 import re
+import subprocess
 import sys
 import time
-from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
-                    Type, TypeVar)
+from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
+                    Tuple, Type, TypeVar)
 
 import numpy as np
 import torch.distributed as dist
@@ -163,3 +164,9 @@ def is_pai_training_job() -> bool:
 
 def get_pai_tensorboard_dir() -> Optional[str]:
     return os.environ.get('PAI_OUTPUT_TENSORBOARD')
+
+
+def subprocess_run(command: List[str], env: Dict[str, str]) -> None:
+    resp = subprocess.run(command, env=env)
+    resp.check_returncode()
+    return resp
