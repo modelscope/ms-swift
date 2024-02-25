@@ -345,6 +345,7 @@ class TestRun(unittest.TestCase):
         os.environ['PAI_OUTPUT_TENSORBOARD'] = tensorboard_dir
         sft_json = os.path.join(folder, 'sft.json')
         infer_json = os.path.join(folder, 'infer.json')
+        torch.cuda.empty_cache()
         output = sft_main([sft_json])
         print()
         infer_args = {
@@ -355,6 +356,7 @@ class TestRun(unittest.TestCase):
         import json
         with open(infer_json, 'w') as f:
             json.dump(infer_args, f, ensure_ascii=False, indent=4)
+        torch.cuda.empty_cache()
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
 
