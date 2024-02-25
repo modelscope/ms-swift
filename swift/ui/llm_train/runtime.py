@@ -209,7 +209,7 @@ class Runtime(BaseUI):
                         all_plots.append(gr.Plot(elem_id=name))
                 states = gr.State([None])
 
-                base_tab.element('show_log').click(
+                log_event = base_tab.element('show_log').click(
                     partial(Runtime.update_log, len(all_plots)), [], [cls.element('log')] + all_plots).then(
                         Runtime.wait, [base_tab.element('logging_dir'), states, base_tab.element('running_tasks')],
                         [cls.element('log')] + all_plots)
@@ -251,6 +251,7 @@ class Runtime(BaseUI):
                     Runtime.kill_task,
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
+                    cancels=[log_event],
                 )
 
 
