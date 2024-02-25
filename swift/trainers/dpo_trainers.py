@@ -4,9 +4,10 @@ import torch
 from torch import nn
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
-
+from transformers import trainer
 from swift.llm.utils.template import Context, Template
 from swift.llm.utils.utils import sort_by_max_length
+from swift.trainers.callback import ProgressCallbackNew, DefaultFlowCallbackNew, PrinterCallbackNew
 from swift.trainers.mixin import PushToMsHubMixin, SwiftMixin
 from swift.utils import get_logger
 
@@ -329,3 +330,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         return (chosen_logps, rejected_logps, chosen_logits, rejected_logits,
                 concatenated_batch)
+
+# monkey patching
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew

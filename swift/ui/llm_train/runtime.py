@@ -2,15 +2,16 @@ import collections
 import os.path
 import time
 import webbrowser
+from datetime import datetime
 from typing import Dict, List, Tuple, Type
-
+import matplotlib.pyplot as plt
 import gradio as gr
 import psutil
 from transformers import is_tensorboard_available
-
+from gradio import Accordion, Tab
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
-from swift.utils import get_logger
+from swift.utils import get_logger, read_tensorboard_file, tensorboard_smoothing, TB_COLOR_SMOOTH, TB_COLOR
 
 logger = get_logger()
 
@@ -20,6 +21,56 @@ class Runtime(BaseUI):
     handlers: Dict[str, Tuple[List, Tuple]] = {}
 
     group = 'llm_train'
+
+    sft_plot = [
+        {
+            'name': 'loss',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'acc',
+            'smooth': None,
+        },
+        {
+            'name': 'learning_rate',
+            'smooth': None,
+        },
+        {
+            'name': 'eval_loss',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'eval_acc',
+            'smooth': None,
+        },
+    ]
+
+    dpo_plot = [
+        {
+            'name': 'loss',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'learning_rate',
+            'smooth': None,
+        },
+        {
+            'name': 'rewards/margins',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'rewards/chosen',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'rewards/rejected',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'rewards/accuracies',
+            'smooth': None,
+        },
+    ]
 
     locale_dict = {
         'runtime_tab': {
@@ -73,6 +124,29 @@ class Runtime(BaseUI):
                 'Please press "Show log" if the log content is not updating'
             }
         },
+        'running_tasks': {
+            'label': {
+                'zh': '运行中任务',
+                'en': 'Running Tasks'
+            },
+            'info': {
+                'zh': '运行中的任务（所有的swift sft命令）',
+                'en':
+                    'All running tasks(started by swift sft)'
+            }
+        },
+        'refresh_tasks': {
+            'value': {
+                'zh': '刷新运行时任务',
+                'en': 'Refresh tasks'
+            },
+        },
+        'kill_task': {
+            'value': {
+                'zh': '停止任务',
+                'en': 'Kill running task'
+            },
+        },
         'tb_url': {
             'label': {
                 'zh': 'Tensorboard链接',
@@ -99,7 +173,7 @@ class Runtime(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='runtime_tab', open=True, visible=False):
+        with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
                 with gr.Row():
                     gr.Textbox(
@@ -121,10 +195,21 @@ class Runtime(BaseUI):
                     gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
+                with gr.Row():
+                    gr.Dropdown(elem_id='running_tasks', scale=10)
+                    gr.Button(elem_id='refresh_tasks', scale=1)
+                    gr.Button(elem_id='kill_task', scale=1)
+
+                with gr.Row():
+                    all_plots = []
+                    for k in Runtime.sft_plot:
+                        name = k['name']
+                        all_plots.append(gr.Plot(elem_id=name))
+                selected_task = gr.State([None])
 
                 base_tab.element('show_log').click(
                     Runtime.update_log, [], [cls.element('log')]).then(
-                        Runtime.wait, [base_tab.element('logging_dir')],
+                        Runtime.wait, [base_tab.element('logging_dir'), selected_task],
                         [cls.element('log')])
 
                 base_tab.element('start_tb').click(
@@ -139,27 +224,63 @@ class Runtime(BaseUI):
                     [],
                 )
 
+                base_tab.element('running_tasks').change(
+                    Runtime.task_changed,
+                    [base_tab.element('running_tasks')],
+                    [
+                        value for value in cls.elements().values()
+                        if not isinstance(value, (Tab, Accordion))
+                    ],
+                )
+
+                base_tab.element('running_tasks').change(
+                    Runtime.plot,
+                    [base_tab.element('running_tasks')],
+                    all_plots,
+                )
+
+                base_tab.element('running_tasks').change(
+                    Runtime.change_state,
+                    [base_tab.element('running_tasks'), selected_task],
+                    [selected_task],
+                )
+
+                base_tab.element('refresh_tasks').click(
+                    Runtime.refresh_tasks,
+                    [],
+                    [base_tab.element('running_tasks')],
+                )
+
+                base_tab.element('kill_task').click(
+                    Runtime.kill_task,
+                    [base_tab.element('running_tasks')],
+                    [base_tab.element('running_tasks')],
+                )
+
+
     @classmethod
     def update_log(cls):
         return gr.update(visible=True)
 
     @classmethod
-    def wait(cls, logging_dir):
+    def wait(cls, logging_dir, selected_task):
         log_file = os.path.join(logging_dir, 'run.log')
         offset = 0
         latest_data = ''
         lines = collections.deque(
             maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        output_dir = selected_task[0]
         try:
             with open(log_file, 'r') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
+                    if output_dir != selected_task[0]:
+                        break
                     try:
                         latest_data += input.read()
                     except UnicodeDecodeError:
                         continue
-                    offset = input.tell()
                     if not latest_data:
                         time.sleep(0.5)
                         fail_cnt += 1
@@ -214,3 +335,125 @@ class Runtime(BaseUI):
         if logging_dir in Runtime.handlers:
             close_loop(Runtime.handlers[logging_dir][0])
             Runtime.handlers.pop(logging_dir)
+
+    @staticmethod
+    def refresh_tasks():
+        process_name = "swift sft"
+        process = []
+        for proc in psutil.process_iter():
+            if process_name in proc.name():
+                process.append(Runtime.construct_running_task(proc))
+        return gr.update(choices=process)
+
+    @staticmethod
+    def select_task(output_dir):
+        process_name = "swift sft"
+        for proc in psutil.process_iter():
+            if process_name in proc.name() and output_dir in proc.cmdline():
+                return gr.update(value=Runtime.construct_running_task(proc))
+
+    @staticmethod
+    def construct_running_task(proc):
+        pid = proc.pid
+        ts = time.time()
+        create_time = proc.create_time()
+        create_time = ts - create_time
+        create_time = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
+
+        def format_time(seconds):
+            days = int(seconds // (24 * 3600))
+            hours = int((seconds % (24 * 3600)) // 3600)
+            minutes = int((seconds % 3600) // 60)
+            seconds = int(seconds % 60)
+
+            if days > 0:
+                time_str = f"{days}d {hours}h {minutes}m {seconds}s"
+            elif hours > 0:
+                time_str = f"{hours}h {minutes}m {seconds}s"
+            elif minutes > 0:
+                time_str = f"{minutes}m {seconds}s"
+            else:
+                time_str = f"{seconds}s"
+
+            return time_str
+
+        return f'pid:{pid}/create:{create_time}/running:{format_time(proc.create_time())}/{proc.cmdline()}'
+
+    @staticmethod
+    def parse_info_from_cmdline(task):
+        for i in range(3):
+            slash = task.find('/')
+            task = task[slash+1:]
+        args = task.split('swift sft')[1]
+        args = args.split(' --')
+        all_args = {}
+        for i in range(0, len(args), 2):
+            all_args[args[i]] = args[i+1]
+        return all_args
+
+    @staticmethod
+    def kill_task(task):
+        all_args = Runtime.parse_info_from_cmdline(task)
+        output_dir = all_args['output_dir']
+        os.system(f'pkill -9 -f {output_dir}')
+        time.sleep(1)
+        return Runtime.refresh_tasks()
+
+    @staticmethod
+    def task_changed(task):
+        all_args = Runtime.parse_info_from_cmdline(task)
+        elements = [
+                        value for value in Runtime.elements().values()
+                        if not isinstance(value, (Tab, Accordion))
+                    ]
+        ret = []
+        for e in elements:
+            if e.elem_id in all_args:
+                ret.append(gr.update(value=all_args[e.elem_id]))
+            else:
+                ret.append(gr.update())
+        return ret
+
+    @staticmethod
+    def change_state(task, selected_task):
+        all_args = Runtime.parse_info_from_cmdline(task)
+        selected_task[0] = all_args['output_dir']
+        return [selected_task]
+
+    @staticmethod
+    def plot(task):
+        all_args = Runtime.parse_info_from_cmdline(task)
+        tb_dir = all_args['logging_dir']
+        fname = [
+            fname for fname in os.listdir(tb_dir)
+            if os.path.isfile(os.path.join(tb_dir, fname))
+        ][0]
+        tb_path = os.path.join(tb_dir, fname)
+        data = read_tensorboard_file(tb_path)
+
+        plots = []
+        for k in Runtime.sft_plot:
+            name = k['name']
+            smooth = k['smooth']
+            if name not in data:
+                plots.append(None)
+            _data = data[name]
+            steps = [d['step'] for d in _data]
+            values = [d['value'] for d in _data]
+            if len(values) == 0:
+                continue
+
+            _, ax = plt.subplots(1, 1, squeeze=True, figsize=(8, 5), dpi=100)
+            ax.set_title(name)
+            if len(values) == 1:
+                ax.scatter(steps, values, color=TB_COLOR_SMOOTH)
+            elif smooth is not None:
+                ax.plot(steps, values, color=TB_COLOR)
+                values_s = tensorboard_smoothing(values, smooth)
+                ax.plot(steps, values_s, color=TB_COLOR_SMOOTH)
+            else:
+                ax.plot(steps, values, color=TB_COLOR_SMOOTH)
+            plots.append(ax)
+        return plots
+
+

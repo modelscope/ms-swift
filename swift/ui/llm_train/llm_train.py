@@ -236,7 +236,7 @@ class LLMTrain(BaseUI):
 
     @classmethod
     def update_runtime(cls):
-        return gr.update(visible=True), gr.update(visible=True)
+        return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
     def train(cls, *args):
@@ -341,4 +341,4 @@ class LLMTrain(BaseUI):
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
-        return run_command, sft_args.logging_dir, gr.update(visible=True)
+        return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.select_task(sft_args.output_dir)
