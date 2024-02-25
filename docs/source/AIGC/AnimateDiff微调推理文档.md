@@ -176,7 +176,7 @@ dataloader_num_workers: int = 1 # dataloader workers数量
 push_to_hub: bool = False # 是否推送到modelhub
 # 'user_name/repo_name' or 'repo_name'
 hub_model_id: Optional[str] = None # modelhub id
-hub_private_repo: bool = True
+hub_private_repo: bool = False
 push_hub_strategy: str = field( # 推送策略，推送最后一个还是每个都推送
     default='push_best',
     metadata={'choices': ['push_last', 'all_checkpoints']})

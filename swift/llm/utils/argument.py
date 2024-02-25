@@ -150,12 +150,10 @@ class SftArguments:
     dataloader_num_workers: int = 1
     dataloader_pin_memory: bool = True
 
+    # push to ms hub
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
-    hub_private_repo: bool = True
-    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint',
-                               'all_checkpoints'] = 'push_best'
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None,
@@ -163,6 +161,9 @@ class SftArguments:
             'help':
             'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
         })
+    hub_private_repo: bool = False
+    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint',
+                               'all_checkpoints'] = 'push_best'
 
     # other
     test_oom_error: bool = field(
@@ -469,11 +470,6 @@ class InferArguments:
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
-    # awq
-    quant_bits: int = 0  # e.g. 4
-    quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
-    quant_n_samples: int = 1024
-    quant_seqlen: int = 2048
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
@@ -594,6 +590,38 @@ class DeployArguments(InferArguments):
             self.infer_backend = 'vllm'
             logger.info('Setting self.infer_backend: vllm')
         super().__post_init__()
+
+
+@dataclass
+class ExportArguments(InferArguments):
+    merge_lora: Optional[bool] = None
+    # awq
+    quant_bits: int = 0  # e.g. 4
+    quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
+    quant_n_samples: int = 1024
+    quant_seqlen: int = 2048
+
+    # push to ms hub
+    push_to_hub: bool = False
+    # 'user_name/repo_name' or 'repo_name'
+    hub_model_id: Optional[str] = None
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
+        })
+    hub_private_repo: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.merge_lora is None:
+            if self.sft_type == 'lora':
+                self.merge_lora = True
+            else:
+                self.merge_lora = False
+            logger.info(f'args.merge_lora: {self.merge_lora}')
 
 
 @dataclass
@@ -748,9 +776,11 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
+    # compat with swift<1.7
     if args.model_cache_dir is not None and args.model_id_or_path is None:
         args.model_id_or_path = args.model_cache_dir
         args.model_cache_dir = None
+
     if args.model_id_or_path is not None:
         model_mapping_reversed = {
             v['model_id_or_path'].lower(): k

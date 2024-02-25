@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from .hub import create_ms_repo
 from .io_utils import append_to_jsonl, read_from_jsonl, write_to_jsonl
 from .logger import get_logger
 from .metric import (compute_acc_metrics, compute_nlg_metrics,

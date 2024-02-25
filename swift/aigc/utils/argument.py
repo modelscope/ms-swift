@@ -55,7 +55,7 @@ class AnimateDiffArguments:
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
-    hub_private_repo: bool = True
+    hub_private_repo: bool = False
     push_hub_strategy: str = field(
         default='push_best',
         metadata={'choices': ['push_last', 'all_checkpoints']})
