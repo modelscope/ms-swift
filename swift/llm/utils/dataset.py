@@ -123,7 +123,16 @@ class DatasetName:
     aishell1_mini_zh = 'aishell1-mini-zh'
 
     # dpo/hfrl dataset
-    hh_rlhf = 'hh-rlhf'
+    hh_rlhf_harmless_base = 'hh-rlhf-harmless-base'
+    hh_rlhf_helpful_base = 'hh-rlhf-helpful-base'
+    hh_rlhf_helpful_online = 'hh-rlhf-helpful-online'
+    hh_rlhf_helpful_rejection_sampled = 'hh-rlhf-helpful-rejection-sampled'
+    hh_rlhf_red_team_attempts = 'hh-rlhf-red-team-attempts'
+    hh_rlhf_cn = 'hh-rlhf-cn'
+    hh_rlhf_cn_harmless_base_cn = 'hh-rlhf-cn-harmless-base-cn'
+    hh_rlhf_cn_helpful_base_cn = 'hh-rlhf-cn-helpful-base-cn'
+    hh_rlhf_cn_harmless_base_en = 'hh-rlhf-cn-harmless-base-en'
+    hh_rlhf_cn_helpful_base_en = 'hh-rlhf-cn-helpful-base-en'
     stack_exchange_paired = 'stack-exchange-paired'
 
     # for awq
@@ -654,16 +663,170 @@ def process_hh_rlhf(dataset):
             'rejected_response': sample['rejected'][len(prompt):],
         }
 
-    return dataset.map(reorganize_row_simple)
+    def reorganize_row(row):
+        import re
+        chosen = row['chosen'].strip()
+        rejected = row['rejected'].strip()
+        parts_chosen = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
+        ]
+        parts_rejected = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
+        ]
+        if parts_chosen[0].startswith('Human:'):
+            assert parts_rejected[0].startswith('Human:')
+            parts_chosen[0] = parts_chosen[0][6:].strip()
+            parts_rejected[0] = parts_rejected[0][6:].strip()
+        history = []
+        idx, s1, s2 = None, None, None
+        for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
+            if s1 == s2:
+                if idx % 2 == 0:
+                    history.append([s1, None])
+                else:
+                    history[-1][-1] = s1
+            else:
+                break
+
+        if idx % 2 == 0:
+            return {
+                'query': None,
+                'response': None,
+                'rejected_response': None,
+                'history': None,
+            }
+        query = history[-1][0]
+        history = history[:-1]
+        response = s1
+        rejected_response = s2
+        return {
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+            'history': history,
+        }
+
+    return dataset.map(reorganize_row).filter(
+        lambda row: row['query'] is not None)
 
 
 register_dataset(
-    DatasetName.hh_rlhf,
+    DatasetName.hh_rlhf_harmless_base,
     'AI-ModelScope/hh-rlhf', [('harmless-base', 'train')],
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_helpful_base,
+    'AI-ModelScope/hh-rlhf', [('helpful-base', 'train')],
+    [('helpful-base', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_helpful_online,
+    'AI-ModelScope/hh-rlhf', [('helpful-online', 'train')],
+    [('helpful-online', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_helpful_rejection_sampled,
+    'AI-ModelScope/hh-rlhf', [('helpful-rejection-sampled', 'train')],
+    [('helpful-rejection-sampled', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_red_team_attempts,
+    'AI-ModelScope/hh-rlhf', [('red-team-attempts', 'train')],
+    [('red-team-attempts', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+
+def process_hh_rlhf_cn(dataset):
+
+    def reorganize_row(row):
+        history = []
+        if isinstance(row['context'], str):
+            row['context'] = ast.literal_eval(row['context'])
+        if isinstance(row['chosen'], str):
+            row['chosen'] = ast.literal_eval(row['chosen'])
+        if isinstance(row['rejected'], str):
+            row['rejected'] = ast.literal_eval(row['rejected'])
+        for idx, h in enumerate(row['context']):
+            if idx % 2 == 0 and h['role'] != 'human':
+                return {'query': None}
+            if idx % 2 != 0 and h['role'] != 'assistant':
+                return {'query': None}
+            if idx % 2 == 0:
+                history.append([h['text'], None])
+            else:
+                history[-1][-1] = h['text']
+        if history[-1][-1] is not None:
+            return {'query': None}
+        query = history[-1][0]
+        history = history[:-1]
+        response = row['chosen']['text']
+        rejected_response = row['rejected']['text']
+        return {
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+            'history': history,
+        }
+
+    return dataset.map(reorganize_row).filter(
+        lambda row: row['query'] is not None)
+
+
+register_dataset(
+    DatasetName.hh_rlhf_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('hh_rlhf', 'train')], [('hh_rlhf', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_harmless_base_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')],
+    [('harmless_base_cn', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_harmless_base_en,
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_en', 'train')],
+    [('harmless_base_en', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_helpful_base_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_cn', 'train')],
+    [('helpful_base_cn', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_helpful_base_en,
+    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')],
+    [('helpful_base_en', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.medical_zh,

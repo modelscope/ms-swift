@@ -88,7 +88,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 <details><summary>More</summary>
 
 - 🔥 2023.12.29: Support web-ui for training and inference, use `swift web-ui` after the installation of ms-swift.
-- 🔥 2023.12.29: Support DPO RLHF(Reinforcement Learning from Human Feedback) and two datasets: AI-ModelScope/stack-exchange-paired and AI-ModelScope/hh-rlhf for this task. Check [this documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) to start training!
+- 🔥 2023.12.29: Support DPO RLHF(Reinforcement Learning from Human Feedback) and three datasets: AI-ModelScope/stack-exchange-paired and AI-ModelScope/hh-rlhf and AI-ModelScope/hh_rlhf_cn for this task. Check [this documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) to start training!
 - 🔥 2023.12.28: Support SCEdit! This framework can easily reduce memory usage in training and inference, and replace ControlNet for controllable image generating scenarios, view the following chapter for details.
 - 2023.12.23: Support [codegeex2-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codegeex2_6b).
 - 2023.12.19: Support [phi2-3b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/phi2_3b).
@@ -259,7 +259,7 @@ app_ui_main(infer_args)
   - NLP:
     - General: 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini.
     - Agent: 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en.
-    - RLHF: 🔥hh-rlhf, stack-exchange-paired.
+    - RLHF: 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en.
     - Coding: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
     - Medical: medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.
     - Law: lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.
@@ -267,7 +267,6 @@ app_ui_main(infer_args)
     - SQL: text2sql-en, 🔥sql-create-context-en.
     - Text Generation: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
     - Classification: cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.
-    - RLHF: 🔥hh-rlhf, stack-exchange-paired.
     - AWQ: pileval.
     - Other: finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.
   - Multi-Modal:
