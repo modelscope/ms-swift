@@ -3,12 +3,14 @@ import os.path
 import time
 import webbrowser
 from datetime import datetime
-from typing import Dict, List, Tuple, Type
-import matplotlib.pyplot as plt
+from typing import Dict, List, Tuple, Type, Union
+
 import gradio as gr
+import matplotlib.pyplot as plt
 import psutil
-from transformers import is_tensorboard_available
 from gradio import Accordion, Tab
+from transformers import is_tensorboard_available
+
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
 from swift.utils import get_logger, read_tensorboard_file, tensorboard_smoothing, TB_COLOR_SMOOTH, TB_COLOR
@@ -99,8 +101,8 @@ class Runtime(BaseUI):
         },
         'show_log': {
             'value': {
-                'zh': '展示日志内容',
-                'en': 'Show log'
+                'zh': '展示运行状态',
+                'en': 'Show running status'
             },
         },
         'logging_dir': {
@@ -233,7 +235,7 @@ class Runtime(BaseUI):
                     ],
                 )
 
-                base_tab.element('running_tasks').change(
+                base_tab.element('log').change(
                     Runtime.plot,
                     [base_tab.element('running_tasks')],
                     all_plots,
@@ -247,7 +249,7 @@ class Runtime(BaseUI):
 
                 base_tab.element('refresh_tasks').click(
                     Runtime.refresh_tasks,
-                    [],
+                    [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
                 )
 
@@ -337,7 +339,8 @@ class Runtime(BaseUI):
             Runtime.handlers.pop(logging_dir)
 
     @staticmethod
-    def refresh_tasks(output_dir=None):
+    def refresh_tasks(running_task=None):
+        output_dir = running_task if 'pid:' not in running_task else None
         process_name = 'swift'
         cmd_name = 'sft'
         process = []
@@ -345,17 +348,19 @@ class Runtime(BaseUI):
         for proc in psutil.process_iter():
             try:
                 cmdlines = proc.cmdline()
-            except psutil.ZombieProcess:
+            except (psutil.ZombieProcess, psutil.AccessDenied, psutil.NoSuchProcess):
                 cmdlines = []
             print(cmdlines)
             if any([process_name in cmdline for cmdline in cmdlines]) and any([cmd_name == cmdline for cmdline in cmdlines]):
                 process.append(Runtime.construct_running_task(proc))
                 if output_dir is not None and any([output_dir == cmdline for cmdline in cmdlines]):
                     selected = Runtime.construct_running_task(proc)
-        if selected:
-            return gr.update(choices=process, value=selected)
-        else:
-            return gr.update(choices=process)
+        if not selected:
+            if running_task in process:
+                selected = running_task
+        if not selected and process:
+            selected = process[0]
+        return gr.update(choices=process, value=selected)
 
     @staticmethod
     def construct_running_task(proc):
