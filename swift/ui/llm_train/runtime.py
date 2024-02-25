@@ -4,7 +4,7 @@ import time
 import webbrowser
 from datetime import datetime
 from typing import Dict, List, Tuple, Type, Union
-
+from fuctional import partial
 import gradio as gr
 import matplotlib.pyplot as plt
 import psutil
@@ -207,12 +207,12 @@ class Runtime(BaseUI):
                     for k in Runtime.sft_plot:
                         name = k['name']
                         all_plots.append(gr.Plot(elem_id=name))
-                selected_task = gr.State([None])
+                states = gr.State([None])
 
                 base_tab.element('show_log').click(
-                    Runtime.update_log, [], [cls.element('log')]).then(
-                        Runtime.wait, [base_tab.element('logging_dir'), selected_task],
-                        [cls.element('log')])
+                    partial(Runtime.update_log, len(all_plots)), [], [cls.element('log')] + all_plots).then(
+                        Runtime.wait, [base_tab.element('logging_dir'), states, base_tab.element('running_tasks')],
+                        [cls.element('log')] + all_plots)
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -235,16 +235,10 @@ class Runtime(BaseUI):
                     ],
                 )
 
-                base_tab.element('log').change(
-                    Runtime.plot,
-                    [base_tab.element('running_tasks')],
-                    all_plots,
-                )
-
                 base_tab.element('running_tasks').change(
                     Runtime.change_state,
-                    [base_tab.element('running_tasks'), selected_task],
-                    [selected_task],
+                    [base_tab.element('running_tasks'), states],
+                    [states],
                 )
 
                 base_tab.element('refresh_tasks').click(
@@ -261,23 +255,23 @@ class Runtime(BaseUI):
 
 
     @classmethod
-    def update_log(cls):
-        return gr.update(visible=True)
+    def update_log(cls,  num_plots):
+        return [gr.update(visible=True)] * (num_plots+1)
 
     @classmethod
-    def wait(cls, logging_dir, selected_task):
+    def wait(cls, logging_dir, states, task):
         log_file = os.path.join(logging_dir, 'run.log')
         offset = 0
         latest_data = ''
         lines = collections.deque(
             maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-        output_dir = selected_task[0]
+        output_dir = states[0]
         try:
             with open(log_file, 'r') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
-                    if output_dir != selected_task[0]:
+                    if output_dir != states[0]:
                         break
                     try:
                         latest_data += input.read()
@@ -298,7 +292,7 @@ class Runtime(BaseUI):
                     else:
                         latest_data = ''
                     lines.extend(latest_lines)
-                    yield '\n'.join(lines)
+                    yield ['\n'.join(lines)] + Runtime.plot(task)
         except IOError:
             pass
 
@@ -340,6 +334,8 @@ class Runtime(BaseUI):
 
     @staticmethod
     def refresh_tasks(running_task=None):
+        if not running_task:
+            return gr.update()
         output_dir = running_task if 'pid:' not in running_task else None
         process_name = 'swift'
         cmd_name = 'sft'
@@ -386,7 +382,7 @@ class Runtime(BaseUI):
 
             return time_str
 
-        return f'pid:{pid}/create:{create_time_formatted}/running:{format_time(ts-create_time)}/{" ".join(proc.cmdline())}'
+        return f'pid:{pid}/create:{create_time_formatted}/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
 
     @staticmethod
     def parse_info_from_cmdline(task):
@@ -425,10 +421,12 @@ class Runtime(BaseUI):
         return ret
 
     @staticmethod
-    def change_state(task, selected_task):
+    def change_state(task, states):
+        if not task:
+            return [states]
         all_args = Runtime.parse_info_from_cmdline(task)
-        selected_task[0] = all_args['output_dir']
-        return [selected_task]
+        states[0] = all_args['output_dir']
+        return [states]
 
     @staticmethod
     def plot(task):
