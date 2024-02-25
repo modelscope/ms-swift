@@ -72,7 +72,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 🔥2024.02.01: Support Agent training! Agent training algorithm comes from this [paper](https://arxiv.org/pdf/2309.00986.pdf). We also introduce the [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary) dataset. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to begin an agent training!
 - 🔥2024.02.01: Support SFT loss to DPO training to reduce the repeat generation problem caused by the KL-divergence loss.
 - 2024.02.01: Support AdaLoRA and IA3 adapter in SFT.
-- 2024.02.01: Support `--merge_lora_and_save` in AnimateDiff training.
+- 2024.02.01: Support `--merge_lora` in AnimateDiff training.
 - 2024.01.30: Support [internlm-xcomposer2-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm_xcomposer2_7b_chat).
 - 🔥2024.01.30: Support [ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), just need to specify `--deepspeed default-zero3`.
 - 2024.01.29: Support internlm2-math series: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.

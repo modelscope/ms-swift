@@ -70,7 +70,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 🔥2024.02.01: 支持Agent训练！Agent训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf). 我们也增加了[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary)这个优质的agent数据集. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh)开启Agent训练!
 - 🔥2024.02.01: 支持在DPO训练中增加SFT loss来减少KL散度loss造成的生成重复问题.
 - 2024.02.01: 支持在训练中使用AdaLoRA和IA3两个adapter.
-- 2024.02.01: 支持在AnimateDiff训练中使用`--merge_lora_and_save`参数.
+- 2024.02.01: 支持在AnimateDiff训练中使用`--merge_lora`参数.
 - 2024.01.30: 支持[internlm-xcomposer2-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm_xcomposer2_7b_chat).
 - 🔥2024.01.30: 支持[ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), 只需要指定`--deepspeed default-zero3`即可.
 - 2024.01.29: 支持internlm2-math系列: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.

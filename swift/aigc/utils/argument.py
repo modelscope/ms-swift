@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -110,6 +110,8 @@ class AnimateDiffArguments:
     use_wandb: bool = False
 
     def __post_init__(self) -> None:
+        handle_compatibility(self)
+
         current_dir = os.path.dirname(__file__)
         if self.validation_prompts_path is None:
             self.validation_prompts_path = os.path.join(
@@ -172,8 +174,18 @@ class AnimateDiffInferArguments:
     steps_offset: int = 1
     clip_sample: bool = False
 
-    merge_lora_and_save: bool = False
+    merge_lora: bool = False
     replace_if_exists: bool = False
 
+    # compatibility. (Deprecated)
+    merge_lora_and_save: Optional[bool] = None
+
     def __post_init__(self) -> None:
-        pass
+        handle_compatibility(self)
+
+
+def handle_compatibility(
+        args: Union[AnimateDiffArguments, AnimateDiffInferArguments]) -> None:
+    if isinstance(args, AnimateDiffInferArguments):
+        if args.merge_lora_and_save is not None:
+            args.merge_lora = args.merge_lora_and_save

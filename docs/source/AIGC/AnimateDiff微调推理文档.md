@@ -249,8 +249,8 @@ eval_human: bool = False  # False: eval val_dataset # 是否使用人工输入�
 
 seed: int = 42 # 随机种子
 
-merge_lora_and_save: bool = False # Merge lora into the MotionAdapter and save the model.
-replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora_and_save` is True.
+merge_lora: bool = False # Merge lora into the MotionAdapter and save the model.
+replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora` is True.
 
 # other
 ignore_args_error: bool = False  # True: notebook compatibility
