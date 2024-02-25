@@ -143,7 +143,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4
 
-``` 
+```
 
 **推理量化后模型**
 ```shell

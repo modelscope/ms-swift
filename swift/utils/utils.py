@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
 import os
+import random
 import re
 import sys
 import time
@@ -9,7 +10,7 @@ from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
 
 import numpy as np
 import torch.distributed as dist
-from transformers import HfArgumentParser
+from transformers import HfArgumentParser, enable_full_determinism, set_seed
 
 from .logger import get_logger
 from .np_utils import stat_array
@@ -49,6 +50,21 @@ def _get_version(work_dir: str) -> int:
         v = m.group(1)
         v_list.append(int(v))
     return max(v_list) + 1
+
+
+def seed_everything(seed: Optional[int] = None,
+                    full_determinism: bool = False) -> int:
+
+    if seed is None:
+        seed_max = np.iinfo(np.int32).max
+        seed = random.randint(0, seed_max)
+
+    if full_determinism:
+        enable_full_determinism(seed)
+    else:
+        set_seed(seed)
+    logger.info(f'Global seed set to {seed}')
+    return seed
 
 
 def add_version_to_work_dir(work_dir: str) -> str:
