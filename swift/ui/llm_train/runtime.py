@@ -243,14 +243,6 @@ class Runtime(BaseUI):
                     [],
                 )
 
-                base_tab.element('running_tasks').change(
-                    Runtime.task_changed, [base_tab.element('running_tasks')],
-                    [
-                        value for value in cls.elements().values()
-                        if not isinstance(value, (Tab, Accordion))
-                    ] + [cls.element('log')] + cls.all_plots,
-                    cancels=cls.log_event)
-
                 base_tab.element('refresh_tasks').click(
                     Runtime.refresh_tasks,
                     [base_tab.element('running_tasks')],
