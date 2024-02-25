@@ -2280,6 +2280,16 @@ def safe_snapshot_download(model_type: str,
     return model_dir
 
 
+def get_torch_dtype(model_dir: str) -> Dtype:
+    model_config = PretrainedConfig.get_config_dict(model_dir)[0]
+    torch_dtype = model_config.get('torch_dtype', None)
+    if isinstance(torch_dtype, str):
+        torch_dtype = eval(f'torch.{torch_dtype}')
+    if torch_dtype == torch.float32:
+        torch_dtype = torch.float16
+    return torch_dtype
+
+
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
@@ -2315,13 +2325,15 @@ def get_model_tokenizer(
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     else:
         if torch_dtype is None:
-            model_config = PretrainedConfig.get_config_dict(model_dir)[0]
-            torch_dtype = model_config.get('torch_dtype', None)
-            if isinstance(torch_dtype, str):
-                torch_dtype = eval(f'torch.{torch_dtype}')
-            if torch_dtype == torch.float32:
-                torch_dtype = torch.float16
+            torch_dtype = get_torch_dtype(model_dir)
             logger.info(f'Setting torch_dtype: {torch_dtype}')
+            quantization_config = model_kwargs.get('quantization_config')
+            if (isinstance(quantization_config, BitsAndBytesConfig)
+                    and quantization_config.bnb_4bit_compute_dtype is None):
+                quantization_config.bnb_4bit_compute_dtype = torch_dtype
+                logger.info(
+                    f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}'
+                )
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)

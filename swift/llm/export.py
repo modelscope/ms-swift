@@ -148,6 +148,9 @@ def llm_export(args: InferArguments) -> None:
     if args.quant_bits > 0:
         assert args.quantization_bit == 0
         assert args.sft_type == 'full', 'you need to merge lora'
+        if args.dtype == 'AUTO' and args.torch_dtype is None:
+            args.dtype, args.torch_dtype = 'fp16', torch.float16
+            logger.info(f'Setting args.torch_dtype: {args.torch_dtype}')
         if args.ckpt_dir is None:
             quant_path = f'{args.model_type}-int{args.quant_bits}'
         else:
@@ -158,6 +161,8 @@ def llm_export(args: InferArguments) -> None:
         assert not os.path.exists(quant_path)
         awq_model, template = prepare_awq_model_template(args)
         awq_model_quantize(awq_model, template)
+        logger.info(get_model_info(awq_model))
+        show_layers(awq_model)
 
         awq_model.save_quantized(quant_path)
         save_checkpoint(None, template.tokenizer, awq_model.model_dir, None,

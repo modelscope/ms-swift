@@ -542,8 +542,9 @@ class InferArguments:
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
-                if (self.sft_type == 'full' or self.sft_type == 'lora'
-                        and self.merge_lora and self.quantization_bit == 0):
+                if ((self.sft_type == 'full'
+                     or self.sft_type == 'lora' and self.merge_lora)
+                        and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
         if self.infer_backend == 'vllm':
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
@@ -638,7 +639,8 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 
 def select_dtype(
-        args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    args: Union[SftArguments, InferArguments]
+) -> Tuple[Optional[Dtype], bool, bool]:
     if not torch.cuda.is_available():
         if args.dtype == 'AUTO':
             args.dtype = 'fp32'
@@ -659,7 +661,10 @@ def select_dtype(
         if model_torch_dtype is not None:
             args.dtype = dtype_mapping[model_torch_dtype]
     if args.dtype == 'AUTO':
-        args.dtype = 'bf16'
+        if isinstance(args, SftArguments):
+            args.dtype = 'bf16'
+        else:
+            return None, False, False
 
     torch_dtype = dtype_mapping_reversed[args.dtype]
 
@@ -685,15 +690,20 @@ def select_dtype(
 
 
 def select_bnb(
-        args: Union[SftArguments, InferArguments]) -> Tuple[Dtype, bool, bool]:
+    args: Union[SftArguments, InferArguments]
+) -> Tuple[Optional[Dtype], bool, bool]:
     if args.bnb_4bit_comp_dtype == 'AUTO':
         args.bnb_4bit_comp_dtype = args.dtype
 
+    if args.bnb_4bit_comp_dtype != 'AUTO':
+        bnb_4bit_compute_dtype = dtype_mapping_reversed[
+            args.bnb_4bit_comp_dtype]
+        assert bnb_4bit_compute_dtype in {
+            torch.float16, torch.bfloat16, torch.float32
+        }
+    else:
+        bnb_4bit_compute_dtype = None
     quantization_bit = args.quantization_bit
-    bnb_4bit_compute_dtype = dtype_mapping_reversed[args.bnb_4bit_comp_dtype]
-    assert bnb_4bit_compute_dtype in {
-        torch.float16, torch.bfloat16, torch.float32
-    }
     if quantization_bit == 4:
         require_version('bitsandbytes')
         load_in_4bit, load_in_8bit = True, False
@@ -716,14 +726,14 @@ def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
         args.template_type = TemplateType.qwen
     if args.truncation_strategy == 'ignore':
         args.truncation_strategy = 'delete'
-    if args.merge_lora_and_save is not None:
-        args.merge_lora = args.merge_lora_and_save
     if isinstance(args, InferArguments):
         if args.show_dataset_sample != 10 and args.val_dataset_sample == 10:
             # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
             args.val_dataset_sample = args.show_dataset_sample
         if args.safe_serialization is not None:
             args.save_safetensors = args.safe_serialization
+        if args.merge_lora_and_save is not None:
+            args.merge_lora = args.merge_lora_and_save
     if isinstance(args, SftArguments):
         if args.only_save_model is not None:
             args.save_only_model = args.only_save_model
@@ -780,7 +790,8 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
     else:
         model_info['revision'] = args.model_revision
         logger.info(f"Setting model_info['revision']: {args.model_revision}")
-    args.model_id_or_path = model_info['model_id_or_path']
+    if args.model_id_or_path is None:
+        args.model_id_or_path = model_info['model_id_or_path']
     requires = model_info['requires']
     for require in requires:
         require_version(require)

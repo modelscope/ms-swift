@@ -137,6 +137,8 @@ def prepare_model_template(
             bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
+        if args.bnb_4bit_compute_dtype is None:
+            quantization_config.bnb_4bit_compute_dtype = None
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
     kwargs = {}
@@ -155,6 +157,16 @@ def prepare_model_template(
         model_id_or_path=model_id_or_path,
         **kwargs)
     logger.info(f'model_config: {model.config}')
+    # Preparing LoRA
+    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
+        model = Swift.from_pretrained(
+            model, args.ckpt_dir, inference_mode=True)
+        if args.sft_type == 'adalora':
+            model = model.to(model.dtype)
+
+    logger.info(get_model_info(model))
+    show_layers(model)
+
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -167,15 +179,6 @@ def prepare_model_template(
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
-    # Preparing LoRA
-    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        model = Swift.from_pretrained(
-            model, args.ckpt_dir, inference_mode=True)
-        if args.sft_type == 'adalora':
-            model = model.to(model.dtype)
-
-    logger.info(get_model_info(model))
-    show_layers(model)
 
     template: Template = get_template(
         args.template_type,

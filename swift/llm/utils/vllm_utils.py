@@ -347,6 +347,7 @@ def prepare_vllm_engine_template(
     else:
         model_config = llm_engine.model_config
     logger.info(f'model_config: {model_config.hf_config}')
+
     if not args.do_sample:
         args.temperature = 0
     generation_config = VllmGenerationConfig(
