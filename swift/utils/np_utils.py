@@ -16,6 +16,8 @@ def transform_jsonl_to_df(dict_list: List[Dict[str, Any]]) -> DataFrame:
             if k not in data_dict:
                 data_dict[k] = [None] * i
             data_dict[k].append(v)
+        for k in set(data_dict.keys()) - set(obj.keys()):
+            data_dict[k].append(None)
     return DataFrame.from_dict(data_dict)
 
 

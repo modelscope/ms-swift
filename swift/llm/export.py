@@ -23,7 +23,7 @@ def prepare_awq_model_template(
     seed_everything(args.seed)
 
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
+    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': args.quant_device_map}
     model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
         model_id_or_path = args.ckpt_dir

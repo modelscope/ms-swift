@@ -27,7 +27,7 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 推理加速
-vllm不支持bnb和auto_gptq量化的模型. vllm支持的模型可以查看[支持的模型](./支持的模型和数据集.md#模型).
+vllm不支持bnb量化的模型. vllm支持的模型可以查看[支持的模型](./支持的模型和数据集.md#模型).
 
 ### qwen-7b-chat
 ```python

@@ -585,10 +585,10 @@ class DeployArguments(InferArguments):
     ssl_certfile: Optional[str] = None
 
     def __post_init__(self):
-        assert self.infer_backend != 'pt', 'The deployment only supports VLLM currently.'
-        if self.infer_backend == 'AUTO':
-            self.infer_backend = 'vllm'
-            logger.info('Setting self.infer_backend: vllm')
+        model_info = MODEL_MAPPING[self.model_type]
+        tags = model_info.get('tags', [])
+        if 'multi-modal' in tags:
+            raise ValueError('Deployment of multimodal models is currently not supported.')
         super().__post_init__()
 
 
@@ -602,6 +602,7 @@ class ExportArguments(InferArguments):
     quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
     quant_n_samples: int = 1024
     quant_seqlen: int = 2048
+    quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
     # push to ms hub
     push_to_hub: bool = False
