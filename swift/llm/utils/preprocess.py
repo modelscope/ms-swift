@@ -189,10 +189,16 @@ class SmartPreprocessor:
             k: v['required']
             for k, v in self.preprocessor_mapping.items()
         }
+        best_matched_cnt, best_matched = 0, None
         for k, required_keys in required_keys_mapping.items():
-            if len(set(required_keys) - keys) == 0:
-                return self.preprocessor_mapping[k]['preprocessor']
-        raise ValueError(f"""dataset.features.keys(): {dataset.features.keys()}
+            matched = len(set(required_keys) & set(keys))
+            if matched > best_matched_cnt:
+                best_matched_cnt = matched
+                best_matched = k
+        if best_matched:
+            return self.preprocessor_mapping[best_matched]['preprocessor']
+        else:
+            raise ValueError(f"""dataset.features.keys(): {dataset.features.keys()}
 required_keys_mapping: {required_keys_mapping}""")
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
