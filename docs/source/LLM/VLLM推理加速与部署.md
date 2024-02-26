@@ -250,6 +250,8 @@ swift使用VLLM作为推理后端, 并兼容openai的API样式.
 **服务端:**
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b-chat
+# 多卡部署
+RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift deploy --model_type qwen-7b-chat --tensor_parallel_size 4
 ```
 
 **客户端:**
@@ -353,6 +355,8 @@ response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁�
 **服务端:**
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-7b
+# 多卡部署
+RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift deploy --model_type qwen-7b --tensor_parallel_size 4
 ```
 
 **客户端:**
