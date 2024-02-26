@@ -194,6 +194,7 @@ def patch_acc_model(model, args):
         model = ta.patch_qwen_model(model)
     elif args.model_type.startswith('baichuan'):
         model = patch_baichuan_model(model)
+        # pass
 
     return model
 
@@ -237,20 +238,32 @@ def patch_baichuan_model(model):
 
         past_key_value = (key_states, value_states) if use_cache else None
 
-        # try:
-        from torchacc.ops import flash_attn_varlen_qkvpacked_xla
-        qkv = torch.stack([query_states, key_states, value_states], dim=2)
-        qkv = qkv.transpose(1, 3)
-        qkv = einops.rearrange(qkv, "b s ... -> (b s) ...")
+        # # try:
+        # from torchacc.ops import flash_attn_varlen_qkvpacked_xla
+        # qkv = torch.stack([query_states, key_states, value_states], dim=2)
+        # qkv = qkv.transpose(1, 3)
+        # qkv = einops.rearrange(qkv, "b s ... -> (b s) ...")
+        # cu_q_lens = torch.arange(
+        #     0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
+        # output = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
+        # output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
+        # output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
+        # return output, None, past_key_value
+        # # except:
+        #     # print('import torchacc failed.')
+
+        from torchacc.ops import flash_attn_varlen_xla
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+        q, k, v = [einops.rearrange(x, "b s ... -> (b s) ...") for x in [query_states, key_states, value_states]]
         cu_q_lens = torch.arange(
-            0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
-        output = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
+            0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device)
+        output = flash_attn_varlen_xla(q, k, v, cu_q_lens, cu_q_lens, q_len, q_len, 0.0, softmax_scale=None, causal=True)
         output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
         output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
         return output, None, past_key_value
-        # except:
-            # print('import torchacc failed.')
-    
+
     for layer in model.base_model.layers:
         layer.self_attn.forward = types.MethodType(baichuan_attn_forward, layer.self_attn)
     
