@@ -4,6 +4,7 @@
 - [微调](#微调)
 - [DPO](#dpo)
 - [Merge LoRA](#merge-lora)
+- [量化](#量化)
 - [推理](#推理)
 - [Web-UI](#web-ui)
 
@@ -227,7 +228,10 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
 ```
-对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档/#微调后模型)
+
+## 量化
+
+对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档.md#微调后模型)
 
 ## 推理
 如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
