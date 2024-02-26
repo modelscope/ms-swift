@@ -1,5 +1,5 @@
 # LLM量化文档
-swift使用awq技术对模型进行量化. 该量化技术支持vllm进行加速推理. 使用VLLM对awq量化模型进行加速推理可以查看[]().
+swift使用awq技术对模型进行量化. 该量化技术支持vllm进行加速推理.
 
 
 ## 目录
@@ -31,6 +31,7 @@ pip install -r requirements/llm.txt  -U
 ```bash
 # awq-int4量化 (使用A100大约需要20分钟)
 CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat --quant_bits 4
+
 # 推理 swift量化产生的模型
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_path qwen1half-7b-chat-int4
 # 推理 原始模型
@@ -40,7 +41,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 ```
 
 
-效果区别:
+效果对比:
 ```python
 # swift量化产生的模型
 """
