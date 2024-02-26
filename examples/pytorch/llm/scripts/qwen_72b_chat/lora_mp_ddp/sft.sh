@@ -37,8 +37,3 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --push_to_hub false \
-    --push_hub_strategy end \
-    --hub_model_id qwen-72b-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

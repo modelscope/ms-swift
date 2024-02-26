@@ -251,7 +251,7 @@ async def create_completion(request: CompletionRequest,
 def llm_deploy(args: DeployArguments) -> None:
     import uvicorn
     global llm_engine, model, template
-    if args.merge_lora_and_save:
+    if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
         llm_engine, template = prepare_vllm_engine_template(

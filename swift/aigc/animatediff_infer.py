@@ -54,7 +54,7 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
 
     if not args.sft_type == 'full':
         model = Swift.from_pretrained(validation_pipeline.unet, args.ckpt_dir)
-        if args.merge_lora_and_save:
+        if args.merge_lora:
             ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
             merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
             logger.info(f'merged_lora_path: `{merged_lora_path}`')

@@ -26,39 +26,32 @@ logger = get_logger()
 def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
+                    model_id_or_path: Optional[None],
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     max_model_len: Optional[int] = None,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
                     **kwargs) -> LLMEngine:
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    tokenizer = get_model_tokenizer(
+        model_type,
+        load_model=False,
+        model_id_or_path=model_id_or_path,
+        model_dir=model_dir)[1]
+    model_dir = tokenizer.model_dir
+
     if engine_kwargs is None:
         engine_kwargs = {}
-    model_info = MODEL_MAPPING[model_type]
-    model_id_or_path = model_info['model_id_or_path']
-    ignore_file_pattern = model_info['ignore_file_pattern']
-    model_dir = kwargs.get('model_dir', None)
-    if model_dir is None:
-        model_dir = model_id_or_path
-        if model_id_or_path is not None and not os.path.exists(
-                model_id_or_path):
-            revision = model_info['revision']
-            model_dir = snapshot_download(
-                model_id_or_path,
-                revision,
-                ignore_file_pattern=ignore_file_pattern)
-    model_dir = os.path.expanduser(model_dir)
-    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
-
     dtype_mapping = {
         torch.float16: 'float16',
         torch.bfloat16: 'bfloat16',
         torch.float32: 'float32',
         None: 'auto'
     }
-    tokenizer = get_model_tokenizer(
-        model_type, load_model=False, model_dir=model_dir)[1]
+    dtype = dtype_mapping[torch_dtype]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
+
     if use_async:
         engine_args_cls = AsyncEngineArgs
         llm_engine_cls = AsyncLLMEngine
@@ -68,7 +61,7 @@ def get_vllm_engine(model_type: str,
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
-        dtype=dtype_mapping[torch_dtype],
+        dtype=dtype,
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
         max_model_len=max_model_len,
@@ -334,11 +327,11 @@ def prepare_vllm_engine_template(
     assert args.quantization_bit == 0, 'not support bnb'
     assert args.sft_type == 'full', 'you need to merge lora'
     # Loading Model and Tokenizer
-    kwargs = {}
+    model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
-        kwargs['model_dir'] = args.ckpt_dir
-    elif args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
     llm_engine = get_vllm_engine(
         args.model_type,
         args.torch_dtype,
@@ -346,7 +339,7 @@ def prepare_vllm_engine_template(
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         use_async=use_async,
-        **kwargs)
+        model_id_or_path=model_id_or_path)
     tokenizer = llm_engine.hf_tokenizer
     if use_async:
         model_config = asyncio.run(llm_engine.get_model_config())
@@ -354,6 +347,7 @@ def prepare_vllm_engine_template(
     else:
         model_config = llm_engine.model_config
     logger.info(f'model_config: {model_config.hf_config}')
+
     if not args.do_sample:
         args.temperature = 0
     generation_config = VllmGenerationConfig(

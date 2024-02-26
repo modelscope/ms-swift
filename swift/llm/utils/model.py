@@ -64,7 +64,7 @@ class ModelType:
     qwen1half_7b_chat = 'qwen1half-7b-chat'
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
-    # qwen1.5 autogptq
+    # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
     qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
     qwen1half_4b_chat_int4 = 'qwen1half-4b-chat-int4'
@@ -1171,8 +1171,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
     'qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4',
@@ -1191,8 +1190,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_4b_chat_int4,
     'qwen/Qwen1.5-4B-Chat-GPTQ-Int4',
@@ -1211,8 +1209,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_7b_chat_int4,
     'qwen/Qwen1.5-7B-Chat-GPTQ-Int4',
@@ -1231,8 +1228,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_14b_chat_int4,
     'qwen/Qwen1.5-14B-Chat-GPTQ-Int4',
@@ -1251,8 +1247,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
     'qwen/Qwen1.5-72B-Chat-GPTQ-Int4',
@@ -1271,8 +1266,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 def get_model_tokenizer_qwen1half_intx(model_dir: str,
                                        torch_dtype: Dtype,
                                        model_kwargs: Dict[str, Any],
@@ -1782,7 +1776,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_72b_chat_int8,
     'qwen/Qwen-72B-Chat-Int8',
@@ -1800,7 +1795,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.tongyi_finance_14b_chat_int4,
     'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
@@ -1809,7 +1805,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_vl_chat_int4,
     'qwen/Qwen-VL-Chat-Int4',
@@ -1848,7 +1845,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_7b_chat_int4,
     'qwen/Qwen-7B-Chat-Int4',
@@ -1857,7 +1855,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_qwen_intx(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -2218,54 +2217,89 @@ def fix_gradient_checkpointing_warning() -> None:
         pass
 
 
+def safe_snapshot_download(model_type: str,
+                           model_id_or_path: Optional[str] = None,
+                           **kwargs) -> str:
+    # Perform snapshot_download (ms or hf) based on model_type and model_id_or_path.
+    model_info = MODEL_MAPPING[model_type]
+    if model_id_or_path is None:
+        model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+        if model_dir is not None:
+            model_id_or_path = model_dir
+        else:
+            model_id_or_path = model_info['model_id_or_path']
+
+    if is_dist() and not is_local_master():
+        dist.barrier()
+    if model_id_or_path is not None and not os.path.exists(model_id_or_path):
+        revision = model_info['revision']
+        use_hf = model_info['use_hf']
+        ignore_file_pattern = model_info['ignore_file_pattern']
+        if use_hf:
+            logger.info(
+                f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
+            )
+            from huggingface_hub import snapshot_download as hf_snapshot_download
+            model_dir = hf_snapshot_download(
+                model_id_or_path,
+                repo_type='model',
+                revision=revision,
+                ignore_patterns=ignore_file_pattern)
+        else:
+            logger.info(
+                f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
+            )
+            model_dir = snapshot_download(
+                model_id_or_path,
+                revision,
+                ignore_file_pattern=ignore_file_pattern)
+    else:
+        model_dir = model_id_or_path
+        logger.info(f'Loading the model using model_dir: {model_dir}')
+    if is_dist() and is_local_master():
+        dist.barrier()
+
+    model_dir = os.path.expanduser(model_dir)
+    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
+    return model_dir
+
+
+def get_torch_dtype(model_dir: str) -> Dtype:
+    model_config = PretrainedConfig.get_config_dict(model_dir)[0]
+    torch_dtype = model_config.get('torch_dtype', None)
+    if isinstance(torch_dtype, str):
+        torch_dtype = eval(f'torch.{torch_dtype}')
+    if torch_dtype == torch.float32:
+        torch_dtype = torch.float16
+    return torch_dtype
+
+
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         load_model: bool = True,
+        *,
+        model_id_or_path: Optional[str] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
         However, if torch.float32 is retrieved, torch.float16 will be used.
     """
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    model_dir = safe_snapshot_download(
+        model_type, model_id_or_path, model_dir=model_dir)
+
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']
     for require in requires:
         require_version(require)
-
-    model_id_or_path = model_info['model_id_or_path']
     get_function = model_info['get_function']
-    ignore_file_pattern = model_info['ignore_file_pattern']
     if model_kwargs is None:
         model_kwargs = {}
     if 'device_map' not in model_kwargs:
         model_kwargs['device_map'] = 'auto'
 
-    model_dir = kwargs.pop('model_dir', None)
-    if model_dir is None:
-        if is_dist() and not is_local_master():
-            dist.barrier()
-        model_dir = model_id_or_path
-        if model_id_or_path is not None and not os.path.exists(
-                model_id_or_path):
-            revision = model_info['revision']
-            use_hf = model_info['use_hf']
-            if use_hf:
-                from huggingface_hub import snapshot_download as hf_snapshot_download
-                model_dir = hf_snapshot_download(
-                    model_id_or_path,
-                    repo_type='model',
-                    revision=revision,
-                    ignore_patterns=ignore_file_pattern)
-            else:
-                model_dir = snapshot_download(
-                    model_id_or_path,
-                    revision,
-                    ignore_file_pattern=ignore_file_pattern)
-        if is_dist() and is_local_master():
-            dist.barrier()
-    model_dir = os.path.expanduser(model_dir)
-    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     if model_info.get('torch_dtype') is not None:
         model_torch_dtype = model_info['torch_dtype']
         if torch_dtype is None:
@@ -2275,21 +2309,25 @@ def get_model_tokenizer(
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     else:
         if torch_dtype is None:
-            model_config = PretrainedConfig.get_config_dict(model_dir)[0]
-            torch_dtype = model_config.get('torch_dtype', None)
-            if isinstance(torch_dtype, str):
-                torch_dtype = eval(f'torch.{torch_dtype}')
-            if torch_dtype == torch.float32:
-                torch_dtype = torch.float16
+            torch_dtype = get_torch_dtype(model_dir)
             logger.info(f'Setting torch_dtype: {torch_dtype}')
+            quantization_config = model_kwargs.get('quantization_config')
+            if (isinstance(quantization_config, BitsAndBytesConfig)
+                    and quantization_config.bnb_4bit_compute_dtype is None):
+                quantization_config.bnb_4bit_compute_dtype = torch_dtype
+                logger.info(
+                    f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}'
+                )
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
         model.model_type = model_type
+        model.model_dir = model_dir
         fix_transformers_upgrade(model)
         fix_gradient_checkpointing_warning()
     tokenizer.model_type = model_type
+    tokenizer.model_dir = model_dir
     assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

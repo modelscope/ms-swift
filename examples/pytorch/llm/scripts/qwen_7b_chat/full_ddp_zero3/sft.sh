@@ -29,5 +29,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --deepspeed_config_path 'default-zero3' \
+    --deepspeed 'default-zero3' \
     --save_only_model true \

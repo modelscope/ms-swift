@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .infer import llm_infer, merge_lora, prepare_model_template, infer_main, merge_lora_main
     from .rome import rome_infer, rome_main
     from .sft import llm_sft, sft_main
+    from .export import llm_export, export_main
 else:
     _extra_objects = {
         k: v
@@ -30,6 +31,7 @@ else:
         ],
         'rome': ['rome_infer', 'rome_main'],
         'sft': ['llm_sft', 'sft_main'],
+        'export': ['llm_export', 'export_main'],
     }
 
     import sys

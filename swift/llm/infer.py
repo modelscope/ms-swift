@@ -8,17 +8,67 @@ import json
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
-from .utils import (TEMPLATE_MAPPING, InferArguments, Template,
-                    get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, inference,
+from .utils import (InferArguments, Template, get_additional_saved_files,
+                    get_dataset, get_model_tokenizer, get_template, inference,
                     inference_stream, is_adapter, set_generation_config)
 
 logger = get_logger()
+
+
+def save_checkpoint(model: Optional[PreTrainedModel],
+                    tokenizer: PreTrainedTokenizerBase,
+                    model_cache_dir: str,
+                    ckpt_dir: Optional[str],
+                    target_dir: str,
+                    *,
+                    save_safetensors: bool = True) -> None:
+    if model is not None:
+        model.save_pretrained(target_dir, safe_serialization=save_safetensors)
+    tokenizer.save_pretrained(target_dir)
+    model_type = getattr(tokenizer, 'model_type')
+    fname_list = ['generation_config.json']
+    if model_type is not None:
+        fname_list += get_additional_saved_files(model_type)
+
+    for fname in fname_list:
+        tgt_path = os.path.join(target_dir, fname)
+        for model_dir in [ckpt_dir, model_cache_dir]:
+            if model_dir is None:
+                continue
+            src_path = os.path.join(model_dir, fname)
+            if os.path.exists(src_path):
+                shutil.copy(src_path, tgt_path)
+                break
+    # configuration.json
+    configuration_fname = 'configuration.json'
+    new_configuration_path = os.path.join(target_dir, configuration_fname)
+    for model_dir in [ckpt_dir, model_cache_dir]:
+        if model_dir is None:
+            continue
+        old_configuration_path = os.path.join(model_dir, configuration_fname)
+        if os.path.exists(old_configuration_path):
+            with open(old_configuration_path, 'r', encoding='utf-8') as f:
+                res = json.load(f)
+            res.pop('adapter_cfg', None)
+            with open(new_configuration_path, 'w', encoding='utf-8') as f:
+                json.dump(res, f, ensure_ascii=False, indent=4)
+            break
+    if ckpt_dir is not None:
+        # sft_args.json
+        sft_args_fname = 'sft_args.json'
+        old_sft_args_path = os.path.join(ckpt_dir, sft_args_fname)
+        new_sft_args_path = os.path.join(target_dir, sft_args_fname)
+        if os.path.exists(old_sft_args_path):
+            with open(old_sft_args_path, 'r', encoding='utf-8') as f:
+                res = json.load(f)
+            res['sft_type'] = 'full'
+            with open(new_sft_args_path, 'w', encoding='utf-8') as f:
+                json.dump(res, f, ensure_ascii=False, indent=2)
 
 
 def merge_lora(args: InferArguments,
@@ -61,39 +111,13 @@ def merge_lora(args: InferArguments,
     Swift.merge_and_unload(model)
     model = model.model
     logger.info('Saving merged weights...')
-    model.save_pretrained(
-        merged_lora_path, safe_serialization=args.save_safetensors)
-    for add_file in get_additional_saved_files(args.model_type):
-        shutil.copy(
-            os.path.join(model.model_dir, add_file),
-            os.path.join(merged_lora_path, add_file))
-    tokenizer.save_pretrained(merged_lora_path)
-    for fname in os.listdir(old_ckpt_dir):
-        if fname in {'generation_config.json'}:
-            src_path = os.path.join(old_ckpt_dir, fname)
-            tgt_path = os.path.join(merged_lora_path, fname)
-            shutil.copy(src_path, tgt_path)
-    # configuration.json
-    configuration_fname = 'configuration.json'
-    old_configuration_path = os.path.join(old_ckpt_dir, configuration_fname)
-    new_configuration_path = os.path.join(merged_lora_path,
-                                          configuration_fname)
-    if os.path.exists(old_configuration_path):
-        with open(old_configuration_path, 'r', encoding='utf-8') as f:
-            res = json.load(f)
-        res.pop('adapter_cfg', None)
-        with open(new_configuration_path, 'w', encoding='utf-8') as f:
-            json.dump(res, f, ensure_ascii=False, indent=4)
-    # sft_args.json
-    sft_args_fname = 'sft_args.json'
-    old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
-    new_sft_args_path = os.path.join(merged_lora_path, sft_args_fname)
-    if os.path.exists(old_sft_args_path):
-        with open(old_sft_args_path, 'r', encoding='utf-8') as f:
-            res = json.load(f)
-        res['sft_type'] = 'full'
-        with open(new_sft_args_path, 'w', encoding='utf-8') as f:
-            json.dump(res, f, ensure_ascii=False, indent=2)
+    save_checkpoint(
+        model,
+        tokenizer,
+        model.model_dir,
+        old_ckpt_dir,
+        merged_lora_path,
+        save_safetensors=args.save_safetensors)
     logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     return merged_lora_path
 
@@ -113,19 +137,36 @@ def prepare_model_template(
             bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
+        if args.bnb_4bit_compute_dtype is None:
+            quantization_config.bnb_4bit_compute_dtype = None
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
     kwargs = {}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
+    model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
-        kwargs['model_dir'] = args.ckpt_dir
-    elif args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
 
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path,
+        **kwargs)
     logger.info(f'model_config: {model.config}')
+    # Preparing LoRA
+    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
+        model = Swift.from_pretrained(
+            model, args.ckpt_dir, inference_mode=True)
+        if args.sft_type == 'adalora':
+            model = model.to(model.dtype)
+
+    logger.info(get_model_info(model))
+    show_layers(model)
+
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -138,15 +179,6 @@ def prepare_model_template(
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
-    # Preparing LoRA
-    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        model = Swift.from_pretrained(
-            model, args.ckpt_dir, inference_mode=True)
-        if args.sft_type == 'adalora':
-            model = model.to(model.dtype)
-
-    logger.info(get_model_info(model))
-    show_layers(model)
 
     template: Template = get_template(
         args.template_type,
@@ -176,7 +208,7 @@ def read_media_file(
 
 
 def llm_infer(args: InferArguments) -> None:
-    if args.merge_lora_and_save:
+    if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
         from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
