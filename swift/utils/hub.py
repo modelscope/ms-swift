@@ -43,7 +43,7 @@ def push_to_ms_hub(ckpt_dir: str,
                    hub_model_id: str,
                    hub_token: Optional[str] = None,
                    hub_private_repo: bool = False,
-                   commit_message: str = 'Push `ckpt_dir` to ModelScope Hub'):
+                   commit_message: str = 'update files'):
     logger.info(f'Starting push to hub. ckpt_dir: {ckpt_dir}.')
     subprocess_run(['git', 'lfs', 'env'])  # check git-lfs install
 
@@ -54,6 +54,7 @@ def push_to_ms_hub(ckpt_dir: str,
                    env={'GIT_LFS_SKIP_SMUDGE': '1'})
     tmp_dir = os.path.join(ckpt_dir, 'tmp')
     subprocess_run(['git', '-C', tmp_dir, 'lfs', 'pull'])
+    logger.info('Git clone the repo successfully.')
     # mv .git
     dst_git_path = os.path.join(ckpt_dir, '.git')
     if os.path.exists(dst_git_path):
@@ -66,9 +67,17 @@ def push_to_ms_hub(ckpt_dir: str,
     # add commit push
     subprocess_run(['git', '-C', ckpt_dir, 'lfs', 'install'])
     time.sleep(0.5)
+    logger.info('Start `git add .`')
     subprocess_run(['git', '-C', ckpt_dir, 'add', '.'])
-    subprocess_run(['git', '-C', ckpt_dir, 'lfs', 'status'])
-    subprocess_run(['git', '-C', ckpt_dir, 'commit', '-m', commit_message])
-    subprocess_run(['git', '-C', ckpt_dir, 'push'])
-    url = f'https://www.modelscope.cn/models/{hub_model_id}/summary'
-    logger.info(f'Push to Modelscope successful. url: `{url}`.')
+    if is_repo_clean(ckpt_dir):
+        logger.info('Repo currently clean. Ignoring commit and push_to_hub')
+    else:
+        subprocess_run(['git', '-C', ckpt_dir, 'commit', '-m', commit_message])
+        subprocess_run(['git', '-C', ckpt_dir, 'push'])
+        url = f'https://www.modelscope.cn/models/{hub_model_id}/summary'
+        logger.info(f'Push to Modelscope successful. url: `{url}`.')
+
+
+def is_repo_clean(ckpt_dir: str) -> bool:
+    resp = subprocess_run(['git', '-C', ckpt_dir, 'status', '--porcelain'])
+    return len(resp.stdout.strip()) == 0

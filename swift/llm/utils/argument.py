@@ -615,6 +615,7 @@ class ExportArguments(InferArguments):
             'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
         })
     hub_private_repo: bool = False
+    commit_message: str = 'update files'
 
 
 @dataclass

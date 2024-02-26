@@ -165,7 +165,7 @@ def llm_export(args: ExportArguments) -> None:
     if args.push_to_hub:
         assert args.ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
         push_to_ms_hub(args.ckpt_dir, args.hub_model_id, args.hub_token,
-                       args.hub_private_repo)
+                       args.hub_private_repo, args.commit_message)
 
 
 export_main = get_main(ExportArguments, llm_export)
