@@ -100,7 +100,6 @@ class TestRun(unittest.TestCase):
             else:
                 bool_var = False
             torch.cuda.empty_cache()
-            time.sleep(0.5)
             output = sft_main([
                 '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
                 '--tuner_backend', tuner_backend, '--train_dataset_sample',
@@ -119,7 +118,6 @@ class TestRun(unittest.TestCase):
             else:
                 show_dataset_sample = -1
             torch.cuda.empty_cache()
-            time.sleep(0.5)
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
                 str(show_dataset_sample), '--max_new_tokens', '100',
@@ -192,7 +190,6 @@ class TestRun(unittest.TestCase):
             ],
             check_dataset_strategy='warning')
         torch.cuda.empty_cache()
-        time.sleep(0.5)
         best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
         for load_args_from_ckpt_dir in [True, False]:
             kwargs = {}
@@ -299,7 +296,6 @@ class TestRun(unittest.TestCase):
             return
         folder = os.path.join(os.path.dirname(__file__), 'data')
         torch.cuda.empty_cache()
-        time.sleep(0.5)
         output = sft_main(
             SftArguments(
                 model_type=ModelType.yi_vl_6b_chat,
@@ -324,7 +320,6 @@ class TestRun(unittest.TestCase):
             # ignore citest error in github
             return
         torch.cuda.empty_cache()
-        time.sleep(0.5)
         output = dpo_main(
             DPOArguments(
                 model_type=ModelType.qwen_1_8b_chat,
@@ -334,7 +329,6 @@ class TestRun(unittest.TestCase):
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        time.sleep(0.5)
         infer_main(
             InferArguments(
                 ckpt_dir=best_model_checkpoint,
