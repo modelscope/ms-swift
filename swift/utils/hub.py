@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import time
 from typing import Optional
 
@@ -45,7 +46,8 @@ def push_to_ms_hub(ckpt_dir: str,
                    hub_private_repo: bool = False,
                    commit_message: str = 'update files'):
     logger.info(f'Starting push to hub. ckpt_dir: {ckpt_dir}.')
-    subprocess_run(['git', 'lfs', 'env'])  # check git-lfs install
+    subprocess_run(['git', 'lfs', 'env'],
+                   stdout=subprocess.PIPE)  # check git-lfs install
 
     hub_model_id = create_ms_repo(hub_model_id, hub_token, hub_private_repo)
     git_token = ModelScopeConfig.get_token()
@@ -79,5 +81,6 @@ def push_to_ms_hub(ckpt_dir: str,
 
 
 def is_repo_clean(ckpt_dir: str) -> bool:
-    resp = subprocess_run(['git', '-C', ckpt_dir, 'status', '--porcelain'])
+    resp = subprocess_run(['git', '-C', ckpt_dir, 'status', '--porcelain'],
+                          stdout=subprocess.PIPE)
     return len(resp.stdout.strip()) == 0
