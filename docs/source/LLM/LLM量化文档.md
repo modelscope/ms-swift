@@ -6,6 +6,7 @@ swift使用awq技术对模型进行量化. 该量化技术支持vllm进行加速
 - [环境准备](#环境准备)
 - [原始模型](#原始模型)
 - [微调后模型](#微调后模型)
+- [推送模型](#推送模型)
 
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
@@ -135,7 +136,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 
 ## 微调后模型
 
-假设你微调获得了模型权重目录, 以qwen1half-4b-chat为例子: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
+假设你使用lora微调了qwen1half-4b-chat, 模型权重目录为: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
 
 **Merge-LoRA & 量化**
 ```shell
@@ -169,4 +170,31 @@ curl http://localhost:8000/v1/chat/completions \
 "max_tokens": 256,
 "temperature": 0
 }'
+```
+
+
+## 推送模型
+假设你使用lora微调了qwen1half-4b-chat, 模型权重目录为: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
+
+```shell
+# 推送lora增量模型
+swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id qwen1half-4b-chat-lora \
+    --hub_token '<your-sdk-token>'
+
+# 推送merged模型
+swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id qwen1half-4b-chat-lora \
+    --hub_token '<your-sdk-token>'
+    --merge_lora true \
+
+# 推送量化后模型
+swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id qwen1half-4b-chat-lora \
+    --hub_token '<your-sdk-token>'
+    --merge_lora true \
+    --quant_bits 4
 ```
