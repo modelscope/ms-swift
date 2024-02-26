@@ -188,14 +188,14 @@ swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
 swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id qwen1half-4b-chat-lora \
-    --hub_token '<your-sdk-token>'
-    --merge_lora true \
+    --hub_token '<your-sdk-token>' \
+    --merge_lora true
 
 # 推送量化后模型
 swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id qwen1half-4b-chat-lora \
-    --hub_token '<your-sdk-token>'
+    --hub_token '<your-sdk-token>' \
     --merge_lora true \
     --quant_bits 4
 ```
