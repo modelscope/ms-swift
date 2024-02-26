@@ -1171,8 +1171,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
     'qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4',
@@ -1191,8 +1190,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_4b_chat_int4,
     'qwen/Qwen1.5-4B-Chat-GPTQ-Int4',
@@ -1211,8 +1209,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_7b_chat_int4,
     'qwen/Qwen1.5-7B-Chat-GPTQ-Int4',
@@ -1231,8 +1228,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_14b_chat_int4,
     'qwen/Qwen1.5-14B-Chat-GPTQ-Int4',
@@ -1251,8 +1247,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
     'qwen/Qwen1.5-72B-Chat-GPTQ-Int4',
@@ -1271,8 +1266,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 def get_model_tokenizer_qwen1half_intx(model_dir: str,
                                        torch_dtype: Dtype,
                                        model_kwargs: Dict[str, Any],
@@ -1773,8 +1767,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_1_8b_chat_int4,
     'qwen/Qwen-1_8B-Chat-Int4',
@@ -1793,8 +1786,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_72b_chat_int4,
     'qwen/Qwen-72B-Chat-Int4',
@@ -1835,8 +1827,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_7b_chat_int8,
     'qwen/Qwen-7B-Chat-Int8',
@@ -1845,8 +1836,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen_14b_chat_int4,
     'qwen/Qwen-14B-Chat-Int4',
