@@ -32,7 +32,3 @@ torchrun \
     --save_only_model false \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --push_to_hub false \
-    --hub_model_id seqgpt-560m-full \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

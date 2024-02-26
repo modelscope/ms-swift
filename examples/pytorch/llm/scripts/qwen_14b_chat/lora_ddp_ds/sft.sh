@@ -37,9 +37,5 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --push_to_hub false \
-    --hub_model_id qwen-14b-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \
     --deepspeed default-zero2 \
     --save_only_model true \
