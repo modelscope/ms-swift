@@ -191,7 +191,7 @@ class SmartPreprocessor:
         }
         best_matched_cnt, best_matched = 0, None
         for k, required_keys in required_keys_mapping.items():
-            matched = len(set(required_keys) & set(keys))
+            matched = len(set(required_keys) & keys)
             if matched > best_matched_cnt:
                 best_matched_cnt = matched
                 best_matched = k
