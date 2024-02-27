@@ -98,12 +98,15 @@ def merge_lora(args: InferArguments,
             'you can pass `replace_if_exists=True` to overwrite it.')
         return
     # Loading Model and Tokenizer
-    kwargs = {}
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
-    if args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model_id_or_path = None
+    if args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path)
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
@@ -157,6 +160,16 @@ def prepare_model_template(
         model_id_or_path=model_id_or_path,
         **kwargs)
     logger.info(f'model_config: {model.config}')
+    if model.max_model_len is None:
+        model.max_model_len = args.max_model_len
+    elif args.max_model_len is not None:
+        if args.max_model_len <= model.max_model_len:
+            model.max_model_len = args.max_model_len
+        else:
+            raise ValueError(
+                'args.max_model_len exceeds the maximum max_model_len supported by the model.'
+                f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}'
+            )
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
         model = Swift.from_pretrained(
