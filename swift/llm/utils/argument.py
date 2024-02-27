@@ -602,6 +602,7 @@ class ExportArguments(InferArguments):
     quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
     quant_n_samples: int = 1024
     quant_seqlen: int = 2048
+    quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
     # push to ms hub
     push_to_hub: bool = False

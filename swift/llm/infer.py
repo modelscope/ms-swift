@@ -157,6 +157,14 @@ def prepare_model_template(
         model_id_or_path=model_id_or_path,
         **kwargs)
     logger.info(f'model_config: {model.config}')
+    if args.max_model_len is not None:
+        if args.max_model_len <= model.max_model_len:
+            model.max_model_len = args.max_model_len
+        else:
+            raise ValueError(
+                'args.max_model_len exceeds the maximum max_model_len supported by the model.'
+                f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}'
+            )
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
         model = Swift.from_pretrained(

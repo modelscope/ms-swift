@@ -29,7 +29,7 @@ pip install -r requirements/llm.txt  -U
 ## 原始模型
 这里展示对qwen1half-7b-chat进行awq量化.
 ```bash
-# awq-int4量化 (使用A100大约需要20分钟)
+# awq-int4量化 (使用A100大约需要20分钟, 显存占用: 25GB)
 CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat --quant_bits 4
 
 # 推理 swift量化产生的模型

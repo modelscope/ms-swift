@@ -30,9 +30,9 @@ from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
                        StopWords, Template, TemplateType, get_template,
                        register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
-                    find_all_linears, find_embedding, get_time_info,
-                    history_to_messages, inference, inference_stream,
-                    is_vllm_available, limit_history_length,
+                    find_all_linears, find_embedding, get_max_model_len,
+                    get_time_info, history_to_messages, inference,
+                    inference_stream, is_vllm_available, limit_history_length,
                     messages_to_history, print_example, safe_tokenizer_decode,
                     set_generation_config, sort_by_max_length, stat_dataset,
                     to_device)
