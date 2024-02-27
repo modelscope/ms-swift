@@ -458,6 +458,10 @@ def inference_stream(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
+    if len(inputs) == 0:
+        raise ValueError(
+            'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+        )
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -589,6 +593,10 @@ def inference(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
+    if len(inputs) == 0:
+        raise ValueError(
+            'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+        )
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device

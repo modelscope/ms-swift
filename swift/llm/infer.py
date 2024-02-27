@@ -100,7 +100,6 @@ def merge_lora(args: InferArguments,
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     model_id_or_path = None
-    logger.info(f'args.model_id_or_path: {args.model_id_or_path}')
     if args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
     model, tokenizer = get_model_tokenizer(
@@ -161,7 +160,9 @@ def prepare_model_template(
         model_id_or_path=model_id_or_path,
         **kwargs)
     logger.info(f'model_config: {model.config}')
-    if model.max_model_len is not None and args.max_model_len is not None:
+    if model.max_model_len is None:
+        model.max_model_len = args.max_model_len
+    elif args.max_model_len is not None:
         if args.max_model_len <= model.max_model_len:
             model.max_model_len = args.max_model_len
         else:
