@@ -15,10 +15,9 @@ def write_dataset_info() -> None:
     if os.path.exists(fpath):
         with open(fpath, 'r', encoding='utf-8') as f:
             text = f.read()
-        match_ = re.search(r'\| Dataset Name \|', text)
-        assert match_ is not None
-        pre_text = text[:match_.start()]
-        text = text[match_.start():]
+        idx = text.find('|   | Dataset Name |')
+        pre_text = text[:idx]
+        text = text[idx:]
         text_list = [t for t in text.split('\n') if len(t.strip()) > 0]
     else:
         text_list = []
@@ -26,10 +25,10 @@ def write_dataset_info() -> None:
     res_text_list = []
 
     res_text_list.append(
-        '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags |'
+        '|   | Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags |'
     )
     res_text_list.append(
-        '| ------------ | ---------- | ---------- | -------- | ----------------- | ---- |'
+        '| - | ------------ | ---------- | ---------- | -------- | ----------------- | ---- |'
     )
     if len(text_list) >= 2:
         text_list = text_list[2:]
@@ -37,7 +36,7 @@ def write_dataset_info() -> None:
         text_list = []
 
     ignore_dataset = {
-        text.split('|', 2)[1].lstrip('🔥 '): text
+        text.split('|', 3)[2].lstrip('🔥 '): text
         for text in text_list
     }
     dataset_name_list = DatasetName.get_dataset_name_list()
@@ -54,7 +53,7 @@ def write_dataset_info() -> None:
         template_type = get_default_template_type(model_type)
         template = get_template(template_type, tokenizer)
         mapping[task_type] = template
-    for dataset_name in dataset_name_list:
+    for i, dataset_name in enumerate(dataset_name_list):
         dataset_info = DATASET_MAPPING[dataset_name]
         tags = dataset_info.get('tags', [])
         if 'audio' in tags:
@@ -65,7 +64,7 @@ def write_dataset_info() -> None:
             template = mapping['llm']
         if dataset_name in ignore_dataset:
             train_size, val_size, stat_str = ignore_dataset[
-                dataset_name].split('|')[3:6]
+                dataset_name].split('|')[4:7]
         else:
             train_dataset, val_dataset = get_dataset([dataset_name])
             train_size = len(train_dataset)
@@ -93,7 +92,7 @@ def write_dataset_info() -> None:
         if len(tags_str) == 0:
             tags_str = '-'
         res_text_list.append(
-            f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
+            f"|{i+1}|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
             f'{val_size}|{stat_str}|{tags_str}|')
     text = '\n'.join(res_text_list)
     text = pre_text + text + '\n'

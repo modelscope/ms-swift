@@ -26,7 +26,7 @@ logger = get_logger()
 def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
-                    model_id_or_path: Optional[None],
+                    model_id_or_path: Optional[str] = None,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     max_model_len: Optional[int] = None,

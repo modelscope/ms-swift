@@ -26,6 +26,7 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.utils import is_dist, is_local_master
 from .template import TemplateType
+from .utils import get_max_model_len
 
 logger = get_logger()
 
@@ -2353,6 +2354,8 @@ def get_model_tokenizer(
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
+        model.max_model_len = get_max_model_len(model.config)
+        logger.info(f'model.max_model_len: {model.max_model_len}')
         model.model_type = model_type
         model.model_dir = model_dir
         fix_transformers_upgrade(model)
