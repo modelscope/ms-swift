@@ -494,7 +494,7 @@ class InferArguments:
             load_from_ckpt_dir(self)
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-            set_model_type(self)
+        set_model_type(self)
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
@@ -902,9 +902,9 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
     with open(sft_args_path, 'r', encoding='utf-8') as f:
         sft_args = json.load(f)
     imported_keys = [
-        'model_type', 'model_id_or_path', 'model_revision', 'sft_type',
-        'template_type', 'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
-        'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+        'model_type', 'model_revision', 'sft_type', 'template_type', 'system',
+        'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+        'bnb_4bit_use_double_quant'
     ]
     if args.load_dataset_config:
         imported_keys += [

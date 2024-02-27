@@ -98,12 +98,16 @@ def merge_lora(args: InferArguments,
             'you can pass `replace_if_exists=True` to overwrite it.')
         return
     # Loading Model and Tokenizer
-    kwargs = {}
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
-    if args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model_id_or_path = None
+    logger.info(f'args.model_id_or_path: {args.model_id_or_path}')
+    if args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path)
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
