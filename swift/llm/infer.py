@@ -157,7 +157,7 @@ def prepare_model_template(
         model_id_or_path=model_id_or_path,
         **kwargs)
     logger.info(f'model_config: {model.config}')
-    if args.max_model_len is not None:
+    if model.max_model_len is not None and args.max_model_len is not None:
         if args.max_model_len <= model.max_model_len:
             model.max_model_len = args.max_model_len
         else:
