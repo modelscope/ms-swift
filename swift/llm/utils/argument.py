@@ -585,10 +585,11 @@ class DeployArguments(InferArguments):
     ssl_certfile: Optional[str] = None
 
     def __post_init__(self):
-        assert self.infer_backend != 'pt', 'The deployment only supports VLLM currently.'
-        if self.infer_backend == 'AUTO':
-            self.infer_backend = 'vllm'
-            logger.info('Setting self.infer_backend: vllm')
+        model_info = MODEL_MAPPING[self.model_type]
+        tags = model_info.get('tags', [])
+        if 'multi-modal' in tags:
+            raise ValueError(
+                'Deployment of multimodal models is currently not supported.')
         super().__post_init__()
 
 
