@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from transformers import GenerationConfig
+from modelscope import GenerationConfig
 
 from swift.utils import get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
@@ -332,7 +332,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                 id=request_id,
                 created=created_time)
 
-    async def _generate_stream():
+    def _generate_stream():
         generation_info = {}
         gen = inference_stream(
             model,
