@@ -284,6 +284,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
             kwargs[key] = getattr(model.generation_config, key)
         else:
             kwargs[key] = new_value
+    if kwargs['temperature'] == 0:
+        kwargs['do_sample'] = False
+    else:
+        kwargs['do_sample'] = True
     generation_config = GenerationConfig(**kwargs)
     created_time = int(time.time())
 
