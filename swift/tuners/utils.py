@@ -137,11 +137,13 @@ class SwiftOutput:
             Examples:
                 >>> def mark_trainable_callback(model):
                 >>>     mark_lora_as_trainable(model, config.bias)
+        optimizer_group_callback (`FunctionType`): A callback returned the param group cared by the tuner.
     """
 
     config: SwiftConfig = None
     state_dict_callback: FunctionType = None
     mark_trainable_callback: FunctionType = None
+    optimizer_group_callback: FunctionType = None
 
 
 class ActivationMixin:

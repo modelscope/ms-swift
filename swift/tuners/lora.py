@@ -49,6 +49,11 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
+    lr_ratio: float = field(default=2.0**4, metadata={
+            'help':
+            'The lora learning_rate ratio of lora_A to lora_B'
+        })
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
@@ -80,8 +85,24 @@ class LoRA(SwiftAdapter):
         def mark_trainable_callback(model):
             mark_lora_as_trainable(model, adapter_name, config.bias)
 
+        def optimizer_group_callback(model, **defaults):
+            if config.lr_ratio is not None:
+                params = []
+                names = set()
+                for name, param in model.named_parameters():
+                    if adapter_name in name and ('lora_B' in name or 'lora_embedding_B' in name):
+                        params.append(param)
+                        names.add(name)
+                if params:
+                    assert 'lr' in defaults
+                    return names, {
+                        'params': params,
+                        'lr': defaults['lr'] * config.lr_ratio
+                    }
+            return None, None
+
         return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+                           mark_trainable_callback, optimizer_group_callback)
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module,

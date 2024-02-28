@@ -14,6 +14,7 @@ import torch
 from peft.utils import CONFIG_NAME
 from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
+from transformers import Trainer
 
 from swift import LoraConfig, SwiftTuners
 from swift.hub.snapshot_download import snapshot_download
@@ -256,6 +257,36 @@ class SwiftModel(nn.Module):
             filename = os.path.join(path, WEIGHTS_NAME)
             return torch.load(filename, map_location=device)
         return None
+
+    def create_optimizer_param_groups(self, **defaults):
+        all_param_names = set()
+        param_groups = []
+        for output in self.adapters.values():
+            if output.optimizer_group_callback:
+                param_names, param_group = output.optimizer_group_callback(self.model, **defaults)
+                if param_names and all_param_names & param_names:
+                    raise ValueError(f'Cannot set one parameter to different param groups')
+                if param_names and param_group:
+                    all_param_names.update(param_names)
+                    param_groups.append(param_group)
+
+        decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
+        param_groups.extend([
+            {
+                "params": [
+                    p for n, p in self.model.named_parameters() if (n in decay_parameters and n not in all_param_names and p.requires_grad)
+                ],
+                "weight_decay": self.args.weight_decay,
+            },
+            {
+                "params": [
+                    p for n, p in self.model.named_parameters() if (n not in decay_parameters and n not in all_param_names and p.requires_grad)
+                ],
+                "weight_decay": 0.0,
+            },
+        ])
+        return param_groups
+
 
     @classmethod
     def from_pretrained(cls,
