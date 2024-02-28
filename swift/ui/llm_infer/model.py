@@ -116,9 +116,7 @@ class Model(BaseUI):
                     TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
                     ['template'], 'default_system', None)
                 template = MODEL_MAPPING[choice]['template']
-            return model_id_or_path, default_system, template, gr.update(
-                interactive=choice == base_tab.locale('checkpoint',
-                                                      cls.lang)['value'])
+            return model_id_or_path, default_system, template
 
         def update_model_id_or_path(model_type, path, system, template_type):
             if not path or not os.path.exists(path):
@@ -143,7 +141,7 @@ class Model(BaseUI):
             update_input_model,
             inputs=[model_type],
             outputs=[
-                model_id_or_path, system, template_type, model_id_or_path
+                model_id_or_path, system, template_type
             ])
 
         model_id_or_path.change(

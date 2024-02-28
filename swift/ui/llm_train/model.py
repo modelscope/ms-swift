@@ -65,7 +65,7 @@ class Model(BaseUI):
                 elem_id='model_id_or_path',
                 lines=1,
                 scale=20,
-                interactive=False)
+                interactive=True)
             template_type = gr.Dropdown(
                 elem_id='template_type',
                 choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
