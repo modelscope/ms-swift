@@ -257,12 +257,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
 class _GenerationConfig(GenerationConfig):
 
     def __repr__(self) -> str:
-        parameters = inspect.signature(
-            generation_config.to_json_string).parameters
+        parameters = inspect.signature(self.to_json_string).parameters
         kwargs = {}
         if 'ignore_metadata' in parameters:
             kwargs['ignore_metadata'] = True
-        gen_kwargs = json.loads(generation_config.to_json_string(**kwargs))
+        gen_kwargs = json.loads(self.to_json_string(**kwargs))
         gen_kwargs.pop('transformers_version', None)
         return f'GenerationConfig({gen_kwargs})'
 
