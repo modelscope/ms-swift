@@ -107,7 +107,7 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
 
 def llm_app_ui(args: AppUIArguments) -> None:
     args.eval_human = True
-    if args.merge_lora_and_save:
+    if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)

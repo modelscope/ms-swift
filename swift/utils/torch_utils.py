@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import os
-import random
 import socket
 from bisect import bisect_right
 from typing import List, Optional, Tuple
@@ -30,24 +29,6 @@ def _find_free_port() -> str:
     sock.close()
     # NOTE: there is still a chance the port could be taken by other processes.
     return port
-
-
-def seed_everything(seed: Optional[int] = None,
-                    gpu_deterministic: bool = False) -> int:
-    if seed is None:
-        seed_max = np.iinfo(np.int32).max
-        seed = random.randint(0, seed_max)
-
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    logger.info(f'Global seed set to {seed}')
-    if gpu_deterministic:
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        logger.info(f'Setting deterministic: {True}, benchmark: {False}')
-    return seed
 
 
 def get_model_info(model: Module, name: Optional[str] = None) -> str:

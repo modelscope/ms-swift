@@ -48,6 +48,7 @@ logger = get_logger()
 class DatasetName:
     # general
     ms_bench = 'ms-bench'  # used for mixed training
+    ms_bench_mini = 'ms-bench-mini'
     alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
     multi_alpaca_all = 'multi-alpaca-all'
@@ -122,8 +123,20 @@ class DatasetName:
     aishell1_mini_zh = 'aishell1-mini-zh'
 
     # dpo/hfrl dataset
-    hh_rlhf = 'hh-rlhf'
+    hh_rlhf_harmless_base = 'hh-rlhf-harmless-base'
+    hh_rlhf_helpful_base = 'hh-rlhf-helpful-base'
+    hh_rlhf_helpful_online = 'hh-rlhf-helpful-online'
+    hh_rlhf_helpful_rejection_sampled = 'hh-rlhf-helpful-rejection-sampled'
+    hh_rlhf_red_team_attempts = 'hh-rlhf-red-team-attempts'
+    hh_rlhf_cn = 'hh-rlhf-cn'
+    hh_rlhf_cn_harmless_base_cn = 'hh-rlhf-cn-harmless-base-cn'
+    hh_rlhf_cn_helpful_base_cn = 'hh-rlhf-cn-helpful-base-cn'
+    hh_rlhf_cn_harmless_base_en = 'hh-rlhf-cn-harmless-base-en'
+    hh_rlhf_cn_helpful_base_en = 'hh-rlhf-cn-helpful-base-en'
     stack_exchange_paired = 'stack-exchange-paired'
+
+    # for awq
+    pileval = 'pileval'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -430,11 +443,35 @@ def _repair_agent_conversations(conversations: str,
     return conversations
 
 
+def _repair_ms_bench(conversations: str) -> Dict[str, str]:
+    conversations = ast.literal_eval(conversations)
+    default_system = 'You are a helpful assistant.'
+    if conversations[0]['from'] == 'system' and conversations[0][
+            'value'] == default_system:
+        conversations.pop(0)
+    # skip MOSS
+    for c in conversations:
+        value = c['value'].lower()
+        if 'moss' in value or 'human:' in value or 'assistant:' in value:
+            return
+    return conversations
+
+
 register_dataset(
     DatasetName.ms_bench,
     'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(error_strategy='delete'),
+    ConversationsPreprocessor(
+        repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
+    tags=['chat', 'general', 'multi-round', '🔥'])
+
+register_dataset(
+    DatasetName.ms_bench_mini,
+    'iic/ms_bench', ['train'], [],
+    ConversationsPreprocessor(
+        repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    get_dataset_from_repo,
+    function_kwargs={'train_dataset_sample': 20000},
     tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
@@ -626,16 +663,170 @@ def process_hh_rlhf(dataset):
             'rejected_response': sample['rejected'][len(prompt):],
         }
 
-    return dataset.map(reorganize_row_simple)
+    def reorganize_row(row):
+        import re
+        chosen = row['chosen'].strip()
+        rejected = row['rejected'].strip()
+        parts_chosen = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
+        ]
+        parts_rejected = [
+            s.strip()
+            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
+        ]
+        if parts_chosen[0].startswith('Human:'):
+            assert parts_rejected[0].startswith('Human:')
+            parts_chosen[0] = parts_chosen[0][6:].strip()
+            parts_rejected[0] = parts_rejected[0][6:].strip()
+        history = []
+        idx, s1, s2 = None, None, None
+        for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
+            if s1 == s2:
+                if idx % 2 == 0:
+                    history.append([s1, None])
+                else:
+                    history[-1][-1] = s1
+            else:
+                break
+
+        if idx % 2 == 0:
+            return {
+                'query': None,
+                'response': None,
+                'rejected_response': None,
+                'history': None,
+            }
+        query = history[-1][0]
+        history = history[:-1]
+        response = s1
+        rejected_response = s2
+        return {
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+            'history': history,
+        }
+
+    return dataset.map(reorganize_row).filter(
+        lambda row: row['query'] is not None)
 
 
 register_dataset(
-    DatasetName.hh_rlhf,
+    DatasetName.hh_rlhf_harmless_base,
     'AI-ModelScope/hh-rlhf', [('harmless-base', 'train')],
     [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise', '🔥'])
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_helpful_base,
+    'AI-ModelScope/hh-rlhf', [('helpful-base', 'train')],
+    [('helpful-base', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_helpful_online,
+    'AI-ModelScope/hh-rlhf', [('helpful-online', 'train')],
+    [('helpful-online', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_helpful_rejection_sampled,
+    'AI-ModelScope/hh-rlhf', [('helpful-rejection-sampled', 'train')],
+    [('helpful-rejection-sampled', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_red_team_attempts,
+    'AI-ModelScope/hh-rlhf', [('red-team-attempts', 'train')],
+    [('red-team-attempts', 'test')],
+    process_hh_rlhf,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+
+def process_hh_rlhf_cn(dataset):
+
+    def reorganize_row(row):
+        history = []
+        if isinstance(row['context'], str):
+            row['context'] = ast.literal_eval(row['context'])
+        if isinstance(row['chosen'], str):
+            row['chosen'] = ast.literal_eval(row['chosen'])
+        if isinstance(row['rejected'], str):
+            row['rejected'] = ast.literal_eval(row['rejected'])
+        for idx, h in enumerate(row['context']):
+            if idx % 2 == 0 and h['role'] != 'human':
+                return {'query': None}
+            if idx % 2 != 0 and h['role'] != 'assistant':
+                return {'query': None}
+            if idx % 2 == 0:
+                history.append([h['text'], None])
+            else:
+                history[-1][-1] = h['text']
+        if history[-1][-1] is not None:
+            return {'query': None}
+        query = history[-1][0]
+        history = history[:-1]
+        response = row['chosen']['text']
+        rejected_response = row['rejected']['text']
+        return {
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+            'history': history,
+        }
+
+    return dataset.map(reorganize_row).filter(
+        lambda row: row['query'] is not None)
+
+
+register_dataset(
+    DatasetName.hh_rlhf_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('hh_rlhf', 'train')], [('hh_rlhf', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_harmless_base_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')],
+    [('harmless_base_cn', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_harmless_base_en,
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_en', 'train')],
+    [('harmless_base_en', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_helpful_base_cn,
+    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_cn', 'train')],
+    [('helpful_base_cn', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.hh_rlhf_cn_helpful_base_en,
+    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')],
+    [('helpful_base_en', 'test')],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.medical_zh,
@@ -810,7 +1001,7 @@ register_dataset(
         'history': '_'
     }),
     get_dataset_from_repo,
-    tags=['chat', 'law', '🔥'])
+    tags=['chat', 'law'])
 
 
 def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
@@ -837,7 +1028,7 @@ register_dataset(
     None,
     _preprocess_tigerbot_law,
     get_dataset_from_repo,
-    tags=['text-generation', 'law', 'pretrained', '🔥'])
+    tags=['text-generation', 'law', 'pretrained'])
 
 
 def _preprocess_leetcode_python(dataset: HfDataset) -> HfDataset:
@@ -1005,19 +1196,37 @@ register_dataset(
     tags=['chat', 'multilingual', 'general', 'multi-round'])
 
 register_dataset(
-    DatasetName.disc_med_sft_zh, 'AI-ModelScope/DISC-Med-SFT', ['train'], None,
+    DatasetName.disc_med_sft_zh,
+    'AI-ModelScope/DISC-Med-SFT', ['train'],
+    None,
     ConversationsPreprocessor(
         conversations_key='conversation',
         from_key='role',
         value_key='content',
-        error_strategy='delete'), get_dataset_from_repo)
+        error_strategy='delete'),
+    get_dataset_from_repo,
+    tag=['chat', 'medical', '🔥'])
 
 register_dataset(
-    DatasetName.disc_law_sft_zh, 'AI-ModelScope/DISC-Law-SFT', ['train'], None,
+    DatasetName.disc_law_sft_zh,
+    'AI-ModelScope/DISC-Law-SFT', ['train'],
+    None,
     RenameColumnsPreprocessor({
         'input': 'query',
         'output': 'response'
-    }), get_dataset_from_repo)
+    }),
+    get_dataset_from_repo,
+    tag=['chat', 'law', '🔥'])
+
+register_dataset(
+    DatasetName.pileval,
+    'huangjintao/pile-val-backup', ['train'],
+    None,
+    RenameColumnsPreprocessor({
+        'text': 'response',
+    }),
+    get_dataset_from_repo,
+    tag=['text-generation', 'awq'])
 
 
 def add_self_cognition_dataset(
@@ -1194,7 +1403,7 @@ def load_dataset_from_local(
             df = transform_jsonl_to_df(obj_list)
         else:
             raise ValueError(
-                'The custom dataset only supports CSV format or JSONL format. You can refer to the link '
+                'The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
                 '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))

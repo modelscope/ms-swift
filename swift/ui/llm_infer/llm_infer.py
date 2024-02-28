@@ -186,7 +186,9 @@ class LLMInfer(BaseUI):
             if not os.path.exists(model_dir):
                 model_dir = snapshot_download(model_dir)
             kwargs['ckpt_dir'] = model_dir
-        if 'ckpt_dir' in kwargs or 'model_id_or_path' in kwargs:
+        if 'ckpt_dir' in kwargs or (
+                'model_id_or_path' in kwargs
+                and not os.path.exists(kwargs['model_id_or_path'])):
             kwargs.pop('model_type', None)
 
         devices = other_kwargs['gpu_id']

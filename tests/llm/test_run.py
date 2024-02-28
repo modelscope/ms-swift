@@ -5,13 +5,16 @@ if __name__ == '__main__':
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from functools import partial
 from typing import Any, Dict, List
 
 import torch
+import transformers
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
+from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
@@ -44,6 +47,9 @@ class TestRun(unittest.TestCase):
             quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
+            if quantization_bit == 4 and version.parse(
+                    transformers.__version__) >= version.parse('4.38'):
+                continue
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False
@@ -244,6 +250,9 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
+        quantization_bit = 4
+        if version.parse(transformers.__version__) >= version.parse('4.38'):
+            quantization_bit = 0
         torch.cuda.empty_cache()
         output = sft_main(
             SftArguments(
@@ -252,7 +261,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=100,
                 lora_target_modules='ALL',
                 eval_steps=5,
-                quantization_bit=4))
+                quantization_bit=quantization_bit))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(
@@ -315,7 +324,7 @@ class TestRun(unittest.TestCase):
             DPOArguments(
                 model_type=ModelType.qwen_1_8b_chat,
                 sft_type='full',
-                dataset=DatasetName.hh_rlhf,
+                dataset=DatasetName.hh_rlhf_cn_harmless_base_cn,
                 train_dataset_sample=100,
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
@@ -337,6 +346,7 @@ class TestRun(unittest.TestCase):
         os.environ['PAI_OUTPUT_TENSORBOARD'] = tensorboard_dir
         sft_json = os.path.join(folder, 'sft.json')
         infer_json = os.path.join(folder, 'infer.json')
+        torch.cuda.empty_cache()
         output = sft_main([sft_json])
         print()
         infer_args = {
@@ -347,6 +357,7 @@ class TestRun(unittest.TestCase):
         import json
         with open(infer_json, 'w') as f:
             json.dump(infer_args, f, ensure_ascii=False, indent=4)
+        torch.cuda.empty_cache()
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
 

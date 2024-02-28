@@ -51,6 +51,7 @@ class TemplateType:
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
     openbmb = 'openbmb'
+    gemma = 'gemma'
     # compatibility. (Deprecated)
     chatml = 'chatml'
 
@@ -960,6 +961,13 @@ register_template(
 register_template(
     TemplateType.openbmb,
     Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
+
+gemma_template = Template(
+    ['<bos>'],
+    ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
+    ['<end_of_turn>\n'], ['<end_of_turn>'], None,
+    ['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'])
+register_template(TemplateType.gemma, gemma_template)
 
 
 def get_template(

@@ -6,14 +6,14 @@
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可，如果是显存<=24G的GPU最少需要双卡环境。由于人类对齐训练在一张卡上加载两个模型，因此比微调的显存多占用一个推理模型的显存使用量。
 ```bash
-# 设置pip全局镜像
+# 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
-# 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
@@ -38,14 +38,14 @@ torchrun \
     --nproc_per_node=$nproc_per_node \
     --master_port 29500 \
     llm_dpo.py \
-    --model_type  mistral-7b \
-    --ref_model_type  mistral-7b \
+    --model_type  yi-6b-chat \
+    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  hh-rlhf  \
+    --dataset  hh-rlhf-cn-harmless-base-cn  \
     --train_dataset_sample  -1  \
     --truncation_strategy  truncation_left  \
     --val_dataset_sample  2000  \
@@ -84,7 +84,7 @@ cd examples/pytorch/llm
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
-- 如果你需要断网进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
+- 如果你需要断网进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 
 ```bash

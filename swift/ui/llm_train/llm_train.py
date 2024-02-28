@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+from functools import partial
 from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
@@ -231,12 +232,21 @@ class LLMTrain(BaseUI):
                             cls.element('running_cmd'),
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
+                            cls.element('running_tasks'),
                         ],
                         queue=True)
+                base_tab.element('running_tasks').change(
+                    partial(Runtime.task_changed, base_tab=base_tab),
+                    [base_tab.element('running_tasks')],
+                    [
+                        value for value in base_tab.elements().values()
+                        if not isinstance(value, (Tab, Accordion))
+                    ] + [cls.element('log')] + Runtime.all_plots,
+                    cancels=Runtime.log_event)
 
     @classmethod
     def update_runtime(cls):
-        return gr.update(visible=True), gr.update(visible=True)
+        return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
     def train(cls, *args):
@@ -250,6 +260,7 @@ class LLMTrain(BaseUI):
             key for key, value in cls.elements().items()
             if not isinstance(value, (Tab, Accordion))
         ]
+        model_type = None
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(
@@ -272,6 +283,12 @@ class LLMTrain(BaseUI):
                 other_kwargs[key] = value
             if key == 'more_params' and value:
                 more_params = json.loads(value)
+
+            if key == 'model_type':
+                model_type = value
+
+        if os.path.exists(kwargs['model_id_or_path']):
+            kwargs['model_type'] = model_type
 
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
@@ -341,4 +358,5 @@ class LLMTrain(BaseUI):
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
-        return run_command, sft_args.logging_dir, gr.update(visible=True)
+        return run_command, sft_args.logging_dir, gr.update(
+            open=True), Runtime.refresh_tasks(sft_args.output_dir)

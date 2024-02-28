@@ -15,7 +15,6 @@ import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
-from requests.exceptions import HTTPError
 from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
@@ -30,11 +29,10 @@ from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
-from swift.hub import HubApi, ModelScopeConfig, Repository
+from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.hub.constants import ModelVisibility
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, get_logger
+from swift.utils import check_json_format, create_ms_repo, get_logger
 from swift.utils.constants import Invoke
 from .utils import (can_return_loss, find_labels, get_function,
                     is_instance_of_ms_model)
@@ -115,43 +113,20 @@ class PushToMsHubMixin:
 
     def init_hf_repo(self) -> None:
         """init ms repo. Compatible with transformers>=4.34"""
-        self.init_git_repo()
+        self.init_git_repo(at_init=True)
 
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
             return
-        # Make sure the repo exists.
-        api = HubApi()
-        hub_token = self.args.hub_token
-        if hub_token is None:
-            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if hub_token is not None:
-            api.login(hub_token)
-
-        hub_model_id = self.args.hub_model_id
-        assert hub_model_id is not None, 'Please enter a valid hub_model_id'
-        if '/' not in hub_model_id:
-            user_name = ModelScopeConfig.get_user_info()[0]
-            assert isinstance(user_name, str)
-            hub_model_id = f'{user_name}/{hub_model_id}'
-            logger.info(
-                f"'/' not in hub_model_id, setting hub_model_id: {hub_model_id}"
-            )
-            self.args.hub_model_id = hub_model_id
-
-        visibility = ModelVisibility.PRIVATE if self.args.hub_private_repo else ModelVisibility.PUBLIC
-        try:
-            api.create_model(hub_model_id, visibility)
-        except HTTPError:
-            # The remote repository has been created
-            pass
-
         if (os.path.exists(self.args.output_dir)
                 and os.listdir(self.args.output_dir)
                 and self.args.overwrite_output_dir and at_init):
             # directory not empty.
             shutil.rmtree(self.args.output_dir)
-        self.repo = Repository(self.args.output_dir, hub_model_id)
+        self.args.hub_model_id = create_ms_repo(self.args.hub_model_id,
+                                                self.args.hub_token,
+                                                self.args.hub_private_repo)
+        self.repo = Repository(self.args.output_dir, self.args.hub_model_id)
         self._add_patterns_to_gitattributes(['*.safetensors', '*.bin', '*.pt'])
         self.repo.push_to_hub = MethodType(_push_to_hub, self.repo)
         self.repo.local_dir = self.repo.model_dir  # hf compatibility
@@ -572,14 +547,14 @@ class SwiftMixin:
                 state_dict = SwiftModel.load_state_file(
                     self.state.best_model_checkpoint, device='cpu')
                 if state_dict is not None:
-                    self.model.load_state_dict(state_dict, strict=False)
+                    self.model.load_state_dict(
+                        state_dict, strict=False, adapter_name='default')
             else:
                 super()._load_best_model()
         except ValueError as e:
             logger.warning(e)
 
-    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,
-                                 ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
             self.control.should_log = False
             logs: Dict[str, float] = {}
@@ -595,11 +570,15 @@ class SwiftMixin:
                 logs[k] = round(
                     v_scalar /
                     (self.state.global_step - self._globalstep_last_logged), 8)
+            if version.parse(
+                    transformers.__version__) >= version.parse('4.38'):
+                grad_norm = args[0]
+                if grad_norm is not None:
+                    logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
 
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
             self.log(logs)
-        super()._maybe_log_save_evaluate(tr_loss, model, trial, epoch,
-                                         ignore_keys_for_eval)
+        super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)

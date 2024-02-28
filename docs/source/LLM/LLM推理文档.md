@@ -9,7 +9,7 @@
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
-# 设置pip全局镜像
+# 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
@@ -21,7 +21,7 @@ pip install -e .[llm]
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq -U
 
-# 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
