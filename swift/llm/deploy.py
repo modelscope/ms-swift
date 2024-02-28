@@ -286,6 +286,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
             kwargs[key] = new_value
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False
+        kwargs['temperature'] = 1
+        kwargs['top_p'] = 1
+        kwargs['top_k'] = 50
     else:
         kwargs['do_sample'] = True
     generation_config = GenerationConfig(**kwargs)
