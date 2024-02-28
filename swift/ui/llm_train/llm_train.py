@@ -260,6 +260,7 @@ class LLMTrain(BaseUI):
             key for key, value in cls.elements().items()
             if not isinstance(value, (Tab, Accordion))
         ]
+        model_type = None
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(
@@ -282,6 +283,12 @@ class LLMTrain(BaseUI):
                 other_kwargs[key] = value
             if key == 'more_params' and value:
                 more_params = json.loads(value)
+
+            if key == 'model_type':
+                model_type = value
+
+        if os.path.exists(kwargs['model_id_or_path']):
+            kwargs['model_type'] = model_type
 
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
