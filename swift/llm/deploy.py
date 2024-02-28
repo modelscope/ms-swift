@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import logging
 import time
 from dataclasses import asdict
@@ -309,7 +310,14 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
     else:
         kwargs['do_sample'] = True
     generation_config = GenerationConfig(**kwargs)
-    request_info['generation_config'] = kwargs
+
+    parameters = inspect.signature(generation_config.to_json_string).parameters
+    kwargs = {}
+    if 'ignore_metadata' in parameters:
+        kwargs['ignore_metadata'] = True
+    gen_kwargs = json.loads(generation_config.to_json_string(**kwargs))
+    gen_kwargs.pop('transformers_version', None)
+    request_info['generation_config'] = f'GenerationConfig({gen_kwargs})'
     request_info.update({
         'seed': request.seed,
         'stop': request.stop,
