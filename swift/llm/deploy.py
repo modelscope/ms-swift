@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import logging
 import time
 from dataclasses import asdict
 from http import HTTPStatus
@@ -9,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
 
-from swift.utils import get_main, seed_everything
+from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import ChatCompletionResponse  # noqa
 from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
@@ -21,6 +22,8 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     Model, ModelList, UsageInfo, VllmGenerationConfig,
                     inference, inference_stream, messages_to_history,
                     prepare_vllm_engine_template, random_uuid)
+
+logger = get_logger()
 
 app = FastAPI()
 _args = None
@@ -90,7 +93,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
 
     if request.seed is not None:
-        seed_everything(request.seed)
+        seed_everything(request.seed, verbose=False)
+    _request = {'model': request.model}
     if isinstance(request, ChatCompletionRequest):
         if is_generation_template(template.template_type):
             return create_error_response(
@@ -101,6 +105,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         example = messages_to_history(request.messages)
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
+        _request['messages'] = request.messages
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
@@ -108,9 +113,12 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
-        input_ids = template.encode({'query': request.prompt})[0]['input_ids']
+        example = {'query': request.prompt}
+        input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
-
+        _request['prompt'] = request.prompt
+    request_info = {'request_id': request_id}
+    request_info.update(_request)
     error_msg = await check_length(request, input_ids)
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
@@ -137,6 +145,9 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
     created_time = int(time.time())
+    request_info['generation_config'] = generation_config
+    request_info.update({'seed': request.seed, 'stream': request.stream})
+    logger.info(request_info)
     result_generator = llm_engine.generate(None, generation_config, request_id,
                                            input_ids)
 
@@ -165,7 +176,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
-            return ChatCompletionResponse(
+            response = ChatCompletionResponse(
                 model=request.model,
                 choices=choices,
                 usage=usage_info,
@@ -180,12 +191,13 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
-            return CompletionResponse(
+            response = CompletionResponse(
                 model=request.model,
                 choices=choices,
                 usage=usage_info,
                 id=request_id,
                 created=created_time)
+        return response
 
     async def _generate_stream():
         print_idx_list = [0] * request.n
@@ -249,7 +261,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
 
     if request.seed is not None:
-        seed_everything(request.seed)
+        seed_everything(request.seed, verbose=False)
+    _request = {'model': request.model}
     if isinstance(request, ChatCompletionRequest):
         if is_generation_template(template.template_type):
             return create_error_response(
@@ -260,6 +273,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         example = messages_to_history(request.messages)
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
+        _request['messages'] = request.messages
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
@@ -270,6 +284,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         example = {'query': request.prompt}
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
+        _request['prompt'] = request.prompt
+    request_info = {'request_id': request_id}
+    request_info.update(_request)
 
     error_msg = await check_length(request, input_ids)
     if error_msg is not None:
@@ -292,6 +309,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
     else:
         kwargs['do_sample'] = True
     generation_config = GenerationConfig(**kwargs)
+    request_info['generation_config'] = kwargs
+    request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
+    logger.info(request_info)
     created_time = int(time.time())
 
     async def _generate_full():
@@ -318,7 +338,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                     finish_reason=None,
                 )
             ]
-            return ChatCompletionResponse(
+            response = ChatCompletionResponse(
                 model=request.model,
                 choices=choices,
                 usage=usage_info,
@@ -332,12 +352,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                     finish_reason=None,
                 )
             ]
-            return CompletionResponse(
+            response = CompletionResponse(
                 model=request.model,
                 choices=choices,
                 usage=usage_info,
                 id=request_id,
                 created=created_time)
+        return response
 
     def _generate_stream():
         generation_info = {}
@@ -420,6 +441,9 @@ async def create_completion(request: CompletionRequest,
 
 
 def llm_deploy(args: DeployArguments) -> None:
+    logger_format = logging.Formatter(
+        '%(levelname)s: %(asctime)s %(filename)s:%(lineno)d] %(message)s')
+    logger.handlers[0].setFormatter(logger_format)
     import uvicorn
     global llm_engine, model, template, _args
     _args = args

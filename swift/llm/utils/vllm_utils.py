@@ -55,6 +55,7 @@ def get_vllm_engine(model_type: str,
     if use_async:
         engine_args_cls = AsyncEngineArgs
         llm_engine_cls = AsyncLLMEngine
+        engine_kwargs['disable_log_requests'] = True
     else:
         engine_args_cls = EngineArgs
         llm_engine_cls = LLMEngine
