@@ -3,10 +3,11 @@ import time
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
-from modelscope import GenerationConfig
+
 import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from transformers import GenerationConfig
 
 from swift.utils import get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
@@ -18,8 +19,8 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     CompletionResponseChoice, CompletionResponseStreamChoice,
                     CompletionStreamResponse, DeltaMessage, DeployArguments,
                     Model, ModelList, UsageInfo, VllmGenerationConfig,
-                    messages_to_history, prepare_vllm_engine_template,
-                    random_uuid, inference, inference_stream)
+                    inference, inference_stream, messages_to_history,
+                    prepare_vllm_engine_template, random_uuid)
 
 app = FastAPI()
 _args = None
@@ -73,7 +74,6 @@ async def check_model(
         return f'`{request.model}` is not in the model_list: `{model_type_list}`.'
 
 
-    
 def is_generation_template(template_type: str) -> bool:
     if 'generation' in template_type:
         return True
@@ -242,7 +242,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
 
 async def inference_pt_async(request: Union[ChatCompletionRequest,
                                             CompletionRequest],
-                               raw_request: Request):
+                             raw_request: Request):
     global model, template
     error_msg = await check_model(request)
     if error_msg is not None:
@@ -285,13 +285,17 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         else:
             kwargs[key] = new_value
     generation_config = GenerationConfig(**kwargs)
-    tokenizer = template.tokenizer
     created_time = int(time.time())
 
     async def _generate_full():
         generation_info = {}
-        response, _ = inference(model, template, **example, stop_words=request.stop, 
-                                generation_info=generation_info)
+        response, _ = inference(
+            model,
+            template,
+            **example,
+            stop_words=request.stop,
+            generation_config=generation_config,
+            generation_info=generation_info)
         num_prompt_tokens = generation_info['num_prompt_tokens']
         num_generated_tokens = generation_info['num_generated_tokens']
         usage_info = UsageInfo(
@@ -300,11 +304,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
             total_tokens=num_prompt_tokens + num_generated_tokens,
         )
         if isinstance(request, ChatCompletionRequest):
-            choices = [ChatCompletionResponseChoice(
+            choices = [
+                ChatCompletionResponseChoice(
                     index=0,
                     message=ChatMessage(role='assistant', content=response),
                     finish_reason=None,
-                )]
+                )
+            ]
             return ChatCompletionResponse(
                 model=request.model,
                 choices=choices,
@@ -312,11 +318,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                 id=request_id,
                 created=created_time)
         else:
-            choices = [CompletionResponseChoice(
+            choices = [
+                CompletionResponseChoice(
                     index=0,
                     text=response,
                     finish_reason=None,
-                )]
+                )
+            ]
             return CompletionResponse(
                 model=request.model,
                 choices=choices,
@@ -326,11 +334,16 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
 
     async def _generate_stream():
         generation_info = {}
-        gen = inference_stream(model, template, **example, stop_words=request.stop, 
-                                generation_info=generation_info)
+        gen = inference_stream(
+            model,
+            template,
+            **example,
+            stop_words=request.stop,
+            generation_config=generation_config,
+            generation_info=generation_info)
 
         print_idx = 0
-        async for response, _ in gen:
+        for response, _ in gen:
             num_prompt_tokens = generation_info['num_prompt_tokens']
             num_generated_tokens = generation_info['num_generated_tokens']
             usage_info = UsageInfo(
@@ -341,11 +354,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
             if isinstance(request, ChatCompletionRequest):
                 delta_text = response[print_idx:]
                 print_idx = len(response)
-                choices = [ChatCompletionResponseStreamChoice(
+                choices = [
+                    ChatCompletionResponseStreamChoice(
                         index=0,
                         delta=DeltaMessage(
                             role='assistant', content=delta_text),
-                        finish_reason=None)]
+                        finish_reason=None)
+                ]
                 resp = ChatCompletionStreamResponse(
                     model=request.model,
                     choices=choices,
@@ -355,10 +370,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
             else:
                 delta_text = response[print_idx:]
                 print_idx = len(response)
-                choices = [CompletionResponseStreamChoice(
-                        index=0,
-                        text=delta_text,
-                        finish_reason=None)]
+                choices = [
+                    CompletionResponseStreamChoice(
+                        index=0, text=delta_text, finish_reason=None)
+                ]
                 resp = CompletionStreamResponse(
                     model=request.model,
                     choices=choices,

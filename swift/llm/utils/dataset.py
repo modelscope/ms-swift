@@ -1403,7 +1403,7 @@ def load_dataset_from_local(
             df = transform_jsonl_to_df(obj_list)
         else:
             raise ValueError(
-                'The custom dataset only supports CSV format or JSONL format. You can refer to the link '
+                'The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
                 '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
                 'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
