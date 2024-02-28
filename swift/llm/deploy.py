@@ -310,7 +310,11 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         kwargs['do_sample'] = True
     generation_config = GenerationConfig(**kwargs)
     request_info['generation_config'] = kwargs
-    request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
+    request_info.update({
+        'seed': request.seed,
+        'stop': request.stop,
+        'stream': request.stream
+    })
     logger.info(request_info)
     created_time = int(time.time())
 
