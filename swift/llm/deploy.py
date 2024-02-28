@@ -119,11 +119,14 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = request.prompt
+
     request_info = {'request_id': request_id}
     request_info.update(_request)
+
     error_msg = await check_length(request, input_ids)
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+
     kwargs = {'max_new_tokens': request.max_tokens}
     for key in [
             'n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty',
@@ -136,6 +139,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             kwargs[key] = getattr(llm_engine.generation_config, key)
         else:
             kwargs[key] = new_value
+
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search is True and request.stream is True:
         error_msg = 'Streaming generation does not support beam search.'
@@ -146,10 +150,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     if isinstance(template.suffix[-1],
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
-    created_time = int(time.time())
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
     logger.info(request_info)
+
+    created_time = int(time.time())
     result_generator = llm_engine.generate(None, generation_config, request_id,
                                            input_ids)
 
@@ -299,12 +304,14 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = request.prompt
+
     request_info = {'request_id': request_id}
     request_info.update(_request)
 
     error_msg = await check_length(request, input_ids)
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+
     kwargs = {'max_new_tokens': request.max_tokens}
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
     for key in ['length_penalty', 'num_beams']:
@@ -325,13 +332,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
 
     generation_config = _GenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
-
     request_info.update({
         'seed': request.seed,
         'stop': request.stop,
         'stream': request.stream
     })
     logger.info(request_info)
+
     created_time = int(time.time())
 
     async def _generate_full():
