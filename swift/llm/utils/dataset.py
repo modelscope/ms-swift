@@ -461,11 +461,11 @@ def _repair_ms_bench(conversations: str) -> Dict[str, str]:
 def long_alpaca_preprocessor(dataset: HfDataset):
     def map_row(row):
         response = row['response']
-        if response.startswith('Answer:'):
+        if response and response.startswith('Answer:'):
             response = response[len('Answer:') + 1:].strip()
-        return {'response': response}
+        return {'query': row['query'], 'response': response}
     return dataset.rename_columns({'instruction': 'query', 'output': 'response'})\
-        .remove_columns(['input', 'file']).map(map_row)
+        .remove_columns(['input', 'file']).map(map_row).filter(lambda row: row['response'] is not None)
 
 
 register_dataset(
