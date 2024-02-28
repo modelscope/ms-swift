@@ -26,6 +26,7 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.utils import is_dist, is_local_master
 from .template import TemplateType
+from .utils import get_max_model_len
 
 logger = get_logger()
 
@@ -64,7 +65,7 @@ class ModelType:
     qwen1half_7b_chat = 'qwen1half-7b-chat'
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
-    # qwen1.5 autogptq
+    # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
     qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
     qwen1half_4b_chat_int4 = 'qwen1half-4b-chat-int4'
@@ -419,13 +420,15 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'ZhipuAI/cogagent-chat',
     LoRATM.cogagent,
     TemplateType.cogagent_chat,
-    support_gradient_checkpointing=False)
+    support_gradient_checkpointing=False,
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.cogagent_18b_instruct,
     'ZhipuAI/cogagent-vqa',
     LoRATM.cogagent,
     TemplateType.cogagent_instruct,
-    support_gradient_checkpointing=False)
+    support_gradient_checkpointing=False,
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_cogagent(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -652,7 +655,8 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     LoRATM.chatglm,
     TemplateType.codefuse,
     requires=['transformers<4.34'],
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.chatglm3_6b_32k,
     'ZhipuAI/chatglm3-6b-32k',
@@ -689,7 +693,8 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
     requires=['transformers<4.34'],
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 def get_model_tokenizer_chatglm(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -766,21 +771,24 @@ def get_model_tokenizer_chatglm(model_dir: str,
     LoRATM.llama2,
     TemplateType.deepseek,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.deepseek_math_7b_chat,
     'deepseek-ai/deepseek-math-7b-rl',
     LoRATM.llama2,
     TemplateType.deepseek,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.deepseek_math_7b,
     'deepseek-ai/deepseek-math-7b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.qwen1half_0_5b,
     'qwen/Qwen1.5-0.5B',
@@ -835,21 +843,24 @@ def get_model_tokenizer_chatglm(model_dir: str,
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.deepseek_coder_6_7b,
     'deepseek-ai/deepseek-coder-6.7b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.deepseek_coder_33b,
     'deepseek-ai/deepseek-coder-33b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.deepseek_coder_1_3b_instruct,
     'deepseek-ai/deepseek-coder-1.3b-instruct',
@@ -857,7 +868,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.deepseek_coder,
     eos_token='<|EOT|>',
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.deepseek_coder_6_7b_instruct,
     'deepseek-ai/deepseek-coder-6.7b-instruct',
@@ -865,7 +877,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.deepseek_coder,
     eos_token='<|EOT|>',
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.deepseek_coder_33b_instruct,
     'deepseek-ai/deepseek-coder-33b-instruct',
@@ -873,7 +886,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.deepseek_coder,
     eos_token='<|EOT|>',
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.openbuddy_deepseek_67b_chat,
     'OpenBuddy/openbuddy-deepseek-67b-v15.2',
@@ -1171,8 +1185,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
     'qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4',
@@ -1191,8 +1204,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_4b_chat_int4,
     'qwen/Qwen1.5-4B-Chat-GPTQ-Int4',
@@ -1211,8 +1223,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_7b_chat_int4,
     'qwen/Qwen1.5-7B-Chat-GPTQ-Int4',
@@ -1231,8 +1242,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_14b_chat_int4,
     'qwen/Qwen1.5-14B-Chat-GPTQ-Int4',
@@ -1251,8 +1261,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
     'qwen/Qwen1.5-72B-Chat-GPTQ-Int4',
@@ -1271,8 +1280,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 def get_model_tokenizer_qwen1half_intx(model_dir: str,
                                        torch_dtype: Dtype,
                                        model_kwargs: Dict[str, Any],
@@ -1289,14 +1297,16 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.internlm2_math_20b,
     'Shanghai_AI_Laboratory/internlm2-math-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.internlm2_math_7b_chat,
     'Shanghai_AI_Laboratory/internlm2-math-7b',
@@ -1304,7 +1314,8 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.internlm2_math_20b_chat,
     'Shanghai_AI_Laboratory/internlm2-math-20b',
@@ -1312,7 +1323,8 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['math'])
 @register_model(
     ModelType.internlm2_7b_sft_chat,
     'Shanghai_AI_Laboratory/internlm2-chat-7b-sft',
@@ -1406,7 +1418,8 @@ def get_model_tokenizer_internlm2(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm_xcomposer2,
     eos_token='[UNUSED_TOKEN_145]',
-    support_flash_attn=True)
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             torch_dtype: Dtype,
                                             model_kwargs: Dict[str, Any],
@@ -1571,7 +1584,8 @@ def get_model_tokenizer_qwen(model_dir: str,
     LoRATM.qwen,
     TemplateType.codefuse,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 @register_model(
     ModelType.qwen_1_8b,
     'qwen/Qwen-1_8B',
@@ -1592,7 +1606,8 @@ def get_model_tokenizer_qwen(model_dir: str,
     LoRATM.qwen,
     TemplateType.default_generation,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['financial'])
 @register_model(
     ModelType.qwen_14b,
     'qwen/Qwen-14B',
@@ -1633,7 +1648,8 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     LoRATM.qwen,
     TemplateType.qwen,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['financial'])
 @register_model(
     ModelType.qwen_14b_chat,
     'qwen/Qwen-14B-Chat',
@@ -1688,14 +1704,16 @@ def _qwen_vl_audio_decode(self,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
     TemplateType.qwen,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.qwen_vl,
     'qwen/Qwen-VL',
     LoRATM.qwen,
     TemplateType.default_generation,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_qwen_vl(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -1733,14 +1751,16 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     LoRATM.qwen,
     TemplateType.qwen_audio,
     support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat})
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat},
+    tags=['multi-modal', 'audio'])
 @register_model(
     ModelType.qwen_audio,
     'qwen/Qwen-Audio',
     LoRATM.qwen,
     TemplateType.qwen_audio_generation,
     support_flash_attn=True,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base})
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
+    tags=['multi-modal', 'audio'])
 def get_model_tokenizer_qwen_audio(model_dir: str,
                                    torch_dtype: Dtype,
                                    model_kwargs: Dict[str, Any],
@@ -1782,7 +1802,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_72b_chat_int8,
     'qwen/Qwen-72B-Chat-Int8',
@@ -1800,7 +1821,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.tongyi_finance_14b_chat_int4,
     'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
@@ -1809,7 +1831,9 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['financial'])
 @register_model(
     ModelType.qwen_vl_chat_int4,
     'qwen/Qwen-VL-Chat-Int4',
@@ -1821,7 +1845,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
         'get_qwen_function': get_model_tokenizer_qwen_vl,
         'bits': 4
     },
-    support_flash_attn=True)
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.qwen_14b_chat_int8,
     'qwen/Qwen-14B-Chat-Int8',
@@ -1848,7 +1873,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen_7b_chat_int4,
     'qwen/Qwen-7B-Chat-Int4',
@@ -1857,7 +1883,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_qwen_intx(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -1923,7 +1950,8 @@ def get_skywork_model_tokenizer(model_dir: str,
     LoRATM.llama2,
     TemplateType.codefuse_codellama,
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    tags=['coding'])
 def get_model_tokenizer_codellama(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
@@ -1947,7 +1975,8 @@ def get_model_tokenizer_codellama(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False)
+    support_gradient_checkpointing=False,
+    tags=['coding'])
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
@@ -2104,13 +2133,15 @@ def get_model_tokenizer_orion(model_dir: str,
     '01ai/Yi-VL-34B',
     LoRATM.llama2,
     TemplateType.yi_vl,
-    requires=['transformers>=4.34'])
+    requires=['transformers>=4.34'],
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.yi_vl_6b_chat,
     '01ai/Yi-VL-6B',
     LoRATM.llama2,
     TemplateType.yi_vl,
-    requires=['transformers>=4.34'])
+    requires=['transformers>=4.34'],
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_yi_vl(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
@@ -2218,54 +2249,89 @@ def fix_gradient_checkpointing_warning() -> None:
         pass
 
 
+def safe_snapshot_download(model_type: str,
+                           model_id_or_path: Optional[str] = None,
+                           **kwargs) -> str:
+    # Perform snapshot_download (ms or hf) based on model_type and model_id_or_path.
+    model_info = MODEL_MAPPING[model_type]
+    if model_id_or_path is None:
+        model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+        if model_dir is not None:
+            model_id_or_path = model_dir
+        else:
+            model_id_or_path = model_info['model_id_or_path']
+
+    if is_dist() and not is_local_master():
+        dist.barrier()
+    if model_id_or_path is not None and not os.path.exists(model_id_or_path):
+        revision = model_info['revision']
+        use_hf = model_info['use_hf']
+        ignore_file_pattern = model_info['ignore_file_pattern']
+        if use_hf:
+            logger.info(
+                f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
+            )
+            from huggingface_hub import snapshot_download as hf_snapshot_download
+            model_dir = hf_snapshot_download(
+                model_id_or_path,
+                repo_type='model',
+                revision=revision,
+                ignore_patterns=ignore_file_pattern)
+        else:
+            logger.info(
+                f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
+            )
+            model_dir = snapshot_download(
+                model_id_or_path,
+                revision,
+                ignore_file_pattern=ignore_file_pattern)
+    else:
+        model_dir = model_id_or_path
+        logger.info(f'Loading the model using model_dir: {model_dir}')
+    if is_dist() and is_local_master():
+        dist.barrier()
+
+    model_dir = os.path.expanduser(model_dir)
+    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
+    return model_dir
+
+
+def get_torch_dtype(model_dir: str) -> Dtype:
+    model_config = PretrainedConfig.get_config_dict(model_dir)[0]
+    torch_dtype = model_config.get('torch_dtype', None)
+    if isinstance(torch_dtype, str):
+        torch_dtype = eval(f'torch.{torch_dtype}')
+    if torch_dtype == torch.float32:
+        torch_dtype = torch.float16
+    return torch_dtype
+
+
 def get_model_tokenizer(
         model_type: str,
         torch_dtype: Optional[Dtype] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         load_model: bool = True,
+        *,
+        model_id_or_path: Optional[str] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
         However, if torch.float32 is retrieved, torch.float16 will be used.
     """
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    model_dir = safe_snapshot_download(
+        model_type, model_id_or_path, model_dir=model_dir)
+
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']
     for require in requires:
         require_version(require)
-
-    model_id_or_path = model_info['model_id_or_path']
     get_function = model_info['get_function']
-    ignore_file_pattern = model_info['ignore_file_pattern']
     if model_kwargs is None:
         model_kwargs = {}
     if 'device_map' not in model_kwargs:
         model_kwargs['device_map'] = 'auto'
 
-    model_dir = kwargs.pop('model_dir', None)
-    if model_dir is None:
-        if is_dist() and not is_local_master():
-            dist.barrier()
-        model_dir = model_id_or_path
-        if model_id_or_path is not None and not os.path.exists(
-                model_id_or_path):
-            revision = model_info['revision']
-            use_hf = model_info['use_hf']
-            if use_hf:
-                from huggingface_hub import snapshot_download as hf_snapshot_download
-                model_dir = hf_snapshot_download(
-                    model_id_or_path,
-                    repo_type='model',
-                    revision=revision,
-                    ignore_patterns=ignore_file_pattern)
-            else:
-                model_dir = snapshot_download(
-                    model_id_or_path,
-                    revision,
-                    ignore_file_pattern=ignore_file_pattern)
-        if is_dist() and is_local_master():
-            dist.barrier()
-    model_dir = os.path.expanduser(model_dir)
-    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     if model_info.get('torch_dtype') is not None:
         model_torch_dtype = model_info['torch_dtype']
         if torch_dtype is None:
@@ -2275,21 +2341,27 @@ def get_model_tokenizer(
             assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
     else:
         if torch_dtype is None:
-            model_config = PretrainedConfig.get_config_dict(model_dir)[0]
-            torch_dtype = model_config.get('torch_dtype', None)
-            if isinstance(torch_dtype, str):
-                torch_dtype = eval(f'torch.{torch_dtype}')
-            if torch_dtype == torch.float32:
-                torch_dtype = torch.float16
+            torch_dtype = get_torch_dtype(model_dir)
             logger.info(f'Setting torch_dtype: {torch_dtype}')
+            quantization_config = model_kwargs.get('quantization_config')
+            if (isinstance(quantization_config, BitsAndBytesConfig)
+                    and quantization_config.bnb_4bit_compute_dtype is None):
+                quantization_config.bnb_4bit_compute_dtype = torch_dtype
+                logger.info(
+                    f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}'
+                )
     kwargs['eos_token'] = model_info['eos_token']
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
+        model.max_model_len = get_max_model_len(model.config)
+        logger.info(f'model.max_model_len: {model.max_model_len}')
         model.model_type = model_type
+        model.model_dir = model_dir
         fix_transformers_upgrade(model)
-        fix_gradient_checkpointing_warning()
+    fix_gradient_checkpointing_warning()
     tokenizer.model_type = model_type
+    tokenizer.model_dir = model_dir
     assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -2301,6 +2373,13 @@ def get_model_tokenizer(
                 generation_config_path) and generation_config is None:
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
+        generation_config = getattr(model, 'generation_config', None)
+        # fix llama2 bug
+        if (generation_config is not None
+                and 0 < generation_config.temperature < 1
+                and generation_config.do_sample is False):
+            model.generation_config.do_sample = True
+            logger.warning('Setting model.generation_config.do_sample: True')
     return model, tokenizer
 
 

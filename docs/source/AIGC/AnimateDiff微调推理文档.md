@@ -176,7 +176,7 @@ dataloader_num_workers: int = 1 # dataloader workers数量
 push_to_hub: bool = False # 是否推送到modelhub
 # 'user_name/repo_name' or 'repo_name'
 hub_model_id: Optional[str] = None # modelhub id
-hub_private_repo: bool = True
+hub_private_repo: bool = False
 push_hub_strategy: str = field( # 推送策略，推送最后一个还是每个都推送
     default='push_best',
     metadata={'choices': ['push_last', 'all_checkpoints']})
@@ -244,13 +244,13 @@ sft_type: str = field(
     default='lora', metadata={'choices': ['lora', 'full']}) # 训练方式，支持lora和全参数
 
 ckpt_dir: Optional[str] = field(
-    default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'}) # 训练的输出文件夹
+    default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'}) # 训练的输出文件夹
 eval_human: bool = False  # False: eval val_dataset # 是否使用人工输入评测
 
 seed: int = 42 # 随机种子
 
-merge_lora_and_save: bool = False # Merge lora into the MotionAdapter and save the model.
-replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora_and_save` is True.
+merge_lora: bool = False # Merge lora into the MotionAdapter and save the model.
+replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora` is True.
 
 # other
 ignore_args_error: bool = False  # True: notebook compatibility
