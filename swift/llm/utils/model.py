@@ -2373,6 +2373,13 @@ def get_model_tokenizer(
                 generation_config_path) and generation_config is None:
             model.generation_config = GenerationConfig.from_pretrained(
                 model_dir)
+        generation_config = getattr(model, 'generation_config', None)
+        # fix llama2 bug
+        if (generation_config is not None
+                and 0 < generation_config.temperature < 1
+                and generation_config.do_sample is False):
+            model.generation_config.do_sample = True
+            logger.warning('Setting model.generation_config.do_sample: True')
     return model, tokenizer
 
 
