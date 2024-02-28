@@ -7,7 +7,7 @@ import shutil
 import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
-from typing import Dict, OrderedDict
+from typing import Dict, OrderedDict, Union, Optional
 
 import json
 import numpy as np
@@ -19,6 +19,7 @@ from peft.utils import _get_submodules
 
 from swift.hub.snapshot_download import snapshot_download
 from swift.hub.utils.utils import get_cache_dir
+from swift.tuners.module_mapping import ModelKeys
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
 
@@ -29,6 +30,8 @@ logger = get_logger()
 class SwiftConfig:
 
     swift_type: str = field(default=None)
+
+    model_key_mapping: Optional[Union[dict, ModelKeys]] = field(default=None)
 
     @property
     def __dict__(self):

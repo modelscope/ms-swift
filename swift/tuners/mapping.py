@@ -20,6 +20,7 @@ class SwiftTuners:
     ROME = 'ROME'
     LONGLORA = 'longlora'
     NEFTUNE = 'neftune'
+    LLAMAPRO = 'LLAMAPRO'
     SCETUNING = 'SCETuning'
 
 
