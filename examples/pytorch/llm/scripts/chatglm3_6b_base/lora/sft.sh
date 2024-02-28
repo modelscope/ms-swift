@@ -30,7 +30,3 @@ python llm_sft.py \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --push_to_hub false \
-    --hub_model_id chatglm3-6b-base-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

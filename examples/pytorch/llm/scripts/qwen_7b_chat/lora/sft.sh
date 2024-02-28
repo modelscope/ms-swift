@@ -36,7 +36,3 @@ python llm_sft.py \
     --self_cognition_sample 3000 \
     --model_name 卡卡罗特 \
     --model_author 陶白白 \
-    --push_to_hub false \
-    --hub_model_id qwen-7b-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

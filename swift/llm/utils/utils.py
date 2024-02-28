@@ -31,7 +31,7 @@ from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
-from transformers import (GenerationConfig, PreTrainedModel,
+from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase, StoppingCriteriaList,
                           TextStreamer, trainer)
 
@@ -430,6 +430,7 @@ def inference_stream(model: PreTrainedModel,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
+                     generation_info: Optional[Dict[str, int]] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -441,6 +442,7 @@ def inference_stream(model: PreTrainedModel,
     else:
         history = deepcopy(history)
 
+    # agent support
     is_observation = history[-1][-1].endswith(
         'Observation:') if history else False
     if is_observation:
@@ -456,6 +458,10 @@ def inference_stream(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
+    if len(inputs) == 0:
+        raise ValueError(
+            'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+        )
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -496,6 +502,8 @@ def inference_stream(model: PreTrainedModel,
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
+    if generation_info is not None:
+        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
     gen = model.generate_stream(
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
@@ -508,6 +516,8 @@ def inference_stream(model: PreTrainedModel,
         history.append(None)  # dummy
     for token in gen:
         raw_generate_ids.append(token.item())
+        if generation_info is not None:
+            generation_info['num_generated_tokens'] = len(raw_generate_ids)
         generate_ids = raw_generate_ids
         # avoid printing template.suffix[-1])
         if isinstance(template.suffix[-1], list):
@@ -557,6 +567,7 @@ def inference(model: PreTrainedModel,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
+              generation_info: Optional[Dict[str, int]] = None,
               **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -572,7 +583,6 @@ def inference(model: PreTrainedModel,
         'Observation:') if history else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
-        act_length = len(history[-1][-1])
         query = None
 
     example = {
@@ -583,6 +593,10 @@ def inference(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
+    if len(inputs) == 0:
+        raise ValueError(
+            'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+        )
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -631,12 +645,16 @@ def inference(model: PreTrainedModel,
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
+    if generation_info is not None:
+        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
     generate_ids = model.generate(
         streamer=streamer,
         generation_config=generation_config,
         stopping_criteria=stopping_criteria,
         **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)
+    if generation_info is not None:
+        generation_info['num_generated_tokens'] = len(generate_ids)
     response = None
     if verbose and stream is False:
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
@@ -655,7 +673,7 @@ def inference(model: PreTrainedModel,
     if not is_observation:
         history.append((query, response))
     else:
-        history[-1][-1] = history[-1][-1][:act_length] + response
+        history[-1][-1] = history[-1][-1] + response
     return response, history
 
 
@@ -746,6 +764,29 @@ def get_time_info(log_history: List[Dict[str, Any]],
     except Exception:
         pass
     return time_info
+
+
+def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
+    INF = int(1e9)
+    max_model_len = INF
+    possible_keys = [
+        'seq_length',  # qwen, chatglm
+        'max_position_embeddings',  # qwen1.5, llama2
+        'n_positions',  # polylm, phi-2
+        'model_max_length',  # baichuan2
+        # others
+        'seq_len',
+        'max_seq_len',
+        'max_sequence_length',
+        'max_seq_length',
+    ]
+    for key in possible_keys:
+        max_len_key = getattr(config, key, None)
+        if max_len_key is not None:
+            max_model_len = min(max_model_len, max_len_key)
+    if max_model_len == INF:
+        max_model_len = None
+    return max_model_len
 
 
 # monkey patching

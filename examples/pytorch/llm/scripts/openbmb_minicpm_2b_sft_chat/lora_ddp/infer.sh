@@ -1,7 +1,7 @@
 # Experimental environment: A10
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --ckpt_dir "output/openbmb-minicpm-2b-sft-chat/vx_xxx/checkpoint-xxx" \
+    --ckpt_dir "output/openbmb-minicpm-2b-sft-chat/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 2048 \
     --use_flash_attn false \

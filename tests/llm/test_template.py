@@ -413,7 +413,7 @@ you are a helpful assistant!<|im_end|>
         model, tokenizer = get_model_tokenizer(model_type)
         template_type = get_default_template_type(model_type)
         template = get_template(template_type, tokenizer)
-        model.generation_config.max_length = 128
+        model.generation_config.max_length = 512
         query = '1234+235=？'
         print(f'query: {query}')
         response, _ = inference(model, template, query)

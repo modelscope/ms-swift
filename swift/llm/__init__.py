@@ -6,30 +6,30 @@ from .utils import *
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
-    from .app_ui import gradio_chat_demo, gradio_generation_demo, llm_app_ui, app_ui_main
-    from .deploy import llm_deploy, deploy_main
-    from .dpo import dpo_main, llm_dpo
-    from .infer import llm_infer, merge_lora, prepare_model_template, infer_main, merge_lora_main
-    from .rome import rome_infer, rome_main
-    from .sft import llm_sft, sft_main
+    from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
+    from .deploy import deploy_main
+    from .dpo import dpo_main
+    from .infer import merge_lora, prepare_model_template, infer_main, merge_lora_main
+    from .rome import rome_main
+    from .sft import sft_main
+    from .export import export_main
 else:
     _extra_objects = {
         k: v
         for k, v in globals().items() if not k.startswith('_')
     }
     _import_structure = {
-        'app_ui': [
-            'gradio_chat_demo', 'gradio_generation_demo', 'llm_app_ui',
-            'app_ui_main'
-        ],
-        'deploy': ['llm_deploy', 'deploy_main'],
-        'dpo': ['dpo_main', 'llm_dpo'],
+        'app_ui':
+        ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
+        'deploy': ['deploy_main'],
+        'dpo': ['dpo_main'],
         'infer': [
-            'llm_infer', 'merge_lora', 'prepare_model_template', 'infer_main',
+            'merge_lora', 'prepare_model_template', 'infer_main',
             'merge_lora_main'
         ],
-        'rome': ['rome_infer', 'rome_main'],
-        'sft': ['llm_sft', 'sft_main'],
+        'rome': ['rome_main'],
+        'sft': ['sft_main'],
+        'export': ['export_main'],
     }
 
     import sys

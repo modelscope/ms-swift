@@ -36,10 +36,6 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
-    --push_to_hub false \
-    --hub_model_id qwen-audio-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \
-    --deepspeed_config_path default-zero2 \
+    --deepspeed default-zero2 \
     --save_only_model true \
     --lazy_tokenize true \
