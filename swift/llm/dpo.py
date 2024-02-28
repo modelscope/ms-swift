@@ -48,10 +48,12 @@ def llm_dpo(args: DPOArguments) -> str:
     kwargs = {}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
-    if args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=args.model_id_or_path,
+        **kwargs)
     if args.ref_model_type is not None:
         ref_model, _ = get_model_tokenizer(args.ref_model_type,
                                            args.torch_dtype, model_kwargs,
@@ -119,10 +121,8 @@ def llm_dpo(args: DPOArguments) -> str:
 
     # Setting training_args
     evaluation_strategy = IntervalStrategy.STEPS
-    load_best_model_at_end = False
     if val_dataset is None:
         evaluation_strategy = IntervalStrategy.NO
-        load_best_model_at_end = False
     additional_saved_files = []
     if args.sft_type == 'full':
         additional_saved_files = get_additional_saved_files(args.model_type)
@@ -149,7 +149,6 @@ def llm_dpo(args: DPOArguments) -> str:
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
-        load_best_model_at_end=load_best_model_at_end,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
         greater_is_better=args.predict_with_generate,

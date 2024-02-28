@@ -8,7 +8,7 @@ python llm_sft.py \
     --tuner_backend swift \
     --dtype AUTO \
     --output_dir output \
-    --dataset ms-bench \
+    --dataset ms-bench-mini \
     --train_dataset_sample 5000 \
     --num_train_epochs 2 \
     --max_length 1024 \
@@ -32,7 +32,3 @@ python llm_sft.py \
     --self_cognition_sample 1000 \
     --model_name 卡卡罗特 \
     --model_author 陶白白 \
-    --push_to_hub false \
-    --hub_model_id qwen1half-7b-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

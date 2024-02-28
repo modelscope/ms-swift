@@ -32,8 +32,4 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --push_to_hub false \
-    --hub_model_id qwen-7b-chat-full \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \
     --preprocess_num_proc 4 \

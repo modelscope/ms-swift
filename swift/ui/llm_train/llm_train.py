@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+from functools import partial
 from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
@@ -231,12 +232,21 @@ class LLMTrain(BaseUI):
                             cls.element('running_cmd'),
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
+                            cls.element('running_tasks'),
                         ],
                         queue=True)
+                base_tab.element('running_tasks').change(
+                    partial(Runtime.task_changed, base_tab=base_tab),
+                    [base_tab.element('running_tasks')],
+                    [
+                        value for value in base_tab.elements().values()
+                        if not isinstance(value, (Tab, Accordion))
+                    ] + [cls.element('log')] + Runtime.all_plots,
+                    cancels=Runtime.log_event)
 
     @classmethod
     def update_runtime(cls):
-        return gr.update(visible=True), gr.update(visible=True)
+        return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
     def train(cls, *args):
@@ -341,4 +351,5 @@ class LLMTrain(BaseUI):
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
-        return run_command, sft_args.logging_dir, gr.update(visible=True)
+        return run_command, sft_args.logging_dir, gr.update(
+            open=True), Runtime.refresh_tasks(sft_args.output_dir)

@@ -121,6 +121,9 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
+    if isinstance(template.suffix[-1],
+                  str) and template.suffix[-1] not in generation_config.stop:
+        generation_config.stop.append(template.suffix[-1])
     created_time = int(time.time())
     result_generator = llm_engine.generate(None, generation_config, request_id,
                                            input_ids)
@@ -248,7 +251,7 @@ async def create_completion(request: CompletionRequest,
 def llm_deploy(args: DeployArguments) -> None:
     import uvicorn
     global llm_engine, model, template
-    if args.merge_lora_and_save:
+    if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
         llm_engine, template = prepare_vllm_engine_template(

@@ -2,7 +2,7 @@ import os
 
 from swift.utils import plot_images
 
-ckpt_dir = 'output/xxx/vx_xxx'
+ckpt_dir = 'output/xxx/vx-xxx'
 if __name__ == '__main__':
     images_dir = os.path.join(ckpt_dir, 'images')
     tb_dir = os.path.join(ckpt_dir, 'runs')

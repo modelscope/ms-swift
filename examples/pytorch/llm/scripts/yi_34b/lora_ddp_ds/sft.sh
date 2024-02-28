@@ -36,7 +36,3 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --push_to_hub false \
-    --hub_model_id yi-34b-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

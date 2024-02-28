@@ -51,6 +51,7 @@ class TemplateType:
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
     openbmb = 'openbmb'
+    gemma = 'gemma'
     # compatibility. (Deprecated)
     chatml = 'chatml'
 
@@ -551,7 +552,8 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
-def _read_from_path(img_path: Union[str, 'Image.Image']) -> 'PIL.Image':
+def _read_from_path(
+        img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     from PIL import Image
     if isinstance(img_path, str):
         img_path = img_path.strip()
@@ -959,6 +961,13 @@ register_template(
 register_template(
     TemplateType.openbmb,
     Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
+
+gemma_template = Template(
+    ['<bos>'],
+    ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
+    ['<end_of_turn>\n'], ['<end_of_turn>'], None,
+    ['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'])
+register_template(TemplateType.gemma, gemma_template)
 
 
 def get_template(

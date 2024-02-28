@@ -4,6 +4,7 @@ import inspect
 import os
 import re
 from copy import copy
+from dataclasses import asdict
 from inspect import Parameter, Signature, signature
 from types import MethodType
 from typing import Dict, List, Optional, Union
@@ -14,6 +15,7 @@ from peft.utils import CONFIG_NAME
 from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 
+from swift import LoraConfig, SwiftTuners
 from swift.hub.snapshot_download import snapshot_download
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
@@ -33,6 +35,8 @@ class SwiftModel(nn.Module):
         extra_state_keys (`List[str]`, `optional`) A list of regex to match the extra state keys to be saved.
         inference_mode (bool, `optional`): Load model at inference mode, default False.
     """
+
+    EXTRA_STATE_DIR = 'extra_states'
 
     def __init__(self,
                  model: Union[nn.Module, 'SwiftModel'],
@@ -67,7 +71,7 @@ class SwiftModel(nn.Module):
                 else:
                     logger.warn(
                         f'Adapter {adapter_name} has been patched, skip.')
-        self.model = model
+        self.base_model = model
 
         self.extra_state_keys = extra_state_keys or []
         self.has_additional_modules = any(
@@ -97,6 +101,10 @@ class SwiftModel(nn.Module):
                             for extra_key in self.extra_state_keys):
                         p.requires_grad = True
 
+    @property
+    def model(self):
+        return self.base_model
+
     def load_state_dict(self,
                         state_dict,
                         strict=True,
@@ -114,7 +122,28 @@ class SwiftModel(nn.Module):
                             )
                             break
                     state_dict[key] = value
-        incompatible_keys = self.model.load_state_dict(state_dict, False)
+
+            for key, value in copy(state_dict).items():
+                if key.startswith('base_model.model.'):
+                    state_dict.pop(key, None)
+                    key = key[len('base_model.model.'):]
+                if f'lora_A.{adapter_name}.' not in key and 'lora_A' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_A.', f'lora_A.{adapter_name}.')
+                if f'lora_B.{adapter_name}.' not in key and 'lora_B' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_B.', f'lora_B.{adapter_name}.')
+                if f'lora_embedding_A.{adapter_name}.' not in key and 'lora_embedding_A' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_embedding_A.',
+                                      f'lora_embedding_A.{adapter_name}.')
+                if f'lora_embedding_B.{adapter_name}.' not in key and 'lora_embedding_B' in key:
+                    state_dict.pop(key, None)
+                    key = key.replace('lora_embedding_B.',
+                                      f'lora_embedding_B.{adapter_name}.')
+                state_dict[key] = value
+
+        incompatible_keys = self.base_model.load_state_dict(state_dict, False)
         if incompatible_keys and len(incompatible_keys[1]) > 0:
             logger.error(
                 f'Load state dict with unexpected keys: {incompatible_keys[1]}'
@@ -126,6 +155,7 @@ class SwiftModel(nn.Module):
                    prefix='',
                    keep_vars=False,
                    adapter_name: str = None,
+                   peft_format: bool = False,
                    **kwargs):
         """
         Args:
@@ -141,14 +171,22 @@ class SwiftModel(nn.Module):
                 Default: ``False``.
             adapter_name (`str`, `optional`): The name of the adapter's parameters to be saved,
                 `None` input will save all adapters.
+            peft_format (`bool`, `optional`): Save with peft format (extra `base_model.model.` prefix)
             **kwargs:
                 save_adapter(`bool`): Save adapters or not, default True
                 save_extra_states(`bool`): Save extra states or not, default True
         Returns:
             The state dict to be saved.
         """
-        state_dict = self.model.state_dict(
-            destination=destination, prefix=prefix, keep_vars=keep_vars)
+        state_dict = kwargs.get('state_dict')
+        if state_dict is None:
+            state_dict = self.base_model.state_dict(
+                destination=destination, prefix=prefix, keep_vars=keep_vars)
+        state_dict = {
+            key[len('base_model.'):] if key.startswith('base_model.') else key:
+            value
+            for key, value in state_dict.items()
+        }
         if not self.has_additional_modules:
             return state_dict
 
@@ -161,7 +199,7 @@ class SwiftModel(nn.Module):
                         output.state_dict_callback(state_dict, name))
                     modules_to_save_names = [
                         sub_name
-                        for sub_name, _ in self.model.named_parameters()
+                        for sub_name, _ in self.base_model.named_parameters()
                         if f'modules_to_save.{name}' in sub_name
                     ]
                     for module_name in modules_to_save_names:
@@ -176,6 +214,19 @@ class SwiftModel(nn.Module):
                     re.fullmatch(extra_key, k)
                     for extra_key in self.extra_state_keys)
             })
+        if peft_format:
+            new_state_dict = {}
+            for key, value in state_dicts.items():
+                if not key.startswith('base_model.model.'):
+                    key = 'base_model.model.' + key
+                key = key.replace(f'lora_A.{adapter_name}.', 'lora_A.')
+                key = key.replace(f'lora_B.{adapter_name}.', 'lora_B.')
+                key = key.replace(f'lora_embedding_A.{adapter_name}.',
+                                  'lora_embedding_A.')
+                key = key.replace(f'lora_embedding_B.{adapter_name}.',
+                                  'lora_embedding_B.')
+                new_state_dict[key] = value
+            state_dicts = new_state_dict
         return state_dicts
 
     def __getattr__(self, name: str):
@@ -233,23 +284,25 @@ class SwiftModel(nn.Module):
         """
         adapters = {}
         model_dir = model_id
-        extra_state_keys = kwargs.pop('extra_state_keys', None)
-        config_file = os.path.join(model_dir, CONFIG_NAME)
-        if extra_state_keys is None and os.path.isfile(config_file):
-            with open(config_file, 'r') as file:
-                _json = json.load(file)
-                extra_state_keys = _json.get('extra_state_keys')
+        if not os.path.exists(model_dir):
+            model_dir = snapshot_download(model_dir, revision=revision)
         if os.path.isfile(model_dir):
             raise ValueError(
-                f'Please pass in a local dir or a model id, not a local file: {model_id}'
+                f'Please pass in a local dir or a model id, not a local file: {model_dir}'
             )
-        if not os.path.exists(model_id):
-            model_dir = snapshot_download(model_id, revision=revision)
+        extra_state_keys = kwargs.pop('extra_state_keys', None)
+        if extra_state_keys is None and os.path.isfile(
+                os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME)):
+            with open(
+                    os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME),
+                    'r') as file:
+                _json = json.load(file)
+                extra_state_keys = _json.get('extra_state_keys')
         if adapter_name is None:
             adapter_name = [
-                sub_dir for sub_dir in os.listdir(model_dir)
-                if os.path.isdir(os.path.join(model_dir, sub_dir)) and
+                sub_dir for sub_dir in os.listdir(model_dir) if
                 os.path.isfile(os.path.join(model_dir, sub_dir, CONFIG_NAME))
+                and sub_dir != cls.EXTRA_STATE_DIR
             ]
         for _name in adapter_name if isinstance(adapter_name,
                                                 list) else [adapter_name] \
@@ -317,7 +370,8 @@ class SwiftModel(nn.Module):
                         for key, value in state_dict.items()
                     }
                 self.load_state_dict(state_dict, adapter_name=_adapter)
-        state_dict = cls.load_state_file(model_dir)
+        state_dict = cls.load_state_file(
+            os.path.join(model_dir, self.EXTRA_STATE_DIR))
         if state_dict is not None:
             self.load_state_dict(state_dict)
         return self
@@ -406,6 +460,7 @@ class SwiftModel(nn.Module):
             safe_serialization (`bool`): Use safe tensors to save the weights, default False.
             adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `None` to save all.
         """
+        peft_format = kwargs.pop('peft_format', False)
         if os.path.isfile(save_directory):
             raise ValueError(
                 f'Provided path ({save_directory}) should be a directory, not a file'
@@ -425,28 +480,53 @@ class SwiftModel(nn.Module):
         adapter_names = adapter_name if isinstance(
             adapter_name, list) or adapter_name is None else [adapter_name]
 
+        state_dict_kwargs = {}
+        state_dict = kwargs.get('state_dict')
+        if state_dict is not None:
+            state_dict_kwargs['state_dict'] = kwargs['state_dict']
         for adapter_name, output in self.adapters.items():
             if adapter_names is not None and adapter_name not in adapter_names:
                 continue
-
+            save_to_peft = peft_format and output.config.swift_type == SwiftTuners.LORA
+            save_to_peft = save_to_peft and output.config.can_be_saved_to_peft(
+            )
+            if peft_format and not save_to_peft:
+                logger.error(
+                    'You are using additional lora parameters, which is not compatible with peft,'
+                    'which is unable to save to peft format.')
             # save only the trainable weights
             output_state_dict = self.state_dict(
-                adapter_name=adapter_name, save_extra_states=False)
-            output_dir = os.path.join(save_directory, adapter_name)
+                adapter_name=adapter_name,
+                save_extra_states=False,
+                peft_format=save_to_peft,
+                **state_dict_kwargs)
+            output_dir = os.path.join(
+                save_directory, adapter_name
+            ) if adapter_name != 'default' or not save_to_peft else save_directory
             os.makedirs(output_dir, exist_ok=True)
             if output_state_dict and output.config.has_additional_modules:
                 self._save_state_dict(output_state_dict, output_dir,
                                       safe_serialization)
-            output.config.save_pretrained(output_dir)
+            if save_to_peft:
+                config = output.config.to_peft_config()
+                config.save_pretrained(output_dir)
+            else:
+                output.config.save_pretrained(output_dir)
 
         output_state_dict = self.state_dict(
-            save_extra_states=True, save_adapter=False)
+            save_extra_states=True, save_adapter=False, **state_dict_kwargs)
         if len(output_state_dict) > 0:
             if self.has_additional_modules:
-                self._save_state_dict(output_state_dict, save_directory,
-                                      safe_serialization)
-                with open(os.path.join(save_directory, CONFIG_NAME),
-                          'w') as file:
+                os.makedirs(
+                    os.path.join(save_directory, self.EXTRA_STATE_DIR),
+                    exist_ok=True)
+                self._save_state_dict(
+                    output_state_dict,
+                    os.path.join(save_directory, self.EXTRA_STATE_DIR),
+                    safe_serialization)
+                with open(
+                        os.path.join(save_directory, self.EXTRA_STATE_DIR,
+                                     CONFIG_NAME), 'w') as file:
                     json.dump({'extra_state_keys': self.extra_state_keys},
                               file)
             else:
@@ -472,10 +552,6 @@ class SwiftModel(nn.Module):
         else:
             torch.save(output_state_dict,
                        os.path.join(save_directory, WEIGHTS_NAME))
-
-    @property
-    def base_model(self):
-        return self.model
 
     def set_active_adapters(self,
                             adapter_names: Union[List[str], str],
