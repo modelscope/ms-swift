@@ -770,11 +770,12 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     INF = int(1e9)
     max_model_len = INF
     possible_keys = [
-        'seq_len',  # qwen, chatglm
+        'seq_length',  # qwen, chatglm
         'max_position_embeddings',  # qwen1.5, llama2
         'n_positions',  # polylm, phi-2
         'model_max_length',  # baichuan2
         # others
+        'seq_len',
         'max_seq_len',
         'max_sequence_length',
         'max_seq_length',
