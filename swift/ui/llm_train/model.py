@@ -64,7 +64,7 @@ class Model(BaseUI):
             model_type = gr.Dropdown(
                 elem_id='model_type',
                 choices=ModelType.get_model_name_list()
-                        + cls.get_custom_name_list(),
+                + cls.get_custom_name_list(),
                 scale=20)
             model_id_or_path = gr.Textbox(
                 elem_id='model_id_or_path',
@@ -98,7 +98,8 @@ class Model(BaseUI):
             return model_state
 
         def reset(model_type):
-            model_id_or_path, default_system, template = update_input_model(model_type)
+            model_id_or_path, default_system, template = update_input_model(
+                model_type)
             return model_id_or_path, default_system, template, {}
 
         model_type.change(
