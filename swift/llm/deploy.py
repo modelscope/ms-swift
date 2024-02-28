@@ -22,6 +22,7 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     random_uuid)
 
 app = FastAPI()
+_args = None
 model = None
 llm_engine = None
 template = None
@@ -35,15 +36,18 @@ def create_error_response(status_code: Union[int, str, HTTPStatus],
 
 @app.get('/v1/models')
 async def get_available_models():
-    global llm_engine
-    return ModelList(data=[Model(id=llm_engine.model_type)])
+    global _args
+    return ModelList(data=[Model(id=_args.model_type)])
 
 
 async def check_length(request: Union[ChatCompletionRequest,
                                       CompletionRequest],
                        input_ids: List[int]) -> Optional[str]:
-    global llm_engine
-    max_model_len = llm_engine.model_config.max_model_len
+    global llm_engine, model, _args
+    if _args.infer_backend == 'vllm':
+        max_model_len = llm_engine.model_config.max_model_len
+    else:
+        max_model_len = model.max_model_len
     num_tokens = len(input_ids)
     max_tokens = request.max_tokens
     if max_tokens is None:
@@ -67,6 +71,14 @@ async def check_model(
         return
     else:
         return f'`{request.model}` is not in the model_list: `{model_type_list}`.'
+
+
+    
+def is_generation_template(template_type: str) -> bool:
+    if 'generation' in template_type:
+        return True
+    else:
+        return False
 
 
 async def inference_vllm_async(request: Union[ChatCompletionRequest,
@@ -228,29 +240,193 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         return await _generate_full()
 
 
-def is_generation_template(template_type: str) -> bool:
-    if 'generation' in template_type:
-        return True
+async def inference_pt_async(request: Union[ChatCompletionRequest,
+                                            CompletionRequest],
+                               raw_request: Request):
+    global model, template
+    error_msg = await check_model(request)
+    if error_msg is not None:
+        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+
+    if request.seed is not None:
+        seed_everything(request.seed)
+    if isinstance(request, ChatCompletionRequest):
+        if is_generation_template(template.template_type):
+            return create_error_response(
+                HTTPStatus.BAD_REQUEST,
+                f'The chat template `{template.template_type}` corresponding to '
+                f'the model `{model.model_type}` is in text generation format. '
+                'Please use the `completions` API.')
+        example = messages_to_history(request.messages)
+        input_ids = template.encode(example)[0]['input_ids']
+        request_id = f'chatcmpl-{random_uuid()}'
     else:
-        return False
+        if not is_generation_template(template.template_type):
+            return create_error_response(
+                HTTPStatus.BAD_REQUEST,
+                f'The chat template `{template.template_type}` corresponding to '
+                f'the model `{model.model_type}` is in chat format. '
+                'Please use the `chat.completions` API.')
+        example = {'query': request.prompt}
+        input_ids = template.encode(example)[0]['input_ids']
+        request_id = f'cmpl-{random_uuid()}'
+
+    error_msg = await check_length(request, input_ids)
+    if error_msg is not None:
+        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+    kwargs = {'max_new_tokens': request.max_tokens}
+    for key in [
+            'n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty',
+            'presence_penalty', 'num_beams'
+    ]:
+        kwargs[key] = getattr(request, key)
+    for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        new_value = getattr(request, key)
+        if new_value is None:
+            kwargs[key] = getattr(model.generation_config, key)
+        else:
+            kwargs[key] = new_value
+    generation_config = VllmGenerationConfig(**kwargs)
+    if generation_config.use_beam_search is True and request.stream is True:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
+    tokenizer = template.tokenizer
+    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
+        generation_config.stop.append(tokenizer.eos_token)
+    if isinstance(template.suffix[-1],
+                  str) and template.suffix[-1] not in generation_config.stop:
+        generation_config.stop.append(template.suffix[-1])
+    created_time = int(time.time())
+    result_generator = llm_engine.generate(None, generation_config, request_id,
+                                           input_ids)
+
+    async def _generate_full():
+        result = None
+        async for result in result_generator:
+            if await raw_request.is_disconnected():
+                await llm_engine.abort(request_id)
+                return create_error_response(HTTPStatus.BAD_REQUEST,
+                                             'Client disconnected')
+        assert result is not None
+        num_prompt_tokens = len(result.prompt_token_ids)
+        num_generated_tokens = sum(
+            len(output.token_ids) for output in result.outputs)
+        usage_info = UsageInfo(
+            prompt_tokens=num_prompt_tokens,
+            completion_tokens=num_generated_tokens,
+            total_tokens=num_prompt_tokens + num_generated_tokens,
+        )
+        if isinstance(request, ChatCompletionRequest):
+            choices = []
+            for output in result.outputs:
+                choice = ChatCompletionResponseChoice(
+                    index=output.index,
+                    message=ChatMessage(role='assistant', content=output.text),
+                    finish_reason=output.finish_reason,
+                )
+                choices.append(choice)
+            return ChatCompletionResponse(
+                model=request.model,
+                choices=choices,
+                usage=usage_info,
+                id=request_id,
+                created=created_time)
+        else:
+            choices = []
+            for output in result.outputs:
+                choice = CompletionResponseChoice(
+                    index=output.index,
+                    text=output.text,
+                    finish_reason=output.finish_reason,
+                )
+                choices.append(choice)
+            return CompletionResponse(
+                model=request.model,
+                choices=choices,
+                usage=usage_info,
+                id=request_id,
+                created=created_time)
+
+    async def _generate_stream():
+        print_idx_list = [0] * request.n
+        async for result in result_generator:
+            num_prompt_tokens = len(result.prompt_token_ids)
+            num_generated_tokens = sum(
+                len(output.token_ids) for output in result.outputs)
+            usage_info = UsageInfo(
+                prompt_tokens=num_prompt_tokens,
+                completion_tokens=num_generated_tokens,
+                total_tokens=num_prompt_tokens + num_generated_tokens,
+            )
+            if isinstance(request, ChatCompletionRequest):
+                choices = []
+                for output in result.outputs:
+                    delta_text = output.text[print_idx_list[output.index]:]
+                    print_idx_list[output.index] += len(delta_text)
+                    choice = ChatCompletionResponseStreamChoice(
+                        index=output.index,
+                        delta=DeltaMessage(
+                            role='assistant', content=delta_text),
+                        finish_reason=output.finish_reason)
+                    choices.append(choice)
+                response = ChatCompletionStreamResponse(
+                    model=request.model,
+                    choices=choices,
+                    usage=usage_info,
+                    id=request_id,
+                    created=created_time)
+            else:
+                choices = []
+                for output in result.outputs:
+                    delta_text = output.text[print_idx_list[output.index]:]
+                    print_idx_list[output.index] += len(delta_text)
+                    choice = CompletionResponseStreamChoice(
+                        index=output.index,
+                        text=delta_text,
+                        finish_reason=output.finish_reason)
+                    choices.append(choice)
+                response = CompletionStreamResponse(
+                    model=request.model,
+                    choices=choices,
+                    usage=usage_info,
+                    id=request_id,
+                    created=created_time)
+            yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+        yield 'data:[DONE]\n\n'
+
+    if request.stream:
+        return StreamingResponse(_generate_stream())
+    else:
+        return await _generate_full()
 
 
 @app.post('/v1/chat/completions')
 async def create_chat_completion(
         request: ChatCompletionRequest,
         raw_request: Request) -> ChatCompletionResponse:
-    return await inference_vllm_async(request, raw_request)
+    global _args
+    assert _args is not None
+    if _args.infer_backend == 'vllm':
+        return await inference_vllm_async(request, raw_request)
+    else:
+        return await inference_pt_async(request, raw_request)
 
 
 @app.post('/v1/completions')
 async def create_completion(request: CompletionRequest,
                             raw_request: Request) -> CompletionResponse:
-    return await inference_vllm_async(request, raw_request)
+    global _args
+    assert _args is not None
+    if _args.infer_backend == 'vllm':
+        return await inference_vllm_async(request, raw_request)
+    else:
+        return await inference_pt_async(request, raw_request)
 
 
 def llm_deploy(args: DeployArguments) -> None:
     import uvicorn
-    global llm_engine, model, template
+    global llm_engine, model, template, _args
+    _args = args
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
