@@ -4,6 +4,7 @@ import logging
 import time
 from dataclasses import asdict
 from http import HTTPStatus
+from types import MethodType
 from typing import List, Optional, Union
 
 import json
@@ -253,6 +254,19 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         return await _generate_full()
 
 
+class _GenerationConfig(GenerationConfig):
+
+    def __repr__(self) -> str:
+        parameters = inspect.signature(
+            generation_config.to_json_string).parameters
+        kwargs = {}
+        if 'ignore_metadata' in parameters:
+            kwargs['ignore_metadata'] = True
+        gen_kwargs = json.loads(generation_config.to_json_string(**kwargs))
+        gen_kwargs.pop('transformers_version', None)
+        return f'GenerationConfig({gen_kwargs})'
+
+
 async def inference_pt_async(request: Union[ChatCompletionRequest,
                                             CompletionRequest],
                              raw_request: Request):
@@ -309,15 +323,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
         kwargs['top_k'] = 50
     else:
         kwargs['do_sample'] = True
-    generation_config = GenerationConfig(**kwargs)
 
-    parameters = inspect.signature(generation_config.to_json_string).parameters
-    kwargs = {}
-    if 'ignore_metadata' in parameters:
-        kwargs['ignore_metadata'] = True
-    gen_kwargs = json.loads(generation_config.to_json_string(**kwargs))
-    gen_kwargs.pop('transformers_version', None)
-    request_info['generation_config'] = f'GenerationConfig({gen_kwargs})'
+    generation_config = _GenerationConfig(**kwargs)
+    request_info['generation_config'] = generation_config
+
     request_info.update({
         'seed': request.seed,
         'stop': request.stop,
