@@ -454,7 +454,7 @@ def inference_stream(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl
+        'images': kwargs.pop('images', None)  # for vl. str.
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
@@ -589,7 +589,7 @@ def inference(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl
+        'images': kwargs.pop('images', None)  # for vl. str.
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)

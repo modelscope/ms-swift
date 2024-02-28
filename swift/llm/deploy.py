@@ -3,7 +3,7 @@ import time
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
-
+from modelscope import GenerationConfig
 import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -19,7 +19,7 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     CompletionStreamResponse, DeltaMessage, DeployArguments,
                     Model, ModelList, UsageInfo, VllmGenerationConfig,
                     messages_to_history, prepare_vllm_engine_template,
-                    random_uuid)
+                    random_uuid, inference, inference_stream)
 
 app = FastAPI()
 _args = None
@@ -275,10 +275,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
     kwargs = {'max_new_tokens': request.max_tokens}
-    for key in [
-            'n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty',
-            'presence_penalty', 'num_beams'
-    ]:
+    # not use: 'n', 'stop', 'best_of', 'frequency_penalty', 'presence_penalty'
+    for key in ['length_penalty', 'num_beams']:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
@@ -286,45 +284,27 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
             kwargs[key] = getattr(model.generation_config, key)
         else:
             kwargs[key] = new_value
-    generation_config = VllmGenerationConfig(**kwargs)
-    if generation_config.use_beam_search is True and request.stream is True:
-        error_msg = 'Streaming generation does not support beam search.'
-        raise ValueError(error_msg)
+    generation_config = GenerationConfig(**kwargs)
     tokenizer = template.tokenizer
-    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
-        generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1],
-                  str) and template.suffix[-1] not in generation_config.stop:
-        generation_config.stop.append(template.suffix[-1])
     created_time = int(time.time())
-    result_generator = llm_engine.generate(None, generation_config, request_id,
-                                           input_ids)
 
     async def _generate_full():
-        result = None
-        async for result in result_generator:
-            if await raw_request.is_disconnected():
-                await llm_engine.abort(request_id)
-                return create_error_response(HTTPStatus.BAD_REQUEST,
-                                             'Client disconnected')
-        assert result is not None
-        num_prompt_tokens = len(result.prompt_token_ids)
-        num_generated_tokens = sum(
-            len(output.token_ids) for output in result.outputs)
+        generation_info = {}
+        response, _ = inference(model, template, **example, stop_words=request.stop, 
+                                generation_info=generation_info)
+        num_prompt_tokens = generation_info['num_prompt_tokens']
+        num_generated_tokens = generation_info['num_generated_tokens']
         usage_info = UsageInfo(
             prompt_tokens=num_prompt_tokens,
             completion_tokens=num_generated_tokens,
             total_tokens=num_prompt_tokens + num_generated_tokens,
         )
         if isinstance(request, ChatCompletionRequest):
-            choices = []
-            for output in result.outputs:
-                choice = ChatCompletionResponseChoice(
-                    index=output.index,
-                    message=ChatMessage(role='assistant', content=output.text),
-                    finish_reason=output.finish_reason,
-                )
-                choices.append(choice)
+            choices = [ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role='assistant', content=response),
+                    finish_reason=None,
+                )]
             return ChatCompletionResponse(
                 model=request.model,
                 choices=choices,
@@ -332,14 +312,11 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                 id=request_id,
                 created=created_time)
         else:
-            choices = []
-            for output in result.outputs:
-                choice = CompletionResponseChoice(
-                    index=output.index,
-                    text=output.text,
-                    finish_reason=output.finish_reason,
-                )
-                choices.append(choice)
+            choices = [CompletionResponseChoice(
+                    index=0,
+                    text=response,
+                    finish_reason=None,
+                )]
             return CompletionResponse(
                 model=request.model,
                 choices=choices,
@@ -348,50 +325,47 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                 created=created_time)
 
     async def _generate_stream():
-        print_idx_list = [0] * request.n
-        async for result in result_generator:
-            num_prompt_tokens = len(result.prompt_token_ids)
-            num_generated_tokens = sum(
-                len(output.token_ids) for output in result.outputs)
+        generation_info = {}
+        gen = inference_stream(model, template, **example, stop_words=request.stop, 
+                                generation_info=generation_info)
+
+        print_idx = 0
+        async for response, _ in gen:
+            num_prompt_tokens = generation_info['num_prompt_tokens']
+            num_generated_tokens = generation_info['num_generated_tokens']
             usage_info = UsageInfo(
                 prompt_tokens=num_prompt_tokens,
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
             if isinstance(request, ChatCompletionRequest):
-                choices = []
-                for output in result.outputs:
-                    delta_text = output.text[print_idx_list[output.index]:]
-                    print_idx_list[output.index] += len(delta_text)
-                    choice = ChatCompletionResponseStreamChoice(
-                        index=output.index,
+                delta_text = response[print_idx:]
+                print_idx = len(response)
+                choices = [ChatCompletionResponseStreamChoice(
+                        index=0,
                         delta=DeltaMessage(
                             role='assistant', content=delta_text),
-                        finish_reason=output.finish_reason)
-                    choices.append(choice)
-                response = ChatCompletionStreamResponse(
+                        finish_reason=None)]
+                resp = ChatCompletionStreamResponse(
                     model=request.model,
                     choices=choices,
                     usage=usage_info,
                     id=request_id,
                     created=created_time)
             else:
-                choices = []
-                for output in result.outputs:
-                    delta_text = output.text[print_idx_list[output.index]:]
-                    print_idx_list[output.index] += len(delta_text)
-                    choice = CompletionResponseStreamChoice(
-                        index=output.index,
+                delta_text = response[print_idx:]
+                print_idx = len(response)
+                choices = [CompletionResponseStreamChoice(
+                        index=0,
                         text=delta_text,
-                        finish_reason=output.finish_reason)
-                    choices.append(choice)
-                response = CompletionStreamResponse(
+                        finish_reason=None)]
+                resp = CompletionStreamResponse(
                     model=request.model,
                     choices=choices,
                     usage=usage_info,
                     id=request_id,
                     created=created_time)
-            yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+            yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
         yield 'data:[DONE]\n\n'
 
     if request.stream:
