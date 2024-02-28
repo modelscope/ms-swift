@@ -275,7 +275,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
     kwargs = {'max_new_tokens': request.max_tokens}
-    # not use: 'n', 'stop', 'best_of', 'frequency_penalty', 'presence_penalty'
+    # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
     for key in ['length_penalty', 'num_beams']:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
