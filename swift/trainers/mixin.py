@@ -15,6 +15,7 @@ import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
+from torch import nn
 from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
@@ -24,7 +25,7 @@ from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
                                   ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME,
                                   TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
-                                  WEIGHTS_NAME, IntervalStrategy,
+                                  WEIGHTS_NAME, IntervalStrategy, Trainer,
                                   TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
@@ -582,3 +583,58 @@ class SwiftMixin:
             self.store_flos()
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
+
+    def create_optimizer(self):
+        opt_model = self.model
+
+        if self.optimizer is None:
+            decay_parameters = self.get_decay_parameter_names(opt_model)
+            if isinstance(self.model, SwiftModel):
+                optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
+                    lr=self.args.learning_rate,
+                    weight_decay=self.args.weight_decay)
+            else:
+                optimizer_grouped_parameters = [
+                    {
+                        'params': [
+                            p for n, p in opt_model.named_parameters()
+                            if (n in decay_parameters and p.requires_grad)
+                        ],
+                        'weight_decay':
+                        self.args.weight_decay,
+                    },
+                    {
+                        'params': [
+                            p for n, p in opt_model.named_parameters()
+                            if (n not in decay_parameters and p.requires_grad)
+                        ],
+                        'weight_decay':
+                        0.0,
+                    },
+                ]
+
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+                self.args)
+
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters,
+                                           **optimizer_kwargs)
+            if optimizer_cls.__name__ == 'Adam8bit':
+                import bitsandbytes
+
+                manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+
+                skipped = 0
+                for module in opt_model.modules():
+                    if isinstance(module, nn.Embedding):
+                        skipped += sum({
+                            p.data_ptr(): p.numel()
+                            for p in module.parameters()
+                        }.values())
+                        logger.info(
+                            f'skipped {module}: {skipped/2**20}M params')
+                        manager.register_module_override(
+                            module, 'weight', {'optim_bits': 32})
+                        logger.debug(
+                            f'bitsandbytes: will optimize {module} in fp32')
+                logger.info(f'skipped: {skipped/2**20}M params')
+        return self.optimizer

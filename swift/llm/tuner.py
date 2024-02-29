@@ -9,6 +9,8 @@ from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
+from swift.tuners.llamapro import LLaMAProConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
 from .utils import SftArguments, find_all_linears, find_embedding, is_adapter
@@ -54,6 +56,7 @@ def prepare_model(model, args: SftArguments):
                 'rank_pattern': args.lora_rank_pattern,
                 'alpha_pattern': args.lora_alpha_pattern,
                 'loftq_config': args.lora_loftq_config,
+                'lr_ratio': args.lora_lr_ratio,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
@@ -110,6 +113,19 @@ def prepare_model(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')
+            elif args.sft_type == 'llamapro':
+                model_type = args.model_type or args.model_id_or_path
+                for key in MODEL_KEYS_MAPPING.keys():
+                    if key in model_type.lower():
+                        model_type = key
+                        break
+
+                llamapro_config = LLaMAProConfig(
+                    model_type=model_type,
+                    num_new_blocks=args.llamapro_num_new_blocks,
+                    num_groups=args.llamapro_num_groups)
+                model = Swift.prepare_model(model, llamapro_config)
+                logger.info(f'llamapro_config: {llamapro_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)

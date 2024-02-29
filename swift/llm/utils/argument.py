@@ -28,7 +28,9 @@ logger = get_logger()
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'qalora', 'adalora', 'ia3'}
+    return sft_type in {
+        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro'
+    }
 
 
 @dataclass
@@ -40,8 +42,8 @@ class SftArguments:
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora',
-                      'ia3'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3',
+                      'llamapro'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft'] = 'swift'
@@ -101,6 +103,7 @@ class SftArguments:
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
+    lora_lr_ratio: float = None
 
     use_rslora: bool = False
     lora_layers_to_transform: Optional[List[int]] = None
@@ -121,6 +124,9 @@ class SftArguments:
     ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     ia3_feedforward_modules: List[str] = field(default_factory=list)
     ia3_modules_to_save: List[str] = field(default_factory=list)
+    # llamapro
+    llamapro_num_new_blocks: int = 4
+    llamapro_num_groups: Optional[int] = None
 
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
     gradient_checkpointing: Optional[bool] = None
@@ -413,7 +419,8 @@ class InferArguments:
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'qalora', 'full'] = 'lora'
+    sft_type: Literal['lora', 'longlora', 'qalora', 'full', 'adalora', 'ia3',
+                      'llamapro'] = 'lora'
     template_type: str = field(
         default='AUTO',
         metadata={
