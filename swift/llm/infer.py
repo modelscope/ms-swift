@@ -224,7 +224,7 @@ def llm_infer(args: InferArguments) -> None:
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
-        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        from .utils import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
         model, template = prepare_model_template(args)
