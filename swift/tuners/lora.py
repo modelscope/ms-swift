@@ -69,6 +69,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         _dict.pop('use_merged_linear')
         _dict['peft_type'] = _dict['swift_type']
         _dict.pop('swift_type')
+        _dict.pop('lr_ratio')
         return LoraConfig(**_dict)
 
 

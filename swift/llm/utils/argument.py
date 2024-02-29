@@ -103,7 +103,7 @@ class SftArguments:
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
-    lora_lr_ratio: float = 16.0
+    lora_lr_ratio: float = None
 
     use_rslora: bool = False
     lora_layers_to_transform: Optional[List[int]] = None
