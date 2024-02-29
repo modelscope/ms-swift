@@ -141,10 +141,16 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 
 **Merge-LoRA & 量化**
 ```shell
+# 使用默认数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4
-
+# 使用自定义数据集
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true --quant_bits 4 --quant_dataset _custom_dataset \
+    --custom_train_dataset_path 'path/to/your/train/dataset' \
+    --custom_val_dataset_path 'path/to/your/val/dataset'
 ```
 
 **推理量化后模型**

@@ -627,6 +627,11 @@ class ExportArguments(InferArguments):
     commit_message: str = 'update files'
 
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        register_custom_dataset(self)
+
+
 @dataclass
 class DPOArguments(SftArguments):
 
