@@ -2026,13 +2026,15 @@ def get_model_tokenizer_phi(model_dir: str,
     'deepseek-ai/deepseek-moe-16b-chat',
     LoRATM.llama2,
     TemplateType.deepseek,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.deepseek_moe_16b,
     'deepseek-ai/deepseek-moe-16b-base',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_deepseek_moe(model_dir: str,
                                      torch_dtype: Dtype,
                                      model_kwargs: Dict[str, Any],
@@ -2043,19 +2045,25 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     if model is not None:
         # fix dtype bug
         mlp_cls = model.model.layers[1].mlp.__class__
-        if not hasattr(mlp_cls, '__old_forward'):  # Avoid double patching
-            __old_forward = mlp_cls._old_forward if hasattr(
-                mlp_cls, '_old_forward') else mlp_cls.forward
+        for module in model.modules():
+            if isinstance(module, mlp_cls):
+                if not hasattr(module,
+                               '__old_forward'):  # Avoid double patching
+                    __old_forward = module._old_forward if hasattr(
+                        module, '_old_forward') else module.forward
 
-            def _new_forward(self, hidden_states) -> Tensor:
-                dtype = hidden_states.dtype
-                return __old_forward(self, hidden_states).to(dtype)
+                    def _new_forward(hidden_states, *,
+                                     __old_forward) -> Tensor:
+                        dtype = hidden_states.dtype
+                        return __old_forward(hidden_states).to(dtype)
 
-            if hasattr(mlp_cls, '_old_forward'):  # device_map
-                mlp_cls._old_forward = _new_forward
-            else:
-                mlp_cls.forward = _new_forward
-            mlp_cls.__old_forward = __old_forward
+                    _new_forward = partial(
+                        _new_forward, __old_forward=__old_forward)
+                    if hasattr(module, '_old_forward'):  # device_map
+                        module._old_forward = _new_forward
+                    else:
+                        module.forward = _new_forward
+                    module.__old_forward = __old_forward
     return model, tokenizer
 
 
