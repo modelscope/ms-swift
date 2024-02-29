@@ -4,7 +4,6 @@ import logging
 import time
 from dataclasses import asdict
 from http import HTTPStatus
-from types import MethodType
 from typing import List, Optional, Union
 
 import json
@@ -21,9 +20,8 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     CompletionRequest, CompletionResponse,
                     CompletionResponseChoice, CompletionResponseStreamChoice,
                     CompletionStreamResponse, DeltaMessage, DeployArguments,
-                    Model, ModelList, UsageInfo, VllmGenerationConfig,
-                    inference, inference_stream, messages_to_history,
-                    prepare_vllm_engine_template, random_uuid)
+                    Model, ModelList, UsageInfo, inference, inference_stream,
+                    messages_to_history, random_uuid)
 
 logger = get_logger()
 
@@ -90,6 +88,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                                               CompletionRequest],
                                raw_request: Request):
     global llm_engine, template
+    from .utils import VllmGenerationConfig
     error_msg = await check_model(request)
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
@@ -477,6 +476,7 @@ def llm_deploy(args: DeployArguments) -> None:
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
+        from .utils import prepare_vllm_engine_template
         llm_engine, template = prepare_vllm_engine_template(
             args, use_async=True)
     else:
