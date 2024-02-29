@@ -49,10 +49,9 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
-    lr_ratio: float = field(default=2.0**4, metadata={
-            'help':
-            'The lora learning_rate ratio of lora_A to lora_B'
-        })
+    lr_ratio: float = field(
+        default=2.0**4,
+        metadata={'help': 'The lora learning_rate ratio of lora_A to lora_B'})
 
     def __post_init__(self):
         from .mapping import SwiftTuners
@@ -90,7 +89,8 @@ class LoRA(SwiftAdapter):
                 params = []
                 names = set()
                 for name, param in model.named_parameters():
-                    if adapter_name in name and ('lora_B' in name or 'lora_embedding_B' in name):
+                    if adapter_name in name and ('lora_B' in name or
+                                                 'lora_embedding_B' in name):
                         params.append(param)
                         names.add(name)
                 if params:

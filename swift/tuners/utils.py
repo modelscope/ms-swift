@@ -7,7 +7,7 @@ import shutil
 import threading
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
-from typing import Dict, OrderedDict, Union, Optional
+from typing import Dict, Optional, OrderedDict, Union
 
 import json
 import numpy as np

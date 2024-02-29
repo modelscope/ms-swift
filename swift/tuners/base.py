@@ -263,9 +263,11 @@ class SwiftModel(nn.Module):
         param_groups = []
         for output in self.adapters.values():
             if output.optimizer_group_callback:
-                param_names, param_group = output.optimizer_group_callback(self.model, **defaults)
+                param_names, param_group = output.optimizer_group_callback(
+                    self.model, **defaults)
                 if param_names and all_param_names & param_names:
-                    raise ValueError(f'Cannot set one parameter to different param groups')
+                    raise ValueError(
+                        'Cannot set one parameter to different param groups')
                 if param_names and param_group:
                     all_param_names.update(param_names)
                     param_groups.append(param_group)
@@ -273,20 +275,25 @@ class SwiftModel(nn.Module):
         decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
         param_groups.extend([
             {
-                "params": [
-                    p for n, p in self.model.named_parameters() if (n in decay_parameters and n not in all_param_names and p.requires_grad)
+                'params': [
+                    p for n, p in self.model.named_parameters()
+                    if (n in decay_parameters and n not in all_param_names
+                        and p.requires_grad)
                 ],
-                "weight_decay": self.args.weight_decay,
+                'weight_decay':
+                defaults['weight_decay'],
             },
             {
-                "params": [
-                    p for n, p in self.model.named_parameters() if (n not in decay_parameters and n not in all_param_names and p.requires_grad)
+                'params': [
+                    p for n, p in self.model.named_parameters()
+                    if (n not in decay_parameters and n not in all_param_names
+                        and p.requires_grad)
                 ],
-                "weight_decay": 0.0,
+                'weight_decay':
+                0.0,
             },
         ])
         return param_groups
-
 
     @classmethod
     def from_pretrained(cls,
