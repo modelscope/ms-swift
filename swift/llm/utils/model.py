@@ -116,6 +116,9 @@ class ModelType:
     internlm_20b = 'internlm-20b'
     internlm_20b_chat = 'internlm-20b-chat'
     # internlm2
+    internlm2_1_8b = 'internlm2-1_8b'
+    internlm2_1_8b_sft_chat = 'internlm2-1_8b-sft-chat'
+    internlm2_1_8b_chat = 'internlm2-1_8b-chat'
     internlm2_7b_base = 'internlm2-7b-base'
     internlm2_7b = 'internlm2-7b'
     internlm2_7b_sft_chat = 'internlm2-7b-sft-chat'
@@ -1291,6 +1294,29 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
                                          load_model, **kwargs)
 
 
+@register_model(
+    ModelType.internlm2_1_8b,
+    'Shanghai_AI_Laboratory/internlm2-1_8b',
+    LoRATM.internlm2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.internlm2_1_8b_sft_chat,
+    'Shanghai_AI_Laboratory/internlm2-chat-1_8b-sft',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.internlm2_1_8b_chat,
+    'Shanghai_AI_Laboratory/internlm2-chat-1_8b',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.internlm2_math_7b,
     'Shanghai_AI_Laboratory/internlm2-math-base-7b',
