@@ -186,6 +186,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     # Trainer
     logger.info(f'training_args: {training_args}')
+
     trainer_kwargs = {}
     if args.predict_with_generate:
         trainer_kwargs['compute_metrics'] = partial(
