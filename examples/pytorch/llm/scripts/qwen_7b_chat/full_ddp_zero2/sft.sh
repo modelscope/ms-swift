@@ -1,12 +1,12 @@
 # Experimental environment: 4 * A100
-# 4 * 78GB GPU memory
+# 4 * 68GB GPU memory
 nproc_per_node=4
 
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
-    --model_id_or_path qwen/Qwen-14B-Chat \
+    --model_id_or_path qwen/Qwen-7B-Chat \
     --model_revision master \
     --sft_type full \
     --tuner_backend swift \
@@ -31,5 +31,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --deepspeed 'default-zero3' \
+    --deepspeed 'default-zero2' \
     --save_only_model true \
