@@ -299,13 +299,6 @@ class SftArguments:
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 
-        if self.add_output_dir_suffix is None:
-            self.add_output_dir_suffix = True
-        if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
-            self.output_dir = add_version_to_work_dir(self.output_dir)
-            logger.info(f'output_dir: {self.output_dir}')
-
         if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
                 'lora does not support `freeze_parameters`, please set `--sft_type full`'
@@ -376,8 +369,7 @@ class SftArguments:
                 with open(self.deepspeed, 'r', encoding='utf-8') as f:
                     self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
-        if self.logging_dir is None:
-            self.logging_dir = f'{self.output_dir}/runs'
+
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
@@ -408,13 +400,19 @@ class SftArguments:
                 f'{self.model_type} not support gradient_checkpointing.')
 
         self._init_training_args()
-        if dist.is_initialized() and is_dist():
-            self.training_args.output_dir = broadcast_string(
-                self.training_args.output_dir)
-            self.training_args.logging_dir = broadcast_string(
-                self.training_args.logging_dir)
-            self.training_args.run_name = broadcast_string(
-                self.training_args.run_name)
+
+        if self.add_output_dir_suffix is None:
+            self.add_output_dir_suffix = True
+        if self.add_output_dir_suffix:
+            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            self.output_dir = add_version_to_work_dir(self.output_dir)
+            logger.info(f'output_dir: {self.output_dir}')
+            self.training_args.output_dir = self.output_dir
+            self.training_args.run_name = self.output_dir
+
+        if self.logging_dir is None:
+            self.logging_dir = f'{self.output_dir}/runs'
+            self.training_args.logging_dir = self.logging_dir
 
     def _init_training_args(self) -> None:
         additional_saved_files = []
