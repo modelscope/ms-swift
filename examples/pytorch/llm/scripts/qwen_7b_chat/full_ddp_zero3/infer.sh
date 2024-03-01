@@ -1,4 +1,4 @@
-# Experimental environment: A100
+# Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir "output/qwen-7b-chat/vx-xxx/checkpoint-xxx" \
