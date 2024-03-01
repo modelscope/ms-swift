@@ -1,5 +1,5 @@
 # Experimental environment: 4 * 3090
-# 2 * 24GB GPU memory
+# 4 * 24GB GPU memory
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
