@@ -139,7 +139,7 @@ cd examples/pytorch/llm
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
 - 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](./自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
-- 如果你的机器是A100等高性能显卡, 且模型支持使用flash-attn, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
+- 如果你的机器是A100等高性能显卡, 且模型支持flash-attn, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
 - 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](./自定义与拓展.md#注册数据集的方式)
 - 如果你需要**断网**进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
