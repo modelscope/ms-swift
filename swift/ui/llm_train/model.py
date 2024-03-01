@@ -94,7 +94,8 @@ class Model(BaseUI):
             return model_id_or_path, default_system, template
 
         def update_model_id_or_path(model_type, model_id_or_path, model_state):
-            model_state[model_type] = model_id_or_path
+            if model_type:
+                model_state[model_type] = model_id_or_path
             return model_state
 
         def reset(model_type):

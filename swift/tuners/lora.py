@@ -77,6 +77,10 @@ class LoRA(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
+        if config.use_qa_lora:
+            auto_gptq_config = get_quantization_config(model, method='gptq')
+            if auto_gptq_config:
+                config.group_size = getattr(auto_gptq_config, 'group_size', None)
         LoraModel(model, config, adapter_name)
 
         def state_dict_callback(state_dict, adapter_name):

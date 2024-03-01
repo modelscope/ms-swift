@@ -667,6 +667,9 @@ class LoraModel(_LoraModel):
         # because the first match is always used. Therefore, the default layers should be checked last.
         current_key = kwargs.pop('current_key')
         new_module = None
+        if lora_config.use_qa_lora:
+            kwargs['use_qa_lora'] = True
+            kwargs['group_size'] = lora_config.group_size
         if lora_config.use_merged_linear:
             bias = kwargs.pop('bias', False)
             new_module = MergedLinear(

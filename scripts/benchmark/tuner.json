@@ -1,0 +1,104 @@
+{
+    "name": "tastelikefeet:tuner",
+    "info": "基于ms-agent数据集打混的各tuners效果实验",
+    "cmd": "sft",
+    "requirements":{
+        "gpu": "2",
+        "ddp": "2"
+    },
+    "args": {
+      "model_type": "llama2-7b-chat",
+      "dataset": "ms-agent",
+      "train_dataset_mix_ratio": 3,
+      "batch_size": 2,
+      "max_length": 1024,
+      "gradient_accumulation_steps": 4,
+      "learning_rate": 5e-5,
+      "use_flash_attn": true,
+      "eval_steps": 500,
+      "save_steps": 500,
+      "train_dataset_sample": -1,
+      "val_dataset_sample": 5000,
+      "num_train_epochs": 2,
+      "check_dataset_strategy": null,
+      "gradient_checkpointing": true,
+      "weight_decay": 0.01,
+      "max_grad_norm": 1.0,
+      "warmup_ratio": 0.03,
+      "save_total_limit": 2,
+      "logging_steps": 10
+    },
+    "ablation": [
+      {
+        "name": "lora",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      },
+      {
+        "name": "lora+",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "lora_lr_ratio": 16.0
+        }
+      },
+      {
+        "name": "rslora",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "use_rslora": true
+        }
+      },
+      {
+        "name": "lora/neftune",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "neftune_noise_alpha": 15.0
+        }
+      },
+      {
+        "name": "llamapro",
+        "args": {
+          "sft_type": "llamapro",
+          "llamapro_num_new_blocks": "4"
+        }
+      },
+      {
+        "name": "full",
+        "args": {
+          "sft_type": "full"
+        }
+      },
+      {
+        "name": "lora/no_mix",
+        "info": "lora无混合数据集",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "train_dataset_mix_ratio": null
+        }
+      },
+      {
+        "name": "full/no_mix",
+        "info": "全参无混合数据集",
+        "args": {
+          "sft_type": "full",
+          "train_dataset_mix_ratio": null
+        }
+      }
+    ]
+}

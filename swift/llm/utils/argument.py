@@ -601,6 +601,18 @@ class DeployArguments(InferArguments):
 
 
 @dataclass
+class ExpArguments:
+
+    exp_config: str = None
+
+
+@dataclass
+class EvalArguments(InferArguments):
+
+    pass
+
+
+@dataclass
 class ExportArguments(InferArguments):
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False

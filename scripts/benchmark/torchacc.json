@@ -1,0 +1,44 @@
+{
+    "name": "quantize",
+    "info": "qalora效果实验",
+    "cmd": "sft",
+    "args": {
+      "model_type": "qwen1half-7b-chat-int8",
+      "dataset": "ms-agent",
+      "train_dataset_mix_ratio": 3,
+      "batch_size": 2,
+      "gradient_accumulation_steps": 2,
+      "learning_rate": 5e-5,
+      "use_flash_attn": true,
+      "eval_steps": 500,
+      "save_steps": 500
+    },
+    "ablation": [
+      {
+        "name": "lora",
+        "requirements":{
+          "gpu": "2",
+          "ddp": "2"
+        },
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      },
+      {
+        "name": "qalora",
+        "requirements":{
+          "gpu": "2",
+          "ddp": "2"
+        },
+        "args": {
+          "sft_type": "qalora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      }
+    ]
+}
