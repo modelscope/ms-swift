@@ -366,8 +366,8 @@ def data_collate_fn(
             # dynamic padding.
             input_ids = F.pad(input_ids, (0, padding_length), 'constant',
                               tokenizer.pad_token_id)
-            attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
-                                  0)
+            attention_mask = F.pad(attention_mask, (0, padding_length),
+                                   'constant', 0)
             labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
         # manully split the batch to different DP rank.
