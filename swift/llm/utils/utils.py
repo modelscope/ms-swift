@@ -357,17 +357,18 @@ def data_collate_fn(
         attention_mask, batch_first=True, padding_value=0)
     labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
-    if padding_to is None and use_torchacc():
+    if use_torchacc():
         rank, _, world_size, _ = get_dist_setting()
-        longest_len = input_ids.shape[-1]
-        bucket_data_length = _get_bucket(bucket_sizes, longest_len)
-        padding_length = bucket_data_length - input_ids.shape[1]
-        # dynamic padding.
-        input_ids = F.pad(input_ids, (0, padding_length), 'constant',
-                          tokenizer.pad_token_id)
-        attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
-                               0)
-        labels = F.pad(labels, (0, padding_length), 'constant', -100)
+        if padding_to is None:
+            longest_len = input_ids.shape[-1]
+            bucket_data_length = _get_bucket(bucket_sizes, longest_len)
+            padding_length = bucket_data_length - input_ids.shape[1]
+            # dynamic padding.
+            input_ids = F.pad(input_ids, (0, padding_length), 'constant',
+                              tokenizer.pad_token_id)
+            attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
+                                  0)
+            labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
         # manully split the batch to different DP rank.
         batch_size = input_ids.shape[0] // world_size
