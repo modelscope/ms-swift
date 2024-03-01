@@ -146,7 +146,7 @@ cd examples/pytorch/llm
 - 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失. 因此**不建议使用qlora进行微调**, 部署生态不好.
 
 
-注意: 
+注意:
 
 - 由于曾用名问题, 以`xxx_ds`结尾的脚本的含义是: 使用deepspeed zero2进行训练. (e.g. `full_ddp_ds`).
 - 除了以下列出的脚本, 其他脚本不一定进行维护.
