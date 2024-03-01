@@ -56,10 +56,10 @@ def prepare_model(model, args: SftArguments):
                 'rank_pattern': args.lora_rank_pattern,
                 'alpha_pattern': args.lora_alpha_pattern,
                 'loftq_config': args.lora_loftq_config,
-                'lr_ratio': args.lora_lr_ratio,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
+                    lora_kwargs['lr_ratio'] = args.lora_lr_ratio
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
