@@ -493,7 +493,7 @@ class SftArguments:
 
         self.training_args = training_args
 
-    def handle_pai_compat(self) -> None:
+    def _handle_pai_compat(self) -> None:
         assert is_pai_training_job() is True
         logger.info('Handle pai compat...')
         pai_tensorboard_dir = get_pai_tensorboard_dir()

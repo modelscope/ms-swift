@@ -16,7 +16,7 @@ swift sft \
     --ddp_backend nccl \
     --dataset blossom-math-zh \
     --train_dataset_sample -1 \
-    --num_train_epochs 1 \
+    --num_train_epochs 5 \
     --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \

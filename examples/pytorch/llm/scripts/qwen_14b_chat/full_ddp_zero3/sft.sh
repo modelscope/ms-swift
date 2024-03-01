@@ -1,6 +1,7 @@
 # Experimental environment: 4 * A100
 # 4 * 78GB GPU memory
 nproc_per_node=4
+
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
