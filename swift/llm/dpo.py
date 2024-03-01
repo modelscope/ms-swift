@@ -5,6 +5,7 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.trainers.dpo_trainers import DPOTrainer
@@ -115,7 +116,7 @@ def llm_dpo(args: DPOArguments) -> str:
             val_dataset = val_dataset.select(range(val_dataset_sample))
 
     if val_dataset is None:
-        training_args.evaluation_strategy = 'no'
+        training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')

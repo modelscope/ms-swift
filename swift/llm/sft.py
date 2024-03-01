@@ -7,6 +7,7 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.trainers import Seq2SeqTrainer
@@ -139,7 +140,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                                                    args.model_name,
                                                    args.model_author)
     if val_dataset is None:
-        training_args.evaluation_strategy = 'no'
+        training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
