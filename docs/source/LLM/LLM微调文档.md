@@ -126,7 +126,7 @@ swift sft \
 更多sh脚本可以查看[这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts)
 
 ```bash
-# 下面的脚本需要在此目录下执行
+# 脚本需要在此目录下执行
 cd examples/pytorch/llm
 ```
 
@@ -143,11 +143,26 @@ cd examples/pytorch/llm
 - 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](./自定义与拓展.md#注册数据集的方式)
 - 如果你需要**断网**进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
-- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.
+- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失. 因此**不建议使用qlora进行微调**, 部署生态不好.
 
 
+注意: 
+
+- 由于曾用名问题, 以`xxx_ds`结尾的脚本的含义是: 使用deepspeed zero2进行训练. (e.g. `full_ddp_ds`).
+- 除了以下列出的脚本, 其他脚本不一定进行维护.
 
 
+如果你想要**自定义脚本**, 可以参考以下脚本进行修改: (以下脚本会**定期维护**)
+
+- full: [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat/full) (A100)
+- full+ddp+zero2: [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_ddp_zero2) (4\*A100)
+- full+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3) (4\*A100)
+- lora: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora) (3090), [yi-34-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34_chat/lora) (A100)
+- lora+ddp: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora_ddp) (2\*3090)
+- lora+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/lora_ddp_zero3) (4\*3090), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_ddp_zero3) (4\*A100)
+- qlora(gptq-int4): [qwen-7b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat_int4/qlora) (3090)
+- qlora(gptq-int8): [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8/qlora) (3090)
+- qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
 
 
 ## DPO

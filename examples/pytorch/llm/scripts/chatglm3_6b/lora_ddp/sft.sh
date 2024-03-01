@@ -1,5 +1,5 @@
 # Experimental environment: 2 * 3090
-# 2 * 20GB GPU memory
+# 2 * 24GB GPU memory
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -17,12 +17,12 @@ swift sft \
     --dataset leetcode-python-en \
     --train_dataset_sample -1 \
     --num_train_epochs 5 \
-    --max_length 4096 \
+    --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules DEFAULT \
+    --lora_target_modules ALL \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.01 \
