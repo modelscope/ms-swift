@@ -1,5 +1,5 @@
 # Experimental environment: A100
-# 2 * 70GB GPU memory
+# 70GB GPU memory
 
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
