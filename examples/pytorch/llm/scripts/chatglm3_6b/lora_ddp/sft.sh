@@ -2,12 +2,10 @@
 # 2 * 20GB GPU memory
 nproc_per_node=2
 
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-torchrun \
-    --nproc_per_node=$nproc_per_node \
-    --master_port 29500 \
-    llm_sft.py \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
+swift sft \
     --model_id_or_path ZhipuAI/chatglm3-6b \
     --model_revision master \
     --sft_type lora \
@@ -18,7 +16,7 @@ torchrun \
     --ddp_backend nccl \
     --dataset leetcode-python-en \
     --train_dataset_sample -1 \
-    --num_train_epochs 1 \
+    --num_train_epochs 5 \
     --max_length 4096 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
@@ -36,5 +34,3 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --deepspeed default-zero2 \
-    --save_only_model true \

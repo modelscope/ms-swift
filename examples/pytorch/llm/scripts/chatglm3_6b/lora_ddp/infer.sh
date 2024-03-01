@@ -1,7 +1,6 @@
 # Experimental environment: 3090
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_infer.py \
+swift infer \
     --ckpt_dir "output/chatglm3-6b/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 4096 \
