@@ -574,6 +574,8 @@ class SwiftMixin:
             if version.parse(
                     transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
+                if isinstance(grad_norm, torch.Tensor):
+                    grad_norm = grad_norm.item()
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
