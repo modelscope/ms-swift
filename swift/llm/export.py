@@ -5,7 +5,7 @@ from typing import List, Tuple, Union
 import torch
 from modelscope import GenerationConfig
 from transformers import AwqConfig, PreTrainedModel
-
+from datasets import concatenate_datasets
 from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
                          seed_everything, show_layers)
 from .infer import merge_lora, save_checkpoint
@@ -68,7 +68,7 @@ def prepare_awq_model_template(
 
 
 _args = None
-
+template = None
 
 def _get_calib_dataset(
         data: Union[str, List[str], List[List[int]]] = 'pileval',  # not use
@@ -78,43 +78,42 @@ def _get_calib_dataset(
         split='train',  # not use
         text_column='text',  # not use
 ) -> List[torch.Tensor]:
-    global _args
+    global _args, template
     assert _args is not None
+    assert template is not None
     data = _args.quant_dataset
     n_samples = _args.quant_n_samples
     block_size = _args.quant_seqlen
 
     if isinstance(data, str):
         data = [data]
-    dataset = get_dataset(data)[0]
+    dataset, val_dataset = get_dataset(data)
+    if val_dataset is not None:
+        dataset = concatenate_datasets([dataset, val_dataset])
     dataset = dataset.shuffle(seed=42)
 
     samples = []
     n_run = 0
     for data in dataset:
-        line = data['response']
-        line = line.strip()
-        line_encoded = tokenizer.encode(line)
-        if len(line_encoded) > 512:
+        input_ids = template.encode(data)[0].get('input_ids')
+        if input_ids is None or  len(input_ids) == 0:
             continue
-        sample = torch.tensor([line_encoded])
-        if sample.numel() == 0:
-            continue
+        sample = torch.tensor(input_ids)
         samples.append(sample)
         n_run += 1
         if n_run == n_samples:
             break
     # now concatenate all samples and split according to block size
-    cat_samples = torch.cat(samples, dim=1)
-    n_split = cat_samples.shape[1] // block_size
+    cat_samples = torch.cat(samples, dim=0)
+    n_split = cat_samples.shape[0] // block_size
     logger.debug(f' * Split into {n_split} blocks')
     return [
-        cat_samples[:, i * block_size:(i + 1) * block_size]
+        cat_samples[None, i * block_size:(i + 1) * block_size]
         for i in range(n_split)
     ]
 
 
-def awq_model_quantize(awq_model, template: Template) -> None:
+def awq_model_quantize(awq_model, tokenizer) -> None:
     from awq.quantize import quantizer
     assert _args is not None
     _raw_get_calib_dataset = quantizer.get_calib_dataset
@@ -127,7 +126,7 @@ def awq_model_quantize(awq_model, template: Template) -> None:
         'version': 'GEMM'
     }
     logger.info('Start quantizing the model...')
-    awq_model.quantize(template.tokenizer, quant_config=quant_config)
+    awq_model.quantize(tokenizer, quant_config=quant_config)
     quantizer.get_calib_dataset = _raw_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
         bits=_args.quant_bits,
@@ -137,7 +136,7 @@ def awq_model_quantize(awq_model, template: Template) -> None:
 
 
 def llm_export(args: ExportArguments) -> None:
-    global _args
+    global _args, template
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.quant_bits > 0:
@@ -156,7 +155,7 @@ def llm_export(args: ExportArguments) -> None:
         logger.info(f'Setting quant_path: {quant_path}')
         assert not os.path.exists(quant_path)
         awq_model, template = prepare_awq_model_template(args)
-        awq_model_quantize(awq_model, template)
+        awq_model_quantize(awq_model, template.tokenizer)
         logger.info(get_model_info(awq_model))
         show_layers(awq_model)
 
