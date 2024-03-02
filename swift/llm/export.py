@@ -162,8 +162,11 @@ def llm_export(args: ExportArguments) -> None:
         show_layers(awq_model)
 
         awq_model.save_quantized(quant_path)
+        logger.info('Saving quantized weights...')
         save_checkpoint(None, template.tokenizer, awq_model.model_dir,
                         args.ckpt_dir, quant_path)
+        logger.info(
+            f'Successfully quantized the model and saved in {quant_path}.')
         args.ckpt_dir = quant_path
 
     if args.push_to_hub:
