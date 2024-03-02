@@ -19,7 +19,6 @@ logger = get_logger()
 def prepare_awq_model_template(
         args: ExportArguments) -> Tuple[PreTrainedModel, Template]:
     from awq import AutoAWQForCausalLM
-    logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
@@ -83,15 +82,12 @@ def _get_calib_dataset(
     global _args, template
     assert _args is not None
     assert template is not None
-    data = _args.quant_dataset
+    data = _args.dataset
     n_samples = _args.quant_n_samples
     block_size = _args.quant_seqlen
 
-    if isinstance(data, str):
-        data = [data]
-    dataset, val_dataset = get_dataset(data)
-    if val_dataset is not None:
-        dataset = concatenate_datasets([dataset, val_dataset])
+    # only use train_dataset
+    dataset = get_dataset(data)[0]
     dataset = dataset.shuffle(seed=42)
 
     samples = []
@@ -118,6 +114,7 @@ def _get_calib_dataset(
 def awq_model_quantize(awq_model, tokenizer) -> None:
     from awq.quantize import quantizer
     assert _args is not None
+    logger.info(f'Quantization dataset: {_args.dataset}')
     _raw_get_calib_dataset = quantizer.get_calib_dataset
     quantizer.get_calib_dataset = _get_calib_dataset
     group_size = 128
@@ -139,6 +136,7 @@ def awq_model_quantize(awq_model, tokenizer) -> None:
 
 def llm_export(args: ExportArguments) -> None:
     global _args, template
+    logger.info(f'args: {args}')
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.quant_bits > 0:

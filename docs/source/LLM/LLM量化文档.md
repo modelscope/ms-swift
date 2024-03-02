@@ -31,7 +31,16 @@ pip install -r requirements/llm.txt  -U
 ```bash
 # awq-int4量化 (使用A100大约需要18分钟, 显存占用: 12GB)
 # 如果出现量化的时候OOM, 可以适度降低`--quant_n_samples`(默认256)和`--quant_seqlen`(默认2048).
-CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat --quant_bits 4
+
+# 使用`ms-bench-mini`作为量化数据集
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat --quant_bits 4 \
+    --dataset ms-bench-mini
+
+# 使用自定义量化数据集 (`--custom_val_dataset_path`参数不进行使用)
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat --quant_bits 4 \
+    --custom_train_dataset_path xxx.jsonl
 
 # 推理 swift量化产生的模型
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_path qwen1half-7b-chat-int4
@@ -142,10 +151,17 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 
 **Merge-LoRA & 量化**
 ```shell
+# 使用`ms-bench-mini`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
-    --merge_lora true --quant_bits 4
+    --merge_lora true --quant_bits 4 \
+    --dataset ms-bench-mini
 
+# 使用微调时使用的数据集作为量化数据集
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true --quant_bits 4 \
+    --load_dataset_config true
 ```
 
 **推理量化后模型**
