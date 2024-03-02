@@ -467,6 +467,7 @@ async def create_completion(request: CompletionRequest,
 
 
 def llm_deploy(args: DeployArguments) -> None:
+    logger.info(f'args: {args}')
     logger_format = logging.Formatter(
         '%(levelname)s: %(asctime)s %(filename)s:%(lineno)d] %(message)s')
     logger.handlers[0].setFormatter(logger_format)

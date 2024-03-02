@@ -29,8 +29,18 @@ pip install -r requirements/llm.txt  -U
 ## 原始模型
 这里展示对qwen1half-7b-chat进行awq量化.
 ```bash
-# awq-int4量化 (使用A100大约需要20分钟, 显存占用: 25GB)
-CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat --quant_bits 4
+# awq-int4量化 (使用A100大约需要18分钟, 显存占用: 12GB)
+# 如果出现量化的时候OOM, 可以适度降低`--quant_n_samples`(默认256)和`--quant_seqlen`(默认2048).
+
+# 使用`ms-bench-mini`作为量化数据集
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat --quant_bits 4 \
+    --dataset ms-bench-mini
+
+# 使用自定义量化数据集 (`--custom_val_dataset_path`参数不进行使用)
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat --quant_bits 4 \
+    --custom_train_dataset_path xxx.jsonl
 
 # 推理 swift量化产生的模型
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_path qwen1half-7b-chat-int4
@@ -49,7 +59,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 你好！有什么问题我可以帮助你吗？
 --------------------------------------------------
 <<< 2000年是闰年嘛？
-是的，2000年是闰年。闰年是指公历中遵循格里高利历规则的年份，按照规定，能被4整除但不能被100整除，或者能被400整除的年份为闰年。2000年满足后者，因为它能被400整除，所以是世纪闰年。
+是的，2000年是闰年。闰年规则是：普通年份能被4整除但不能被100整除，或者能被400整除的年份就是闰年。2000年满足后者，所以按照公历是闰年。
 --------------------------------------------------
 <<< 15869+587=?
 15869 + 587 = 16456
@@ -58,17 +68,17 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 浙江省的省会是杭州市。
 --------------------------------------------------
 <<< 这有什么好吃的
-浙江的美食非常丰富，以下列举一些具有代表性的：
+浙江美食非常丰富，以下列举一些具有代表性的：
 
 1. **杭州菜**：如西湖醋鱼、东坡肉、龙井虾仁、叫化童鸡等，清淡而精致。
-2. **宁波菜**：如红烧肉、水磨年糕、汤圆、海鲜类，口味鲜美。
-3. **浙东沿海**：海鲜如梭子蟹、大闸蟹、海鲜面、海鲜煲等，新鲜且种类多。
-4. **金华火腿**：闻名全国，口感醇厚，可作为佐料或菜肴。
-5. **绍兴黄酒**：当地特色，搭配小菜，别有一番风味。
-6. **嘉兴粽子**：特别是嘉兴五芳斋的粽子，种类多样，甜咸皆有。
-7. **衢州烂柯山的野菜**：如蕨菜、竹笋等，天然健康。
+2. **宁波菜**：如红烧肉、汤圆、水磨年糕、宁波汤包等，口味鲜美。
+3. **温州菜**：温州海鲜如蝤蛑、蝤蛑炒年糕、瓯菜，口味偏咸鲜。
+4. **绍兴菜**：如东坡肉、霉干菜扣肉、绍兴黄酒等，酒香浓郁。
+5. **嘉兴粽子**：如嘉兴肉粽，特别是五芳斋的粽子，口感软糯。
+6. **金华火腿**：浙江特产，以金华地区最为著名，口感醇厚。
+7. **浙东土菜**：如农家小炒、野菜、腌菜等，原汁原味。
 
-当然，浙江各地还有许多特色小吃，如衢州的油茶、温州的白切鸡、台州的海鲜面等，你可以根据自己的口味去探索。
+各地还有许多特色小吃，如杭州的知味观、宋城的宋嫂鱼羹，以及各种小吃街如河坊街、西湖醋鱼一条街等，都值得一尝。如果你有具体地方或口味偏好，可以告诉我，我可以给出更具体的建议。
 """
 
 # 原始模型
@@ -141,10 +151,17 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 
 **Merge-LoRA & 量化**
 ```shell
+# 使用`ms-bench-mini`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
-    --merge_lora true --quant_bits 4
+    --merge_lora true --quant_bits 4 \
+    --dataset ms-bench-mini
 
+# 使用微调时使用的数据集作为量化数据集
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
+    --merge_lora true --quant_bits 4 \
+    --load_dataset_config true
 ```
 
 **推理量化后模型**
@@ -179,20 +196,23 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```shell
 # 推送lora增量模型
-swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id qwen1half-4b-chat-lora \
     --hub_token '<your-sdk-token>'
 
 # 推送merged模型
-swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id qwen1half-4b-chat-lora \
     --hub_token '<your-sdk-token>' \
     --merge_lora true
 
 # 推送量化后模型
-swift export --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id qwen1half-4b-chat-lora \
     --hub_token '<your-sdk-token>' \

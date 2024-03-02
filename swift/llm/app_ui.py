@@ -106,6 +106,7 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
 
 
 def llm_app_ui(args: AppUIArguments) -> None:
+    logger.info(f'args: {args}')
     args.eval_human = True
     if args.merge_lora:
         merge_lora(args, device_map='cpu')

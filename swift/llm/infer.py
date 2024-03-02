@@ -127,7 +127,6 @@ def merge_lora(args: InferArguments,
 
 def prepare_model_template(
         args: InferArguments) -> Tuple[PreTrainedModel, Template]:
-    logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
@@ -221,6 +220,7 @@ def read_media_file(
 
 
 def llm_infer(args: InferArguments) -> None:
+    logger.info(f'args: {args}')
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':

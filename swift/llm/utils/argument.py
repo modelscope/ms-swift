@@ -703,8 +703,7 @@ class ExportArguments(InferArguments):
 
     # awq
     quant_bits: int = 0  # e.g. 4
-    quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
-    quant_n_samples: int = 1024
+    quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
@@ -721,6 +720,12 @@ class ExportArguments(InferArguments):
         })
     hub_private_repo: bool = False
     commit_message: str = 'update files'
+
+    def __post_init__(self):
+        super().__post_init__()
+        if len(self.dataset) == 0:
+            self.dataset = ['ms-bench-mini']
+            logger.info(f'Setting args.dataset: {self.dataset}')
 
 
 @dataclass
