@@ -106,7 +106,7 @@ def _get_calib_dataset(
     # now concatenate all samples and split according to block size
     cat_samples = torch.cat(samples, dim=0)
     n_split = cat_samples.shape[0] // block_size
-    logger.debug(f' * Split into {n_split} blocks')
+    logger.info(f'AWQ: Split into {n_split} blocks')
     return [
         cat_samples[None, i * block_size:(i + 1) * block_size]
         for i in range(n_split)

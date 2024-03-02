@@ -704,7 +704,7 @@ class ExportArguments(InferArguments):
     # awq
     quant_bits: int = 0  # e.g. 4
     quant_dataset: List[str] = field(default_factory=lambda: ['ms-bench-mini'])
-    quant_n_samples: int = 512
+    quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
