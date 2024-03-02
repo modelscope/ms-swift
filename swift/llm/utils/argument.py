@@ -701,8 +701,9 @@ class ExportArguments(InferArguments):
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
-    # awq
+    # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
+    quant_method: Literal['gptq', 'awq'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'

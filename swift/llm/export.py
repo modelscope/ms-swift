@@ -143,13 +143,13 @@ def gptq_model_quantize(model, tokenizer):
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
     gptq_quantizer = GPTQQuantizer(
-        bits=_args.quant_bits,
-        dataset='',
-        batch_size=_args.quant_batch_size,
-        pad_token_id=tokenizer.eos_token_id)
+        bits=_args.quant_bits, dataset=_args.dataset)
     _origin_get_dataset = quantizer.get_dataset
     quantizer.get_dataset = _get_dataset
     logger.info('Start quantizing the model...')
+    logger.warning(
+        'The process of packing the model takes a long time and there is no progress bar. '
+        'Please be patient and wait...')
     gptq_quantizer.quantize_model(model, tokenizer)
     quantizer.get_dataset = _origin_get_dataset  # recover
     return gptq_quantizer
@@ -168,11 +168,12 @@ def llm_export(args: ExportArguments) -> None:
             args.dtype, args.torch_dtype = 'fp16', torch.float16
             logger.info(f'Setting args.torch_dtype: {args.torch_dtype}')
         if args.ckpt_dir is None:
-            quant_path = f'{args.model_type}-int{args.quant_bits}'
+            quant_path = f'{args.model_type}-{args.quant_method}-int{args.quant_bits}'
         else:
             ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
-            quant_path = os.path.join(ckpt_dir,
-                                      f'{ckpt_name}-int{args.quant_bits}')
+            quant_path = os.path.join(
+                ckpt_dir,
+                f'{ckpt_name}-{args.quant_method}-int{args.quant_bits}')
         logger.info(f'Setting quant_path: {quant_path}')
         assert not os.path.exists(quant_path)
         if args.quant_method == 'awq':
@@ -187,11 +188,11 @@ def llm_export(args: ExportArguments) -> None:
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map)
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
-            logger.info(get_model_info(gptq_model))
-            show_layers(gptq_model)
+            logger.info(get_model_info(model))
+            show_layers(model)
             logger.info('Saving quantized weights...')
             gptq_quantizer.save(model, quant_path)
-            model_cache_dir = model.model_cache_dir
+            model_cache_dir = model.model_dir
 
         save_checkpoint(None, template.tokenizer, model_cache_dir,
                         args.ckpt_dir, quant_path)
