@@ -3,9 +3,10 @@ import os
 from typing import List, Tuple, Union
 
 import torch
+from datasets import concatenate_datasets
 from modelscope import GenerationConfig
 from transformers import AwqConfig, PreTrainedModel
-from datasets import concatenate_datasets
+
 from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
                          seed_everything, show_layers)
 from .infer import merge_lora, save_checkpoint
@@ -70,6 +71,7 @@ def prepare_awq_model_template(
 _args = None
 template = None
 
+
 def _get_calib_dataset(
         data: Union[str, List[str], List[List[int]]] = 'pileval',  # not use
         tokenizer=None,
@@ -96,7 +98,7 @@ def _get_calib_dataset(
     n_run = 0
     for data in dataset:
         input_ids = template.encode(data)[0].get('input_ids')
-        if input_ids is None or  len(input_ids) == 0:
+        if input_ids is None or len(input_ids) == 0:
             continue
         sample = torch.tensor(input_ids)
         samples.append(sample)
