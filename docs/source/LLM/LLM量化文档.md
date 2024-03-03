@@ -157,6 +157,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
 """
 ```
 
+
 ## 微调后模型
 
 假设你使用lora微调了qwen1half-4b-chat, 模型权重目录为: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
