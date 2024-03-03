@@ -1,7 +1,7 @@
-# Experimental environment: A100
-PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
-python llm_infer.py \
+# Experimental environment: 2 * A100
+
+CUDA_VISIBLE_DEVICES=0,1 \
+swift infer \
     --ckpt_dir "output/qwen-72b-chat/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 2048 \

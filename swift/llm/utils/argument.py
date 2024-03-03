@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import math
 import os
 from dataclasses import dataclass, field
@@ -15,12 +16,13 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
+from swift.trainers import Seq2SeqTrainingArguments
 from swift.utils import (add_version_to_work_dir, broadcast_string,
                          get_dist_setting, get_pai_tensorboard_dir, is_dist,
-                         is_master, is_mp, is_pai_training_job)
+                         is_mp, is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
-from .model import (MODEL_MAPPING, dtype_mapping,
+from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
 from .utils import is_vllm_available
@@ -238,7 +240,7 @@ class SftArguments:
     def __post_init__(self) -> None:
         handle_compatibility(self)
         if is_pai_training_job():
-            handle_pai_compat(self)
+            self._handle_pai_compat()
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
         if self.deepspeed == 'default-zero2':
             self.deepspeed = os.path.abspath(
@@ -297,17 +299,6 @@ class SftArguments:
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
-
-            # Initialize in advance
-            if not dist.is_initialized():
-                dist.init_process_group(backend=self.ddp_backend)
-
-        if self.add_output_dir_suffix is None:
-            self.add_output_dir_suffix = True
-        if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
-            self.output_dir = add_version_to_work_dir(self.output_dir)
-            logger.info(f'output_dir: {self.output_dir}')
 
         if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
@@ -379,8 +370,7 @@ class SftArguments:
                 with open(self.deepspeed, 'r', encoding='utf-8') as f:
                     self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
-        if self.logging_dir is None:
-            self.logging_dir = f'{self.output_dir}/runs'
+
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
                                                          / world_size)
@@ -409,6 +399,111 @@ class SftArguments:
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(
                 f'{self.model_type} not support gradient_checkpointing.')
+
+        self._init_training_args()
+
+        if self.add_output_dir_suffix is None:
+            self.add_output_dir_suffix = True
+        if self.add_output_dir_suffix:
+            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            self.output_dir = add_version_to_work_dir(self.output_dir)
+            logger.info(f'output_dir: {self.output_dir}')
+            self.training_args.output_dir = self.output_dir
+            self.training_args.run_name = self.output_dir
+
+        if self.logging_dir is None:
+            self.logging_dir = f'{self.output_dir}/runs'
+            self.training_args.logging_dir = self.logging_dir
+
+    def _init_training_args(self) -> None:
+        additional_saved_files = []
+        if self.sft_type == 'full':
+            additional_saved_files = get_additional_saved_files(
+                self.model_type)
+
+        kwargs = {}
+        parameters = inspect.signature(
+            Seq2SeqTrainingArguments.__init__).parameters
+        for key in ['neftune_noise_alpha']:
+            if key in parameters:
+                kwargs[key] = getattr(self, key)
+
+        training_args = Seq2SeqTrainingArguments(
+            output_dir=self.output_dir,
+            evaluation_strategy=self.evaluation_strategy,
+            logging_dir=self.logging_dir,
+            per_device_train_batch_size=self.batch_size,
+            per_device_eval_batch_size=self.eval_batch_size,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+            learning_rate=self.learning_rate,
+            weight_decay=self.weight_decay,
+            max_grad_norm=self.max_grad_norm,
+            num_train_epochs=self.num_train_epochs,
+            max_steps=self.max_steps,
+            lr_scheduler_type=self.lr_scheduler_type,
+            warmup_ratio=self.warmup_ratio,
+            logging_steps=self.logging_steps,
+            save_strategy=self.save_strategy,
+            save_steps=self.save_steps,
+            save_total_limit=self.save_total_limit,
+            remove_unused_columns=False,
+            bf16=self.bf16,
+            fp16=self.fp16,
+            eval_steps=self.eval_steps,
+            dataloader_num_workers=self.dataloader_num_workers,
+            dataloader_pin_memory=self.dataloader_pin_memory,
+            metric_for_best_model='rouge-l'
+            if self.predict_with_generate else 'loss',
+            greater_is_better=self.predict_with_generate,
+            sortish_sampler=True,
+            optim=self.optim,
+            adam_beta1=self.adam_beta1,
+            adam_beta2=self.adam_beta2,
+            hub_model_id=self.hub_model_id,
+            hub_private_repo=self.hub_private_repo,
+            push_hub_strategy=self.push_hub_strategy,
+            hub_token=self.hub_token,
+            push_to_hub=self.push_to_hub,
+            resume_from_checkpoint=self.resume_from_checkpoint,
+            ddp_backend=self.ddp_backend,
+            gradient_checkpointing=self.gradient_checkpointing,
+            predict_with_generate=self.predict_with_generate,
+            # generation_config=generation_config,
+            local_rank=get_dist_setting()[1],
+            save_only_model=self.save_only_model,
+            train_sampler_random=self.train_sampler_random,
+            report_to=self.report_to,
+            deepspeed=self.deepspeed,
+            additional_saved_files=additional_saved_files,
+            disable_tqdm=self.disable_tqdm,
+            save_on_each_node=self.save_on_each_node,
+            acc_strategy=self.acc_strategy,
+            save_safetensors=self.save_safetensors,
+            logging_first_step=True,
+            **kwargs)
+
+        if is_dist():
+            if self.gradient_checkpointing:
+                training_args.ddp_find_unused_parameters = False
+                training_args.ddp_broadcast_buffers = False
+            else:
+                training_args.ddp_find_unused_parameters = True
+                training_args.ddp_broadcast_buffers = True
+
+        self.training_args = training_args
+
+    def _handle_pai_compat(self) -> None:
+        assert is_pai_training_job() is True
+        logger.info('Handle pai compat...')
+        pai_tensorboard_dir = get_pai_tensorboard_dir()
+        if self.logging_dir is None and pai_tensorboard_dir is not None:
+            self.logging_dir = pai_tensorboard_dir
+            logger.info(f'Setting args.logging_dir: {self.logging_dir}')
+        if self.add_output_dir_suffix is None:
+            self.add_output_dir_suffix = False
+            logger.info(
+                f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}'
+            )
 
 
 @dataclass
@@ -551,6 +646,7 @@ class InferArguments:
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
         if self.infer_backend == 'vllm':
+            require_version('vllm')
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
@@ -1005,17 +1101,3 @@ def handle_dataset_mixture(args: SftArguments, train_dataset,
         return concatenate_datasets([train_dataset, mixed_dataset])
     else:
         return train_dataset
-
-
-def handle_pai_compat(args: SftArguments) -> None:
-    assert is_pai_training_job() is True
-    logger.info('Handle pai compat...')
-    pai_tensorboard_dir = get_pai_tensorboard_dir()
-    if args.logging_dir is None and pai_tensorboard_dir is not None:
-        args.logging_dir = pai_tensorboard_dir
-        logger.info(f'Setting args.logging_dir: {args.logging_dir}')
-    if args.add_output_dir_suffix is None:
-        args.add_output_dir_suffix = False
-        logger.info(
-            f'Setting args.add_output_dir_suffix: {args.add_output_dir_suffix}'
-        )

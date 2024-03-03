@@ -7,8 +7,8 @@ python llm_infer.py \
     --max_length 2048 \
     --use_flash_attn true \
     --max_new_tokens 2048 \
-    --temperature 0.9 \
-    --top_p 0.9 \
+    --temperature 0.3 \
+    --top_p 0.7 \
     --repetition_penalty 1. \
     --do_sample true \
     --merge_lora false \
