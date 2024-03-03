@@ -32,7 +32,7 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 原始模型
-这里展示对qwen1half-7b-chat进行量化.
+这里展示对qwen1half-7b-chat进行awq, gptq量化.
 ```bash
 # awq-int4量化 (使用A100大约需要18分钟, 显存占用: 12GB)
 # 如果出现量化的时候OOM, 可以适度降低`--quant_n_samples`(默认256)和`--quant_seqlen`(默认2048).
