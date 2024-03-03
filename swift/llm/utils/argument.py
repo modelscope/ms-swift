@@ -701,9 +701,10 @@ class ExportArguments(InferArguments):
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
-    # awq
+    # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_n_samples: int = 256
+    quant_method: Literal['awq', 'gptq'] = 'awq'
+    quant_n_samples: Optional[int] = None
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
@@ -726,6 +727,14 @@ class ExportArguments(InferArguments):
         if len(self.dataset) == 0:
             self.dataset = ['ms-bench-mini']
             logger.info(f'Setting args.dataset: {self.dataset}')
+        if self.quant_n_samples is None:
+            if self.quant_method == 'awq':
+                self.quant_n_samples = 256
+            elif self.quant_method == 'gptq':
+                self.quant_n_samples = 1024
+            else:
+                raise ValueError(
+                    f'args.quant_n_samples: {self.quant_n_samples}')
 
 
 @dataclass

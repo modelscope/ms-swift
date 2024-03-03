@@ -126,12 +126,13 @@ def merge_lora(args: InferArguments,
 
 
 def prepare_model_template(
-        args: InferArguments) -> Tuple[PreTrainedModel, Template]:
+        args: InferArguments,
+        device_map: str = 'auto') -> Tuple[PreTrainedModel, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
+    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
