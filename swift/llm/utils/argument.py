@@ -703,7 +703,7 @@ class ExportArguments(InferArguments):
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['gptq', 'awq'] = 'awq'
+    quant_method: Literal['awq', 'gptq'] = 'awq'
     quant_n_samples: Optional[int] = None
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
