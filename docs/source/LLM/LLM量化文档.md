@@ -1,5 +1,5 @@
 # LLM量化文档
-swift使用awq技术对模型进行量化. 该量化技术支持vllm进行加速推理.
+swift支持使用awq, gptq技术对模型进行量化. 这两种量化技术支持vllm进行推理加速.
 
 
 ## 目录
@@ -18,8 +18,13 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
+# 如果使用awq量化:
 # autoawq和cuda版本有对应关系，请按照`https://github.com/casper-hansen/AutoAWQ`选择版本
 pip install autoawq -U
+
+# 如果使用gptq量化:
+# auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
+pip install auto_gptq -U
 
 # 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -31,29 +36,53 @@ pip install -r requirements/llm.txt  -U
 ```bash
 # awq-int4量化 (使用A100大约需要18分钟, 显存占用: 12GB)
 # 如果出现量化的时候OOM, 可以适度降低`--quant_n_samples`(默认256)和`--quant_seqlen`(默认2048).
+# gptq-int4量化 (使用A100大约需要15分钟, 显存占用: 6GB)
 
-# 使用`ms-bench-mini`作为量化数据集
+# awq: 使用`ms-bench-mini`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --dataset ms-bench-mini
+    --dataset ms-bench-mini --quant_method awq
 
-# 使用自定义量化数据集 (`--custom_val_dataset_path`参数不进行使用)
+# gptq: 使用`ms-bench-mini`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --custom_train_dataset_path xxx.jsonl
+    --dataset ms-bench-mini --quant_method gptq
+
+# awq: 使用自定义量化数据集 (`--custom_val_dataset_path`参数不进行使用)
+# gptq同理
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat --quant_bits 4 \
+    --custom_train_dataset_path xxx.jsonl \
+    --quant_method awq
 
 # 推理 swift量化产生的模型
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_path qwen1half-7b-chat-int4
+# awq
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --model_id_or_path qwen1half-7b-chat-awq-int4
+# gptq
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat-int4 \
+    --model_id_or_path qwen1half-7b-chat-gptq-int4
+
 # 推理 原始模型
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
-# 推理 qwen官方量化的awq模型
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_path qwen/Qwen1.5-7B-Chat-AWQ
+
+# 推理 qwen官方量化的模型
+# awq
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --model_id_or_path qwen/Qwen1.5-7B-Chat-AWQ
+# gptq
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_id_or_path qwen/Qwen1.5-7B-Chat-GPTQ-Int4
 ```
 
+**量化效果对比**:
 
-效果对比:
+AWQ:
 ```python
-# swift量化产生的模型
+# swift量化产生的awq模型
 """
 <<< 你好
 你好！有什么问题我可以帮助你吗？
@@ -144,20 +173,79 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat --model_id_or_
 """
 ```
 
+**GPTQ**
+```python
+# swift量化产生的gptq模型
+"""
+<<< 你好
+你好！很高兴为你提供帮助。有什么问题或需要咨询的吗？
+--------------------------------------------------
+<<< 2000年是闰年嘛？
+是的，2000年是闰年。根据格里高利历（公历），闰年的规则是：普通年份能被4整除但不能被100整除，或者能被400整除的年份就是闰年。2000年满足后两个条件，所以是闰年。
+--------------------------------------------------
+<<< 15869+587=?
+15869 + 587 = 16456
+--------------------------------------------------
+<<< 浙江的省会在哪
+浙江省的省会是杭州市。
+--------------------------------------------------
+<<< 这有什么好吃的
+浙江美食丰富多样，以下是一些具有代表性的：
+
+1. **杭州菜**：如东坡肉、西湖醋鱼、龙井虾仁、叫化鸡等，注重原汁原味，讲究刀工和火候。
+2. **宁波的海鲜**：如宁波汤圆、海鲜大餐，宁波炒肉丝也很有名。
+3. **嘉兴粽子**：以嘉兴五芳斋的粽子最为人知，有各种口味如肉粽、豆沙粽等。
+4. **绍兴黄酒**：搭配当地特色菜肴，如醉鸡、糟溜鱼片等。
+5. **金华火腿**：浙江特产，口感醇厚，常作为节日礼品。
+6. **温州瓯菜**：口味偏酸辣，如温州鱼生、白斩鸡等。
+7. **浙东佛跳墙**：类似福建的佛跳墙，用多种海鲜和山珍炖制。
+
+如果你对某种具体的食物感兴趣，可以告诉我，我可以提供更详细的推荐。
+"""
+
+# qwen官方量化的gptq模型
+"""
+<<< 你好
+你好！有什么问题我可以帮助你吗？
+--------------------------------------------------
+<<< 2000年是闰年嘛？
+是的，2000年是闰年。闰年是指公历中普通年份除以4能整除，但不能被100整除，或者能被400整除的年份。2000年能被400整除，所以按照闰年的规则它是闰年。
+--------------------------------------------------
+<<< 15869+587=?
+15869 + 587 = 16456
+--------------------------------------------------
+<<< 浙江的省会在哪
+浙江省的省会是杭州。
+--------------------------------------------------
+<<< 这有什么好吃的
+浙江的美食非常丰富，以下是一些具有代表性的：
+
+1. **杭州菜**：杭州菜以精致、清淡、原汁原味著称，如西湖醋鱼、东坡肉、龙井虾仁等。
+2. **宁波海鲜**：宁波地处东海之滨，海鲜种类繁多，如宁波汤圆、海鲜面、清蒸石斑鱼等。
+3. **温州小吃**：温州的温州馄饨、楠溪江鱼饼、糟羹等小吃很有特色。
+4. **嘉兴粽子**：嘉兴粽子以嘉兴五芳斋最为著名，口感软糯，馅料多样。
+5. **绍兴黄酒**：浙江绍兴的黄酒，如绍兴女儿红、加饭酒等，口感醇厚。
+6. **金华火腿**：浙江金华的火腿质地酥香，是馈赠亲友的佳品。
+
+当然，浙江各地还有许多其他美食，如衢州烂柯山的烂柯鸡、丽水的岩茶糕等，口味各有千秋。你可以根据自己的喜好去尝试哦！
+"""
+```
 
 ## 微调后模型
 
 假设你使用lora微调了qwen1half-4b-chat, 模型权重目录为: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
 
+这里只介绍使用awq技术对微调后模型进行量化, 如果要使用gptq技术量化, 同理.
+
 **Merge-LoRA & 量化**
 ```shell
-# 使用`ms-bench-mini`作为量化数据集
+# awq: 使用`ms-bench-mini`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4 \
     --dataset ms-bench-mini
 
-# 使用微调时使用的数据集作为量化数据集
+# awq: 使用微调时使用的数据集作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4 \
@@ -166,8 +254,9 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 **推理量化后模型**
 ```shell
-# awq量化模型支持vllm推理加速. 也支持模型部署.
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-int4'
+# awq/gptq量化模型支持vllm推理加速. 也支持模型部署.
+# awq
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
 ```
 
 **部署量化后模型**
@@ -175,11 +264,13 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/c
 服务端:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-int4'
+# awq
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
 ```
 
 测试:
 ```shell
+# awq
 curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
