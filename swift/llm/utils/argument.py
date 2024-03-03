@@ -733,7 +733,8 @@ class ExportArguments(InferArguments):
             elif self.quant_method == 'gptq':
                 self.quant_n_samples = 1024
             else:
-                raise ValueError(f'args.quant_n_samples: {self.quant_n_samples}')
+                raise ValueError(
+                    f'args.quant_n_samples: {self.quant_n_samples}')
 
 
 @dataclass
