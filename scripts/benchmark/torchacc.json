@@ -1,5 +1,5 @@
 {
-    "name": "quantize",
+    "name": "tastelikefeet/quantize",
     "info": "qalora效果实验",
     "cmd": "sft",
     "args": {

@@ -2,6 +2,7 @@
 import math
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
@@ -603,7 +604,21 @@ class DeployArguments(InferArguments):
 @dataclass
 class ExpArguments:
 
-    exp_config: str = None
+    config: Union[str, List[str]] = None
+
+    name: str = None
+
+    ignore_pkg_version: bool = True
+
+    push_to_hub: bool = True
+
+    private: bool = False
+
+    update_exist_config: bool = False
+
+    def __post_init__(self):
+        if not self.name:
+            self.name = str(datetime.now()).replace(' ', '-')
 
 
 @dataclass

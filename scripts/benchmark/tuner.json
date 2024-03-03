@@ -1,5 +1,5 @@
 {
-    "name": "tastelikefeet:tuner",
+    "name": "tastelikefeet/tuner",
     "info": "基于ms-agent数据集打混的各tuners效果实验",
     "cmd": "sft",
     "requirements":{

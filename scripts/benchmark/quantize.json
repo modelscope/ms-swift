@@ -1,5 +1,5 @@
 {
-    "name": "tastelikefeet:qalora_ablation",
+    "name": "tastelikefeet/qalora",
     "info": "qa-lora消融实验",
     "cmd": "sft",
     "requirements":{
