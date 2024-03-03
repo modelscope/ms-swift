@@ -1,4 +1,4 @@
-import hashlib
+import json
 import json
 import os
 import shutil
@@ -7,16 +7,15 @@ import time
 from concurrent.futures import Future
 from dataclasses import dataclass, field, asdict
 from queue import Queue
-from typing import List, Dict
+from typing import Dict
 
 import torch
 
 from swift import push_to_hub, push_to_hub_async
-from swift.hub.check_model import check_model_is_id
 from swift.hub.utils.utils import get_cache_dir
 from swift.llm import ExpArguments
-from swift.utils.torch_utils import _find_free_port
 from swift.utils import get_logger
+from swift.utils.torch_utils import _find_free_port
 
 logger = get_logger()
 
@@ -241,9 +240,6 @@ class ExpManager:
             push_to_hub(name, target_folder, private=args.private)
         return target_file
 
-    def save_model(self, exp: Experiment):
-        output_dir = exp.runtime.get('output_dir')
-
     def _poll(self):
         while True:
             time.sleep(5)
@@ -281,9 +277,6 @@ class ExpManager:
                             upload_handler.add_done_callback(upload_callback)
                     else:
                         logger.error(f'Running {exp.name} finished with return code: {rt}')
-                        exp.record = {
-                            'return_code': rt
-                        }
 
             if has_finished:
                 self.exps = [exp for exp in self.exps if not exp.record and exp.handler.poll() is None]
