@@ -18,11 +18,11 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
-# 如果使用awq量化:
+# 使用awq量化:
 # autoawq和cuda版本有对应关系，请按照`https://github.com/casper-hansen/AutoAWQ`选择版本
 pip install autoawq -U
 
-# 如果使用gptq量化:
+# 使用gptq量化:
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq -U
 
