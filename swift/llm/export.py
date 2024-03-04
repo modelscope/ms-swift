@@ -3,12 +3,13 @@ import os
 from typing import List, Tuple, Union
 
 import torch
+from datasets import concatenate_datasets
 from modelscope import GenerationConfig
 from transformers import AwqConfig, PreTrainedModel
 
 from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
                          seed_everything, show_layers)
-from .infer import merge_lora, save_checkpoint
+from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import (ExportArguments, Template, get_dataset,
                     get_model_tokenizer, get_template, set_generation_config)
 
@@ -18,7 +19,6 @@ logger = get_logger()
 def prepare_awq_model_template(
         args: ExportArguments) -> Tuple[PreTrainedModel, Template]:
     from awq import AutoAWQForCausalLM
-    logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
@@ -68,57 +68,59 @@ def prepare_awq_model_template(
 
 
 _args = None
+template = None
 
 
-def _get_calib_dataset(
-        data: Union[str, List[str], List[List[int]]] = 'pileval',  # not use
-        tokenizer=None,
-        n_samples=512,  # not use
-        block_size=512,  # not use
-        split='train',  # not use
-        text_column='text',  # not use
-) -> List[torch.Tensor]:
-    global _args
+def _get_dataset(*args, **kwargs):
+    global _args, template
     assert _args is not None
-    data = _args.quant_dataset
+    assert template is not None
+    data = _args.dataset
     n_samples = _args.quant_n_samples
     block_size = _args.quant_seqlen
 
-    if isinstance(data, str):
-        data = [data]
+    # only use train_dataset
     dataset = get_dataset(data)[0]
-    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.shuffle()
 
     samples = []
     n_run = 0
     for data in dataset:
-        line = data['response']
-        line = line.strip()
-        line_encoded = tokenizer.encode(line)
-        if len(line_encoded) > 512:
+        input_ids = template.encode(data)[0].get('input_ids')
+        if input_ids is None or len(input_ids) == 0:
             continue
-        sample = torch.tensor([line_encoded])
-        if sample.numel() == 0:
-            continue
+        sample = torch.tensor(input_ids)
         samples.append(sample)
         n_run += 1
         if n_run == n_samples:
             break
     # now concatenate all samples and split according to block size
-    cat_samples = torch.cat(samples, dim=1)
-    n_split = cat_samples.shape[1] // block_size
-    logger.debug(f' * Split into {n_split} blocks')
-    return [
-        cat_samples[:, i * block_size:(i + 1) * block_size]
-        for i in range(n_split)
-    ]
+    cat_samples = torch.cat(samples, dim=0)  # shape: [X]
+    n_split = cat_samples.shape[0] // block_size
+    logger.info(f'Split into {n_split} blocks')
+    if _args.quant_method == 'awq':
+        return [
+            cat_samples[None, i * block_size:(i + 1) * block_size]
+            for i in range(n_split)
+        ]
+    else:  # gptq
+        res = []
+        for i in range(n_split):
+            input_ids = cat_samples[None, i * block_size:(i + 1) * block_size]
+            attention_mask = torch.ones_like(input_ids)
+            res.append({
+                'input_ids': input_ids,
+                'attention_mask': attention_mask
+            })
+        return res
 
 
-def awq_model_quantize(awq_model, template: Template) -> None:
+def awq_model_quantize(awq_model, tokenizer) -> None:
     from awq.quantize import quantizer
     assert _args is not None
-    _raw_get_calib_dataset = quantizer.get_calib_dataset
-    quantizer.get_calib_dataset = _get_calib_dataset
+    logger.info(f'Quantization dataset: {_args.dataset}')
+    _origin_get_calib_dataset = quantizer.get_calib_dataset
+    quantizer.get_calib_dataset = _get_dataset
     group_size = 128
     quant_config = {
         'zero_point': True,
@@ -127,8 +129,8 @@ def awq_model_quantize(awq_model, template: Template) -> None:
         'version': 'GEMM'
     }
     logger.info('Start quantizing the model...')
-    awq_model.quantize(template.tokenizer, quant_config=quant_config)
-    quantizer.get_calib_dataset = _raw_get_calib_dataset  # recover
+    awq_model.quantize(tokenizer, quant_config=quant_config)
+    quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
         bits=_args.quant_bits,
         group_size=group_size,
@@ -136,8 +138,26 @@ def awq_model_quantize(awq_model, template: Template) -> None:
         version='GEMM')
 
 
-def llm_export(args: ExportArguments) -> None:
+def gptq_model_quantize(model, tokenizer):
+    from optimum.gptq import GPTQQuantizer, quantizer
     global _args
+    logger.info(f'Quantization dataset: {_args.dataset}')
+    gptq_quantizer = GPTQQuantizer(
+        bits=_args.quant_bits, dataset=_args.dataset)
+    _origin_get_dataset = quantizer.get_dataset
+    quantizer.get_dataset = _get_dataset
+    logger.info('Start quantizing the model...')
+    logger.warning(
+        'The process of packing the model takes a long time and there is no progress bar. '
+        'Please be patient and wait...')
+    gptq_quantizer.quantize_model(model, tokenizer)
+    quantizer.get_dataset = _origin_get_dataset  # recover
+    return gptq_quantizer
+
+
+def llm_export(args: ExportArguments) -> None:
+    global _args, template
+    logger.info(f'args: {args}')
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.quant_bits > 0:
@@ -148,21 +168,36 @@ def llm_export(args: ExportArguments) -> None:
             args.dtype, args.torch_dtype = 'fp16', torch.float16
             logger.info(f'Setting args.torch_dtype: {args.torch_dtype}')
         if args.ckpt_dir is None:
-            quant_path = f'{args.model_type}-int{args.quant_bits}'
+            quant_path = f'{args.model_type}-{args.quant_method}-int{args.quant_bits}'
         else:
             ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
-            quant_path = os.path.join(ckpt_dir,
-                                      f'{ckpt_name}-int{args.quant_bits}')
+            quant_path = os.path.join(
+                ckpt_dir,
+                f'{ckpt_name}-{args.quant_method}-int{args.quant_bits}')
         logger.info(f'Setting quant_path: {quant_path}')
         assert not os.path.exists(quant_path)
-        awq_model, template = prepare_awq_model_template(args)
-        awq_model_quantize(awq_model, template)
-        logger.info(get_model_info(awq_model))
-        show_layers(awq_model)
+        if args.quant_method == 'awq':
+            awq_model, template = prepare_awq_model_template(args)
+            awq_model_quantize(awq_model, template.tokenizer)
+            logger.info(get_model_info(awq_model))
+            show_layers(awq_model)
+            logger.info('Saving quantized weights...')
+            awq_model.save_quantized(quant_path)
+            model_cache_dir = awq_model.model_dir
+        else:  # gptq
+            model, template = prepare_model_template(
+                args, device_map=args.quant_device_map)
+            gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
+            logger.info(get_model_info(model))
+            show_layers(model)
+            logger.info('Saving quantized weights...')
+            gptq_quantizer.save(model, quant_path)
+            model_cache_dir = model.model_dir
 
-        awq_model.save_quantized(quant_path)
-        save_checkpoint(None, template.tokenizer, awq_model.model_dir,
+        save_checkpoint(None, template.tokenizer, model_cache_dir,
                         args.ckpt_dir, quant_path)
+        logger.info(
+            f'Successfully quantized the model and saved in {quant_path}.')
         args.ckpt_dir = quant_path
 
     if args.push_to_hub:

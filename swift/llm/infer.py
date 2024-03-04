@@ -126,13 +126,13 @@ def merge_lora(args: InferArguments,
 
 
 def prepare_model_template(
-        args: InferArguments) -> Tuple[PreTrainedModel, Template]:
-    logger.info(f'args: {args}')
+        args: InferArguments,
+        device_map: str = 'auto') -> Tuple[PreTrainedModel, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
+    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -221,6 +221,7 @@ def read_media_file(
 
 
 def llm_infer(args: InferArguments) -> None:
+    logger.info(f'args: {args}')
     if args.merge_lora:
         merge_lora(args, device_map='cpu')
     if args.infer_backend == 'vllm':
