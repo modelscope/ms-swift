@@ -1,10 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
-import inspect
 import os
 import re
 from copy import copy
-from dataclasses import asdict
 from inspect import Parameter, Signature, signature
 from types import MethodType
 from typing import Dict, List, Optional, Union
@@ -16,7 +14,7 @@ from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 from transformers import Trainer
 
-from swift import LoraConfig, SwiftTuners
+from swift import SwiftTuners
 from swift.hub.snapshot_download import snapshot_download
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
@@ -498,7 +496,7 @@ class SwiftModel(nn.Module):
             safe_serialization (`bool`): Use safe tensors to save the weights, default False.
             adapter_name(`Union[str, List[str]]`): The adapters to be saved, default is `None` to save all.
         """
-        peft_format = kwargs.pop('peft_format', False)
+        peft_format = kwargs.pop('peft_format', True)
         if os.path.isfile(save_directory):
             raise ValueError(
                 f'Provided path ({save_directory}) should be a directory, not a file'

@@ -32,8 +32,10 @@ class SelfCog(BaseUI):
                 'en': 'Model name'
             },
             'info': {
-                'zh': '设置模型应当认知自己的名字, 格式为:中文名字 英文名字,中间以空格分隔',
-                'en': 'Set the name of the model think itself of, the format is Chinesename Englishname, split by space'
+                'zh':
+                '设置模型应当认知自己的名字, 格式为:中文名字 英文名字,中间以空格分隔',
+                'en':
+                'Set the name of the model think itself of, the format is Chinesename Englishname, split by space'
             }
         },
         'model_author': {
@@ -42,8 +44,10 @@ class SelfCog(BaseUI):
                 'en': 'Model author'
             },
             'info': {
-                'zh': '设置模型认知的自己的作者, 格式为:中文作者 英文作者,中间以空格分隔',
-                'en': 'Set the author of the model, the format is Chineseauthor Englishauthor, split by space'
+                'zh':
+                '设置模型认知的自己的作者, 格式为:中文作者 英文作者,中间以空格分隔',
+                'en':
+                'Set the author of the model, the format is Chineseauthor Englishauthor, split by space'
             }
         },
     }

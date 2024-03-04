@@ -152,7 +152,8 @@ class Hyper(BaseUI):
                         maximum=256,
                         step=2,
                         scale=20)
-                    gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
+                    gr.Textbox(
+                        elem_id='eval_steps', lines=1, value='500', scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Checkbox(elem_id='predict_with_generate', scale=20)
                     gr.Checkbox(elem_id='use_flash_attn', scale=20)
