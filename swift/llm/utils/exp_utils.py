@@ -8,6 +8,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field, asdict
 from queue import Queue
 from typing import Dict
+from copy import deepcopy
 
 import torch
 
@@ -29,7 +30,9 @@ class Experiment:
 
     cmd: str
 
-    req: Dict = field(default_factory=dict)
+    info: str = None
+
+    requirements: Dict = field(default_factory=dict)
 
     args: Dict = field(default_factory=dict)
 
@@ -47,19 +50,28 @@ class Experiment:
 
     input_args: ExpArguments = None
 
-    def __init__(self, name, cmd, req, args, **kwargs):
+    def __init__(self, name, cmd, config_name, requirements=None, args=None, input_args=None, info=None, **kwargs):
         self.name = name
         self.cmd = cmd
-        self.req = req or {}
+        self.info = info or ''
+        self.requirements = requirements or {}
         self.args = args or {}
+        self.config_name = config_name
+        self.record = {}
+        self.env = {}
+        self.requirements_list = None
+        self.runtime = {}
+        self.swift_version = ''
+        self.input_args = input_args
 
     @property
     def priority(self):
-        return self.req.get('gpu', 0)
+        return self.requirements.get('gpu', 0)
 
     def to_dict(self):
         _dict = asdict(self)
         _dict.pop('runtime')
+        _dict.pop('input_args')
         return _dict
 
 
@@ -71,7 +83,7 @@ class ExpManager:
     def run(self, exp: Experiment):
         exp_dir = get_cache_dir()
         target_dir = os.path.join(exp_dir, exp.config_name)
-        target_file = os.path.join(target_dir, exp.name.replace('/', '-'))
+        target_file = os.path.join(target_dir, exp.name.replace('/', '-') + '.json')
         if os.path.exists(target_file):
             logger.warn(f'Experiment {exp.name} already done, skip')
             with open(target_file, 'r') as f:
@@ -82,20 +94,24 @@ class ExpManager:
             exp.create_time = time.time()
             runtime = self._build_cmd(exp)
             exp.runtime = runtime
-            exp.handler = subprocess.Popen(runtime['running_cmd'])
+            # cmds = [p.strip() for p in runtime['running_cmd'].split(' ') if p.strip()]
+            envs = runtime.get('env', {})
+            envs.update(os.environ)
+            exp.handler = subprocess.Popen(runtime['running_cmd'], env=envs, shell=True)
         self.exps.append(exp)
 
     def _build_cmd(self, exp: Experiment):
-        gpu = exp.req.get('gpu', None)
-        env = ''
+        gpu = exp.requirements.get('gpu', None)
+        env = {}
         allocated = []
         if gpu:
-            allocated = self._find_free_gpu(gpu)
+            allocated = self._find_free_gpu(int(gpu))
             assert allocated, 'No free gpu for now!'
-            env = f'CUDA_VISIBLE_DEVICES={",".join(allocated)}'
-        if exp.req.get('ddp', 1) > 1:
-            env += f' NPROC_PER_NODE={exp.req.get("ddp")}'
-            env += f' MASTER_PORT={_find_free_port()}'
+            allocated = [str(gpu) for gpu in allocated]
+            env['CUDA_VISIBLE_DEVICES'] = ",".join(allocated)
+        if int(exp.requirements.get('ddp', 1)) > 1:
+            env['NPROC_PER_NODE'] = exp.requirements.get("ddp")
+            env['MASTER_PORT'] = str(_find_free_port())
 
         if exp.cmd == 'sft':
             from swift.llm import SftArguments
@@ -107,7 +123,6 @@ class ExpManager:
             cmd = f'swift sft '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
-            cmd = env + cmd
         elif exp.cmd == 'dpo':
             from swift.llm import DPOArguments
             args = exp.args
@@ -115,21 +130,20 @@ class ExpManager:
             args['output_dir'] = dpo_args.output_dir
             args['logging_dir'] = dpo_args.logging_dir
             args['add_output_dir_suffix'] = False
-            cmd = f'swift dpo '
+            cmd = f' swift dpo '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
-            cmd = env + cmd
         elif exp.cmd == 'export':
             args = exp.args
-            cmd = f'swift export '
+            cmd = f' swift export '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
-            cmd = env + cmd
         else:
             raise ValueError(f'Unsupported cmd type: {exp.cmd}')
         return {
             'running_cmd': cmd,
             'gpu': allocated,
+            'env': env,
             'logging_dir': args.get('logging_dir'),
             'output_dir': args.get('output_dir', args.get('ckpt_dir'))
         }
@@ -159,11 +173,11 @@ class ExpManager:
     @staticmethod
     def _merge_sub_config(config, sub_config):
         if 'req' in config:
-            config['req'].update(config, sub_config.get('req', {}))
+            config['req'].update(sub_config.get('req', {}))
         if 'args' in config:
-            config['args'].update(config, sub_config.get('args', {}))
+            config['args'].update(sub_config.get('args', {}))
         if 'env' in config:
-            config['env'].update(config, sub_config.get('env', {}))
+            config['env'].update(sub_config.get('env', {}))
         return config
 
     def prepare_experiments(self, args: ExpArguments):
@@ -181,18 +195,19 @@ class ExpManager:
                     experiments.append(Experiment(**content, config_name=config_name, input_args=args))
                 else:
                     for sub_exp in ablation:
-                        new_name = content['name'] + '-' + sub_exp.name + '-' + args.name
+                        _copied = deepcopy(content)
+                        new_name = _copied['name'] + '-' + sub_exp['name'] + '-' + args.name
                         # self.check_name_available(new_name, args)
-                        content = self._merge_sub_config(content, sub_exp)
-                        content['name'] = new_name
-                        experiments.append(Experiment(**content, config_name=config_name, input_args=args))
+                        _copied = self._merge_sub_config(_copied, sub_exp)
+                        _copied['name'] = new_name
+                        experiments.append(Experiment(**_copied, config_name=config_name, input_args=args))
         return experiments
 
     @staticmethod
     def _get_metric(exp: Experiment):
         logging_dir = exp.runtime.get('logging_dir')
         if logging_dir:
-            with open(os.path.join(logging_dir, 'logging.jsonl'), 'r') as f:
+            with open(os.path.join(logging_dir, '..', 'logging.jsonl'), 'r') as f:
                 for line in f.readlines():
                     if 'model_info' in line:
                         return json.loads(line)
@@ -201,7 +216,7 @@ class ExpManager:
     @staticmethod
     def write_record(exp: Experiment):
         target_dir = os.path.join(get_cache_dir(), exp.config_name)
-        file = os.path.join(target_dir, exp.name.replace('/', '-'))
+        file = os.path.join(target_dir, exp.name.replace('/', '-') + '.json')
         with open(file, 'w', encoding='utf-8') as f:
             f.write(json.dumps(exp.to_dict()) + '\n')
         if exp.input_args.push_to_hub and exp.input_args.update_exist_config:
@@ -236,7 +251,10 @@ class ExpManager:
                 shutil.rmtree(target_folder)
         os.makedirs(os.path.join(target_folder, 'experiment'), exist_ok=True)
         shutil.copy(config_file, target_file)
-        if args.push_to_hub and args.update_exist_config:
+        if not os.path.exists(os.path.join(target_folder, 'configuration.json')):
+            with open(os.path.join(target_folder, 'configuration.json'), 'w') as f:
+                json.dump({}, f)
+        if args.push_to_hub:
             push_to_hub(name, target_folder, private=args.private)
         return target_file
 

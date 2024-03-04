@@ -20,7 +20,7 @@
       "train_dataset_sample": -1,
       "val_dataset_sample": 5000,
       "num_train_epochs": 2,
-      "check_dataset_strategy": null,
+      "check_dataset_strategy": "none",
       "gradient_checkpointing": true,
       "weight_decay": 0.01,
       "max_grad_norm": 1.0,
@@ -97,7 +97,7 @@
         "info": "全参无混合数据集",
         "args": {
           "sft_type": "full",
-          "train_dataset_mix_ratio": null
+          "train_dataset_mix_ratio": "0.0"
         }
       }
     ]

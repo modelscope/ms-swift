@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.llm import eval_main
+from swift.llm import exp_main
 
 if __name__ == '__main__':
-    eval_main()
+    exp_main()
