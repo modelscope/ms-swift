@@ -113,12 +113,12 @@ class ExpManager:
             args['output_dir'] = dpo_args.output_dir
             args['logging_dir'] = dpo_args.logging_dir
             args['add_output_dir_suffix'] = False
-            cmd = f' swift dpo '
+            cmd = f'swift dpo '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
         elif exp.cmd == 'export':
             args = exp.args
-            cmd = f' swift export '
+            cmd = f'swift export '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
         else:
@@ -200,7 +200,7 @@ class ExpManager:
                 logger.info(f'Running {exp.name} finished with return code: {rt}')
 
             if has_finished:
-                self.exps = [exp for exp in self.exps if not exp.record and exp.handler.poll() is None]
+                self.exps = [exp for exp in self.exps if exp.handler.poll() is None]
                 break
 
     def begin(self, args: ExpArguments):
