@@ -46,16 +46,6 @@ class Hyper(BaseUI):
                 'en': 'Set the learning rate',
             }
         },
-        'max_length': {
-            'label': {
-                'zh': '句子最大长度',
-                'en': 'The max length',
-            },
-            'info': {
-                'zh': '设置输入模型的最大长度',
-                'en': 'Set the max length input to the model',
-            }
-        },
         'eval_steps': {
             'label': {
                 'zh': '交叉验证步数',
@@ -143,14 +133,8 @@ class Hyper(BaseUI):
                         scale=20)
                     learning_rate = gr.Textbox(
                         elem_id='learning_rate',
-                        value='1e-5',
+                        value='1e-4',
                         lines=1,
-                        scale=20)
-                    gr.Slider(
-                        elem_id='max_length',
-                        minimum=32,
-                        maximum=8192,
-                        step=32,
                         scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
                     gr.Textbox(elem_id='max_steps', lines=1, scale=20)
@@ -159,6 +143,7 @@ class Hyper(BaseUI):
                         minimum=1,
                         maximum=256,
                         step=2,
+                        value=16,
                         scale=20)
                 with gr.Row():
                     gr.Slider(
@@ -167,7 +152,7 @@ class Hyper(BaseUI):
                         maximum=256,
                         step=2,
                         scale=20)
-                    gr.Textbox(elem_id='eval_steps', lines=1, scale=20)
+                    gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Checkbox(elem_id='predict_with_generate', scale=20)
                     gr.Checkbox(elem_id='use_flash_attn', scale=20)
