@@ -26,11 +26,7 @@ class Experiment:
 
     name: str
 
-    config_name: str
-
     cmd: str
-
-    info: str = None
 
     requirements: Dict = field(default_factory=dict)
 
@@ -40,28 +36,20 @@ class Experiment:
 
     record: Dict = field(default_factory=dict)
 
-    swift_version: str = None
-
-    requirements_list: str = None
-
     create_time: float = None
 
     runtime: Dict = field(default_factory=dict)
 
     input_args: ExpArguments = None
 
-    def __init__(self, name, cmd, config_name, requirements=None, args=None, input_args=None, info=None, **kwargs):
+    def __init__(self, name, cmd, requirements=None, args=None, input_args=None, **kwargs):
         self.name = name
         self.cmd = cmd
-        self.info = info or ''
         self.requirements = requirements or {}
         self.args = args or {}
-        self.config_name = config_name
         self.record = {}
         self.env = {}
-        self.requirements_list = None
         self.runtime = {}
-        self.swift_version = ''
         self.input_args = input_args
 
     @property
@@ -77,24 +65,18 @@ class Experiment:
 
 class ExpManager:
 
+    RESULT_FILE = 'result.jsonl'
+
     def __init__(self):
         self.exps = []
 
     def run(self, exp: Experiment):
-        exp_dir = get_cache_dir()
-        target_dir = os.path.join(exp_dir, exp.config_name)
-        target_file = os.path.join(target_dir, exp.name.replace('/', '-') + '.json')
-        if os.path.exists(target_file):
+        if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name)):
             logger.warn(f'Experiment {exp.name} already done, skip')
-            with open(target_file, 'r') as f:
-                old_exp = Experiment(**json.load(f))
-                old_exp.input_args = exp.input_args
-                exp = old_exp
         else:
             exp.create_time = time.time()
             runtime = self._build_cmd(exp)
             exp.runtime = runtime
-            # cmds = [p.strip() for p in runtime['running_cmd'].split(' ') if p.strip()]
             envs = runtime.get('env', {})
             envs.update(os.environ)
             exp.handler = subprocess.Popen(runtime['running_cmd'], env=envs, shell=True)
@@ -148,19 +130,6 @@ class ExpManager:
             'output_dir': args.get('output_dir', args.get('ckpt_dir'))
         }
 
-    # def name_exists_in_cache(self, name):
-    #     exp_dir = get_cache_dir()
-    #     return os.path.exists(os.path.join(exp_dir, name))
-    #
-    # def name_exists_in_hub(self, name):
-    #     return check_model_is_id(name)
-
-    # def check_name_available(self, name, args: ExpArguments):
-    #     if self.name_exists_in_cache(name):
-    #         raise AssertionError(f'Experiment name {name} exists in local cache.')
-    #     if args.push_to_hub and self.name_exists_in_hub(name):
-    #         raise AssertionError(f'Experiment name {name} exists in model hub.')
-
     def _find_free_gpu(self, n):
         all_gpus = set()
         for exp in self.exps:
@@ -170,37 +139,26 @@ class ExpManager:
             return None
         return list(free_gpu)[:n]
 
-    @staticmethod
-    def _merge_sub_config(config, sub_config):
-        if 'req' in config:
-            config['req'].update(sub_config.get('req', {}))
-        if 'args' in config:
-            config['args'].update(sub_config.get('args', {}))
-        if 'env' in config:
-            config['env'].update(sub_config.get('env', {}))
-        return config
-
     def prepare_experiments(self, args: ExpArguments):
         experiments = []
         for config_file in args.config:
-            config_file = self._store_config(config_file, args)
             with open(config_file, 'r') as f:
                 content = json.load(f)
-                ablation = content.get('ablation', [])
-                config_name = content['name']
-                if not ablation:
-                    new_name = content['name'] + '-' + args.name
-                    # self.check_name_available(new_name, args)
-                    content['name'] = new_name
-                    experiments.append(Experiment(**content, config_name=config_name, input_args=args))
-                else:
-                    for sub_exp in ablation:
-                        _copied = deepcopy(content)
-                        new_name = _copied['name'] + '-' + sub_exp['name'] + '-' + args.name
-                        # self.check_name_available(new_name, args)
-                        _copied = self._merge_sub_config(_copied, sub_exp)
-                        _copied['name'] = new_name
-                        experiments.append(Experiment(**_copied, config_name=config_name, input_args=args))
+                exps = content['experiment']
+                for exp in exps:
+                    name = exp['name']
+                    cmd = content['cmd']
+                    args = content['args']
+                    env = content['env']
+                    requirements = content['requirements']
+                    if 'args' in exp:
+                        args.update(exp['args'])
+                    if 'requirements' in exp:
+                        requirements.update(exp['requirements'])
+                    if 'env' in exp:
+                        env.update(exp['env'])
+                    experiments.append(Experiment(name=name, cmd=cmd, args=args, env=env, requirements=requirements,
+                                                  input_args=args))
         return experiments
 
     @staticmethod
@@ -215,48 +173,10 @@ class ExpManager:
 
     @staticmethod
     def write_record(exp: Experiment):
-        target_dir = os.path.join(get_cache_dir(), exp.config_name)
-        file = os.path.join(target_dir, exp.name.replace('/', '-') + '.json')
+        target_dir = exp.input_args.save_dir
+        file = os.path.join(target_dir, exp.name + '.json')
         with open(file, 'w', encoding='utf-8') as f:
             f.write(json.dumps(exp.to_dict()) + '\n')
-        if exp.input_args.push_to_hub and exp.input_args.update_exist_config:
-            push_to_hub(exp.config_name, target_dir, private=exp.input_args.private)
-
-    @staticmethod
-    def _store_config(config_file, args: ExpArguments):
-        exp_dir = get_cache_dir()
-        with open(config_file, 'r') as f:
-            name = json.load(f)['name']
-        target_folder = os.path.join(exp_dir, name)
-        target_file = os.path.exists(os.path.join(target_folder, 'experiment', 'config.json'))
-        if target_file == config_file:
-            return config_file
-
-        target_file = os.path.join(target_folder, 'experiment', 'config.json')
-        if os.path.isfile(target_file):
-            with open(target_file, 'r') as tf:
-                _target = json.load(tf)
-            with open(config_file, 'r') as f:
-                _source = json.load(f)
-
-            def ordered(obj):
-                if isinstance(obj, dict):
-                    return sorted((k, ordered(v)) for k, v in obj.items())
-                if isinstance(obj, list):
-                    return sorted(ordered(x) for x in obj)
-                else:
-                    return obj
-
-            if ordered(_target) != ordered(_source):
-                shutil.rmtree(target_folder)
-        os.makedirs(os.path.join(target_folder, 'experiment'), exist_ok=True)
-        shutil.copy(config_file, target_file)
-        if not os.path.exists(os.path.join(target_folder, 'configuration.json')):
-            with open(os.path.join(target_folder, 'configuration.json'), 'w') as f:
-                json.dump({}, f)
-        if args.push_to_hub:
-            push_to_hub(name, target_folder, private=args.private)
-        return target_file
 
     def _poll(self):
         while True:
@@ -264,37 +184,17 @@ class ExpManager:
 
             has_finished = False
             for exp in self.exps:
-                if exp.record:
-                    if exp.input_args.push_to_hub and exp.input_args.update_exist_config:
-                        target_dir = os.path.join(get_cache_dir(), exp.config_name)
-                        push_to_hub(exp.config_name, target_dir, private=exp.input_args.private)
-                else:
-                    rt = exp.handler.poll()
-                    if rt is None:
-                        continue
+                rt = exp.handler.poll()
+                if rt is None:
+                    continue
 
-                    has_finished = True
-                    if rt == 0:
-                        all_metric = self._get_metric(exp)
-                        exp.record['return_code'] = rt
-                        if all_metric:
-                            exp.record.update(all_metric)
-                        self.write_record(exp)
-                        checkpoint_path = exp.record.get('best_model_checkpoint')
-                        if checkpoint_path and exp.input_args.push_to_hub:
-                            upload_handler = push_to_hub_async(exp.name, checkpoint_path,
-                                                               private=exp.input_args.private)
-
-                            def upload_callback(future: Future[bool]):
-                                if future.result():
-                                    exp.record['best_model_checkpoint_id'] = exp.name
-                                    self.write_record(exp)
-                                else:
-                                    logger.error(f'Uploading {exp.name} failed')
-
-                            upload_handler.add_done_callback(upload_callback)
-                    else:
-                        logger.error(f'Running {exp.name} finished with return code: {rt}')
+                has_finished = True
+                if rt == 0:
+                    all_metric = self._get_metric(exp)
+                    if all_metric:
+                        exp.record.update(all_metric)
+                    self.write_record(exp)
+                logger.error(f'Running {exp.name} finished with return code: {rt}')
 
             if has_finished:
                 self.exps = [exp for exp in self.exps if not exp.record and exp.handler.poll() is None]

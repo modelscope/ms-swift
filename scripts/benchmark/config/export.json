@@ -1,25 +1,20 @@
 {
-    "name": "tastelikefeet/awq_dataset_ablation",
-    "info": "导出awq数据集消融实验",
     "cmd": "export",
     "args": {
         "model_type": "qwen1half-7b-chat"
     },
-    "ablation": [
+    "requirements":{
+        "gpu": "1"
+    },
+    "experiment": [
       {
         "name": "pileval",
-        "requirements":{
-          "gpu": "1"
-        },
         "args": {
           "dataset": "pileval"
         }
       },
       {
         "name": "ms-bench-mini",
-        "requirements":{
-          "gpu": "1"
-        },
         "args": {
           "dataset": "ms-bench-mini"
         }

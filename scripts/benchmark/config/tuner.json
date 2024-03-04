@@ -1,10 +1,8 @@
 {
-    "name": "tastelikefeet/tuner",
-    "info": "基于ms-agent数据集打混的各tuners效果实验",
     "cmd": "sft",
     "requirements":{
-        "gpu": "2",
-        "ddp": "2"
+        "gpu": "8",
+        "ddp": "8"
     },
     "args": {
       "model_type": "llama2-7b-chat",
@@ -12,7 +10,7 @@
       "train_dataset_mix_ratio": 3,
       "batch_size": 2,
       "max_length": 1024,
-      "gradient_accumulation_steps": 4,
+      "gradient_accumulation_steps": 1,
       "learning_rate": 5e-5,
       "use_flash_attn": true,
       "eval_steps": 500,
@@ -28,7 +26,7 @@
       "save_total_limit": 2,
       "logging_steps": 10
     },
-    "ablation": [
+    "experiment": [
       {
         "name": "lora",
         "args": {
@@ -89,7 +87,7 @@
           "lora_target_modules": "ALL",
           "lora_rank": 8,
           "lora_alpha": 32,
-          "train_dataset_mix_ratio": null
+          "train_dataset_mix_ratio": 0.0
         }
       },
       {
@@ -97,7 +95,7 @@
         "info": "全参无混合数据集",
         "args": {
           "sft_type": "full",
-          "train_dataset_mix_ratio": "0.0"
+          "train_dataset_mix_ratio": 0.0
         }
       }
     ]

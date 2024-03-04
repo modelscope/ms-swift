@@ -1,10 +1,8 @@
 {
-    "name": "tastelikefeet/qalora",
-    "info": "qa-lora消融实验",
     "cmd": "sft",
     "requirements":{
-        "gpu": "2",
-        "ddp": "2"
+        "gpu": "8",
+        "ddp": "8"
     },
     "args": {
       "model_type": "qwen1half-7b-chat-int8",
@@ -32,7 +30,7 @@
       "lora_rank": 8,
       "lora_alpha": 32
     },
-    "ablation": [
+    "experiment": [
       {
         "name": "lora"
       },

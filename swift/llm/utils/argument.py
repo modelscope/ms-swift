@@ -702,19 +702,10 @@ class ExpArguments:
 
     config: Union[str, List[str]] = None
 
-    name: str = None
-
-    ignore_pkg_version: bool = True
-
-    push_to_hub: bool = True
-
-    private: bool = False
-
-    update_exist_config: bool = False
+    save_dir: str = './'
 
     def __post_init__(self):
-        if not self.name:
-            self.name = str(datetime.now()).replace(' ', '-')
+        pass
 
 
 @dataclass
