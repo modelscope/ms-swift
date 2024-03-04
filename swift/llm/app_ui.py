@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Tuple
 
-from swift.utils import get_main
+from swift.utils import get_logger, get_main
 from .infer import merge_lora, prepare_model_template
 from .utils import (AppUIArguments, History, inference_stream,
                     limit_history_length)
+
+logger = get_logger()
 
 
 def clear_session() -> History:
