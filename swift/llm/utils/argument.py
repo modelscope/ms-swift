@@ -702,7 +702,7 @@ class ExpArguments:
 
     config: Union[str, List[str]] = None
 
-    save_dir: str = './'
+    save_dir: str = './experiment'
 
     def __post_init__(self):
         pass

@@ -148,16 +148,16 @@ class ExpManager:
                 for exp in exps:
                     name = exp['name']
                     cmd = content['cmd']
-                    args = content['args']
-                    env = content['env']
-                    requirements = content['requirements']
+                    run_args = content['args']
+                    env = content.get('env', {})
+                    requirements = content.get('requirements', {})
                     if 'args' in exp:
-                        args.update(exp['args'])
+                        run_args.update(exp['args'])
                     if 'requirements' in exp:
                         requirements.update(exp['requirements'])
                     if 'env' in exp:
                         env.update(exp['env'])
-                    experiments.append(Experiment(name=name, cmd=cmd, args=args, env=env, requirements=requirements,
+                    experiments.append(Experiment(name=name, cmd=cmd, args=run_args, env=env, requirements=requirements,
                                                   input_args=args))
         return experiments
 
@@ -194,7 +194,7 @@ class ExpManager:
                     if all_metric:
                         exp.record.update(all_metric)
                     self.write_record(exp)
-                logger.error(f'Running {exp.name} finished with return code: {rt}')
+                logger.info(f'Running {exp.name} finished with return code: {rt}')
 
             if has_finished:
                 self.exps = [exp for exp in self.exps if not exp.record and exp.handler.poll() is None]
