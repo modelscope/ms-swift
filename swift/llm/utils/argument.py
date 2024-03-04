@@ -113,6 +113,8 @@ class SftArguments:
     lora_rank_pattern: Dict = field(default_factory=dict)
     lora_alpha_pattern: Dict = field(default_factory=dict)
     lora_loftq_config: Dict = field(default_factory=dict)
+    use_dora: bool = False
+
     # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
