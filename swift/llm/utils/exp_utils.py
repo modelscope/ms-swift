@@ -103,6 +103,8 @@ class ExpManager:
             args['output_dir'] = sft_args.output_dir
             args['logging_dir'] = sft_args.logging_dir
             args['add_output_dir_suffix'] = False
+            os.makedirs(sft_args.output_dir, exist_ok=True)
+            os.makedirs(sft_args.logging_dir, exist_ok=True)
             cmd = f'swift sft '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
@@ -113,6 +115,8 @@ class ExpManager:
             args['output_dir'] = dpo_args.output_dir
             args['logging_dir'] = dpo_args.logging_dir
             args['add_output_dir_suffix'] = False
+            os.makedirs(dpo_args.output_dir, exist_ok=True)
+            os.makedirs(dpo_args.logging_dir, exist_ok=True)
             cmd = f'swift dpo '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
