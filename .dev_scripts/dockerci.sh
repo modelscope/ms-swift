@@ -4,11 +4,15 @@ CODE_DIR=$PWD
 CODE_DIR_IN_CONTAINER=/swift
 echo "$USER"
 gpus='0,1 2,3 4,5 6,7'
-cpu_sets='45-58 31-44 16-30 0-15'
+cpu_sets='0-15 16-31 32-47 48-63'
 cpu_sets_arr=($cpu_sets)
 is_get_file_lock=false
 CI_COMMAND=${CI_COMMAND:-bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --run_config tests/run_config.yaml}
 echo "ci command: $CI_COMMAND"
+PR_CHANGED_FILES="${PR_CHANGED_FILES:-}"
+echo "PR modified files: $PR_CHANGED_FILES"
+PR_CHANGED_FILES=${PR_CHANGED_FILES//[ ]/#}
+echo "PR_CHANGED_FILES: $PR_CHANGED_FILES"
 idx=0
 for gpu in $gpus
 do
@@ -43,6 +47,7 @@ do
               -e TEST_UPLOAD_MS_TOKEN=$TEST_UPLOAD_MS_TOKEN \
               -e MODEL_TAG_URL=$MODEL_TAG_URL \
               -e MODELSCOPE_API_TOKEN=$MODELSCOPE_API_TOKEN \
+	            -e PR_CHANGED_FILES=$PR_CHANGED_FILES \
               --workdir=$CODE_DIR_IN_CONTAINER \
               ${IMAGE_NAME}:${IMAGE_VERSION} \
               $CI_COMMAND
@@ -66,6 +71,7 @@ do
               -e TEST_UPLOAD_MS_TOKEN=$TEST_UPLOAD_MS_TOKEN \
               -e MODEL_TAG_URL=$MODEL_TAG_URL \
               -e MODELSCOPE_API_TOKEN=$MODELSCOPE_API_TOKEN \
+	            -e PR_CHANGED_FILES=$PR_CHANGED_FILES \
               --workdir=$CODE_DIR_IN_CONTAINER \
               ${IMAGE_NAME}:${IMAGE_VERSION} \
               $CI_COMMAND
