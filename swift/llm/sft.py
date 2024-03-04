@@ -250,6 +250,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         save_safetensors=args.save_safetensors,
         logging_first_step=True,
         group_by_length=use_torchacc(),
+        metric_warmup_step=args.metric_warmup_step,
+        train_dataset_sample=args.train_dataset_sample,
         **kwargs)
 
     if args.gradient_checkpointing:

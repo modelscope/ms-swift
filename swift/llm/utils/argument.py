@@ -178,6 +178,7 @@ class SftArguments:
     # compatibility. (Deprecated)
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
+    metric_warmup_step: Optional[float] = 1
 
     def __post_init__(self) -> None:
         handle_compatibility(self)

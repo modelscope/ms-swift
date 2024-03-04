@@ -27,6 +27,8 @@ class SwiftArgumentsMixin:
     acc_strategy: str = field(
         default='token', metadata={'choices': ['token', 'sentence']})
     additional_saved_files: Optional[List[str]] = None
+    metric_warmup_step: Optional[float] = 0
+    train_dataset_sample: Optional[int] = -1
 
     def __post_init__(self):
         if is_dist(
