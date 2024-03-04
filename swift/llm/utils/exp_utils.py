@@ -171,8 +171,9 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         logging_dir = exp.runtime.get('logging_dir')
-        if logging_dir:
-            with open(os.path.join(logging_dir, '..', 'logging.jsonl'), 'r') as f:
+        logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
+        if os.path.isfile(logging_file):
+            with open(logging_file, 'r') as f:
                 for line in f.readlines():
                     if 'model_info' in line:
                         return json.loads(line)
@@ -200,7 +201,7 @@ class ExpManager:
                     all_metric = self._get_metric(exp)
                     if all_metric:
                         exp.record.update(all_metric)
-                    self.write_record(exp)
+                        self.write_record(exp)
                 logger.info(f'Running {exp.name} finished with return code: {rt}')
 
             if has_finished:
@@ -209,6 +210,7 @@ class ExpManager:
 
     def begin(self, args: ExpArguments):
         exps = self.prepare_experiments(args)
+        logger.info(f'all exps: {exps}')
         exps.sort(key=lambda e: e.priority)
         exp_queue = Queue(-1)
         for exp in exps:
@@ -217,8 +219,11 @@ class ExpManager:
         while not exp_queue.empty() or len(self.exps) > 0:
             while not exp_queue.empty():
                 try:
+                    logger.info(f'Running exp: {exp_queue.queue[0].name}')
                     self.run(exp_queue.queue[0])
-                except AssertionError:
+                except Exception as e:
+                    if not isinstance(e, AssertionError):
+                        raise e
                     break
                 else:
                     exp_queue.get()
