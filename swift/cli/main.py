@@ -13,7 +13,8 @@ ROUTE_MAPPING: Dict[str, str] = {
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
     'dpo': 'swift.cli.dpo',
-    'export': 'swift.cli.export'
+    'export': 'swift.cli.export',
+    'exp': 'swift.cli.exp'
 }
 
 ROUTE_MAPPING.update(

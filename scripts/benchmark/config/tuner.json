@@ -1,8 +1,8 @@
 {
     "cmd": "sft",
     "requirements":{
-        "gpu": "8",
-        "ddp": "8"
+        "gpu": "2",
+        "ddp": "2"
     },
     "args": {
       "model_type": "llama2-7b-chat",

@@ -77,8 +77,9 @@ class ExpManager:
             exp.create_time = time.time()
             runtime = self._build_cmd(exp)
             exp.runtime = runtime
-            envs = runtime.get('env', {})
+            envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
+            logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
             exp.handler = subprocess.Popen(runtime['running_cmd'], env=envs, shell=True)
         self.exps.append(exp)
 
@@ -134,6 +135,7 @@ class ExpManager:
         all_gpus = set()
         for exp in self.exps:
             all_gpus.update(exp.runtime.get('gpu', set()))
+        all_gpus = {int(g) for g in all_gpus}
         free_gpu = set(range(torch.cuda.device_count())) - all_gpus
         if len(free_gpu) < n:
             return None
@@ -146,11 +148,12 @@ class ExpManager:
                 content = json.load(f)
                 exps = content['experiment']
                 for exp in exps:
+                    main_cfg = deepcopy(content)
                     name = exp['name']
-                    cmd = content['cmd']
-                    run_args = content['args']
-                    env = content.get('env', {})
-                    requirements = content.get('requirements', {})
+                    cmd = main_cfg['cmd']
+                    run_args = main_cfg['args']
+                    env = main_cfg.get('env', {})
+                    requirements = main_cfg.get('requirements', {})
                     if 'args' in exp:
                         run_args.update(exp['args'])
                     if 'requirements' in exp:
