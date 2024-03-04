@@ -9,26 +9,41 @@ from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
+from swift.tuners.llamapro import LLaMAProConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linears, is_adapter
+from .utils import SftArguments, find_all_linears, find_embedding, is_adapter
 
 logger = get_logger()
+
+
+def handle_target_modules_all(model, args: SftArguments) -> None:
+    if args.sft_type == 'ia3':
+        target_modules = args.ia3_target_modules
+        assert len(args.ia3_feedforward_modules) > 0, (
+            'Setting ia3_target_modules to `ALL` '
+            'need to pass MLP linear names to `ia3_feedforward_modules`')
+    else:
+        target_modules = args.lora_target_modules
+    if args.lora_use_embedding:
+        target_modules += find_embedding(model)
+    if args.lora_use_all:
+        target_modules += find_all_linears(model, args.quantization_bit,
+                                           args.model_type)
+    if args.sft_type == 'ia3':
+        args.ia3_target_modules = target_modules
+        logger.info(f'ia3_target_modules: {args.ia3_target_modules}')
+    else:
+        args.lora_target_modules = target_modules
+        logger.info(f'lora_target_modules: {args.lora_target_modules}')
 
 
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
-            if 'ALL' in args.lora_target_modules:
-                assert len(args.lora_target_modules) == 1
-                args.lora_target_modules = find_all_linears(
-                    model,
-                    args.quantization_bit,
-                    args.model_type,
-                    find_embedding=(args.sft_type != 'adalora'))
-                logger.info(
-                    f'Setting lora_target_modules: {args.lora_target_modules}')
+            handle_target_modules_all(model, args)
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_modules,
@@ -44,6 +59,7 @@ def prepare_model(model, args: SftArguments):
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
+                    lora_kwargs['lr_ratio'] = args.lora_lr_ratio
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
@@ -89,18 +105,6 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, adalora_config)
                 logger.info(f'adalora_config: {adalora_config}')
             elif args.sft_type == 'ia3':
-                if 'ALL' in args.ia3_target_modules:
-                    assert len(args.ia3_target_modules) == 1
-                    assert args.ia3_feedforward_modules, 'Setting ia3_target_modules to `ALL` ' \
-                                                         'need to pass MLP linear names to `ia3_feedforward_modules`'
-                    args.ia3_target_modules = find_all_linears(
-                        model,
-                        args.quantization_bit,
-                        args.model_type,
-                        find_embedding=False)
-                    logger.info(
-                        f'Setting ia3_target_modules: {args.ia3_target_modules}'
-                    )
                 ia3_config = IA3Config(
                     task_type='CAUSAL_LM',
                     target_modules=args.ia3_target_modules,
@@ -109,6 +113,19 @@ def prepare_model(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')
+            elif args.sft_type == 'llamapro':
+                model_type = args.model_type or args.model_id_or_path
+                for key in MODEL_KEYS_MAPPING.keys():
+                    if key in model_type.lower():
+                        model_type = key
+                        break
+
+                llamapro_config = LLaMAProConfig(
+                    model_type=model_type,
+                    num_new_blocks=args.llamapro_num_new_blocks,
+                    num_groups=args.llamapro_num_groups)
+                model = Swift.prepare_model(model, llamapro_config)
+                logger.info(f'llamapro_config: {llamapro_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)

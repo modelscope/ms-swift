@@ -14,7 +14,7 @@ def test_vllm(args: VLLMTestArgs) -> None:
     model_type = args.model_type
     llm_engine = get_vllm_engine(model_type)
     template_type = get_default_template_type(model_type)
-    template = get_template(template_type, llm_engine.tokenizer)
+    template = get_template(template_type, llm_engine.hf_tokenizer)
 
     llm_engine.generation_config.max_new_tokens = 256
 

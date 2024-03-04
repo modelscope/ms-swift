@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import os
 from functools import partial
 from typing import Any, Dict, Union
@@ -8,8 +7,10 @@ import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import IntervalStrategy
+from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from swift.trainers import Seq2SeqTrainer
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -17,8 +18,7 @@ from swift.utils import (check_json_format, compute_acc_metrics,
                          seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, dataset_map,
-                    get_additional_saved_files, get_dataset,
+                    add_self_cognition_dataset, dataset_map, get_dataset,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
@@ -29,6 +29,7 @@ logger = get_logger()
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'args: {args}')
+    training_args = args.training_args
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
@@ -42,11 +43,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                 device=device_id)
 
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True}
-    if is_dist() and not is_ddp_plus_mp():
-        model_kwargs['device_map'] = {'': local_rank}
+    if is_deepspeed_zero3_enabled():
+        model_kwargs = {'device_map': None}
     else:
-        model_kwargs['device_map'] = 'auto'
+        model_kwargs = {'low_cpu_mem_usage': True}
+        if is_dist() and not is_ddp_plus_mp():
+            model_kwargs['device_map'] = {'': local_rank}
+        else:
+            model_kwargs['device_map'] = 'auto'
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -60,11 +64,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     kwargs = {}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
-    if args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
-    logger.debug(f'device_map: {dict(model.hf_device_map)}')
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=args.model_id_or_path,
+        **kwargs)
+    # logger.info(f'device_map: {dict(model.hf_device_map)}')
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -78,14 +84,21 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
+    training_args.generation_config = generation_config
 
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
     show_layers(model)
-    model_info = get_model_info(model)
-    logger.info(model_info)
+    if not is_deepspeed_zero3_enabled():
+        model_info = get_model_info(model)
+        logger.info(model_info)
     logger.info(model)
+
+    if args.gradient_checkpointing:
+        model.config.use_cache = False  # fix transformers==4.36
+        logger.info('Setting model.config.use_cache: False')
+        model.enable_input_require_grads()
 
     # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
@@ -126,7 +139,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                                                    args.self_cognition_sample,
                                                    args.model_name,
                                                    args.model_author)
-
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
@@ -168,93 +183,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)
-    # Setting training_args
-    evaluation_strategy = args.evaluation_strategy
-    load_best_model_at_end = True
-    if val_dataset is None:
-        evaluation_strategy = 'no'
-    if evaluation_strategy == 'no':
-        load_best_model_at_end = False
-    additional_saved_files = []
-    if args.sft_type == 'full':
-        additional_saved_files = get_additional_saved_files(args.model_type)
 
-    kwargs = {}
-    parameters = inspect.signature(
-        Seq2SeqTrainingArguments.__init__).parameters
-    for key in ['neftune_noise_alpha']:
-        if key in parameters:
-            kwargs[key] = getattr(args, key)
-
-    training_args = Seq2SeqTrainingArguments(
-        output_dir=args.output_dir,
-        evaluation_strategy=evaluation_strategy,
-        logging_dir=args.logging_dir,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        max_grad_norm=args.max_grad_norm,
-        num_train_epochs=args.num_train_epochs,
-        max_steps=args.max_steps,
-        lr_scheduler_type=args.lr_scheduler_type,
-        warmup_ratio=args.warmup_ratio,
-        logging_steps=args.logging_steps,
-        save_strategy=args.save_strategy,
-        save_steps=args.save_steps,
-        save_total_limit=args.save_total_limit,
-        remove_unused_columns=False,
-        bf16=args.bf16,
-        fp16=args.fp16,
-        eval_steps=args.eval_steps,
-        dataloader_num_workers=args.dataloader_num_workers,
-        dataloader_pin_memory=args.dataloader_pin_memory,
-        load_best_model_at_end=load_best_model_at_end,
-        metric_for_best_model='rouge-l'
-        if args.predict_with_generate else 'loss',
-        greater_is_better=args.predict_with_generate,
-        sortish_sampler=True,
-        optim=args.optim,
-        adam_beta1=args.adam_beta1,
-        adam_beta2=args.adam_beta2,
-        hub_model_id=args.hub_model_id,
-        hub_private_repo=args.hub_private_repo,
-        push_hub_strategy=args.push_hub_strategy,
-        hub_token=args.hub_token,
-        push_to_hub=args.push_to_hub,
-        resume_from_checkpoint=args.resume_from_checkpoint,
-        ddp_backend=args.ddp_backend,
-        gradient_checkpointing=args.gradient_checkpointing,
-        predict_with_generate=args.predict_with_generate,
-        generation_config=generation_config,
-        local_rank=local_rank,
-        save_only_model=args.save_only_model,
-        train_sampler_random=args.train_sampler_random,
-        report_to=args.report_to,
-        deepspeed=args.deepspeed,
-        additional_saved_files=additional_saved_files,
-        disable_tqdm=args.disable_tqdm,
-        save_on_each_node=args.save_on_each_node,
-        acc_strategy=args.acc_strategy,
-        save_safetensors=args.save_safetensors,
-        logging_first_step=True,
-        **kwargs)
-
-    if args.gradient_checkpointing:
-        model.config.use_cache = False  # fix transformers==4.36
-        logger.info('Setting model.config.use_cache: False')
-        model.enable_input_require_grads()
-    if is_dist():
-        # Compatible with https://github.com/huggingface/transformers/pull/25903
-        training_args._frozen = False
-        if args.gradient_checkpointing:
-            training_args.ddp_find_unused_parameters = False
-            training_args.ddp_broadcast_buffers = False
-        else:
-            training_args.ddp_find_unused_parameters = True
-            training_args.ddp_broadcast_buffers = True
-
+    # Trainer
     logger.info(f'training_args: {training_args}')
 
     trainer_kwargs = {}

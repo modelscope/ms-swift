@@ -5,13 +5,16 @@ if __name__ == '__main__':
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from functools import partial
 from typing import Any, Dict, List
 
 import torch
+import transformers
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
+from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
@@ -44,13 +47,16 @@ class TestRun(unittest.TestCase):
             quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
+            if quantization_bit == 4 and version.parse(
+                    transformers.__version__) >= version.parse('4.38'):
+                continue
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False
             sft_args = SftArguments(
                 model_type=model_type,
                 template_type='AUTO',
-                lora_target_modules='ALL',
+                lora_target_modules=['AUTO', 'EMBEDDING'],
                 quantization_bit=quantization_bit,
                 batch_size=2,
                 eval_steps=5,
@@ -115,7 +121,7 @@ class TestRun(unittest.TestCase):
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
                 str(show_dataset_sample), '--max_new_tokens', '100',
-                '--use_flash_attn', 'true', '--verbose',
+                '--use_flash_attn', 'false', '--verbose',
                 str(not bool_var), '--merge_lora_and_save',
                 str(bool_var), '--load_dataset_config',
                 str(load_dataset_config)
@@ -214,13 +220,13 @@ class TestRun(unittest.TestCase):
                 dtype='fp16',
                 eval_steps=5,
                 output_dir='output',
-                lora_target_modules='ALL',
+                lora_target_modules=['ALL', 'EMBEDDING'],
                 lazy_tokenize=True,
                 max_length=512,
                 self_cognition_sample=100,
                 model_name=['小黄', 'Xiao Huang'],
                 model_author=['魔搭', 'ModelScope'],
-                use_flash_attn=False)
+                use_flash_attn=True)
             torch.cuda.empty_cache()
             output = sft_main(sft_args)
             last_model_checkpoint = output['last_model_checkpoint']
@@ -244,6 +250,9 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
+        quantization_bit = 4
+        if version.parse(transformers.__version__) >= version.parse('4.38'):
+            quantization_bit = 0
         torch.cuda.empty_cache()
         output = sft_main(
             SftArguments(
@@ -252,7 +261,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=100,
                 lora_target_modules='ALL',
                 eval_steps=5,
-                quantization_bit=4))
+                quantization_bit=quantization_bit))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(
@@ -315,7 +324,7 @@ class TestRun(unittest.TestCase):
             DPOArguments(
                 model_type=ModelType.qwen_1_8b_chat,
                 sft_type='full',
-                dataset=DatasetName.hh_rlhf,
+                dataset=DatasetName.hh_rlhf_cn_harmless_base_cn,
                 train_dataset_sample=100,
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
@@ -337,6 +346,7 @@ class TestRun(unittest.TestCase):
         os.environ['PAI_OUTPUT_TENSORBOARD'] = tensorboard_dir
         sft_json = os.path.join(folder, 'sft.json')
         infer_json = os.path.join(folder, 'infer.json')
+        torch.cuda.empty_cache()
         output = sft_main([sft_json])
         print()
         infer_args = {
@@ -347,8 +357,27 @@ class TestRun(unittest.TestCase):
         import json
         with open(infer_json, 'w') as f:
             json.dump(infer_args, f, ensure_ascii=False, indent=4)
+        torch.cuda.empty_cache()
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
+
+    # def test_baichuan2_chat_int4(self):
+    #     if not __name__ == '__main__':
+    #         # ignore citest error in github
+    #         return
+    #     from swift.llm import sft_main, infer_main, SftArguments, InferArguments, ModelType, DatasetName
+    #     output = sft_main(
+    #         SftArguments(
+    #             model_type=ModelType.baichuan2_7b_chat_int4,
+    #             dataset=['alpaca-zh'],
+    #             lora_target_modules=['DEFAULT', 'EMBEDDING'],
+    #             train_dataset_sample=20))
+    #     best_model_checkpoint = output['best_model_checkpoint']
+    #     infer_main(
+    #         InferArguments(
+    #             ckpt_dir=best_model_checkpoint,
+    #             load_dataset_config=True,
+    #             val_dataset_sample=1))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],

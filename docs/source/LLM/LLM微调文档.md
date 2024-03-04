@@ -4,13 +4,14 @@
 - [微调](#微调)
 - [DPO](#dpo)
 - [Merge LoRA](#merge-lora)
+- [量化](#量化)
 - [推理](#推理)
 - [Web-UI](#web-ui)
 
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
-# 设置pip全局镜像
+# 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
@@ -28,7 +29,7 @@ pip install auto_gptq -U
 # 如果你想要使用基于bnb的qlora训练.
 pip install bitsandbytes -U
 
-# 环境对齐 (如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
@@ -47,7 +48,7 @@ import torch
 
 from swift.llm import (
     DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora_main
+    infer_main, sft_main, app_ui_main, merge_lora
 )
 
 model_type = ModelType.qwen_7b_chat
@@ -65,7 +66,7 @@ infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
     load_dataset_config=True,
     val_dataset_sample=10)
-# merge_lora_main(infer_args)
+# merge_lora(infer_args, device_map='cpu')
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
 
@@ -76,15 +77,13 @@ app_ui_main(infer_args)
 ```bash
 # Experimental environment: A10, 3090, V100, ...
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset blossom-math-zh \
     --output_dir output \
 
 # 使用自己的数据集
-CUDA_VISIBLE_DEVICES=0 \
-swift sft \
+CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --custom_train_dataset_path chatml.jsonl \
     --output_dir output \
@@ -126,12 +125,8 @@ swift sft \
 
 更多sh脚本可以查看[这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts)
 
-性能: full(优) > lora > qlora(auto_gptq) > qlora(bnb)
-
-训练显存: qlora(低,3090) < lora < full(高,2*A100)
-
 ```bash
-# 下面的脚本需要在此目录下执行
+# 脚本需要在此目录下执行
 cd examples/pytorch/llm
 ```
 
@@ -144,80 +139,31 @@ cd examples/pytorch/llm
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
 - 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](./自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
-- 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
+- 如果你的机器是A100等高性能显卡, 且模型支持flash-attn, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
 - 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](./自定义与拓展.md#注册数据集的方式)
-- 如果你需要**断网**进行训练, 请使用`--model_cache_dir`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
+- 如果你需要**断网**进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
-- 如何你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora_and_save true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失.
-- 以下提供了可以直接运行的`qwen_7b_chat`的sh脚本(你只需要在推理时指定`--ckpt_dir`即可顺利执行). 更多模型的scripts脚本, 可以查看[scripts文件夹](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts). 如果你想要**自定义sh脚本**, 推荐你参考`scripts/qwen_7b_chat`中的脚本进行书写.
+- 如果你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失. 因此**不建议使用qlora进行微调**, 部署生态不好.
 
-```bash
-# 微调(qlora)+推理 qwen-7b-chat-int8, 需要16GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat_int8/qlora/sft.sh
-bash scripts/qwen_7b_chat_int8/qlora/infer.sh
 
-# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat-int8, 需要2卡*19GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat_int8/qlora_ddp_ds/sft.sh
-bash scripts/qwen_7b_chat_int8/qlora_ddp_ds/infer.sh
+**注意**:
 
-# 微调(qlora)+推理 qwen-7b-chat-int4, 需要13GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat_int4/qlora/sft.sh
-bash scripts/qwen_7b_chat_int4/qlora/infer.sh
+- 由于曾用名问题, 以`xxx_ds`结尾的脚本的含义是: 使用deepspeed zero2进行训练. (e.g. `full_ddp_ds`).
+- 除了以下列出的脚本, 其他脚本不一定进行维护.
 
-# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat-int4, 需要2卡*16GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/sft.sh
-bash scripts/qwen_7b_chat_int4/qlora_ddp_ds/infer.sh
 
-# 微调(lora)+推理 qwen-7b-chat, 需要18GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat/lora/sft.sh
-bash scripts/qwen_7b_chat/lora/infer.sh
+如果你想要**自定义脚本**, 可以参考以下脚本进行修改: (以下脚本会**定期维护**)
 
-# 微调(lora+ddp)+推理 qwen-7b-chat, 需要2卡*18GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat/lora_ddp/sft.sh
-bash scripts/qwen_7b_chat/lora_ddp/infer.sh
+- full: [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat/full) (A100), [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_mp) (2\*A100)
+- full+ddp+zero2: [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_ddp_zero2) (4\*A100)
+- full+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3) (4\*A100)
+- lora: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora) (3090), [yi-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat/lora) (A100), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_mp) (2\*A100)
+- lora+ddp: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora_ddp) (2\*3090)
+- lora+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/lora_ddp_zero3) (4\*3090), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_ddp_zero3) (4\*A100)
+- qlora(gptq-int4): [qwen-7b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat_int4/qlora) (3090)
+- qlora(gptq-int8): [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8/qlora) (3090)
+- qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
 
-# 微调(lora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*18GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat/lora_ddp_ds/sft.sh
-bash scripts/qwen_7b_chat/lora_ddp_ds/infer.sh
-
-# 微调(lora+mp+ddp)+推理 qwen-7b-chat, 需要4卡*20GB显存.
-# 推荐的实验环境: V100, A10, 3090
-bash scripts/qwen_7b_chat/lora_mp_ddp/sft.sh
-bash scripts/qwen_7b_chat/lora_mp_ddp/infer.sh
-
-# 微调(full+mp)+推理 qwen-7b-chat, 需要2卡*55G显存.
-# 推荐的实验环境: A100
-bash scripts/qwen_7b_chat/full_mp/sft.sh
-bash scripts/qwen_7b_chat/full_mp/infer.sh
-
-# 微调(full+mp+ddp)+推理 qwen-7b-chat, 需要4卡*55G显存.
-# 推荐的实验环境: A100
-bash scripts/qwen_7b_chat/full_mp_ddp/sft.sh
-bash scripts/qwen_7b_chat/full_mp_ddp/infer.sh
-
-# 以下基于bnb的qlora脚本已不再推荐使用. 请优先使用基于auto_gptq的qlora脚本.
-# 微调(qlora)+推理 qwen-7b-chat, 需要18GB显存.
-# 推荐的实验环境: A10, 3090
-bash scripts/qwen_7b_chat/qlora/sft.sh
-bash scripts/qwen_7b_chat/qlora/infer.sh
-
-# 微调(qlora+ddp)+推理 qwen-7b-chat, 需要2卡*20GB显存.
-# 推荐的实验环境: A10, 3090
-bash scripts/qwen_7b_chat/qlora_ddp/sft.sh
-bash scripts/qwen_7b_chat/qlora_ddp/infer.sh
-
-# 微调(qlora+ddp+deepspeed)+推理 qwen-7b-chat, 需要2卡*16GB显存.
-# 推荐的实验环境: A10, 3090
-bash scripts/qwen_7b_chat/qlora_ddp_ds/sft.sh
-bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
-```
 
 ## DPO
 如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](./LLM人类对齐训练文档.md).
@@ -225,8 +171,14 @@ bash scripts/qwen_7b_chat/qlora_ddp_ds/infer.sh
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
 ```bash
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
 ```
+
+## 量化
+
+对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档.md#微调后模型)
 
 ## 推理
 如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
@@ -251,13 +203,13 @@ from swift.llm import (
 )
 from swift.tuners import Swift
 
-model_dir = 'vx_xxx/checkpoint-100'
+ckpt_dir = 'vx-xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
 
-model = Swift.from_pretrained(model, model_dir, inference_mode=True)
+model = Swift.from_pretrained(model, ckpt_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
 response, history = inference(model, template, query)
@@ -274,12 +226,12 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
 
-model_dir = 'vx_xxx/checkpoint-100-merged'
+ckpt_dir = 'vx-xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 
 model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'},
-                                       model_dir=model_dir)
+                                       model_id_or_path=ckpt_dir)
 
 template = get_template(template_type, tokenizer)
 query = 'xxxxxx'
@@ -291,27 +243,30 @@ print(f'history: {history}')
 使用**数据集**评估:
 ```bash
 # 直接推理
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
-    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx' \
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \
     --load_dataset_config true \
 
 # Merge LoRA增量权重并推理
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
-    --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged' \
-    --load_dataset_config true \
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged' --load_dataset_config true
 ```
 
 **人工**评估:
 ```bash
 # 直接推理
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx'
 
 # Merge LoRA增量权重并推理
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
@@ -323,9 +278,12 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
 ### 微调后模型
 ```bash
 # 直接使用app-ui
-CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx'
 
 # merge LoRA增量权重并使用app-ui
-swift merge-lora --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx'
-CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx_xxx/checkpoint-xxx-merged'
+# 如果你需要量化, 可以指定`--quant_bits 4`.
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```

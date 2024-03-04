@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import torch
 from packaging import version
@@ -49,9 +49,28 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
+    lr_ratio: float = field(
+        default=2.0**4,
+        metadata={'help': 'The lora learning_rate ratio of lora_A to lora_B'})
+
     def __post_init__(self):
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
+
+    def can_be_saved_to_peft(self) -> bool:
+        return not self.use_qa_lora and not self.use_merged_linear \
+            and (not self.lora_dtype or self.lora_dtype == 'fp32')
+
+    def to_peft_config(self) -> LoraConfig:
+        _dict = asdict(self)
+        _dict.pop('use_qa_lora')
+        _dict.pop('enable_lora')
+        _dict.pop('lora_dtype')
+        _dict.pop('use_merged_linear')
+        _dict['peft_type'] = _dict['swift_type']
+        _dict.pop('swift_type')
+        _dict.pop('lr_ratio')
+        return LoraConfig(**_dict)
 
 
 class LoRA(SwiftAdapter):
@@ -66,8 +85,25 @@ class LoRA(SwiftAdapter):
         def mark_trainable_callback(model):
             mark_lora_as_trainable(model, adapter_name, config.bias)
 
+        def optimizer_group_callback(model, **defaults):
+            if config.lr_ratio is not None:
+                params = []
+                names = set()
+                for name, param in model.named_parameters():
+                    if adapter_name in name and ('lora_B' in name or
+                                                 'lora_embedding_B' in name):
+                        params.append(param)
+                        names.add(name)
+                if params:
+                    assert 'lr' in defaults
+                    return names, {
+                        'params': params,
+                        'lr': defaults['lr'] * config.lr_ratio
+                    }
+            return None, None
+
         return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+                           mark_trainable_callback, optimizer_group_callback)
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module,
