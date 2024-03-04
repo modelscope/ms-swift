@@ -652,7 +652,7 @@ class InferArguments:
             if self.sft_type == 'lora':
                 assert self.merge_lora is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
-                    'Please set --merge_lora true.')
+                    'Please set `--merge_lora true`.')
         template_info = TEMPLATE_MAPPING[self.template_type]
         support_stream = template_info.get('support_stream', True)
         if self.num_beams != 1 or not support_stream:
