@@ -424,11 +424,13 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        if 'aqlm' in model_dir:
+        if 'aqlm' in model_dir.lower():
             import aqlm
             context = aqlm.optimize_for_training()
         else:
             context = nullcontext()
+        # import aqlm
+        # context = aqlm.optimize_for_training
         with context:
             model = automodel_class.from_pretrained(
                 model_dir,
