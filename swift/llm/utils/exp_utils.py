@@ -71,8 +71,10 @@ class ExpManager:
         self.exps = []
 
     def run(self, exp: Experiment):
-        if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name)):
+        if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name + '.json')):
             logger.warn(f'Experiment {exp.name} already done, skip')
+        elif any([exp.name == e.name for e in self.exps]):
+            raise ValueError(f'Why exp name duplicate? {exp.name}')
         else:
             exp.create_time = time.time()
             runtime = self._build_cmd(exp)
@@ -81,7 +83,7 @@ class ExpManager:
             envs.update(os.environ)
             logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
             exp.handler = subprocess.Popen(runtime['running_cmd'], env=envs, shell=True)
-        self.exps.append(exp)
+            self.exps.append(exp)
 
     def _build_cmd(self, exp: Experiment):
         gpu = exp.requirements.get('gpu', None)
@@ -223,11 +225,16 @@ class ExpManager:
                     self.run(exp_queue.queue[0])
                 except Exception as e:
                     if not isinstance(e, AssertionError):
-                        raise e
+                        logger.error(f'Adding exp {exp_queue.queue[0].name} error because of:')
+                        logger.error(e)
+                        exp_queue.get()
+                    else:
+                        logger.info(f'Adding exp {exp_queue.queue[0].name} error because of no free gpu.')
                     break
                 else:
                     exp_queue.get()
             self._poll()
+        logger.info(f'Run task finished because of exp queue: {exp_queue.queue} and exps: {self.exps}')
 
 
 

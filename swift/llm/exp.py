@@ -22,6 +22,7 @@ def find_all_config(dir_or_file: str):
 
 def llm_exp(args: ExpArguments):
     config = args.config
+    config = ['./scripts/benchmark/config/tuner.json', './scripts/benchmark/config/quantize.json']
     os.makedirs(args.save_dir, exist_ok=True)
     all_configs = []
     if not isinstance(config, list):

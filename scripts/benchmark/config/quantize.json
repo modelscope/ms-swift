@@ -32,12 +32,12 @@
     },
     "experiment": [
       {
-        "name": "lora"
+        "name": "quantized-lora"
       },
       {
-        "name": "qa-lora",
+        "name": "quantized-qa-lora",
         "args": {
-          "use_qa_lora": true
+          "sft_type": "qalora"
         }
       }
     ]
