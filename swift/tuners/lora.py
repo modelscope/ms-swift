@@ -70,6 +70,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         _dict['peft_type'] = _dict['swift_type']
         _dict.pop('swift_type')
         _dict.pop('lr_ratio')
+        _dict.pop('model_key_mapping')
         return LoraConfig(**_dict)
 
 
