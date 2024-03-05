@@ -223,7 +223,7 @@ def read_media_file(
 def llm_infer(args: InferArguments) -> None:
     logger.info(f'args: {args}')
     if args.merge_lora:
-        merge_lora(args, device_map='cpu')
+        merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
