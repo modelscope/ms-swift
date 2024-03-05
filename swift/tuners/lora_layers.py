@@ -247,15 +247,22 @@ if is_auto_gptq_available():
 
         def __init__(
             self,
-            *args,
+            base_layer,
+            adapter_name: str,
+            module_key: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            init_lora_weights: bool = True,
+            use_rslora: bool = False,
+            use_dora: bool = False,
             use_qa_lora=False,
             group_size=None,
-            module_key: str,
             **kwargs,
         ):
             super(QuantLinear, self).__init__(module_key)
-            self.set_activation(args[1], True)
-            super(ActivationMixin, self).__init__(*args, **kwargs)
+            self.set_activation(adapter_name, True)
+            nn.Module.__init__(self)
             self.group_size = group_size
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:
@@ -263,7 +270,28 @@ if is_auto_gptq_available():
                 self.qa_pool = torch.nn.AvgPool1d(
                     self.group_size
                 )  # using pooling layer to conduct sum operation
+
+            LoraLayer.__init__(self, base_layer)
+            if use_dora:
+                raise ValueError(
+                    f'{_QuantLinear.__name__} does not support DoRA yet, please set it to False'
+                )
+            if self.use_qa_lora:
                 self.in_features = self.in_features // self.group_size
+            # self.base_layer and self.quant_linear_module are the same;
+            # we need the former for consistency and the latter
+            # for backwards compatibility
+            self.quant_linear_module = base_layer
+            self._active_adapter = adapter_name
+            self.update_layer(
+                adapter_name,
+                r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                init_lora_weights=init_lora_weights,
+                use_rslora=use_rslora,
+                use_dora=use_dora,
+            )
 
         def forward(self, x: torch.Tensor):
             # note: logic differs from default Linear because merging is not supported
