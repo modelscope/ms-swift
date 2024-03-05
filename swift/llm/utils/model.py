@@ -2,6 +2,7 @@
 import inspect
 import os
 import sys
+from contextlib import nullcontext
 from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
@@ -423,8 +424,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        import aqlm
-        with aqlm.optimize_for_training():
+        if 'aqlm' in model_dir:
+            import aqlm
+            context = aqlm.optimize_for_training()
+        else:
+            context = nullcontext()
+        with context:
             model = automodel_class.from_pretrained(
                 model_dir,
                 config=model_config,
