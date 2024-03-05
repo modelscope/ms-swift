@@ -56,6 +56,7 @@ def prepare_model(model, args: SftArguments):
                 'rank_pattern': args.lora_rank_pattern,
                 'alpha_pattern': args.lora_alpha_pattern,
                 'loftq_config': args.lora_loftq_config,
+                'use_dora': args.use_dora,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':

@@ -21,6 +21,16 @@ class Dataset(BaseUI):
                 'en': 'The dataset(s) to train the models'
             }
         },
+        'max_length': {
+            'label': {
+                'zh': '句子最大长度',
+                'en': 'The max length',
+            },
+            'info': {
+                'zh': '设置输入模型的最大长度',
+                'en': 'Set the max length input to the model',
+            }
+        },
         'custom_train_dataset_path': {
             'label': {
                 'zh': '自定义训练数据集路径',
@@ -102,6 +112,12 @@ class Dataset(BaseUI):
                 maximum=1.0,
                 step=0.05,
                 scale=10)
+            gr.Slider(
+                elem_id='max_length',
+                minimum=32,
+                maximum=8192,
+                step=32,
+                scale=20)
             gr.Textbox(elem_id='train_dataset_sample', scale=20)
             gr.Textbox(elem_id='val_dataset_sample', scale=20)
             gr.Dropdown(elem_id='truncation_strategy', scale=10)
