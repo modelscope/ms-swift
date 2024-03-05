@@ -40,6 +40,12 @@ def is_auto_awq_available():
             'peft.tuners.lora.awq') is not None
 
 
+def is_aqlm_available():
+    return importlib.util.find_spec(
+        'aqlm') is not None and importlib.util.find_spec(
+            'peft.tuners.lora.aqlm') is not None
+
+
 def is_auto_gptq_available():
     try:
         return peft.import_utils._is_auto_gptq_available()
@@ -190,6 +196,43 @@ if is_bnb_4bit_available():
         return new_module
 
     dispatchers.append(dispatch_bnb_4bit)
+
+if is_aqlm_available():
+    from peft.tuners.lora.aqlm import AqlmLoraLinear as _AqlmLoraLinear
+    from aqlm import QuantizedLinear
+
+    class AqlmLoraLinear(LoRAActivationMixin, _AqlmLoraLinear):
+
+        def __init__(
+            self,
+            *args,
+            module_key: str,
+            **kwargs,
+        ):
+            super(AqlmLoraLinear, self).__init__(module_key)
+            self.set_activation(args[1], True)
+            super(ActivationMixin, self).__init__(*args, **kwargs)
+
+    def dispatch_aqlm(
+        target: torch.nn.Module,
+        adapter_name: str,
+        **kwargs: Any,
+    ) -> Optional[torch.nn.Module]:
+        new_module = None
+
+        if isinstance(target, BaseTunerLayer):
+            target_base_layer = target.get_base_layer()
+        else:
+            target_base_layer = target
+
+        if is_aqlm_available() and isinstance(target_base_layer,
+                                              QuantizedLinear):
+            new_module = AqlmLoraLinear(target, adapter_name, **kwargs)
+            target.qweight = target_base_layer.codes
+
+        return new_module
+
+    dispatchers.append(dispatch_aqlm)
 
 if is_auto_awq_available():
     from peft.tuners.lora.awq import AwqLoraLinear as _AwqLoraLinear
@@ -638,11 +681,12 @@ class LoraModel(_LoraModel):
             'fan_in_fan_out': lora_config.fan_in_fan_out,
             'init_lora_weights': lora_config.init_lora_weights,
             'use_rslora': lora_config.use_rslora,
+            'use_dora': lora_config.use_dora,
             'loaded_in_8bit': getattr(self.model, 'is_loaded_in_8bit', False),
             'loaded_in_4bit': getattr(self.model, 'is_loaded_in_4bit', False),
         }
 
-        quant_methods = ['gptq', 'awq']
+        quant_methods = ['gptq', 'aqlm', 'awq']
         for quant_method in quant_methods:
             quantization_config = get_quantization_config(
                 self.model, method=quant_method)
@@ -664,7 +708,8 @@ class LoraModel(_LoraModel):
                 alpha,
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
-                lora_config.use_rslora,
+                use_rslora=lora_config.use_rslora,
+                use_dora=lora_config.use_dora,
             )
             self._convert_dtype(target, lora_config.lora_dtype)
         else:

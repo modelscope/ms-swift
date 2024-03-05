@@ -1,13 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
-import inspect
 import os
 import re
 from copy import copy
-from dataclasses import asdict
+from functools import partial
 from inspect import Parameter, Signature, signature
 from types import MethodType
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import json
 import torch
@@ -16,12 +15,12 @@ from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 from transformers import Trainer
 
-from swift import LoraConfig, SwiftTuners
+from swift import SwiftTuners
 from swift.hub.snapshot_download import snapshot_download
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
 from .. import PeftConfig, PeftModel, get_peft_model
-from .utils import SwiftConfig
+from .utils import SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -47,10 +46,12 @@ class SwiftModel(nn.Module):
                  **kwargs):
         super().__init__()
         self.adapters = {}
+        self.active_adapters = set()
         if isinstance(model, SwiftModel):
             self.adapters = model.adapters
             extra_state_keys = extra_state_keys or []
             extra_state_keys.extend(model.extra_state_keys)
+            self.active_adapters = model.active_adapters
             model = model.base_model
 
         new_adapters = []
@@ -486,6 +487,63 @@ class SwiftModel(nn.Module):
         with open(os.path.join(output_dir, 'README.md'), 'w') as f:
             f.writelines(lines)
 
+    def add_weighted_adapter(
+        self,
+        adapters,
+        weights,
+        adapter_name,
+        combination_type='svd',
+        svd_rank=None,
+        svd_clamp=None,
+        svd_full_matrices=True,
+        svd_driver=None,
+        density=None,
+        majority_sign_method: Literal['total', 'frequency'] = 'total',
+    ):
+        from swift.tuners.lora import LoraModel
+        lora_model = LoraModel(self.model, None, '')
+        lora_model.peft_config = {
+            key: value.config
+            for key, value in self.adapters.items()
+        }
+        from peft.tuners.lora import LoraLayer
+        lora_model.targeted_module_names = [
+            key for key, value in self.model.named_modules()
+            if isinstance(value, LoraLayer)
+        ]
+        lora_model.active_adapter = self.active_adapters
+        lora_model.add_weighted_adapter(
+            adapters=adapters,
+            weights=weights,
+            adapter_name=adapter_name,
+            combination_type=combination_type,
+            svd_rank=svd_rank,
+            svd_clamp=svd_clamp,
+            svd_full_matrices=svd_full_matrices,
+            svd_driver=svd_driver,
+            density=density,
+            majority_sign_method=majority_sign_method,
+        )
+
+        def state_dict_callback(state_dict, adapter_name, cfg):
+            from swift.tuners.lora_layers import lora_state_dict
+            return lora_state_dict(state_dict, adapter_name, cfg.bias)
+
+        def mark_trainable_callback(model, cfg):
+            from swift.tuners.lora_layers import mark_lora_as_trainable
+            mark_lora_as_trainable(model, adapter_name, cfg.bias)
+
+        cfg = lora_model.peft_config[adapter_name]
+        cfg.has_additional_modules = True
+        self.adapters[adapter_name] = SwiftOutput(
+            config=cfg,
+            state_dict_callback=partial(state_dict_callback, cfg=cfg),
+            mark_trainable_callback=partial(mark_trainable_callback, cfg=cfg),
+            optimizer_group_callback=None,
+        )
+
+        self.set_active_adapters(adapter_name)
+
     def save_pretrained(self,
                         save_directory: str,
                         safe_serialization: bool = False,
@@ -607,6 +665,8 @@ class SwiftModel(nn.Module):
         for adapter_name in (set(self.adapters.keys()) - adapter_names):
             self.deactivate_adapter(adapter_name, offload)
 
+        self.active_adapters = (adapter_names & set(self.adapters.keys()))
+
     def activate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:
             logger.warning(
@@ -616,6 +676,7 @@ class SwiftModel(nn.Module):
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
             .activate_adapter(self.base_model, adapter_name, True, offload)
+        self.active_adapters = self.active_adapters | {adapter_name}
 
     def deactivate_adapter(self, adapter_name, offload=None):
         if adapter_name not in self.adapters:
@@ -626,6 +687,7 @@ class SwiftModel(nn.Module):
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
             .activate_adapter(self.base_model, adapter_name, False, offload=offload)
+        self.active_adapters = self.active_adapters - {adapter_name}
 
     def get_trainable_parameters(self):
         """

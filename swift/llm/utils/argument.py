@@ -114,6 +114,8 @@ class SftArguments:
     lora_rank_pattern: Dict = field(default_factory=dict)
     lora_alpha_pattern: Dict = field(default_factory=dict)
     lora_loftq_config: Dict = field(default_factory=dict)
+    use_dora: bool = False
+
     # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
@@ -566,6 +568,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora: bool = False
+    merge_device_map: Optional[str] = None
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
@@ -660,6 +663,8 @@ class InferArguments:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        if self.merge_device_map is None:
+            self.merge_device_map = 'cpu'
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -741,6 +746,8 @@ class ExportArguments(InferArguments):
     commit_message: str = 'update files'
 
     def __post_init__(self):
+        if self.merge_device_map is None:
+            self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
         super().__post_init__()
         if len(self.dataset) == 0:
             self.dataset = ['ms-bench-mini']
