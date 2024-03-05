@@ -110,6 +110,15 @@ class TestPeft(unittest.TestCase):
         inputs = preprocessor('how are you')
         print(model(**inputs))
         model.save_pretrained(self.tmp_dir)
+        model3 = SbertForSequenceClassification(SbertConfig())
+        model3 = Swift.from_pretrained(model3, self.tmp_dir)
+        state_dict3 = model3.state_dict()
+        for key in state_dict:
+            self.assertTrue(key in state_dict3)
+            self.assertTrue(
+                all(
+                    torch.isclose(state_dict[key],
+                                  state_dict3[key]).flatten().detach().cpu()))
 
     def test_lora_reload_by_peft(self):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
