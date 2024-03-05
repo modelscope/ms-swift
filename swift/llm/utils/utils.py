@@ -356,24 +356,30 @@ def find_all_linears(model: Module, quantization_bit: int,
         head_module_name = 'output_layer'
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
-        linear_cls = Linear4bit
+        linear_cls = [Linear4bit]
     elif quantization_bit == 8:
         from bitsandbytes.nn import Linear8bitLt
-        linear_cls = Linear8bitLt
+        linear_cls = [Linear8bitLt]
     else:
-        linear_cls = Linear
+        linear_cls = [Linear]
     if 'int4' in model_type or 'int8' in model_type:
         from bitsandbytes.nn import Linear4bit
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             gptq_quantization_config)
-        linear_cls = Linear4bit
+        linear_cls = [Linear4bit]
         if AutoGPTQQuantLinear is not None:
-            linear_cls = (Linear4bit, AutoGPTQQuantLinear)
+            linear_cls = [Linear4bit, AutoGPTQQuantLinear]
+    if 'awq' in model_type:
+        from awq.modules.linear import WQLinear_GEMM
+        linear_cls.append(WQLinear_GEMM)
+    if 'aqlm' in model_type:
+        from aqlm import QuantizedLinear
+        linear_cls.append(QuantizedLinear)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, linear_cls):
+        if isinstance(module, tuple(linear_cls)):
             module_name = '.'.join(name.split('.')[-2:])
             if head_module_name not in module_name:
                 target_module_names.add(module_name)
