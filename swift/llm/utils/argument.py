@@ -688,6 +688,7 @@ class DeployArguments(InferArguments):
     port: int = 8000
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
+    device: Optional[str] = 'cpu'
 
     def __post_init__(self):
         super().__post_init__()
