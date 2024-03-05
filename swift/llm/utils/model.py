@@ -423,12 +423,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        model = automodel_class.from_pretrained(
-            model_dir,
-            config=model_config,
-            torch_dtype=torch_dtype,
-            trust_remote_code=True,
-            **model_kwargs)
+        import aqlm
+        with aqlm.optimize_for_training():
+            model = automodel_class.from_pretrained(
+                model_dir,
+                config=model_config,
+                torch_dtype=torch_dtype,
+                trust_remote_code=True,
+                **model_kwargs)
     return model, tokenizer
 
 
