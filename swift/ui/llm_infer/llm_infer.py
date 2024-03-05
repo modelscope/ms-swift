@@ -1,5 +1,8 @@
+import collections
 import os
 import re
+import sys
+from subprocess import PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
@@ -8,17 +11,20 @@ import torch
 from gradio import Accordion, Tab
 
 from swift import snapshot_download
-from swift.llm import (InferArguments, inference_stream, limit_history_length,
-                       prepare_model_template)
+from swift.llm import (DeployArguments, InferArguments, XRequestConfig,
+                       inference_client)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
+from swift.ui.llm_infer.runtime import Runtime
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class LLMInfer(BaseUI):
-
     group = 'llm_infer'
 
-    sub_ui = [Model]
+    sub_ui = [Model, Runtime]
 
     locale_dict = {
         'generate_alert': {
@@ -92,8 +98,9 @@ class LLMInfer(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
+                model_and_template_type = gr.State([])
                 Model.build_ui(base_tab)
+                Runtime.build_ui(base_tab)
                 gr.Dropdown(
                     elem_id='gpu_id',
                     multiselect=True,
@@ -111,28 +118,45 @@ class LLMInfer(BaseUI):
 
                 submit.click(
                     cls.generate_chat,
-                    inputs=[
-                        model_and_template,
-                        cls.element('template_type'), prompt, chatbot,
-                        cls.element('max_new_tokens'),
-                        cls.element('system')
-                    ],
+                    inputs=[model_and_template_type, prompt, chatbot],
                     outputs=[prompt, chatbot],
                     queue=True)
                 clear_history.click(
                     fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
-                cls.element('load_checkpoint').click(
-                    cls.reset_memory, [], [model_and_template])\
-                    .then(cls.reset_loading_button, [], [cls.element('load_checkpoint')]).then(
-                        cls.prepare_checkpoint, [
-                            value for value in cls.elements().values()
-                            if not isinstance(value, (Tab, Accordion))
-                        ], [model_and_template]).then(cls.change_interactive, [],
-                                                 [prompt]).then( # noqa
-                    cls.clear_session,
-                    inputs=[],
-                    outputs=[prompt, chatbot],
-                    queue=True).then(cls.reset_load_button, [], [cls.element('load_checkpoint')])
+
+                if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+                    cls.element('load_checkpoint').click(
+                        cls.update_runtime, [],
+                        [cls.element('runtime_tab'),
+                         cls.element('log')]).then(
+                             cls.deploy_studio, [
+                                 value for value in cls.elements().values()
+                                 if not isinstance(value, (Tab, Accordion))
+                             ], [cls.element('log')],
+                             queue=True)
+                else:
+                    cls.element('load_checkpoint').click(
+                        cls.reset_memory, [], [model_and_template_type]).then(
+                            cls.reset_loading_button, [],
+                            [cls.element('load_checkpoint')
+                             ]).then(cls.get_model_template_type, [
+                                 value for value in cls.elements().values()
+                                 if not isinstance(value, (Tab, Accordion))
+                             ], [model_and_template_type]).then(
+                                 cls.deploy_local, [
+                                     value
+                                     for value in cls.elements().values()
+                                     if not isinstance(value, (Tab, Accordion))
+                                 ], []).then(
+                                     cls.change_interactive, [],
+                                     [prompt]).then(  # noqa
+                                         cls.clear_session,
+                                         inputs=[],
+                                         outputs=[prompt,
+                                                  chatbot],
+                                         queue=True).then(
+                                             cls.reset_load_button, [],
+                                             [cls.element('load_checkpoint')])
 
     @classmethod
     def reset_load_button(cls):
@@ -148,9 +172,29 @@ class LLMInfer(BaseUI):
         return []
 
     @classmethod
-    def prepare_checkpoint(cls, *args):
-        torch.cuda.empty_cache()
-        infer_args = cls.get_default_value_from_dataclass(InferArguments)
+    def clear_session(cls):
+        return '', None
+
+    @classmethod
+    def change_interactive(cls):
+        return gr.update(interactive=True)
+
+    @classmethod
+    def generate_chat(cls, model_and_template_type, prompt: str, history):
+        model_type = model_and_template_type[0]
+        request_config = XRequestConfig(seed=42)
+        request_config.stream = True
+        old_history = []
+        stream_resp = inference_client(
+            model_type, prompt, request_config=request_config)
+        for chunk in stream_resp:
+            print(chunk.choices[0])
+            total_history = old_history + [chunk.choices[0].delta.content]
+            yield ['', total_history]
+
+    @classmethod
+    def deploy(cls, *args):
+        deploy_args = cls.get_default_value_from_dataclass(DeployArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
@@ -160,12 +204,12 @@ class LLMInfer(BaseUI):
             if not isinstance(value, (Tab, Accordion))
         ]
         for key, value in zip(keys, args):
-            compare_value = infer_args.get(key)
+            compare_value = deploy_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(
                 compare_value, (list, dict)) else compare_value
             compare_value_ui = str(value) if not isinstance(
                 value, (list, dict)) else value
-            if key in infer_args and compare_value_ui != compare_value_arg and value:
+            if key in deploy_args and compare_value_ui != compare_value_arg and value:
                 if isinstance(value, str) and re.fullmatch(
                         cls.int_regex, value):
                     value = int(value)
@@ -190,50 +234,66 @@ class LLMInfer(BaseUI):
                 'model_id_or_path' in kwargs
                 and not os.path.exists(kwargs['model_id_or_path'])):
             kwargs.pop('model_type', None)
-
+        deploy_args = DeployArguments(
+            **{
+                key: value.split(' ')
+                if key in kwargs_is_list and kwargs_is_list[key] else value
+                for key, value in kwargs.items()
+            })
+        params = ''
+        for e in kwargs:
+            if e in kwargs_is_list and kwargs_is_list[e]:
+                params += f'--{e} {kwargs[e]} '
+            else:
+                params += f'--{e} "{kwargs[e]}" '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
+        cuda_param = ''
         if gpus != 'cpu':
-            os.environ['CUDA_VISIBLE_DEVICES'] = gpus
-        infer_args = InferArguments(**kwargs)
-        model, template = prepare_model_template(infer_args)
-        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
-        return [model, template]
+            cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
 
-    @classmethod
-    def clear_session(cls):
-        return '', None
-
-    @classmethod
-    def change_interactive(cls):
-        return gr.update(interactive=True)
-
-    @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str,
-                      history, max_new_tokens, system):
-        if not model_and_template:
-            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None
-        model, template = model_and_template
-        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            model.cuda()
-        if not template_type.endswith('generation'):
-            old_history, history = limit_history_length(
-                template, prompt, history, int(max_new_tokens))
+        log_file = os.path.join(os.getcwd(), 'run_deploy.log')
+        if sys.platform == 'win32':
+            if cuda_param:
+                cuda_param = f'set {cuda_param} && '
+            run_command = f'{cuda_param}start /b swift deploy {params} > {log_file} 2>&1'
+        elif os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            run_command = f'{cuda_param} swift deploy {params}'
         else:
-            old_history = []
-            history = []
-        gen = inference_stream(
-            model,
-            template,
-            prompt,
-            history,
-            system=system,
-            stop_words=['Observation:'])
-        for _, history in gen:
-            total_history = old_history + history
-            yield '', total_history
+            run_command = f'{cuda_param} nohup swift deploy {params} > {log_file} 2>&1 &'
+        return run_command, deploy_args
+
+    @classmethod
+    def deploy_studio(cls, *args):
+        run_command, deploy_args = cls.deploy(*args)
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            model.cpu()
+            lines = collections.deque(
+                maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+            logger.info(f'Run deploying: {run_command}')
+            process = Popen(
+                run_command, shell=True, stdout=PIPE, stderr=STDOUT)
+            with process.stdout:
+                for line in iter(process.stdout.readline, b''):
+                    line = line.decode('utf-8')
+                    lines.append(line)
+                    yield '\n'.join(lines)
+
+    @classmethod
+    def deploy_local(cls, *args):
+        run_command, deploy_args = cls.deploy(*args)
+        lines = collections.deque(
+            maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        logger.info(f'Run deploying: {run_command}')
+        process = Popen(run_command, shell=True, stdout=PIPE, stderr=STDOUT)
+        with process.stdout:
+            for line in iter(process.stdout.readline, b''):
+                line = line.decode('utf-8')
+                lines.append(line)
+                yield '\n'.join(lines)
+
+    @classmethod
+    def get_model_template_type(cls, *args):
+        run_command, deploy_args = cls.deploy(*args)
+        return [deploy_args.model_type, deploy_args.template_type]
