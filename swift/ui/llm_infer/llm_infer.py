@@ -118,7 +118,12 @@ class LLMInfer(BaseUI):
 
                 submit.click(
                     cls.generate_chat,
-                    inputs=[model_and_template_type, prompt, chatbot],
+                    inputs=[
+                        model_and_template_type,
+                        cls.element('template_type'), prompt, chatbot,
+                        cls.element('max_new_tokens'),
+                        cls.element('system')
+                    ],
                     outputs=[prompt, chatbot],
                     queue=True)
                 clear_history.click(
@@ -180,17 +185,34 @@ class LLMInfer(BaseUI):
         return gr.update(interactive=True)
 
     @classmethod
-    def generate_chat(cls, model_and_template_type, prompt: str, history):
+    def generate_chat(cls,
+                      model_and_template_type,
+                      template_type,
+                      prompt: str,
+                      history,
+                      max_new_tokens,
+                      system,
+                      seed=42):
         model_type = model_and_template_type[0]
-        request_config = XRequestConfig(seed=42)
+        old_history, history = history, []
+        request_config = XRequestConfig(seed=seed)
         request_config.stream = True
-        old_history = []
-        stream_resp = inference_client(
-            model_type, prompt, request_config=request_config)
+        stream_resp_with_history = ''
+        if not template_type.endswith('generation'):
+            stream_resp = inference_client(
+                model_type,
+                prompt,
+                old_history,
+                system=system,
+                request_config=request_config)
+        else:
+            stream_resp = inference_client(
+                model_type, prompt, request_config=request_config)
         for chunk in stream_resp:
-            print(chunk.choices[0])
-            total_history = old_history + [chunk.choices[0].delta.content]
-            yield ['', total_history]
+            stream_resp_with_history += chunk.choices[0].delta.content
+            qr_pair = [prompt, stream_resp_with_history]
+            total_history = old_history + [qr_pair]
+            yield '', total_history
 
     @classmethod
     def deploy(cls, *args):
