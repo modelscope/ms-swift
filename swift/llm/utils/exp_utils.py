@@ -1,15 +1,14 @@
-import json
-import json
 import os
 import shutil
 import subprocess
 import time
 from concurrent.futures import Future
-from dataclasses import dataclass, field, asdict
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field
 from queue import Queue
 from typing import Dict
-from copy import deepcopy
 
+import json
 import torch
 
 from swift import push_to_hub, push_to_hub_async
@@ -42,7 +41,13 @@ class Experiment:
 
     input_args: ExpArguments = None
 
-    def __init__(self, name, cmd, requirements=None, args=None, input_args=None, **kwargs):
+    def __init__(self,
+                 name,
+                 cmd,
+                 requirements=None,
+                 args=None,
+                 input_args=None,
+                 **kwargs):
         self.name = name
         self.cmd = cmd
         self.requirements = requirements or {}
@@ -71,7 +76,8 @@ class ExpManager:
         self.exps = []
 
     def run(self, exp: Experiment):
-        if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name + '.json')):
+        if os.path.exists(
+                os.path.join(exp.input_args.save_dir, exp.name + '.json')):
             logger.warn(f'Experiment {exp.name} already done, skip')
         elif any([exp.name == e.name for e in self.exps]):
             raise ValueError(f'Why exp name duplicate? {exp.name}')
@@ -81,8 +87,11 @@ class ExpManager:
             exp.runtime = runtime
             envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
-            logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
-            exp.handler = subprocess.Popen(runtime['running_cmd'], env=envs, shell=True)
+            logger.info(
+                f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
+            )
+            exp.handler = subprocess.Popen(
+                runtime['running_cmd'], env=envs, shell=True)
             self.exps.append(exp)
 
     def _build_cmd(self, exp: Experiment):
@@ -93,9 +102,9 @@ class ExpManager:
             allocated = self._find_free_gpu(int(gpu))
             assert allocated, 'No free gpu for now!'
             allocated = [str(gpu) for gpu in allocated]
-            env['CUDA_VISIBLE_DEVICES'] = ",".join(allocated)
+            env['CUDA_VISIBLE_DEVICES'] = ','.join(allocated)
         if int(exp.requirements.get('ddp', 1)) > 1:
-            env['NPROC_PER_NODE'] = exp.requirements.get("ddp")
+            env['NPROC_PER_NODE'] = exp.requirements.get('ddp')
             env['MASTER_PORT'] = str(_find_free_port())
 
         if exp.cmd == 'sft':
@@ -166,8 +175,14 @@ class ExpManager:
                         requirements.update(exp['requirements'])
                     if 'env' in exp:
                         env.update(exp['env'])
-                    experiments.append(Experiment(name=name, cmd=cmd, args=run_args, env=env, requirements=requirements,
-                                                  input_args=args))
+                    experiments.append(
+                        Experiment(
+                            name=name,
+                            cmd=cmd,
+                            args=run_args,
+                            env=env,
+                            requirements=requirements,
+                            input_args=args))
         return experiments
 
     @staticmethod
@@ -204,10 +219,13 @@ class ExpManager:
                     if all_metric:
                         exp.record.update(all_metric)
                         self.write_record(exp)
-                logger.info(f'Running {exp.name} finished with return code: {rt}')
+                logger.info(
+                    f'Running {exp.name} finished with return code: {rt}')
 
             if has_finished:
-                self.exps = [exp for exp in self.exps if exp.handler.poll() is None]
+                self.exps = [
+                    exp for exp in self.exps if exp.handler.poll() is None
+                ]
                 break
 
     def begin(self, args: ExpArguments):
@@ -225,19 +243,19 @@ class ExpManager:
                     self.run(exp_queue.queue[0])
                 except Exception as e:
                     if not isinstance(e, AssertionError):
-                        logger.error(f'Adding exp {exp_queue.queue[0].name} error because of:')
+                        logger.error(
+                            f'Adding exp {exp_queue.queue[0].name} error because of:'
+                        )
                         logger.error(e)
                         exp_queue.get()
                     else:
-                        logger.info(f'Adding exp {exp_queue.queue[0].name} error because of no free gpu.')
+                        logger.info(
+                            f'Adding exp {exp_queue.queue[0].name} error because of no free gpu.'
+                        )
                     break
                 else:
                     exp_queue.get()
             self._poll()
-        logger.info(f'Run task finished because of exp queue: {exp_queue.queue} and exps: {self.exps}')
-
-
-
-
-
-
+        logger.info(
+            f'Run task finished because of exp queue: {exp_queue.queue} and exps: {self.exps}'
+        )

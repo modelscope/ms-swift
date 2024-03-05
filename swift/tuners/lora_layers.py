@@ -260,11 +260,10 @@ if is_auto_gptq_available():
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:
                 assert self.group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
-
-            if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
                     self.group_size
                 )  # using pooling layer to conduct sum operation
+                self.in_features = self.in_features // self.group_size
 
         def forward(self, x: torch.Tensor):
             # note: logic differs from default Linear because merging is not supported

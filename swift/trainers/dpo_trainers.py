@@ -28,7 +28,10 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         val_ds_info = self.stat_dataset(self.eval_dataset)
-        self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+        self.dataset_info = {
+            'train_dataset': train_ds_info,
+            'val_dataset': val_ds_info
+        }
         if test_oom_error:
             self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
         # performance
