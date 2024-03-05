@@ -662,7 +662,8 @@ class InferArguments:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
-        self.merge_device_map = 'cpu'
+        if self.merge_device_map is None:
+            self.merge_device_map = 'cpu'
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -692,8 +693,6 @@ class DeployArguments(InferArguments):
     ssl_certfile: Optional[str] = None
 
     def __post_init__(self):
-        if self.merge_device_map is None:
-            self.merge_device_map = 'cpu'
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]
         tags = model_info.get('tags', [])
