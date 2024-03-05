@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os.path
-
+import os
 from swift.llm.utils import *
 from swift.llm.utils.exp_utils import ExpManager
 from swift.utils import *
@@ -22,6 +22,7 @@ def find_all_config(dir_or_file: str):
 
 def llm_exp(args: ExpArguments):
     config = args.config
+    os.makedirs(args.save_dir, exist_ok=True)
     all_configs = []
     if not isinstance(config, list):
         config = [config]

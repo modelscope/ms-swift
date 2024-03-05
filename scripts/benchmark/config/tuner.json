@@ -57,7 +57,7 @@
         }
       },
       {
-        "name": "lora/neftune",
+        "name": "lora+neftune",
         "args": {
           "sft_type": "lora",
           "lora_target_modules": "ALL",
@@ -80,7 +80,7 @@
         }
       },
       {
-        "name": "lora/no_mix",
+        "name": "lora+no_mix",
         "info": "lora无混合数据集",
         "args": {
           "sft_type": "lora",
@@ -91,7 +91,7 @@
         }
       },
       {
-        "name": "full/no_mix",
+        "name": "full+no_mix",
         "info": "全参无混合数据集",
         "args": {
           "sft_type": "full",
