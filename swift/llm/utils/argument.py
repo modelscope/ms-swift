@@ -567,6 +567,7 @@ class InferArguments:
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora: bool = False
+    merge_device_map: Optional[str] = None
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
@@ -579,7 +580,6 @@ class InferArguments:
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
     merge_lora_and_save: Optional[bool] = None
-    merge_device_map: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(

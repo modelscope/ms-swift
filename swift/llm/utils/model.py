@@ -75,10 +75,10 @@ class ModelType:
     qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
     qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
 
-    # aqlm llama model
+    # llama aqlm model
     llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'
 
-    # aqlm mixtral model
+    # mixtral aqlm model
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'
 
     # qwen1.5 gptq
