@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import shutil
 import tempfile
@@ -6,12 +7,15 @@ import unittest
 from time import time
 
 import torch
+from modelscope import Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
-from peft import PeftModel
+from peft import PeftModel, inject_adapter_in_model
+from peft.tuners.lora import Linear
 from peft.utils import WEIGHTS_NAME
+from torch import nn
 
-from swift import AdaLoraConfig, LoraConfig, LoRAConfig, Swift
+from swift import AdaLoraConfig, LoraConfig, LoRAConfig, Swift, get_peft_model
 
 
 class TestPeft(unittest.TestCase):
@@ -45,6 +49,67 @@ class TestPeft(unittest.TestCase):
                 all(
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
+
+    def test_lora_merge(self):
+
+        def reset_lora_parameters(self, adapter_name, init_lora_weights):
+            if init_lora_weights is False:
+                return
+
+            if adapter_name == 'default':
+                ratio = 1.0
+            elif adapter_name == 'second':
+                ratio = 2.0
+            else:
+                ratio = 3.0
+
+            if adapter_name in self.lora_A.keys():
+                nn.init.ones_(self.lora_A[adapter_name].weight)
+                self.lora_A[adapter_name].weight.data = self.lora_A[
+                    adapter_name].weight.data * ratio
+                nn.init.ones_(self.lora_B[adapter_name].weight)
+
+        Linear.reset_lora_parameters = reset_lora_parameters
+
+        model = SbertForSequenceClassification(SbertConfig())
+        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
+        model = Swift.prepare_model(model, lora_config)
+        lora_config2 = LoRAConfig(target_modules=['query', 'key', 'value'])
+        model = Swift.prepare_model(model, {'second': lora_config2})
+        model.add_weighted_adapter(['default', 'second'],
+                                   weights=[0.7, 0.3],
+                                   adapter_name='test',
+                                   combination_type='cat')
+        self.assertTrue(model.base_model.bert.encoder.layer[0].attention.self.
+                        key.active_adapter == ['test'])
+
+        model2 = SbertForSequenceClassification(SbertConfig())
+        lora_config = LoraConfig(target_modules=['query', 'key', 'value'])
+        model2 = get_peft_model(model2, lora_config)
+        lora_config2 = LoraConfig(target_modules=['query', 'key', 'value'])
+        inject_adapter_in_model(lora_config2, model2, adapter_name='second')
+        model2.add_weighted_adapter(['default', 'second'],
+                                    weights=[0.7, 0.3],
+                                    adapter_name='test',
+                                    combination_type='cat')
+        state_dict = model.state_dict()
+        state_dict2 = model2.state_dict()
+        state_dict2 = {
+            key[len('base_model.model.'):]: value
+            for key, value in state_dict2.items() if 'lora' in key
+        }
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(
+                all(
+                    torch.isclose(state_dict[key],
+                                  state_dict2[key]).flatten().detach().cpu()))
+
+        preprocessor = Preprocessor.from_pretrained(
+            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
+        print(model(**inputs))
+        model.save_pretrained(self.tmp_dir)
 
     def test_lora_reload_by_peft(self):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])

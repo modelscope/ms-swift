@@ -54,6 +54,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         metadata={'help': 'The lora learning_rate ratio of lora_A to lora_B'})
 
     def __post_init__(self):
+        super().__post_init__()
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
 
@@ -80,11 +81,13 @@ class LoRA(SwiftAdapter):
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
         LoraModel(model, config, adapter_name)
 
-        def state_dict_callback(state_dict, adapter_name):
-            return lora_state_dict(state_dict, adapter_name, config.bias)
+        def state_dict_callback(state_dict, adapter_name, cfg=None):
+            return lora_state_dict(state_dict, adapter_name,
+                                   cfg.bias if cfg else config.bias)
 
-        def mark_trainable_callback(model):
-            mark_lora_as_trainable(model, adapter_name, config.bias)
+        def mark_trainable_callback(model, cfg=None):
+            mark_lora_as_trainable(model, adapter_name,
+                                   cfg.bias if cfg else config.bias)
 
         def optimizer_group_callback(model, **defaults):
             if config.lr_ratio is not None:
