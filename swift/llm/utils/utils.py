@@ -370,7 +370,7 @@ def find_all_linears(model: Module, quantization_bit: int,
             gptq_quantization_config)
         linear_cls = [Linear4bit]
         if AutoGPTQQuantLinear is not None:
-            linear_cls = [Linear4bit, AutoGPTQQuantLinear]
+            linear_cls.append(AutoGPTQQuantLinear)
     if 'awq' in model_type:
         from awq.modules.linear import WQLinear_GEMM
         linear_cls.append(WQLinear_GEMM)

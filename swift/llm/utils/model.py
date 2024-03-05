@@ -76,10 +76,10 @@ class ModelType:
     qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
 
     # aqlm llama model
-    llama2_7b_aqlm_2bit_1x16_hf = 'llama2-7b-aqlm-2bit-1x16-hf'
+    llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16-hf'
 
     # aqlm mixtral model
-    mixtral_moe_7b_aqlm_2bit_1x16_hf = 'mixtral-moe-7b-aqlm-2bit-1x16-hf'
+    mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16-hf'
 
     # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
@@ -440,8 +440,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
                     'You are training awq models, remember installing awq_ext by '
                     '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
                     '&& cd AutoAWQ_kernels && pip install -e .`') from e
-        # import aqlm
-        # context = aqlm.optimize_for_training
+
         with context:
             model = automodel_class.from_pretrained(
                 model_dir,
@@ -1122,13 +1121,13 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     support_gradient_checkpointing=False)
 @register_model(
-    ModelType.mixtral_moe_7b_aqlm_2bit_1x16_hf,
+    ModelType.mixtral_moe_7b_aqlm_2bit_1x16,
     'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
     LoRATM.llama2,
-    TemplateType.llama,
+    TemplateType.default_generation_bos,
     requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
     support_flash_attn=True,
-    support_vllm=True,
+    support_vllm=False,
     support_gradient_checkpointing=False)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
@@ -1598,14 +1597,14 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.llama2_7b_aqlm_2bit_1x16_hf,
+    ModelType.llama2_7b_aqlm_2bit_1x16,
     'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
     LoRATM.llama2,
-    TemplateType.llama,
+    TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True,
     requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
-    support_vllm=True)
+    support_vllm=False)
 @register_model(
     ModelType.llama2_13b_chat,
     'modelscope/Llama-2-13b-chat-ms',

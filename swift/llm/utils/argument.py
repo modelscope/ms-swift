@@ -579,6 +579,7 @@ class InferArguments:
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
     merge_lora_and_save: Optional[bool] = None
+    merge_device_map: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
@@ -661,6 +662,7 @@ class InferArguments:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        self.merge_device_map = 'cpu'
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -688,9 +690,10 @@ class DeployArguments(InferArguments):
     port: int = 8000
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
-    merge_device_map: Optional[str] = 'cpu'
 
     def __post_init__(self):
+        if self.merge_device_map is None:
+            self.merge_device_map = 'cpu'
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]
         tags = model_info.get('tags', [])
@@ -726,6 +729,8 @@ class ExportArguments(InferArguments):
     commit_message: str = 'update files'
 
     def __post_init__(self):
+        if self.merge_device_map is None:
+            self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
         super().__post_init__()
         if len(self.dataset) == 0:
             self.dataset = ['ms-bench-mini']
