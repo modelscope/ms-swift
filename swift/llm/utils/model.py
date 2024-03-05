@@ -65,6 +65,19 @@ class ModelType:
     qwen1half_7b_chat = 'qwen1half-7b-chat'
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
+
+    # qwen1.5 awq
+    qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
+    qwen1half_4b_chat_awq = 'qwen1half-4b-chat-awq'
+    qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
+    qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
+    qwen1half_1_8b_chat_awq = 'qwen1half-1_8b-chat-awq'
+    qwen1half_0_5b_chat_awq = 'qwen1half-0_5b-chat-awq'
+
+    # aqlm quantized model
+    mixtral_moe_7b_aqlm_2bit_1x16_hf = 'mixtral-moe-7b-aqlm-2bit-1x16-hf'
+    llama2_7b_aqlm_2bit_1x16_hf = 'llama2-7b-aqlm-2bit-1x16-hf'
+
     # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
     qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
@@ -78,6 +91,7 @@ class ModelType:
     qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
     qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
     qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
+
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -1087,6 +1101,15 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
+@register_model(
+    ModelType.mixtral_moe_7b_aqlm_2bit_1x16_hf,
+    'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
+    LoRATM.llama2,
+    TemplateType.llama,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -1111,6 +1134,54 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         **kwargs)
 
 
+@register_model(
+    ModelType.qwen1half_7b_chat_awq,
+    'qwen/Qwen1.5-7B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_4b_chat_awq,
+    'qwen/Qwen1.5-4B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_14b_chat_awq,
+    'qwen/Qwen1.5-14B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_72b_chat_awq,
+    'qwen/Qwen1.5-72B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_1_8b_chat_awq,
+    'qwen/Qwen1.5-1.8B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_0_5b_chat_awq,
+    'qwen/Qwen1.5-0.5B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
 @register_model(
     ModelType.qwen1half_0_5b_chat,
     'qwen/Qwen1.5-0.5B-Chat',
@@ -1501,6 +1572,14 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 @register_model(
     ModelType.llama2_7b_chat,
     'modelscope/Llama-2-7b-chat-ms',
+    LoRATM.llama2,
+    TemplateType.llama,
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama2_7b_aqlm_2bit_1x16_hf,
+    'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
     LoRATM.llama2,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'],
