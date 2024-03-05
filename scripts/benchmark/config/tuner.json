@@ -57,6 +57,16 @@
         }
       },
       {
+        "name": "dora",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "use_dora": true
+        }
+      },
+      {
         "name": "lora+neftune",
         "args": {
           "sft_type": "lora",
