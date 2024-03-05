@@ -68,16 +68,18 @@ class ModelType:
     qwen1half_72b_chat = 'qwen1half-72b-chat'
 
     # qwen1.5 awq
-    qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
+    qwen1half_0_5b_chat_awq = 'qwen1half-0_5b-chat-awq'
+    qwen1half_1_8b_chat_awq = 'qwen1half-1_8b-chat-awq'
     qwen1half_4b_chat_awq = 'qwen1half-4b-chat-awq'
+    qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
     qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
     qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
-    qwen1half_1_8b_chat_awq = 'qwen1half-1_8b-chat-awq'
-    qwen1half_0_5b_chat_awq = 'qwen1half-0_5b-chat-awq'
 
-    # aqlm quantized model
-    mixtral_moe_7b_aqlm_2bit_1x16_hf = 'mixtral-moe-7b-aqlm-2bit-1x16-hf'
+    # aqlm llama model
     llama2_7b_aqlm_2bit_1x16_hf = 'llama2-7b-aqlm-2bit-1x16-hf'
+
+    # aqlm mixtral model
+    mixtral_moe_7b_aqlm_2bit_1x16_hf = 'mixtral-moe-7b-aqlm-2bit-1x16-hf'
 
     # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
