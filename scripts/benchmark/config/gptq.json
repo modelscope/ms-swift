@@ -10,6 +10,7 @@
       "train_dataset_mix_ratio": 3,
       "batch_size": 4,
       "max_length": 1024,
+      "use_loss_scale": true,
       "gradient_accumulation_steps": 2,
       "learning_rate": 5e-5,
       "use_flash_attn": true,
