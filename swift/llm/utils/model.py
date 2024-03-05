@@ -431,6 +431,11 @@ def get_model_tokenizer_from_repo(model_dir: str,
             context = aqlm.optimize_for_training()
         else:
             context = nullcontext()
+        if 'awq' in model_dir.lower():
+            logger.info(
+                'You are training awq models, remember installing awq_ext by '
+                '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
+                '&& cd AutoAWQ_kernels && pip install -e .`')
         # import aqlm
         # context = aqlm.optimize_for_training
         with context:
@@ -1117,7 +1122,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
     LoRATM.llama2,
     TemplateType.llama,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
@@ -1152,7 +1157,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37', 'autoawq', 'awq_ext'])
 @register_model(
     ModelType.qwen1half_4b_chat_awq,
     'qwen/Qwen1.5-4B-Chat-AWQ',
@@ -1160,7 +1165,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37', 'autoawq', 'awq_ext'])
 @register_model(
     ModelType.qwen1half_14b_chat_awq,
     'qwen/Qwen1.5-14B-Chat-AWQ',
@@ -1168,7 +1173,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37', 'autoawq', 'awq_ext'])
 @register_model(
     ModelType.qwen1half_72b_chat_awq,
     'qwen/Qwen1.5-72B-Chat-AWQ',
@@ -1176,7 +1181,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37', 'autoawq', 'awq_ext'])
 @register_model(
     ModelType.qwen1half_1_8b_chat_awq,
     'qwen/Qwen1.5-1.8B-Chat-AWQ',
@@ -1184,7 +1189,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37', 'autoawq', 'awq_ext'])
 @register_model(
     ModelType.qwen1half_0_5b_chat_awq,
     'qwen/Qwen1.5-0.5B-Chat-AWQ',
@@ -1192,7 +1197,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37', 'autoawq', 'awq_ext'])
 @register_model(
     ModelType.qwen1half_0_5b_chat,
     'qwen/Qwen1.5-0.5B-Chat',
@@ -1595,6 +1600,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     TemplateType.llama,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True,
+    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
     support_vllm=True)
 @register_model(
     ModelType.llama2_13b_chat,
