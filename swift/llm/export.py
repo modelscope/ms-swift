@@ -159,7 +159,7 @@ def llm_export(args: ExportArguments) -> None:
     global _args, template
     logger.info(f'args: {args}')
     if args.merge_lora:
-        merge_lora(args, device_map='cpu')
+        merge_lora(args, device_map=args.merge_device_map)
     if args.quant_bits > 0:
         _args = args
         assert args.quantization_bit == 0

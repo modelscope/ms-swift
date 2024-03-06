@@ -111,7 +111,7 @@ def llm_app_ui(args: AppUIArguments) -> None:
     logger.info(f'args: {args}')
     args.eval_human = True
     if args.merge_lora:
-        merge_lora(args, device_map='cpu')
+        merge_lora(args, device_map=args.merge_device_map)
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:
