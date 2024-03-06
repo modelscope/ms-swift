@@ -4,7 +4,7 @@ import time
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from queue import Queue
-from typing import Dict
+from typing import Dict, Any
 
 import json
 import torch
@@ -34,7 +34,7 @@ class Experiment:
 
     runtime: Dict = field(default_factory=dict)
 
-    input_args: ExpArguments = None
+    input_args: Any = None
 
     def __init__(self,
                  name,
@@ -151,7 +151,7 @@ class ExpManager:
             return None
         return list(free_gpu)[:n]
 
-    def prepare_experiments(self, args: ExpArguments):
+    def prepare_experiments(self, args: Any):
         experiments = []
         for config_file in args.config:
             with open(config_file, 'r') as f:
@@ -224,7 +224,7 @@ class ExpManager:
                 ]
                 break
 
-    def begin(self, args: ExpArguments):
+    def begin(self, args: Any):
         exps = self.prepare_experiments(args)
         logger.info(f'all exps: {exps}')
         exps.sort(key=lambda e: e.priority)

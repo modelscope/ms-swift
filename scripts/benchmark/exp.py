@@ -15,7 +15,7 @@ def parse_args():
         description='Simple args for swift experiments.')
     parser.add_argument(
         '--config',
-        type=list,
+        type=str,
         default=None,
         required=True,
         help='The experiment config file',
@@ -24,7 +24,7 @@ def parse_args():
         '--save_dir',
         type=str,
         default='./experiment',
-        required=True,
+        required=False,
         help='The experiment output folder',
     )
 
@@ -34,7 +34,8 @@ def parse_args():
 
 def llm_exp():
     args = parse_args()
-    config = args.config
+    config: str = args.config
+    config = config.split(',')
     os.makedirs(args.save_dir, exist_ok=True)
     all_configs = []
     if not isinstance(config, list):
