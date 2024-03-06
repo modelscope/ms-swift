@@ -2,7 +2,9 @@
 import argparse
 import os
 import os.path
+
 from exp_utils import ExpManager, find_all_config
+
 from swift.utils import *
 
 logger = get_logger()
@@ -16,16 +18,14 @@ def parse_args():
         type=list,
         default=None,
         required=True,
-        help=
-        'The experiment config file',
+        help='The experiment config file',
     )
     parser.add_argument(
         '--save_dir',
         type=str,
         default='./experiment',
         required=True,
-        help=
-        'The experiment output folder',
+        help='The experiment output folder',
     )
 
     args = parser.parse_args()

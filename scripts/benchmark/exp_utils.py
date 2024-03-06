@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess
 import time
@@ -7,7 +6,9 @@ from dataclasses import asdict, dataclass, field
 from queue import Queue
 from typing import Dict
 
+import json
 import torch
+
 from swift.utils import get_logger
 from swift.utils.torch_utils import _find_free_port
 
@@ -182,7 +183,8 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         logging_dir = exp.runtime.get('logging_dir')
-        logging_file = os.path.join(logging_dir, '../../swift/llm', 'logging.jsonl')
+        logging_file = os.path.join(logging_dir, '../../swift/llm',
+                                    'logging.jsonl')
         if os.path.isfile(logging_file):
             with open(logging_file, 'r') as f:
                 for line in f.readlines():
