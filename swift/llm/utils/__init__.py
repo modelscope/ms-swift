@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import (AppUIArguments, DeployArguments, DPOArguments,
-                       EvalArguments, ExpArguments, ExportArguments,
+                       EvalArguments, ExportArguments, EvalArguments,
                        InferArguments, RomeArguments, SftArguments, is_adapter)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,

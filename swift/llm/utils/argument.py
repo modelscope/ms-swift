@@ -703,20 +703,9 @@ class DeployArguments(InferArguments):
 
 
 @dataclass
-class ExpArguments:
-
-    config: Union[str, List[str]] = None
-
-    save_dir: str = './experiment'
-
-    def __post_init__(self):
-        pass
-
-
-@dataclass
 class EvalArguments(InferArguments):
 
-    pass
+    exp_dir: Optional[str] = None
 
 
 @dataclass

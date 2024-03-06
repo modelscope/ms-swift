@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .rome import rome_main
     from .sft import sft_main
     from .export import export_main
-    from .exp import exp_main
+    from .eval import eval_main
 else:
     _extra_objects = {
         k: v
@@ -31,7 +31,7 @@ else:
         'rome': ['rome_main'],
         'sft': ['sft_main'],
         'export': ['export_main'],
-        'exp': ['exp_main'],
+        'eval': ['eval_main'],
     }
 
     import sys

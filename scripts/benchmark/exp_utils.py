@@ -1,19 +1,13 @@
+import json
 import os
-import shutil
 import subprocess
 import time
-from concurrent.futures import Future
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from queue import Queue
 from typing import Dict
 
-import json
 import torch
-
-from swift import push_to_hub, push_to_hub_async
-from swift.hub.utils.utils import get_cache_dir
-from swift.llm import ExpArguments
 from swift.utils import get_logger
 from swift.utils.torch_utils import _find_free_port
 
@@ -188,7 +182,7 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         logging_dir = exp.runtime.get('logging_dir')
-        logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
+        logging_file = os.path.join(logging_dir, '../../swift/llm', 'logging.jsonl')
         if os.path.isfile(logging_file):
             with open(logging_file, 'r') as f:
                 for line in f.readlines():
@@ -259,3 +253,15 @@ class ExpManager:
         logger.info(
             f'Run task finished because of exp queue: {exp_queue.queue} and exps: {self.exps}'
         )
+
+
+def find_all_config(dir_or_file: str):
+    if os.path.isfile(dir_or_file):
+        return [dir_or_file]
+    else:
+        configs = []
+        for dirpath, dirnames, filenames in os.walk(dir_or_file):
+            for name in filenames:
+                if name.endswith('.json'):
+                    configs.append(os.path.join(dirpath, name))
+        return configs
