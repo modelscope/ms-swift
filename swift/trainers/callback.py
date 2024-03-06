@@ -20,6 +20,7 @@ class ProgressCallbackNew(ProgressCallback):
                 desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
         self.warmup_start_time = 0
+        self.warmup_metric = None
         self.metric_warmup_step = int(args.metric_warmup_step * state.max_steps)if args.metric_warmup_step < 1 else args.metric_warmup_step
 
     def on_prediction_step(self,
@@ -50,21 +51,22 @@ class ProgressCallbackNew(ProgressCallback):
         if state.global_step >= self.metric_warmup_step and self.warmup_start_time == 0:
             self.warmup_start_time = time.time()
             self.metric_warmup_step = state.global_step
-        if "train_samples_per_second" in logs:
+        if state.max_steps == state.global_step and self.warmup_metric is None:
             num_steps = state.max_steps - self.metric_warmup_step
             # num_total_samples = int(logs['train_samples_per_second'] * logs['train_runtime'])
             num_total_samples = args.train_dataset_sample
             num_train_samples = int(num_total_samples / state.max_steps * num_steps)
             # num_train_samples = (state.max_steps - self.metric_warmup_step) * args.train_batch_size * args.gradient_accumulation_steps * args.world_size
-            warmup_metric = speed_metrics(
+            self.warmup_metric = speed_metrics(
                 "warmup_train",
                 self.warmup_start_time,
                 num_train_samples,
                 num_steps
                 )
-            logs.update(warmup_metric)
-            logs['num_total_samples'] = num_total_samples
-            logs['num_after_warmup_samples'] = num_train_samples
+            self.warmup_metric['num_total_samples'] = num_total_samples
+            self.warmup_metric['num_after_warmup_samples'] = num_train_samples
+        if "train_samples_per_second" in logs:
+            logs.update(self.warmup_metric)
             state.log_history[-1] = logs
         for k, v in logs.items():
             if isinstance(v, float):

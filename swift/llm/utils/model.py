@@ -886,7 +886,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
             model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if version.parse(transformers.__version__) >= version.parse('4.36'):
-        if use_flash_attn:
+        if use_flash_attn and not use_torchacc():
             model_config._attn_implementation = 'flash_attention_2'
     else:
         model_config._flash_attn_2_enabled = use_flash_attn
