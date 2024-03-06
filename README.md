@@ -295,8 +295,7 @@ You can refer to the following scripts to customize your own training script.
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
-  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, orion, openbmb, chatml.
-
+  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, orion, openbmb, gemma, chatml.
 
 ## 🔥SCEdit
 
