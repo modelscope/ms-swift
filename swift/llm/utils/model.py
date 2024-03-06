@@ -67,20 +67,6 @@ class ModelType:
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
 
-    # qwen1.5 awq
-    qwen1half_0_5b_chat_awq = 'qwen1half-0_5b-chat-awq'
-    qwen1half_1_8b_chat_awq = 'qwen1half-1_8b-chat-awq'
-    qwen1half_4b_chat_awq = 'qwen1half-4b-chat-awq'
-    qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
-    qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
-    qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
-
-    # llama aqlm model
-    llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'
-
-    # mixtral aqlm model
-    mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'
-
     # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
     qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
@@ -94,6 +80,14 @@ class ModelType:
     qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
     qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
     qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
+
+    # qwen1.5 awq
+    qwen1half_0_5b_chat_awq = 'qwen1half-0_5b-chat-awq'
+    qwen1half_1_8b_chat_awq = 'qwen1half-1_8b-chat-awq'
+    qwen1half_4b_chat_awq = 'qwen1half-4b-chat-awq'
+    qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
+    qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
+    qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
 
     # qwen-vl
     qwen_vl = 'qwen-vl'
@@ -116,10 +110,12 @@ class ModelType:
     llama2_13b_chat = 'llama2-13b-chat'
     llama2_70b = 'llama2-70b'
     llama2_70b_chat = 'llama2-70b-chat'
+    llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
     yi_6b_chat = 'yi-6b-chat'
+    yi_9b = 'yi-9b'
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
@@ -191,6 +187,7 @@ class ModelType:
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
+    mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -425,22 +422,8 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if eos_token is not None:
         tokenizer.eos_token = eos_token
     model = None
+    context = kwargs.get('context', nullcontext())
     if load_model:
-        if 'aqlm' in model_dir.lower():
-            import aqlm
-            context = aqlm.optimize_for_training()
-        else:
-            context = nullcontext()
-        if 'awq' in model_dir.lower():
-            try:
-                from awq.utils.packing_utils import dequantize_gemm
-                import awq_ext  # with CUDA kernels (AutoAWQ_kernels)
-            except ImportError as e:
-                raise ImportError(
-                    'You are training awq models, remember installing awq_ext by '
-                    '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
-                    '&& cd AutoAWQ_kernels && pip install -e .`') from e
-
         with context:
             model = automodel_class.from_pretrained(
                 model_dir,
@@ -1020,6 +1003,13 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
+    ModelType.yi_9b,
+    'AI-ModelScope/Yi-9B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
     ModelType.yi_6b,
     '01ai/Yi-6B',
     LoRATM.llama2,
@@ -1120,15 +1110,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
-@register_model(
-    ModelType.mixtral_moe_7b_aqlm_2bit_1x16,
-    'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
-    LoRATM.llama2,
-    TemplateType.default_generation_bos,
-    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
-    support_flash_attn=True,
-    support_vllm=False,
-    support_gradient_checkpointing=False)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -1154,36 +1135,47 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
-    ModelType.qwen1half_7b_chat_awq,
-    'qwen/Qwen1.5-7B-Chat-AWQ',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
+    ModelType.llama2_7b_aqlm_2bit_1x16,
+    'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37', 'autoawq'])
+    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
+    support_vllm=False)
 @register_model(
-    ModelType.qwen1half_4b_chat_awq,
-    'qwen/Qwen1.5-4B-Chat-AWQ',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
+    ModelType.mixtral_moe_7b_aqlm_2bit_1x16,
+    'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
     support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.37', 'autoawq'])
+    support_vllm=False,
+    support_gradient_checkpointing=False)
+def get_model_tokenizer_aqlm(model_dir: str,
+                             torch_dtype: Dtype,
+                             model_kwargs: Dict[str, Any],
+                             load_model: bool = True,
+                             **kwargs):
+    import aqlm
+    context = aqlm.optimize_for_training()
+    return get_model_tokenizer_llama2(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        context=context,
+        **kwargs)
+
+
 @register_model(
-    ModelType.qwen1half_14b_chat_awq,
-    'qwen/Qwen1.5-14B-Chat-AWQ',
+    ModelType.qwen1half_0_5b_chat_awq,
+    'qwen/Qwen1.5-0.5B-Chat-AWQ',
     LoRATM.qwen1half,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37', 'autoawq'])
-@register_model(
-    ModelType.qwen1half_72b_chat_awq,
-    'qwen/Qwen1.5-72B-Chat-AWQ',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
+    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'])
 @register_model(
     ModelType.qwen1half_1_8b_chat_awq,
@@ -1192,14 +1184,43 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'])
 @register_model(
-    ModelType.qwen1half_0_5b_chat_awq,
-    'qwen/Qwen1.5-0.5B-Chat-AWQ',
+    ModelType.qwen1half_4b_chat_awq,
+    'qwen/Qwen1.5-4B-Chat-AWQ',
     LoRATM.qwen1half,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    function_kwargs={'is_awq': True},
+    requires=['transformers>=4.37', 'autoawq'])
+@register_model(
+    ModelType.qwen1half_7b_chat_awq,
+    'qwen/Qwen1.5-7B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    requires=['transformers>=4.37', 'autoawq'])
+@register_model(
+    ModelType.qwen1half_14b_chat_awq,
+    'qwen/Qwen1.5-14B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    requires=['transformers>=4.37', 'autoawq'])
+@register_model(
+    ModelType.qwen1half_72b_chat_awq,
+    'qwen/Qwen1.5-72B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'])
 @register_model(
     ModelType.qwen1half_0_5b_chat,
@@ -1254,7 +1275,18 @@ def get_model_tokenizer_qwen1half(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
+    is_awq = kwargs.pop('is_awq', False)
+    is_training = kwargs.pop('is_training', False)
     kwargs['eos_token'] = '<|im_end|>'
+    if is_awq and is_training:
+        try:
+            from awq.utils.packing_utils import dequantize_gemm
+            import awq_ext  # with CUDA kernels (AutoAWQ_kernels)
+        except ImportError as e:
+            raise ImportError(
+                'You are training awq models, remember installing awq_ext by '
+                '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
+                '&& cd AutoAWQ_kernels && pip install -e .`') from e
     return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
                                                model_kwargs, load_model,
                                                **kwargs)
@@ -1596,15 +1628,6 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     ignore_file_pattern=[r'.+\.bin$'],
     support_flash_attn=True,
     support_vllm=True)
-@register_model(
-    ModelType.llama2_7b_aqlm_2bit_1x16,
-    'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
-    LoRATM.llama2,
-    TemplateType.default_generation_bos,
-    ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True,
-    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
-    support_vllm=False)
 @register_model(
     ModelType.llama2_13b_chat,
     'modelscope/Llama-2-13b-chat-ms',
@@ -2484,6 +2507,8 @@ def get_model_tokenizer(
                     f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}'
                 )
     kwargs['eos_token'] = model_info['eos_token']
+    if 'is_training' not in kwargs:
+        kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
