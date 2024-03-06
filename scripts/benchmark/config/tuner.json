@@ -95,6 +95,23 @@
         }
       },
       {
+        "name": "adalora",
+        "args": {
+          "sft_type": "adalora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      },
+      {
+        "name": "ia3",
+        "args": {
+          "sft_type": "ia3",
+          "ia3_target_modules": "ALL",
+          "ia3_feedforward_modules": ["gate_proj", "up_proj", "down_proj"]
+        }
+      },
+      {
         "name": "lora+no_mix",
         "info": "lora无混合数据集",
         "args": {
