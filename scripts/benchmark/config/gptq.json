@@ -38,7 +38,8 @@
       {
         "name": "qwen1half-7b-chat-int8-qa-lora",
         "args": {
-          "sft_type": "qalora"
+          "sft_type": "qalora",
+          "learning_rate": 2e-5
         }
       }
     ]

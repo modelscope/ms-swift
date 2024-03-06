@@ -86,6 +86,10 @@
       },
       {
         "name": "full",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "2"
+        },
         "args": {
           "sft_type": "full"
         }
@@ -104,6 +108,10 @@
       {
         "name": "full+no_mix",
         "info": "全参无混合数据集",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "2"
+        },
         "args": {
           "sft_type": "full",
           "train_dataset_mix_ratio": 0.0
