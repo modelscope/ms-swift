@@ -590,7 +590,14 @@ class SwiftMixin:
         opt_model = self.model
 
         if self.optimizer is None:
-            decay_parameters = self.get_decay_parameter_names(opt_model)
+            if version.parse(
+                    transformers.__version__) < version.parse('4.34.0'):
+                logger.warning(
+                    f'If you are using lora+, please remember using transformers>=4.34.0, '
+                    f'but now is {transformers.__version__}')
+                return super().create_optimizer()
+            else:
+                decay_parameters = self.get_decay_parameter_names(opt_model)
             if isinstance(self.model, SwiftModel):
                 optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
                     lr=self.args.learning_rate,
