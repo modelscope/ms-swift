@@ -145,7 +145,7 @@ def llm_eval(args: EvalArguments) -> None:
                     outputs.append(parse_output(os.path.join(dirpath, file)))
         run_eval_single_task()
     elif args.model_id_or_path is not None:
-        for ds in args.dataset:
+        for ds in args.eval_dataset:
             run_eval_full_model(
                 args.model_id_or_path,
                 ds,
@@ -159,7 +159,7 @@ def llm_eval(args: EvalArguments) -> None:
                 },
                 model_args={
                     'device_map': 'auto',
-                    'precision': dtypes[args.dtype],
+                    'precision': dtypes[args.dtype] if args.dtype != 'AUTO' else dtypes['fp16'],
                 })
     elif args.ckpt_dir is not None:
         run_eval_single_task()
