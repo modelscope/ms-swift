@@ -115,6 +115,7 @@ class ModelType:
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
     yi_6b_chat = 'yi-6b-chat'
+    yi_9b = 'yi-9b'
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
@@ -1002,6 +1003,13 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
+    ModelType.yi_9b,
+    'AI-ModelScope/Yi-9B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
     ModelType.yi_6b,
     '01ai/Yi-6B',
     LoRATM.llama2,
@@ -1267,9 +1275,10 @@ def get_model_tokenizer_qwen1half(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    is_awq = kwargs.get('is_awq', False)
+    is_awq = kwargs.pop('is_awq', False)
+    is_training = kwargs.pop('is_training', False)
     kwargs['eos_token'] = '<|im_end|>'
-    if is_awq:
+    if is_awq and is_training:
         try:
             from awq.utils.packing_utils import dequantize_gemm
             import awq_ext  # with CUDA kernels (AutoAWQ_kernels)
@@ -2498,6 +2507,8 @@ def get_model_tokenizer(
                     f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}'
                 )
     kwargs['eos_token'] = model_info['eos_token']
+    if 'is_training' not in kwargs:
+        kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs,
                                     load_model, **kwargs)
     if model is not None:
