@@ -37,6 +37,6 @@ swift sft \
     --logging_steps 10 \
     --use_flash_attn false \
     --self_cognition_sample 2000 \
---deepspeed default-zero3 \
+    --deepspeed default-zero3 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
