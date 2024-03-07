@@ -1,7 +1,6 @@
-# Experimental environment: 4 * 3090
-# 4 * 22GB GPU memory
+# Experimental environment: 4 * A100
+# 4 * 30GB GPU memory
 # Train a chat model with agent capabilities and self-cognition from the base.
-
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -37,6 +36,5 @@ swift sft \
     --logging_steps 10 \
     --use_flash_attn false \
     --self_cognition_sample 2000 \
---deepspeed default-zero3 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
