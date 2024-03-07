@@ -3,13 +3,11 @@ import inspect
 import math
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
 import torch
-import torch.distributed as dist
 from datasets import concatenate_datasets
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
@@ -17,9 +15,9 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
-from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, get_pai_tensorboard_dir, is_dist,
-                         is_mp, is_pai_training_job)
+from swift.utils import (add_version_to_work_dir, get_dist_setting,
+                         get_pai_tensorboard_dir, is_dist, is_mp,
+                         is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
@@ -32,7 +30,7 @@ logger = get_logger()
 
 def is_adapter(sft_type: str) -> bool:
     return sft_type in {
-        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro'
+        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro', 'adapter'
     }
 
 
@@ -46,7 +44,7 @@ class SftArguments:
     model_revision: Optional[str] = None
 
     sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3',
-                      'llamapro'] = 'lora'
+                      'llamapro', 'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft'] = 'swift'
@@ -115,6 +113,10 @@ class SftArguments:
     lora_alpha_pattern: Dict = field(default_factory=dict)
     lora_loftq_config: Dict = field(default_factory=dict)
     use_dora: bool = False
+
+    # adapter
+    adapter_act: str = 'gelu'
+    adapter_length: int = 128
 
     # adalora
     adalora_target_r: int = 8

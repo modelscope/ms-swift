@@ -158,8 +158,11 @@ def llm_eval(args: EvalArguments) -> None:
                     'num_beams': args.num_beams,
                 },
                 model_args={
-                    'device_map': 'auto',
-                    'precision': dtypes[args.dtype] if args.dtype != 'AUTO' else dtypes['fp16'],
+                    'device_map':
+                    'auto',
+                    'precision':
+                    dtypes[args.dtype]
+                    if args.dtype != 'AUTO' else dtypes['fp16'],
                 })
     elif args.ckpt_dir is not None:
         run_eval_single_task()

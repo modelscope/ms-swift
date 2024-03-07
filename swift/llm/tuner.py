@@ -6,9 +6,9 @@ import transformers
 from packaging import version
 
 from swift.trainers import TrainerCallback
-from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
-                          LongLoRAModelType, LoraConfig, LoRAConfig,
-                          NEFTuneConfig, Swift)
+from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config,
+                          LongLoRAConfig, LongLoRAModelType, LoraConfig,
+                          LoRAConfig, NEFTuneConfig, Swift)
 from swift.tuners.llamapro import LLaMAProConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
@@ -147,6 +147,24 @@ def prepare_model(model, args: SftArguments):
                     num_groups=args.llamapro_num_groups)
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
+            elif args.sft_type == 'adapter':
+                model_type = args.model_type or args.model_id_or_path
+                for key in MODEL_KEYS_MAPPING.keys():
+                    if key in model_type.lower():
+                        model_type = key
+                        break
+
+                assert model_type in MODEL_KEYS_MAPPING
+                mlp_key = MODEL_KEYS_MAPPING[model_type]['mlp']
+                mlp_key = mlp_key.split('.{}.')[1]
+                adapter_config = AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=[mlp_key],
+                    hidden_pos=0,
+                    adapter_length=args.adapter_length,
+                    act_layer=args.adapter_act)
+                model = Swift.prepare_model(model, adapter_config)
+                logger.info(f'adapter_config: {adapter_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
