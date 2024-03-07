@@ -1004,7 +1004,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True)
 @register_model(
     ModelType.yi_9b,
-    'AI-ModelScope/Yi-9B',
+    '01ai/Yi-9B',
     LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True,
