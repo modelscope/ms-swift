@@ -2,6 +2,7 @@
 # Copyright 2023-present the HuggingFace Inc. team.
 import os
 import re
+import shutil
 from copy import copy
 from functools import partial
 from inspect import Parameter, Signature, signature
@@ -786,6 +787,72 @@ class Swift:
         for sub_module in model.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.unmerge(**kwargs)
+
+    @staticmethod
+    def save_to_peft_format(ckpt_dir):
+        if os.path.exists(os.path.join(ckpt_dir, SwiftModel.EXTRA_STATE_DIR)):
+            raise AssertionError(
+                'Cannot transfer to peft format, because you are additional state dicts.'
+            )
+
+        adapter_names = [
+            sub_dir for sub_dir in os.listdir(ckpt_dir)
+            if os.path.isfile(os.path.join(ckpt_dir, sub_dir, CONFIG_NAME))
+        ]
+
+        def has_custom_content(_json):
+            if _json.get('swift_type') != SwiftTuners.LORA:
+                return True
+
+            from swift import LoRAConfig
+            return not LoRAConfig(**_json).can_be_saved_to_peft()
+
+        for adapter in adapter_names:
+            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
+                _json = json.load(f)
+                if has_custom_content(_json):
+                    raise AssertionError(
+                        'Cannot transfer to peft format, '
+                        'because you have special parameters or adapter types.'
+                    )
+
+        for adapter in adapter_names:
+            safe_serialization = os.path.isfile(
+                os.path.join(ckpt_dir, adapter, SAFETENSORS_WEIGHTS_NAME))
+            state_dict = SwiftModel.load_state_file(
+                os.path.join(ckpt_dir, adapter))
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                if not key.startswith('base_model.model.'):
+                    key = 'base_model.model.' + key
+                key = key.replace(f'lora_A.{adapter}.', 'lora_A.')
+                key = key.replace(f'lora_B.{adapter}.', 'lora_B.')
+                key = key.replace(f'lora_embedding_A.{adapter}.',
+                                  'lora_embedding_A.')
+                key = key.replace(f'lora_embedding_B.{adapter}.',
+                                  'lora_embedding_B.')
+                new_state_dict[key] = value
+            state_dict = new_state_dict
+            SwiftModel._save_state_dict(state_dict,
+                                        os.path.join(ckpt_dir, adapter),
+                                        safe_serialization)
+            from swift import LoRAConfig
+            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
+                _json = json.load(f)
+                peft_config = LoRAConfig(**_json).to_peft_config()
+            peft_config.save_pretrained(os.path.join(ckpt_dir, adapter))
+
+        if 'default' in adapter_names:
+            shutil.move(
+                os.path.join(ckpt_dir, 'default', CONFIG_NAME),
+                os.path.join(ckpt_dir, CONFIG_NAME))
+            state_dict = SwiftModel.load_state_file(
+                os.path.join(ckpt_dir, 'default'))
+            safe_serialization = os.path.isfile(
+                os.path.join(ckpt_dir, 'default', SAFETENSORS_WEIGHTS_NAME))
+            SwiftModel._save_state_dict(state_dict, ckpt_dir,
+                                        safe_serialization)
+            shutil.rmtree(os.path.join(ckpt_dir, 'default'))
 
     @staticmethod
     def from_pretrained(model: Union[nn.Module, SwiftModel],

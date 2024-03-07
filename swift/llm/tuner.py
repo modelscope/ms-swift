@@ -13,12 +13,13 @@ from swift.tuners.llamapro import LLaMAProConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linears, find_embedding, is_adapter
+from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
+                    is_adapter)
 
 logger = get_logger()
 
 
-def handle_target_modules_all(model, args: SftArguments) -> None:
+def handle_target_modules(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         target_modules = args.ia3_target_modules
         assert len(args.ia3_feedforward_modules) > 0, (
@@ -39,11 +40,30 @@ def handle_target_modules_all(model, args: SftArguments) -> None:
         logger.info(f'lora_target_modules: {args.lora_target_modules}')
 
 
+def handle_modules_to_save(model, args: SftArguments) -> None:
+    if args.sft_type == 'ia3':
+        modules_to_save = args.ia3_modules_to_save
+    else:
+        modules_to_save = args.lora_modules_to_save
+    if args.lora_m2s_use_embedding:
+        modules_to_save += find_embedding(model)
+    if args.lora_m2s_use_ln:
+        modules_to_save += find_ln(model)
+
+    if args.sft_type == 'ia3':
+        args.ia3_modules_to_save = modules_to_save
+        logger.info(f'ia3_modules_to_save: {args.ia3_modules_to_save}')
+    else:
+        args.lora_modules_to_save = modules_to_save
+        logger.info(f'lora_modules_to_save: {args.lora_modules_to_save}')
+
+
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
-            handle_target_modules_all(model, args)
+            handle_target_modules(model, args)
+            handle_modules_to_save(model, args)
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_modules,

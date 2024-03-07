@@ -217,7 +217,7 @@ class SftArguments:
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    def _prepare_target_modules(self, target_modules):
+    def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
         if len(target_modules) == 0:
@@ -238,6 +238,19 @@ class SftArguments:
             target_modules.remove('ALL')
             self.lora_use_all = True
         return target_modules
+
+    def _prepare_modules_to_save(self, modules_to_save) -> List[str]:
+        if isinstance(modules_to_save, str):
+            modules_to_save = [modules_to_save]
+        if len(modules_to_save) == 0:
+            return modules_to_save
+        if 'EMBEDDING' in modules_to_save:
+            modules_to_save.remove('EMBEDDING')
+            self.lora_m2s_use_embedding = True
+        if 'LN' in modules_to_save:
+            modules_to_save.remove('LN')
+            self.lora_m2s_use_ln = True
+        return modules_to_save
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -260,14 +273,20 @@ class SftArguments:
 
         self.lora_use_embedding = False
         self.lora_use_all = False
+        self.lora_m2s_use_embedding = False
+        self.lora_m2s_use_ln = False
         if self.sft_type == 'ia3':
             self.ia3_feedforward_modules = self._prepare_target_modules(
                 self.ia3_feedforward_modules)
             self.ia3_target_modules = self._prepare_target_modules(
                 self.ia3_target_modules)
+            self.ia3_modules_to_save = self._prepare_modules_to_save(
+                self.ia3_modules_to_save)
         else:
             self.lora_target_modules = self._prepare_target_modules(
                 self.lora_target_modules)
+            self.lora_modules_to_save = self._prepare_modules_to_save(
+                self.lora_modules_to_save)
         if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
             raise ValueError(
                 '`adalora` and `ia3` do not support setting embedding as target_modules.'
@@ -656,7 +675,7 @@ class InferArguments:
             if self.sft_type == 'lora':
                 assert self.merge_lora is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
-                    'Please set --merge_lora true.')
+                    'Please set `--merge_lora true`.')
         template_info = TEMPLATE_MAPPING[self.template_type]
         support_stream = template_info.get('support_stream', True)
         if self.num_beams != 1 or not support_stream:
