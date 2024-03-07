@@ -3,12 +3,12 @@
 # Train a chat model with agent capabilities and self-cognition from the base.
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=2 \
+NPROC_PER_NODE=4 \
 swift sft \
     --model_type yi-9b \
     --sft_type lora \
     --tuner_backend swift \
-    --template_type yi \
+    --template_type default \
     --dtype AUTO \
     --output_dir output \
     --dataset ms-agent \
@@ -35,5 +35,6 @@ swift sft \
     --logging_steps 10 \
     --use_flash_attn false \
     --self_cognition_sample 2000 \
+    --deepspeed default-zero3 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
