@@ -148,9 +148,9 @@ def test_time(func: Callable[[], _T],
     return res
 
 
-def read_multi_line() -> str:
+def read_multi_line(addi_prompt: str = '') -> str:
     res = []
-    prompt = '<<<[M] '
+    prompt = f'<<<{addi_prompt} '
     while True:
         text = input(prompt) + '\n'
         prompt = ''

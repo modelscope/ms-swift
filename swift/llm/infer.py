@@ -242,6 +242,8 @@ def llm_infer(args: InferArguments) -> None:
         input_mode: Literal['S', 'M'] = 'S'
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
+        logger.info(
+            'Input `reset-system` to reset the system and clear the history.')
         if template.support_multi_round:
             logger.info('Input `clear` to clear the history.')
         else:
@@ -252,11 +254,19 @@ def llm_infer(args: InferArguments) -> None:
         if args.infer_media_type != 'none':
             logger.info('Please enter the conversation content first, '
                         'followed by the path to the multimedia file.')
+        system = None
+        read_system = False
         while True:
             if input_mode == 'S':
-                query = input('<<< ')
+                addi_prompt = ''
+                if read_system:
+                    addi_prompt = '[S]'
+                query = input(f'<<<{addi_prompt} ')
             else:
-                query = read_multi_line()
+                addi_prompt = '[M]'
+                if read_system:
+                    addi_prompt = '[MS]'
+                query = read_multi_line(addi_prompt)
             if query.strip().lower() in {'exit', 'quit'}:
                 break
             elif query.strip().lower() == 'clear':
@@ -264,6 +274,13 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
                 continue
             elif query.strip() == '':
+                continue
+            elif query.strip().lower() == 'reset-system':
+                read_system = True
+                continue
+            if read_system:
+                system = query
+                read_system = False
                 continue
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
@@ -279,7 +296,11 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
             read_media_file(infer_kwargs, args.infer_media_type)
             if args.infer_backend == 'vllm':
-                request_list = [{'query': query, 'history': history}]
+                request_list = [{
+                    'query': query,
+                    'history': history,
+                    'system': system
+                }]
                 if args.stream:
                     gen = inference_stream_vllm(llm_engine, template,
                                                 request_list)
@@ -300,7 +321,7 @@ def llm_infer(args: InferArguments) -> None:
             else:
                 if args.stream:
                     gen = inference_stream(model, template, query, history,
-                                           **infer_kwargs)
+                                           system, **infer_kwargs)
                     print_idx = 0
                     for response, new_history in gen:
                         if len(response) > print_idx:
@@ -309,7 +330,8 @@ def llm_infer(args: InferArguments) -> None:
                     print()
                 else:
                     response, new_history = inference(model, template, query,
-                                                      history, **infer_kwargs)
+                                                      history, system,
+                                                      **infer_kwargs)
                     print(response)
             print('-' * 50)
             obj = {
@@ -366,6 +388,8 @@ def llm_infer(args: InferArguments) -> None:
                 history = data.get('history')
                 system = data.get('system')
                 images = data.get('images')
+                if args.verbose and system is not None:
+                    print(f'[SYSTEM]{system}')
                 if history is not None:
                     kwargs['history'] = history
                 if system is not None:
@@ -375,7 +399,7 @@ def llm_infer(args: InferArguments) -> None:
                 if args.infer_backend == 'vllm':
                     assert args.stream is True
                     if args.verbose:
-                        print(f"query: {data['query']}\nresponse: ", end='')
+                        print(f"[QUERY]{data['query']}\n[RESPONSE]", end='')
                     gen = inference_stream_vllm(llm_engine, template, [kwargs])
                     print_idx = 0
                     for resp_list in gen:
