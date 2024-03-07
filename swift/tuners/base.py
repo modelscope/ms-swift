@@ -2,6 +2,7 @@
 # Copyright 2023-present the HuggingFace Inc. team.
 import os
 import re
+import shutil
 from copy import copy
 from functools import partial
 from inspect import Parameter, Signature, signature
@@ -882,7 +883,7 @@ class Swift:
                 os.path.join(ckpt_dir, adapter, SAFETENSORS_WEIGHTS_NAME))
             state_dict = SwiftModel.load_state_file(
                 os.path.join(ckpt_dir, adapter))
-            os.makedirs(os.path.join(output_dir, adapter))
+            os.makedirs(os.path.join(output_dir, adapter), exist_ok=True)
             new_state_dict = {}
             for key, value in state_dict.items():
                 if not key.startswith('base_model.model.'):

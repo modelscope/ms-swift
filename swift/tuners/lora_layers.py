@@ -928,5 +928,5 @@ def lora_state_dict(state_dict,
     return {
         k: v
         for k, v in to_return.items()
-        if (('lora_' in k and adapter_name in k) or ('bias' in k))
+        if (('lora_' in k and f'.{adapter_name}.' in k) or ('bias' in k))
     }

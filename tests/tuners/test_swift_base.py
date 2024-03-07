@@ -10,6 +10,7 @@ import torch
 from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
+from peft import PeftModel
 from peft.utils import WEIGHTS_NAME
 from torch import nn
 
