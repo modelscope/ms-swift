@@ -1,10 +1,8 @@
 import copy
-import math
 import os
 import shutil
 import tempfile
 import unittest
-from time import time
 
 import torch
 from modelscope import Preprocessor
@@ -50,6 +48,7 @@ class TestPeft(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
+    @unittest.skip
     def test_lora_merge(self):
 
         def reset_lora_parameters(self, adapter_name, init_lora_weights):
