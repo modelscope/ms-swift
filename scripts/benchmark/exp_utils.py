@@ -183,7 +183,7 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         logging_dir = exp.runtime.get('logging_dir')
-        logging_file = os.path.join(logging_dir, '../../swift/llm',
+        logging_file = os.path.join(logging_dir, '..',
                                     'logging.jsonl')
         if os.path.isfile(logging_file):
             with open(logging_file, 'r') as f:
