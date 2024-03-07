@@ -1,6 +1,6 @@
 # Experimental environment: 4 * 3090
 # 4 * 22GB GPU memory
-# Train a chat model with agent capabilities and self-awareness from the base.
+# Train a chat model with agent capabilities and self-cognition from the base.
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=2 \
