@@ -34,5 +34,6 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn false \
+    --self_cognition_sample 2000 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
