@@ -248,14 +248,6 @@ class Runtime(BaseUI):
                     [base_tab.element('running_tasks')],
                 )
 
-                base_tab.element('kill_task').click(
-                    Runtime.kill_task,
-                    [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')] + [cls.element('log')]
-                    + cls.all_plots,
-                    cancels=[cls.log_event],
-                )
-
     @classmethod
     def update_log(cls):
         return [gr.update(visible=True)] * (len(Runtime.sft_plot) + 1)
@@ -410,6 +402,10 @@ class Runtime(BaseUI):
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (
             len(Runtime.sft_plot) + 1)
+
+    @staticmethod
+    def reset():
+        return 'output', 'output'
 
     @staticmethod
     def task_changed(task, base_tab):
