@@ -405,7 +405,7 @@ class Runtime(BaseUI):
 
     @staticmethod
     def reset():
-        return 'output', 'output'
+        return None, 'output'
 
     @staticmethod
     def task_changed(task, base_tab):
