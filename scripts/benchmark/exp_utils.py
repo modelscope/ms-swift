@@ -4,7 +4,7 @@ import time
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from queue import Queue
-from typing import Dict, Any
+from typing import Any, Dict
 
 import json
 import torch
@@ -183,8 +183,7 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         logging_dir = exp.runtime.get('logging_dir')
-        logging_file = os.path.join(logging_dir, '..',
-                                    'logging.jsonl')
+        logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
         if os.path.isfile(logging_file):
             with open(logging_file, 'r') as f:
                 for line in f.readlines():

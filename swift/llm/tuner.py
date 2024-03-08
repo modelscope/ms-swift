@@ -6,19 +6,20 @@ import transformers
 from packaging import version
 
 from swift.trainers import TrainerCallback
-from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
-                          LongLoRAModelType, LoraConfig, LoRAConfig,
-                          NEFTuneConfig, Swift)
+from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config,
+                          LongLoRAConfig, LongLoRAModelType, LoraConfig,
+                          LoRAConfig, NEFTuneConfig, Swift)
 from swift.tuners.llamapro import LLaMAProConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linears, find_embedding, is_adapter
+from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
+                    is_adapter)
 
 logger = get_logger()
 
 
-def handle_target_modules_all(model, args: SftArguments) -> None:
+def handle_target_modules(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         target_modules = args.ia3_target_modules
         assert len(args.ia3_feedforward_modules) > 0, (
@@ -39,11 +40,30 @@ def handle_target_modules_all(model, args: SftArguments) -> None:
         logger.info(f'lora_target_modules: {args.lora_target_modules}')
 
 
+def handle_modules_to_save(model, args: SftArguments) -> None:
+    if args.sft_type == 'ia3':
+        modules_to_save = args.ia3_modules_to_save
+    else:
+        modules_to_save = args.lora_modules_to_save
+    if args.lora_m2s_use_embedding:
+        modules_to_save += find_embedding(model)
+    if args.lora_m2s_use_ln:
+        modules_to_save += find_ln(model)
+
+    if args.sft_type == 'ia3':
+        args.ia3_modules_to_save = modules_to_save
+        logger.info(f'ia3_modules_to_save: {args.ia3_modules_to_save}')
+    else:
+        args.lora_modules_to_save = modules_to_save
+        logger.info(f'lora_modules_to_save: {args.lora_modules_to_save}')
+
+
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
-            handle_target_modules_all(model, args)
+            handle_target_modules(model, args)
+            handle_modules_to_save(model, args)
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_modules,
@@ -127,6 +147,24 @@ def prepare_model(model, args: SftArguments):
                     num_groups=args.llamapro_num_groups)
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
+            elif args.sft_type == 'adapter':
+                model_type = args.model_type or args.model_id_or_path
+                for key in MODEL_KEYS_MAPPING.keys():
+                    if key in model_type.lower():
+                        model_type = key
+                        break
+
+                assert model_type in MODEL_KEYS_MAPPING
+                mlp_key = MODEL_KEYS_MAPPING[model_type]['mlp']
+                mlp_key = mlp_key.split('.{}.')[1]
+                adapter_config = AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=[mlp_key],
+                    hidden_pos=0,
+                    adapter_length=args.adapter_length,
+                    act_layer=args.adapter_act)
+                model = Swift.prepare_model(model, adapter_config)
+                logger.info(f'adapter_config: {adapter_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)

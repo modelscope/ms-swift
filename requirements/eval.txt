@@ -1,9 +1,10 @@
-https://sail-moe.oss-cn-hangzhou.aliyuncs.com/open_data/packages/llmuses-0.2.6-py3-none-any.whl
 absl-py
 auto-gptq
 cachetools
 datasets>=2.14.5
 editdistance
+https://sail-moe.oss-cn-hangzhou.aliyuncs.com/open_data/packages/llmuses-0.2.6-py3-none-any.whl
+jieba
 jsonlines
 matplotlib
 modelscope>=1.9.5,!=1.12.0
@@ -17,6 +18,7 @@ pyyaml
 regex
 requests
 requests-toolbelt
+rouge-chinese
 rouge-score
 sacrebleu
 scikit-learn
@@ -30,5 +32,3 @@ torch
 tqdm
 transformers
 transformers_stream_generator
-jieba
-rouge-chinese

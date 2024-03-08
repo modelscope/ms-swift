@@ -3,13 +3,11 @@ import inspect
 import math
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
 import torch
-import torch.distributed as dist
 from datasets import concatenate_datasets
 from torch import dtype as Dtype
 from transformers.utils.versions import require_version
@@ -17,9 +15,9 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
-from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, get_pai_tensorboard_dir, is_dist,
-                         is_mp, is_pai_training_job)
+from swift.utils import (add_version_to_work_dir, get_dist_setting,
+                         get_pai_tensorboard_dir, is_dist, is_mp,
+                         is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
@@ -32,7 +30,7 @@ logger = get_logger()
 
 def is_adapter(sft_type: str) -> bool:
     return sft_type in {
-        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro'
+        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro', 'adapter'
     }
 
 
@@ -46,7 +44,7 @@ class SftArguments:
     model_revision: Optional[str] = None
 
     sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3',
-                      'llamapro'] = 'lora'
+                      'llamapro', 'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft'] = 'swift'
@@ -115,6 +113,10 @@ class SftArguments:
     lora_alpha_pattern: Dict = field(default_factory=dict)
     lora_loftq_config: Dict = field(default_factory=dict)
     use_dora: bool = False
+
+    # adapter
+    adapter_act: str = 'gelu'
+    adapter_length: int = 128
 
     # adalora
     adalora_target_r: int = 8
@@ -217,7 +219,7 @@ class SftArguments:
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
-    def _prepare_target_modules(self, target_modules):
+    def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
         if len(target_modules) == 0:
@@ -238,6 +240,19 @@ class SftArguments:
             target_modules.remove('ALL')
             self.lora_use_all = True
         return target_modules
+
+    def _prepare_modules_to_save(self, modules_to_save) -> List[str]:
+        if isinstance(modules_to_save, str):
+            modules_to_save = [modules_to_save]
+        if len(modules_to_save) == 0:
+            return modules_to_save
+        if 'EMBEDDING' in modules_to_save:
+            modules_to_save.remove('EMBEDDING')
+            self.lora_m2s_use_embedding = True
+        if 'LN' in modules_to_save:
+            modules_to_save.remove('LN')
+            self.lora_m2s_use_ln = True
+        return modules_to_save
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -260,14 +275,20 @@ class SftArguments:
 
         self.lora_use_embedding = False
         self.lora_use_all = False
+        self.lora_m2s_use_embedding = False
+        self.lora_m2s_use_ln = False
         if self.sft_type == 'ia3':
             self.ia3_feedforward_modules = self._prepare_target_modules(
                 self.ia3_feedforward_modules)
             self.ia3_target_modules = self._prepare_target_modules(
                 self.ia3_target_modules)
+            self.ia3_modules_to_save = self._prepare_modules_to_save(
+                self.ia3_modules_to_save)
         else:
             self.lora_target_modules = self._prepare_target_modules(
                 self.lora_target_modules)
+            self.lora_modules_to_save = self._prepare_modules_to_save(
+                self.lora_modules_to_save)
         if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
             raise ValueError(
                 '`adalora` and `ia3` do not support setting embedding as target_modules.'
@@ -656,7 +677,7 @@ class InferArguments:
             if self.sft_type == 'lora':
                 assert self.merge_lora is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
-                    'Please set --merge_lora true.')
+                    'Please set `--merge_lora true`.')
         template_info = TEMPLATE_MAPPING[self.template_type]
         support_stream = template_info.get('support_stream', True)
         if self.num_beams != 1 or not support_stream:
