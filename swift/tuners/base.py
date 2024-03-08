@@ -501,6 +501,45 @@ class SwiftModel(nn.Module):
         density=None,
         majority_sign_method: Literal['total', 'frequency'] = 'total',
     ):
+        """
+        This method adds a new adapter by merging the given adapters with the given weights.
+
+        When using the `cat` combination_type you should be aware that rank of the resulting adapter will be equal to
+        the sum of all adapters ranks. So it's possible that the mixed adapter may become too big and result in OOM
+        errors.
+
+        Args:
+            adapters (`list`):
+                List of adapter names to be merged.
+            weights (`list`):
+                List of weights for each adapter.
+            adapter_name (`str`):
+                Name of the new adapter.
+            combination_type (`str`):
+                The merging type can be one of [`svd`, `linear`, `cat`, `ties`, `ties_svd`, `dare_ties`, `dare_linear`,
+                `dare_ties_svd`, `dare_linear_svd`, `magnitude_prune`, `magnitude_prune_svd`]. When using the `cat`
+                combination_type, the rank of the resulting adapter is equal to the sum of all adapters ranks (the
+                mixed adapter may be too big and result in OOM errors).
+            svd_rank (`int`, *optional*):
+                Rank of output adapter for svd. If None provided, will use max rank of merging adapters.
+            svd_clamp (`float`, *optional*):
+                A quantile threshold for clamping SVD decomposition output. If None is provided, do not perform
+                clamping. Defaults to None.
+            svd_full_matrices (`bool`, *optional*):
+                Controls whether to compute the full or reduced SVD, and consequently, the shape of the returned
+                tensors U and Vh. Defaults to True.
+            svd_driver (`str`, *optional*):
+                Name of the cuSOLVER method to be used. This keyword argument only works when merging on CUDA. Can be
+                one of [None, `gesvd`, `gesvdj`, `gesvda`]. For more info please refer to `torch.linalg.svd`
+                documentation. Defaults to None.
+            density (`float`, *optional*):
+                Value between 0 and 1. 0 means all values are pruned and 1 means no values are pruned. Should be used
+                with [`ties`, `ties_svd`, `dare_ties`, `dare_linear`, `dare_ties_svd`, `dare_linear_svd`,
+                `magnintude_prune`, `magnitude_prune_svd`]
+            majority_sign_method (`str`):
+                The method, should be one of ["total", "frequency"], to use to get the magnitude of the sign values.
+                Should be used with [`ties`, `ties_svd`, `dare_ties`, `dare_ties_svd`]
+        """
         from swift.tuners.lora import LoraModel
         lora_model = LoraModel(self.model, None, '')
         lora_model.peft_config = {
@@ -652,7 +691,13 @@ class SwiftModel(nn.Module):
 
     def set_active_adapters(self,
                             adapter_names: Union[List[str], str],
-                            offload=None):
+                            offload: str = None):
+        """Set activated adapters
+
+        Args:
+            adapter_names(`Union[List[str], str]`): The adapters needed to be activated
+            offload(`str`): Whether to offload the deactivated ones to `cpu` or `meta` device
+        """
         if not adapter_names:
             adapter_names = []
 
@@ -661,14 +706,19 @@ class SwiftModel(nn.Module):
 
         adapter_names = set(adapter_names)
         for adapter_name in (adapter_names & set(self.adapters.keys())):
-            self.activate_adapter(adapter_name, offload)
+            self.activate_adapter(adapter_name)
 
         for adapter_name in (set(self.adapters.keys()) - adapter_names):
             self.deactivate_adapter(adapter_name, offload)
 
         self.active_adapters = (adapter_names & set(self.adapters.keys()))
 
-    def activate_adapter(self, adapter_name, offload=None):
+    def activate_adapter(self, adapter_name: str):
+        """Activate one adapter
+
+        Args:
+            adapter_name(`str`): The adapter needed to be activated
+        """
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -676,10 +726,16 @@ class SwiftModel(nn.Module):
 
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
-            .activate_adapter(self.base_model, adapter_name, True, offload)
+            .activate_adapter(self.base_model, adapter_name, True)
         self.active_adapters = self.active_adapters | {adapter_name}
 
-    def deactivate_adapter(self, adapter_name, offload=None):
+    def deactivate_adapter(self, adapter_name: str, offload: str = None):
+        """Deactivate one adapter
+
+        Args:
+            adapter_name(`str`): The adapter needed to be activated
+            offload(`str`): Whether to offload to `cpu` or `meta` device
+        """
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -789,7 +845,13 @@ class Swift:
                 sub_module.unmerge(**kwargs)
 
     @staticmethod
-    def save_to_peft_format(ckpt_dir):
+    def save_to_peft_format(ckpt_dir: str, output_dir: str):
+        """Save swift format to peft format
+
+        Args:
+            ckpt_dir(`str`): Original swift output dir
+            output_dir(`str`): Converted peft format dir
+        """
         if os.path.exists(os.path.join(ckpt_dir, SwiftModel.EXTRA_STATE_DIR)):
             raise AssertionError(
                 'Cannot transfer to peft format, because you are additional state dicts.'
@@ -821,6 +883,7 @@ class Swift:
                 os.path.join(ckpt_dir, adapter, SAFETENSORS_WEIGHTS_NAME))
             state_dict = SwiftModel.load_state_file(
                 os.path.join(ckpt_dir, adapter))
+            os.makedirs(os.path.join(output_dir, adapter), exist_ok=True)
             new_state_dict = {}
             for key, value in state_dict.items():
                 if not key.startswith('base_model.model.'):
@@ -834,25 +897,25 @@ class Swift:
                 new_state_dict[key] = value
             state_dict = new_state_dict
             SwiftModel._save_state_dict(state_dict,
-                                        os.path.join(ckpt_dir, adapter),
+                                        os.path.join(output_dir, adapter),
                                         safe_serialization)
             from swift import LoRAConfig
             with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
                 _json = json.load(f)
                 peft_config = LoRAConfig(**_json).to_peft_config()
-            peft_config.save_pretrained(os.path.join(ckpt_dir, adapter))
+            peft_config.save_pretrained(os.path.join(output_dir, adapter))
 
         if 'default' in adapter_names:
             shutil.move(
-                os.path.join(ckpt_dir, 'default', CONFIG_NAME),
-                os.path.join(ckpt_dir, CONFIG_NAME))
+                os.path.join(output_dir, 'default', CONFIG_NAME),
+                os.path.join(output_dir, CONFIG_NAME))
             state_dict = SwiftModel.load_state_file(
-                os.path.join(ckpt_dir, 'default'))
+                os.path.join(output_dir, 'default'))
             safe_serialization = os.path.isfile(
-                os.path.join(ckpt_dir, 'default', SAFETENSORS_WEIGHTS_NAME))
-            SwiftModel._save_state_dict(state_dict, ckpt_dir,
+                os.path.join(output_dir, 'default', SAFETENSORS_WEIGHTS_NAME))
+            SwiftModel._save_state_dict(state_dict, output_dir,
                                         safe_serialization)
-            shutil.rmtree(os.path.join(ckpt_dir, 'default'))
+            shutil.rmtree(os.path.join(output_dir, 'default'))
 
     @staticmethod
     def from_pretrained(model: Union[nn.Module, SwiftModel],
