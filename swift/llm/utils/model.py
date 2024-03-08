@@ -247,6 +247,15 @@ class ModelType:
     # cogagent
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
+    # mamba
+    mamba_130m = 'mamba-130m'
+    mamba_370m = 'mamba-370m'
+    mamba_390m = 'mamba-390m'
+    mamba_790m = 'mamba-790m'
+    mamba_1_4b = 'mamba-1.4b'
+    mamba_2_8b = 'mamba-2.8b'
+
+
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -274,6 +283,7 @@ class LoRATM(NamedTuple):
     ]
     phi = ['Wqkv']
     internlm2 = ['wqkv']
+    mamba = ['in_proj', 'x_proj', 'dt_proj', 'out_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -398,6 +408,48 @@ def register_model(
     ModelType.baichuan_7b,
     'baichuan-inc/baichuan-7B',
     LoRATM.baichuan,
+    TemplateType.default_generation,
+    requires=['transformers<4.34'],
+    support_vllm=True)
+@register_model(
+    ModelType.mamba_130m,
+    'AI-ModelScope/mamba-130m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers<4.34'],
+    support_vllm=True)
+@register_model(
+    ModelType.mamba_370m,
+    'AI-ModelScope/mamba-370m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers<4.34'],
+    support_vllm=True)
+@register_model(
+    ModelType.mamba_390m,
+    'AI-ModelScope/mamba-390m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers<4.34'],
+    support_vllm=True)
+@register_model(
+    ModelType.mamba_790m,
+    'AI-ModelScope/mamba-790m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers<4.34'],
+    support_vllm=True)
+@register_model(
+    ModelType.mamba_1_4b,
+    'AI-ModelScope/mamba-1.4b-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers<4.34'],
+    support_vllm=True)
+@register_model(
+    ModelType.mamba_2_8b,
+    'AI-ModelScope/mamba-2.8b-hf',
+    LoRATM.mamba,
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
