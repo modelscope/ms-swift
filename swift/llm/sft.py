@@ -69,6 +69,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
+        is_training=True,
         **kwargs)
     # logger.info(f'device_map: {dict(model.hf_device_map)}')
     logger.info(f'model_config: {model.config}')
