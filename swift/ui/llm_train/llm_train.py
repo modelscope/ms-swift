@@ -243,6 +243,14 @@ class LLMTrain(BaseUI):
                         if not isinstance(value, (Tab, Accordion))
                     ] + [cls.element('log')] + Runtime.all_plots,
                     cancels=Runtime.log_event)
+                Runtime.element('kill_task').click(
+                    Runtime.kill_task,
+                    [Runtime.element('running_tasks')],
+                    [Runtime.element('running_tasks')]
+                    + [Runtime.element('log')] + Runtime.all_plots,
+                    cancels=[Runtime.log_event],
+                ).then(Runtime.reset, [], [Runtime.element('logging_dir')]
+                       + [Save.element('output_dir')])
 
     @classmethod
     def update_runtime(cls):
