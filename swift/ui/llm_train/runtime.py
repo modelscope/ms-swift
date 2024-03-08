@@ -3,8 +3,7 @@ import os.path
 import time
 import webbrowser
 from datetime import datetime
-from functools import partial
-from typing import Dict, List, Tuple, Type, Union
+from typing import Dict, List, Tuple, Type
 
 import gradio as gr
 import matplotlib.pyplot as plt
@@ -398,7 +397,8 @@ class Runtime(BaseUI):
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
         for i in range(len(args)):
-            splits = args[i].split(' ')
+            space = args[i].find(' ')
+            splits = args[i][:space], args[i][space + 1:]
             all_args[splits[0]] = splits[1]
         return all_args
 
