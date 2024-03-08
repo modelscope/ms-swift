@@ -108,7 +108,7 @@
         "args": {
           "sft_type": "ia3",
           "ia3_target_modules": "ALL",
-          "ia3_feedforward_modules": ["gate_proj", "up_proj", "down_proj"]
+          "ia3_feedforward_modules": "mlp.gate_proj mlp.up_proj mlp.down_proj"
         }
       },
       {
