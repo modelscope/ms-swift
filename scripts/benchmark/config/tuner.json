@@ -104,6 +104,12 @@
         }
       },
       {
+        "name": "adapter",
+        "args": {
+          "sft_type": "adapter"
+        }
+      },
+      {
         "name": "ia3",
         "args": {
           "sft_type": "ia3",
