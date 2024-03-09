@@ -1,4 +1,4 @@
-# Experimental environment: V100, A10, 3090
+# Experiment env: A10, RTX3090/4090, A100
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
@@ -11,4 +11,5 @@ python llm_infer.py \
     --top_p 0.7 \
     --repetition_penalty 1. \
     --do_sample true \
+    --stream false \
     --merge_lora false \
