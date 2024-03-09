@@ -50,7 +50,7 @@ def cli_main() -> None:
     argv = argv[1:]
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
-    if torchrun_args is None or method_name not in ('sft', 'dpo'):
+    if torchrun_args is None or method_name != 'sft':
         args = ['python', file_path, *argv]
     else:
         args = ['torchrun', *torchrun_args, file_path, *argv]
