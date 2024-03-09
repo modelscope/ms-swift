@@ -121,12 +121,8 @@ class LLMInfer(BaseUI):
                     inputs=[
                         model_and_template_type,
                         cls.element('template_type'), prompt, chatbot,
-                        cls.element('system'),
                         cls.element('max_new_tokens'),
-                        cls.element('temperature'),
-                        cls.element('top_k'),
-                        cls.element('top_p'),
-                        cls.element('repetition_penalty')
+                        cls.element('system')
                     ],
                     outputs=[prompt, chatbot],
                     queue=True)
@@ -194,21 +190,12 @@ class LLMInfer(BaseUI):
                       template_type,
                       prompt: str,
                       history,
-                      system,
                       max_new_tokens,
-                      temperature,
-                      top_k,
-                      top_p,
-                      repetition_penalty,
+                      system,
                       seed=42):
         model_type = model_and_template_type[0]
         old_history, history = history, []
-        request_config = XRequestConfig(
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-            seed=seed)
+        request_config = XRequestConfig(seed=seed)
         request_config.stream = True
         stream_resp_with_history = ''
         if not template_type.endswith('generation'):
@@ -218,20 +205,14 @@ class LLMInfer(BaseUI):
                 old_history,
                 system=system,
                 request_config=request_config)
-            for chunk in stream_resp:
-                stream_resp_with_history += chunk.choices[0].delta.content
-                qr_pair = [prompt, stream_resp_with_history]
-                total_history = old_history + [qr_pair]
-                yield '', total_history
         else:
-            request_config.max_tokens = max_new_tokens
             stream_resp = inference_client(
                 model_type, prompt, request_config=request_config)
-            for chunk in stream_resp:
-                stream_resp_with_history += chunk.choices[0].text
-                qr_pair = [prompt, stream_resp_with_history]
-                total_history = old_history + [qr_pair]
-                yield '', total_history
+        for chunk in stream_resp:
+            stream_resp_with_history += chunk.choices[0].delta.content
+            qr_pair = [prompt, stream_resp_with_history]
+            total_history = old_history + [qr_pair]
+            yield '', total_history
 
     @classmethod
     def deploy(cls, *args):
