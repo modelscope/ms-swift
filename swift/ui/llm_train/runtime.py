@@ -3,8 +3,7 @@ import os.path
 import time
 import webbrowser
 from datetime import datetime
-from functools import partial
-from typing import Dict, List, Tuple, Type, Union
+from typing import Dict, List, Tuple, Type
 
 import gradio as gr
 import matplotlib.pyplot as plt
@@ -249,14 +248,6 @@ class Runtime(BaseUI):
                     [base_tab.element('running_tasks')],
                 )
 
-                base_tab.element('kill_task').click(
-                    Runtime.kill_task,
-                    [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')] + [cls.element('log')]
-                    + cls.all_plots,
-                    cancels=[cls.log_event],
-                )
-
     @classmethod
     def update_log(cls):
         return [gr.update(visible=True)] * (len(Runtime.sft_plot) + 1)
@@ -398,7 +389,8 @@ class Runtime(BaseUI):
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
         for i in range(len(args)):
-            splits = args[i].split(' ')
+            space = args[i].find(' ')
+            splits = args[i][:space], args[i][space + 1:]
             all_args[splits[0]] = splits[1]
         return all_args
 
@@ -410,6 +402,10 @@ class Runtime(BaseUI):
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (
             len(Runtime.sft_plot) + 1)
+
+    @staticmethod
+    def reset():
+        return None, 'output'
 
     @staticmethod
     def task_changed(task, base_tab):

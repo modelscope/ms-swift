@@ -243,9 +243,11 @@ class TestSwift(unittest.TestCase):
                 'lora': lora_config,
                 'adapter': adapter_config
             })
-        model.save_pretrained(self.tmp_dir)
+        model.save_pretrained(os.path.join(self.tmp_dir, 'original'))
         try:
-            Swift.save_to_peft_format(self.tmp_dir)
+            Swift.save_to_peft_format(
+                os.path.join(self.tmp_dir, 'original'),
+                os.path.join(self.tmp_dir, 'converted'))
             self.assertTrue(False)
         except AssertionError as e:
             print(e)
@@ -256,9 +258,11 @@ class TestSwift(unittest.TestCase):
         lora_config = LoRAConfig(
             target_modules=['query', 'key', 'value'], lora_dtype='fp16')
         model = Swift.prepare_model(model, config={'lora': lora_config})
-        model.save_pretrained(self.tmp_dir)
+        model.save_pretrained(os.path.join(self.tmp_dir, 'original'))
         try:
-            Swift.save_to_peft_format(self.tmp_dir)
+            Swift.save_to_peft_format(
+                os.path.join(self.tmp_dir, 'original'),
+                os.path.join(self.tmp_dir, 'converted'))
             self.assertTrue(False)
         except AssertionError as e:
             print(e)
@@ -273,11 +277,16 @@ class TestSwift(unittest.TestCase):
                 'default': lora_config,
                 'lora': lora2_config
             })
-        model.save_pretrained(self.tmp_dir)
-        Swift.save_to_peft_format(self.tmp_dir)
+        model.save_pretrained(os.path.join(self.tmp_dir, 'original'))
+        Swift.save_to_peft_format(
+            os.path.join(self.tmp_dir, 'original'),
+            os.path.join(self.tmp_dir, 'converted'))
         model2 = SbertForSequenceClassification(SbertConfig())
-        model2 = PeftModel.from_pretrained(model2, self.tmp_dir)
-        model2.load_adapter(os.path.join(self.tmp_dir, 'lora'), 'lora')
+        model2 = PeftModel.from_pretrained(
+            model2, os.path.join(self.tmp_dir, 'converted'))
+        model2.load_adapter(
+            os.path.join(os.path.join(self.tmp_dir, 'converted'), 'lora'),
+            'lora')
         state_dict = model.state_dict()
         state_dict2 = {
             key[len('base_model.model.'):]: value
