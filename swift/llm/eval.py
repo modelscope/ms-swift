@@ -71,35 +71,38 @@ def parse_output(file):
     args = content['args']
     create_time = float(content['create_time'])
     content = content['record']
-    memory = content['memory']
-    total_memory = 0.0
-    for values in memory.values():
-        total_memory += float(values.split('GiB')[0])
-    memory = f'{total_memory}GiB'
-    train_time = content['train_time']['train_runtime']
-    train_samples = content['train_time']['n_train_samples']
-    train_samples_per_second = content['train_time'][
-        'train_samples_per_second']
-    last_model_checkpoint = content['last_model_checkpoint']
-    best_model_checkpoint = content['best_model_checkpoint']
-    best_metric = content['best_metric']
-    global_step = content['global_step']
-    train_dataset_info = content['dataset_info']['train_dataset']
-    val_dataset_info = content['dataset_info']['val_dataset']
-    # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
-    str_dict = split_str_parts_by(
-        content['model_info'],
-        ['SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'M Params (', 'M Trainable [', ']), ', 'M Buffers.'])
-    str_dict = {c['key']: c['content'] for c in str_dict}
-    if 'SwiftModel:' in str_dict:
-        num_total_parameters = float(str_dict['SwiftModel:'])
-    elif 'CausalLM:' in str_dict:
-        num_total_parameters = float(str_dict['CausalLM:'])
+    if cmd == 'export':
+        best_model_checkpoint = content['best_model_checkpoint']
     else:
-        num_total_parameters = float(str_dict['Seq2SeqLM:'])
-    num_trainable_parameters = float(str_dict['M Params ('])
-    num_buffers = float(str_dict[']), '])
-    trainable_parameters_percentage = str_dict['M Trainable [']
+        memory = content['memory']
+        total_memory = 0.0
+        for values in memory.values():
+            total_memory += float(values.split('GiB')[0])
+        memory = f'{total_memory}GiB'
+        train_time = content['train_time']['train_runtime']
+        train_samples = content['train_time']['n_train_samples']
+        train_samples_per_second = content['train_time'][
+            'train_samples_per_second']
+        last_model_checkpoint = content['last_model_checkpoint']
+        best_model_checkpoint = content['best_model_checkpoint']
+        best_metric = content['best_metric']
+        global_step = content['global_step']
+        train_dataset_info = content['dataset_info']['train_dataset']
+        val_dataset_info = content['dataset_info']['val_dataset']
+        # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
+        str_dict = split_str_parts_by(
+            content['model_info'],
+            ['SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'M Params (', 'M Trainable [', ']), ', 'M Buffers.'])
+        str_dict = {c['key']: c['content'] for c in str_dict}
+        if 'SwiftModel:' in str_dict:
+            num_total_parameters = float(str_dict['SwiftModel:'])
+        elif 'CausalLM:' in str_dict:
+            num_total_parameters = float(str_dict['CausalLM:'])
+        else:
+            num_total_parameters = float(str_dict['Seq2SeqLM:'])
+        num_trainable_parameters = float(str_dict['M Params ('])
+        num_buffers = float(str_dict[']), '])
+        trainable_parameters_percentage = str_dict['M Trainable [']
 
     return ModelOutput(
         name=name,

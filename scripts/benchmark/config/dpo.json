@@ -33,13 +33,13 @@
     },
     "experiment": [
       {
-        "name": "lora",
+        "name": "dpolora",
         "args": {
           "sft_beta": 0.0
         }
       },
       {
-        "name": "lora+sft_beta",
+        "name": "dpolora+sft_beta0.1",
         "args": {
           "sft_beta": 0.1
         }

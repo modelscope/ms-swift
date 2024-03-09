@@ -182,13 +182,18 @@ class ExpManager:
 
     @staticmethod
     def _get_metric(exp: Experiment):
-        logging_dir = exp.runtime.get('logging_dir')
-        logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
-        if os.path.isfile(logging_file):
-            with open(logging_file, 'r') as f:
-                for line in f.readlines():
-                    if 'model_info' in line:
-                        return json.loads(line)
+        if exp.cmd == 'export':
+            return {
+                'best_model_checkpoint': 
+            }
+        else:
+            logging_dir = exp.runtime.get('logging_dir')
+            logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
+            if os.path.isfile(logging_file):
+                with open(logging_file, 'r') as f:
+                    for line in f.readlines():
+                        if 'model_info' in line:
+                            return json.loads(line)
         return None
 
     @staticmethod
