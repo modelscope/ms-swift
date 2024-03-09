@@ -197,9 +197,10 @@ class ExpManager:
             else:
                 ckpt_dir, ckpt_name = os.path.split(exp_args.ckpt_dir)
                 path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
-            return {
-                'best_model_checkpoint': path,
-            }
+            if os.path.exists(path):
+                return {
+                    'best_model_checkpoint': path,
+                }
         else:
             logging_dir = exp.runtime.get('logging_dir')
             logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
