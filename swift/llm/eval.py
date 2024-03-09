@@ -11,7 +11,7 @@ from llmuses.models.custom import CustomModel
 from llmuses.run import run_task
 
 from swift.utils import get_logger, get_main
-from ..utils.utils import split_str_parts_by
+from swift.utils.utils import split_str_parts_by
 from . import (EvalArguments, inference, inference_vllm, merge_lora,
                prepare_model_template)
 from .utils.model import dtype_mapping
@@ -68,6 +68,8 @@ def parse_output(file):
     cmd = content['cmd']
     requirements = content['requirements']
     args = content['args']
+    create_time = float(content['create_time'])
+    content = content['record']
     memory = content['memory']
     total_memory = 0.0
     for values in memory.values():
@@ -83,15 +85,20 @@ def parse_output(file):
     global_step = content['global_step']
     train_dataset_info = content['dataset_info']['train_dataset']
     val_dataset_info = content['dataset_info']['val_dataset']
-    create_time = float(content['create_time'])
     # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
     str_dict = split_str_parts_by(
         content['model_info'],
-        ['SwiftModel:', 'M Params (', 'M Trainable [', ']), ', 'M Buffers.'])
-    num_total_parameters = float(str_dict['SwiftModel:'])
+        ['SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'M Params (', 'M Trainable [', ']), ', 'M Buffers.'])
+    str_dict = {c['key']: c['content'] for c in str_dict}
+    if 'SwiftModel:' in str_dict:
+        num_total_parameters = float(str_dict['SwiftModel:'])
+    elif 'CausalLM:' in str_dict:
+        num_total_parameters = float(str_dict['CausalLM:'])
+    else:
+        num_total_parameters = float(str_dict['Seq2SeqLM:'])
     num_trainable_parameters = float(str_dict['M Params ('])
     num_buffers = float(str_dict[']), '])
-    trainable_parameters_percentage = float(str_dict['M Trainable ['])
+    trainable_parameters_percentage = str_dict['M Trainable [']
 
     return ModelOutput(
         name=name,
@@ -118,7 +125,7 @@ def parse_output(file):
 
 class EvalModel(CustomModel):
 
-    def __init__(self, args: EvalArguments, model_name, **kwargs):
+    def __init__(self, args: EvalArguments, model_name, config={}, **kwargs):
         if args.merge_lora:
             merge_lora(args, device_map=args.merge_device_map)
         if args.infer_backend == 'vllm':
@@ -132,7 +139,7 @@ class EvalModel(CustomModel):
 
         self.args = args
         super(EvalModel, self).__init__(
-            config={'model_id': model_name}, **kwargs)
+            config={'model_id': model_name, **extra_config}, **kwargs)
         self.model_name = model_name
 
     def predict(self, prompt: str, **kwargs):
@@ -179,7 +186,7 @@ def run_eval_single_model(args: EvalArguments,
         'model_args': model_args,
         'generation_config': generation_config,
         'dataset_args': {},
-        'model': EvalModel(args, model_name),
+        'model': EvalModel(args, model_name, config=record or {}),
         'eval_type': 'custom',
         'datasets': [dataset],
         'work_dir': DEFAULT_ROOT_CACHE_DIR,

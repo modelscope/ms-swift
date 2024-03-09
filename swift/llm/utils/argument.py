@@ -738,6 +738,12 @@ class EvalArguments(InferArguments):
 
     eval_dataset: List[str] = None
 
+    def __post_init__(self):
+        self.model_type = 'qwen-7b-chat'
+        super().__post_init__()
+        self.model_type = None
+        self.model_id_or_path = None
+
 
 @dataclass
 class ExportArguments(InferArguments):
