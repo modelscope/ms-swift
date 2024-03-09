@@ -1,15 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
 import os
+import time
+from copy import copy
 from typing import Any, Dict
 
 import json
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
+from llmuses.models.custom import CustomModel
 from llmuses.run import run_task
 
 from swift.utils import get_logger, get_main
 from ..utils.utils import split_str_parts_by
-from . import EvalArguments
+from . import (EvalArguments, inference, inference_vllm, merge_lora,
+               prepare_model_template)
 from .utils.model import dtype_mapping
 
 logger = get_logger()
@@ -112,13 +116,71 @@ def parse_output(file):
     )
 
 
-def run_eval_full_model(model_id_or_path, dataset, generation_config,
-                        model_args):
+class EvalModel(CustomModel):
+
+    def __init__(self, args: EvalArguments, model_name, **kwargs):
+        if args.merge_lora:
+            merge_lora(args, device_map=args.merge_device_map)
+        if args.infer_backend == 'vllm':
+            from .utils import prepare_vllm_engine_template
+            self.llm_engine, self.template = prepare_vllm_engine_template(args)
+        else:
+            self.model, self.template = prepare_model_template(args)
+            if args.overwrite_generation_config:
+                assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
+                self.model.generation_config.save_pretrained(args.ckpt_dir)
+
+        self.args = args
+        super(EvalModel, self).__init__(
+            config={'model_id': model_name}, **kwargs)
+        self.model_name = model_name
+
+    def predict(self, prompt: str, **kwargs):
+        if self.args.infer_backend == 'vllm':
+            request_list = [{
+                'query': prompt,
+                'history': kwargs.get('history'),
+                'system': kwargs.get('system')
+            }]
+            resp_list = inference_vllm(self.llm_engine, self.template,
+                                       request_list)
+            response = resp_list[0]['response']
+            new_history = resp_list[0]['history']
+        else:
+            response, new_history = inference(self.model, self.template,
+                                              prompt, **kwargs)
+
+        res_d: dict = {
+            'choices': [{
+                'index': 0,
+                'message': {
+                    'content': response,
+                    'role': 'assistant'
+                }
+            }],
+            'created':
+            int(time.time()),
+            'model':
+            self.model_name,
+            'object':
+            'chat.completion',
+        }
+
+        return res_d
+
+
+def run_eval_single_model(args: EvalArguments,
+                          model_name,
+                          dataset,
+                          generation_config,
+                          model_args,
+                          record=None):
     eval_cfg = {
         'model_args': model_args,
         'generation_config': generation_config,
         'dataset_args': {},
-        'model': model_id_or_path,
+        'model': EvalModel(args, model_name),
+        'eval_type': 'custom',
         'datasets': [dataset],
         'work_dir': DEFAULT_ROOT_CACHE_DIR,
         'outputs': DEFAULT_ROOT_CACHE_DIR,
@@ -137,17 +199,43 @@ def llm_eval(args: EvalArguments) -> None:
     assert bool(args.model_id_or_path) ^ bool(args.ckpt_dir) ^ bool(args.exp_dir), \
         'Please pass either model_id_or_path or ckpt_dir or exp_dir'
     dtypes = {value: key for key, value in dtype_mapping.items()}
-    if args.exp_dir is not None:
-        outputs = []
-        for dirpath, dirnames, filenames in os.walk(args.exp_dir):
-            for file in filenames:
-                if file.endswith('.json'):
-                    outputs.append(parse_output(os.path.join(dirpath, file)))
-        run_eval_single_task()
-    elif args.model_id_or_path is not None:
-        for ds in args.eval_dataset:
-            run_eval_full_model(
-                args.model_id_or_path,
+    for ds in args.eval_dataset:
+        if args.exp_dir is not None:
+            outputs = []
+            for dirpath, dirnames, filenames in os.walk(args.exp_dir):
+                for file in filenames:
+                    if file.endswith('.json'):
+                        outputs.append(
+                            parse_output(os.path.join(dirpath, file)))
+            for output in outputs:
+                args = copy(args)
+                args.model_type = None
+                args.model_id_or_path = None
+                args.ckpt_dir = output.best_model_checkpoint
+                run_eval_single_model(
+                    args,
+                    output.name,
+                    ds,
+                    generation_config={
+                        'do_sample': args.do_sample,
+                        'top_p': args.top_p,
+                        'top_k': args.top_k,
+                        'max_new_tokens': args.max_new_tokens,
+                        'temperature': args.temperature,
+                        'num_beams': args.num_beams,
+                    },
+                    model_args={
+                        'device_map':
+                        'auto',
+                        'precision':
+                        dtypes[args.dtype]
+                        if args.dtype != 'AUTO' else dtypes['fp16'],
+                    },
+                    record=output)
+        else:
+            run_eval_single_model(
+                args,
+                args.model_type or args.model_id_or_path or args.ckpt_dir,
                 ds,
                 generation_config={
                     'do_sample': args.do_sample,
@@ -164,8 +252,6 @@ def llm_eval(args: EvalArguments) -> None:
                     dtypes[args.dtype]
                     if args.dtype != 'AUTO' else dtypes['fp16'],
                 })
-    elif args.ckpt_dir is not None:
-        run_eval_single_task()
 
 
 eval_main = get_main(EvalArguments, llm_eval)
