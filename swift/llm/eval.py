@@ -4,7 +4,7 @@ import os
 import time
 from copy import copy
 from typing import Any, Dict
-
+from dataclasses import fields
 import json
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
@@ -15,6 +15,7 @@ from swift.utils.utils import split_str_parts_by
 from . import (EvalArguments, inference, inference_vllm, merge_lora,
                prepare_model_template)
 from .utils.model import dtype_mapping
+from modelscope import GenerationConfig
 
 logger = get_logger()
 
@@ -139,7 +140,7 @@ class EvalModel(CustomModel):
 
         self.args = args
         super(EvalModel, self).__init__(
-            config={'model_id': model_name, **extra_config}, **kwargs)
+            config={'model_id': model_name, **config.__dict__}, **kwargs)
         self.model_name = model_name
 
     def predict(self, prompt: str, **kwargs):
@@ -154,8 +155,10 @@ class EvalModel(CustomModel):
             response = resp_list[0]['response']
             new_history = resp_list[0]['history']
         else:
+            ts = time.time()
             response, new_history = inference(self.model, self.template,
-                                              prompt, **kwargs)
+                                              prompt, generation_config=GenerationConfig(**kwargs['infer_cfg']))
+            print(time.time()-ts)
 
         res_d: dict = {
             'choices': [{
@@ -203,8 +206,6 @@ def run_eval_single_model(args: EvalArguments,
 
 
 def llm_eval(args: EvalArguments) -> None:
-    assert bool(args.model_id_or_path) ^ bool(args.ckpt_dir) ^ bool(args.exp_dir), \
-        'Please pass either model_id_or_path or ckpt_dir or exp_dir'
     dtypes = {value: key for key, value in dtype_mapping.items()}
     for ds in args.eval_dataset:
         if args.exp_dir is not None:
@@ -215,28 +216,30 @@ def llm_eval(args: EvalArguments) -> None:
                         outputs.append(
                             parse_output(os.path.join(dirpath, file)))
             for output in outputs:
-                args = copy(args)
-                args.model_type = None
-                args.model_id_or_path = None
-                args.ckpt_dir = output.best_model_checkpoint
+                fs = {f.name: getattr(args, f.name) for f in fields(args)}
+                fs['model_type'] = None
+                fs['model_id_or_path'] = None
+                fs['load_args_from_ckpt_dir'] = True
+                fs['ckpt_dir'] = output.best_model_checkpoint
+                copied = EvalArguments(**fs)
                 run_eval_single_model(
-                    args,
+                    copied,
                     output.name,
                     ds,
                     generation_config={
-                        'do_sample': args.do_sample,
-                        'top_p': args.top_p,
-                        'top_k': args.top_k,
-                        'max_new_tokens': args.max_new_tokens,
-                        'temperature': args.temperature,
-                        'num_beams': args.num_beams,
+                        'do_sample': copied.do_sample,
+                        'top_p': copied.top_p,
+                        'top_k': copied.top_k,
+                        'max_new_tokens': copied.max_new_tokens,
+                        'temperature': copied.temperature,
+                        'num_beams': copied.num_beams,
                     },
                     model_args={
                         'device_map':
                         'auto',
                         'precision':
-                        dtypes[args.dtype]
-                        if args.dtype != 'AUTO' else dtypes['fp16'],
+                        dtypes[copied.dtype]
+                        if copied.dtype != 'AUTO' else dtypes['fp16'],
                     },
                     record=output)
         else:
