@@ -255,8 +255,6 @@ class ModelType:
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
 
-
-
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
