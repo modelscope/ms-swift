@@ -9,6 +9,7 @@ from typing import Any, Dict
 import json
 import torch
 
+from swift.llm import ExportArguments
 from swift.utils import get_logger
 from swift.utils.torch_utils import _find_free_port
 
@@ -183,8 +184,21 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         if exp.cmd == 'export':
+            exp_args = ExportArguments(**exp.args)
+            if exp_args.quant_bits > 0:
+                if exp_args.ckpt_dir is None:
+                    path = f'{exp_args.model_type}-{exp_args.quant_method}-int{exp_args.quant_bits}'
+                else:
+                    ckpt_dir, ckpt_name = os.path.split(exp_args.ckpt_dir)
+                    path = os.path.join(
+                        ckpt_dir,
+                        f'{ckpt_name}-{exp_args.quant_method}-int{exp_args.quant_bits}'
+                    )
+            else:
+                ckpt_dir, ckpt_name = os.path.split(exp_args.ckpt_dir)
+                path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
             return {
-                'best_model_checkpoint': 
+                'best_model_checkpoint': path,
             }
         else:
             logging_dir = exp.runtime.get('logging_dir')

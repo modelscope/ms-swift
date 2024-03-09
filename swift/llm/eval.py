@@ -3,19 +3,20 @@ import dataclasses
 import os
 import time
 from copy import copy
-from typing import Any, Dict
 from dataclasses import fields
+from typing import Any, Dict
+
 import json
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
 from llmuses.run import run_task
+from modelscope import GenerationConfig
 
 from swift.utils import get_logger, get_main
 from swift.utils.utils import split_str_parts_by
 from . import (EvalArguments, inference, inference_vllm, merge_lora,
                prepare_model_template)
 from .utils.model import dtype_mapping
-from modelscope import GenerationConfig
 
 logger = get_logger()
 
@@ -90,9 +91,10 @@ def parse_output(file):
         train_dataset_info = content['dataset_info']['train_dataset']
         val_dataset_info = content['dataset_info']['val_dataset']
         # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
-        str_dict = split_str_parts_by(
-            content['model_info'],
-            ['SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'M Params (', 'M Trainable [', ']), ', 'M Buffers.'])
+        str_dict = split_str_parts_by(content['model_info'], [
+            'SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'M Params (',
+            'M Trainable [', ']), ', 'M Buffers.'
+        ])
         str_dict = {c['key']: c['content'] for c in str_dict}
         if 'SwiftModel:' in str_dict:
             num_total_parameters = float(str_dict['SwiftModel:'])
@@ -143,7 +145,10 @@ class EvalModel(CustomModel):
 
         self.args = args
         super(EvalModel, self).__init__(
-            config={'model_id': model_name, **config.__dict__}, **kwargs)
+            config={
+                'model_id': model_name,
+                **config.__dict__
+            }, **kwargs)
         self.model_name = model_name
 
     def predict(self, prompt: str, **kwargs):
@@ -159,9 +164,12 @@ class EvalModel(CustomModel):
             new_history = resp_list[0]['history']
         else:
             ts = time.time()
-            response, new_history = inference(self.model, self.template,
-                                              prompt, generation_config=GenerationConfig(**kwargs['infer_cfg']))
-            print(time.time()-ts)
+            response, new_history = inference(
+                self.model,
+                self.template,
+                prompt,
+                generation_config=GenerationConfig(**kwargs['infer_cfg']))
+            print(time.time() - ts)
 
         res_d: dict = {
             'choices': [{
