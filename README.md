@@ -64,7 +64,9 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## 🎉 News
-- 2024.03.06: Support training and inference of qwen1.5 awq series, support training and inference of [yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3).
+- 🔥2024.03.09: Support training and inference of MAMBA series, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mamba-1.4b/lora/sft.sh) to begin.
+- 2024.03.09: Support training and inference of AQLM quantized models, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama2_7b_aqlm_2bit_1x16/lora/sft.sh) to begin.
+- 2024.03.06: Support training and inference of AWQ quantized models, use [this Qwen1.5-AWQ script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh) to begin, support training and inference of [yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3).
 - 🔥2024.02.29: Support [LLaMA PRO](https://arxiv.org/pdf/2401.02415.pdf), use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/llamapro/sft.sh) to begin.
 - 🔥2024.02.29: Support [LoRA+](https://arxiv.org/pdf/2402.12354.pdf), use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/lorap/sft.sh) to begin.
 - 2024.02.25: Support `swift export` to export models for **AWQ/GPTQ** quantization and push to ModelScope Hub. For more details, please refer to the document: [LLM Quantization Document](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md).
