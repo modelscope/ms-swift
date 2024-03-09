@@ -409,6 +409,39 @@ def register_model(
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
+def get_model_tokenizer_from_repo(model_dir: str,
+                                  torch_dtype: Optional[Dtype],
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  model_config=None,
+                                  tokenizer=None,
+                                  automodel_class=AutoModelForCausalLM,
+                                  **kwargs):
+    """load from an independent repository"""
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    if torch_dtype is not None:
+        model_config.torch_dtype = torch_dtype
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_dir, trust_remote_code=True)
+    eos_token = kwargs.get('eos_token')
+    if eos_token is not None:
+        tokenizer.eos_token = eos_token
+    model = None
+    context = kwargs.get('context', nullcontext())
+    if load_model:
+        with context:
+            model = automodel_class.from_pretrained(
+                model_dir,
+                config=model_config,
+                torch_dtype=torch_dtype,
+                trust_remote_code=True,
+                **model_kwargs)
+    return model, tokenizer
+
+
 @register_model(
     ModelType.mamba_130m,
     'AI-ModelScope/mamba-130m-hf',
@@ -451,37 +484,20 @@ def register_model(
     TemplateType.default_generation,
     requires=['transformers>=4.39.0.dev0'],
     support_vllm=False)
-def get_model_tokenizer_from_repo(model_dir: str,
-                                  torch_dtype: Optional[Dtype],
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  model_config=None,
-                                  tokenizer=None,
-                                  automodel_class=AutoModelForCausalLM,
-                                  **kwargs):
-    """load from an independent repository"""
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(
-            model_dir, trust_remote_code=True)
-    if torch_dtype is not None:
-        model_config.torch_dtype = torch_dtype
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_dir, trust_remote_code=True)
-    eos_token = kwargs.get('eos_token')
-    if eos_token is not None:
-        tokenizer.eos_token = eos_token
-    model = None
-    context = kwargs.get('context', nullcontext())
-    if load_model:
-        with context:
-            model = automodel_class.from_pretrained(
-                model_dir,
-                config=model_config,
-                torch_dtype=torch_dtype,
-                trust_remote_code=True,
-                **model_kwargs)
-    return model, tokenizer
+def get_model_tokenizer_mamba(model_dir: str,
+                              torch_dtype: Optional[Dtype],
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              model_config=None,
+                              tokenizer=None,
+                              automodel_class=AutoModelForCausalLM,
+                              **kwargs):
+    logger.info(
+        '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
+        'be really slow!')
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, model_config, tokenizer,
+                                         automodel_class, **kwargs)
 
 
 @register_model(
