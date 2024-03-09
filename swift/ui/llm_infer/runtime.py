@@ -1,11 +1,14 @@
 import os.path
+import subprocess
 import time
 from datetime import datetime
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
 import psutil
+import torch
 
+from swift.llm import DeployArguments
 from swift.ui.base import BaseUI
 from swift.utils import get_logger
 
@@ -13,7 +16,6 @@ logger = get_logger()
 
 
 class Runtime(BaseUI):
-
     handlers: Dict[str, Tuple[List, Tuple]] = {}
 
     group = 'llm_infer'
@@ -78,7 +80,8 @@ class Runtime(BaseUI):
                 base_tab.element('kill_task').click(
                     Runtime.kill_task,
                     [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')],
+                    [base_tab.element('running_tasks')]
+                    + [base_tab.element('show_curl')],
                 )
 
     @staticmethod
@@ -135,42 +138,80 @@ class Runtime(BaseUI):
             return time_str
 
         return f'pid:{pid}/create:{create_time_formatted}' \
-               f'/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
+               f'/running:{format_time(ts - create_time)}/cmd:{" ".join(proc.cmdline())}'
 
     @staticmethod
     def kill_task(task):
+        if task is None:
+            return None, None
         pid = task.split('/')[0].split(':')[1]
-        print(f'kill -9 {pid}')
+        result = subprocess.run(['ps', '--ppid', f'{pid}'],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True)
+        std_out = result.stdout
+        ppid = std_out.split('\n')[1].split(' ')[0]
         os.system(f'kill -9 {pid}')
+        os.system(f'kill -9 {ppid}')
         time.sleep(1)
-        return [Runtime.refresh_tasks()]
+        torch.cuda.empty_cache()
+        return None, None
 
     @staticmethod
     def show_curl(selected_task):
-        if 'swift deploy' not in selected_task:
-            return ''
-        host = '127.0.0.1'
-        port = 8000
-        deploy_args = selected_task.split('swift deploy')[1].strip().split(' ')
-        key_list, value_list = deploy_args[0::2], deploy_args[1::2]
-        for k, v in zip(key_list, value_list):
-            if k == '--model_id_or_path':
-                model = v.split('/')[-1].lower()
-            elif k == '--host':
-                host = v
-            elif k == '--port':
-                port = v
-            elif k == '--template_type':
-                template_type = v
-        if template_type.endswith('generation'):
-            prompt = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
+
+        if selected_task is None:
+            return None
+
+        prompt = '浙江 -> 杭州 安徽 -> 合肥 四川 ->'
+        content = '晚上睡不着觉怎么办？'
+        deploy_cmd_args = selected_task.split('swift deploy')[1].strip().split(
+            ' ')
+        deploy_cmd_args_dict = {
+            k: v
+            for k, v in zip(deploy_cmd_args[0::2], deploy_cmd_args[1::2])
+        }
+
+        if '--model_id_or_path' not in deploy_cmd_args_dict.keys():
+            # ckpt_dir
+            if '--ckpt_dir' in deploy_cmd_args_dict.keys():
+                deploy_args = DeployArguments(
+                    ckpt_dir=deploy_cmd_args_dict['--ckpt_dir'])
+                model = deploy_args.model_type
+                template_type = deploy_args.template_type
+            else:
+                return None
         else:
-            prompt = '浙江的省会在哪里？'
-        curl_cmd = f'curl http://{host}:{port}/v1/completions ' \
-                   '-H ' \
-                   '"Content-Type: application/json" ' \
-                   '-d ' \
-                   "'{" \
-                   f'"model": "{model}","prompt": "{prompt}","max_tokens": 32,"temperature": 0.1,"seed": 42' \
-                   "}'"
+            if '--model_type' not in deploy_cmd_args_dict.keys():
+                model = DeployArguments(
+                    model_id_or_path=deploy_cmd_args_dict['--model_id_or_path']
+                ).model_type
+                template_type = deploy_cmd_args_dict['--template_type']
+            else:
+                # moved model path
+                model = deploy_cmd_args_dict['--model_type']
+                template_type = deploy_cmd_args_dict['--template_type']
+
+        host = deploy_cmd_args_dict.get('--host', '127.0.0.1')
+        port = deploy_cmd_args_dict.get('--port', 8000)
+        max_tokens = 32
+
+        if template_type.endswith('generation'):
+            curl_cmd = f'curl http://{host}:{port}/v1/completions ' \
+                       '-H ' \
+                       '"Content-Type: application/json" \\ \n' \
+                       '-d ' \
+                       "'{" \
+                       f'"model": "{model}","prompt": "{prompt}","max_tokens": {max_tokens},' \
+                       '"temperature": 0.1,"seed": 42' \
+                       "}'"
+        else:
+            curl_cmd = f'curl http://{host}:{port}/v1/chat/completions ' \
+                       '-H ' \
+                       '"Content-Type: application/json" \\ \n' \
+                       '-d ' \
+                       "'{" \
+                       f'"model": "{model}","messages": [{{"role": "user", "content": "{content}"}}],' \
+                       f'"max_tokens": {max_tokens},"temperature": 0' \
+                       "}'"
         return curl_cmd
