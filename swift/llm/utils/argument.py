@@ -58,8 +58,6 @@ class SftArguments:
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
     ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = 'nccl'
-    ddp_find_unused_parameters: Optional[bool] = None
-    ddp_broadcast_buffers: Optional[bool] = None
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
@@ -504,18 +502,12 @@ class SftArguments:
             logging_first_step=True,
             **kwargs)
 
-        training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
-        training_args.ddp_broadcast_buffers = self.ddp_broadcast_buffers
-        if is_dist() and training_args.ddp_find_unused_parameters is None:
+        if is_dist():
             if self.gradient_checkpointing:
                 training_args.ddp_find_unused_parameters = False
-            else:
-                training_args.ddp_find_unused_parameters = True
-
-        if is_dist() and training_args.ddp_broadcast_buffers is None:
-            if self.gradient_checkpointing:
                 training_args.ddp_broadcast_buffers = False
             else:
+                training_args.ddp_find_unused_parameters = True
                 training_args.ddp_broadcast_buffers = True
 
         self.training_args = training_args
