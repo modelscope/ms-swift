@@ -134,6 +134,9 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM Training and Inference
+If you want to learn more about best practices for fine-tuning LLM or tutorials on inference, fine-tuning, quantization, and deployment of LLM, you can refer to the [LLM series documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+
+
 ### WEB UI training and inference
 
 After installation, you can use web-ui training/inference like:
@@ -152,20 +155,6 @@ SWIFT_UI_LANG=en swift web-ui
 Here is a simple introduction of web-ui:
 
 [![Watch the video](docs/source/cources/resources/20240119160942.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4)
-
-### Simple Usage
-
-- **Self-cognition fine-tuning** for large models in **10 minutes**, creating a personalized large model, please refer to [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
-- Quickly perform **inference** on LLM and build a **Web-UI**, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
-- Rapidly **fine-tune** and perform inference on LLM, and build a Web-UI, see the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
-- Using **interface** to fine-tuning and perform inference, see the [WEB-UI Documentation](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
-- **DPO training** supported, see the [DPO Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md).
-- Export fine-tuned models, including: merge-lora, AWQ/GPTQ quantization, and push to ModelScope Hub. For more details, please refer to the [LLM Quantization Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%A8%A1%E5%9E%8B.md).
-- Utilize VLLM for **inference acceleration** and **deployment(OpenAI API)**. Please refer to [VLLM Inference Acceleration and Deployment](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md) for more information.
-- View the models and datasets supported by Swift. You can check [supported models and datasets](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
-- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md).
-- Check command-line parameters for fine-tuning and inference, see [Command-Line parameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
-- View the training time and training GPU memory comparison under different parameters, you can check [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md).
 
 
 ### Quick Start
