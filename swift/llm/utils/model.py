@@ -247,6 +247,13 @@ class ModelType:
     # cogagent
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
+    # mamba
+    mamba_130m = 'mamba-130m'
+    mamba_370m = 'mamba-370m'
+    mamba_390m = 'mamba-390m'
+    mamba_790m = 'mamba-790m'
+    mamba_1_4b = 'mamba-1.4b'
+    mamba_2_8b = 'mamba-2.8b'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -274,6 +281,7 @@ class LoRATM(NamedTuple):
     ]
     phi = ['Wqkv']
     internlm2 = ['wqkv']
+    mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -432,6 +440,64 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 trust_remote_code=True,
                 **model_kwargs)
     return model, tokenizer
+
+
+@register_model(
+    ModelType.mamba_130m,
+    'AI-ModelScope/mamba-130m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers>=4.39.0.dev0'],
+    support_vllm=False)
+@register_model(
+    ModelType.mamba_370m,
+    'AI-ModelScope/mamba-370m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers>=4.39.0.dev0'],
+    support_vllm=False)
+@register_model(
+    ModelType.mamba_390m,
+    'AI-ModelScope/mamba-390m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers>=4.39.0.dev0'],
+    support_vllm=False)
+@register_model(
+    ModelType.mamba_790m,
+    'AI-ModelScope/mamba-790m-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers>=4.39.0.dev0'],
+    support_vllm=False)
+@register_model(
+    ModelType.mamba_1_4b,
+    'AI-ModelScope/mamba-1.4b-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers>=4.39.0.dev0'],
+    support_vllm=False)
+@register_model(
+    ModelType.mamba_2_8b,
+    'AI-ModelScope/mamba-2.8b-hf',
+    LoRATM.mamba,
+    TemplateType.default_generation,
+    requires=['transformers>=4.39.0.dev0'],
+    support_vllm=False)
+def get_model_tokenizer_mamba(model_dir: str,
+                              torch_dtype: Optional[Dtype],
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              model_config=None,
+                              tokenizer=None,
+                              automodel_class=AutoModelForCausalLM,
+                              **kwargs):
+    logger.info(
+        '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
+        'be really slow!')
+    return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
+                                         load_model, model_config, tokenizer,
+                                         automodel_class, **kwargs)
 
 
 @register_model(
