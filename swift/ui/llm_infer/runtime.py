@@ -64,17 +64,17 @@ class Runtime(BaseUI):
         'running_tasks': {
             'label': {
                 'zh': '运行中部署',
-                'en': 'Running Tasks'
+                'en': 'Running deployments'
             },
             'info': {
-                'zh': '运行中的部署（所有的swift deploy命令）',
-                'en': 'All running tasks(started by swift deploy)'
+                'zh': '所有的swift deploy命令启动的任务',
+                'en': 'Started by swift deploy'
             }
         },
         'refresh_tasks': {
             'value': {
-                'zh': '刷新部署',
-                'en': 'Refresh tasks'
+                'zh': '找回部署',
+                'en': 'Find deployments'
             },
         },
         'kill_task': {
@@ -118,6 +118,8 @@ class Runtime(BaseUI):
 
     @classmethod
     def wait(cls, task):
+        if not task:
+            return [None]
         args = cls.parse_info_from_cmdline(task)
         log_file = args['log_file']
         offset = 0
