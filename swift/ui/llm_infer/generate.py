@@ -1,3 +1,4 @@
+import os
 from typing import Type
 
 import gradio as gr
@@ -46,6 +47,12 @@ class Generate(BaseUI):
                 'en': 'repetition_penalty'
             },
         },
+        'port': {
+            'label': {
+                'zh': '端口',
+                'en': 'port'
+            },
+        },
     }
 
     @classmethod
@@ -73,3 +80,5 @@ class Generate(BaseUI):
                 maximum=10,
                 step=0.05,
                 value=1.05)
+            if os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
+                gr.Textbox(elem_id='port', lines=1, value='8000')
