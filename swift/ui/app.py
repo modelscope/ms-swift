@@ -35,7 +35,7 @@ def run_ui():
             LLMInfer.build_ui(LLMInfer)
 
     port = os.environ.get('WEBUI_PORT', None)
-    app.queue().launch(
+    app.queue(concurrency_count=5).launch(
         server_name=os.environ.get('WEBUI_SERVER', None),
         server_port=port if port is None else int(port),
         height=800,
