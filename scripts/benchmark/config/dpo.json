@@ -7,6 +7,7 @@
     "args": {
         "model_type": "llama2-7b",
         "ref_model_type": "llama2-7b",
+        "template_type": "llama",
         "dataset": "hh-rlhf-cn",
         "train_dataset_sample": 200000,
         "truncation_strategy": "truncation_left",
@@ -14,7 +15,7 @@
         "num_train_epochs": 1,
         "max_length": 1024,
         "max_prompt_length": 512,
-        "check_dataset_strategy": null,
+        "check_dataset_strategy": "none",
         "gradient_checkpointing": true,
         "batch_size": 2,
         "weight_decay": 0.01,

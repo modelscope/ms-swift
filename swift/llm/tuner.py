@@ -155,7 +155,7 @@ def prepare_model(model, args: SftArguments):
                         break
 
                 assert model_type in MODEL_KEYS_MAPPING
-                mlp_key = MODEL_KEYS_MAPPING[model_type]['mlp']
+                mlp_key = MODEL_KEYS_MAPPING[model_type].mlp
                 mlp_key = mlp_key.split('.{}.')[1]
                 adapter_config = AdapterConfig(
                     dim=model.config.hidden_size,
