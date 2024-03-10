@@ -91,21 +91,13 @@ class Runtime(BaseUI):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Textbox(
-                        elem_id='running_cmd',
-                        lines=1,
-                        scale=20,
-                        interactive=False,
-                        max_lines=1)
-                    gr.Button(elem_id='show_log', scale=2, variant='primary')
-                    gr.Button(elem_id='stop_show_log', scale=2)
-                with gr.Row():
-                    gr.Textbox(elem_id='log', lines=6, visible=False)
-                with gr.Row():
                     gr.Dropdown(elem_id='running_tasks', scale=10)
                     gr.Button(elem_id='refresh_tasks', scale=1)
                     gr.Button(elem_id='kill_task', scale=1)
-
+                    gr.Button(elem_id='show_log', scale=1, variant='primary')
+                    gr.Button(elem_id='stop_show_log', scale=1)
+                with gr.Row():
+                    gr.Textbox(elem_id='log', lines=6, visible=False)
                 cls.log_event = base_tab.element('show_log').click(
                     Runtime.update_log, [],
                     [cls.element('log')]).then(

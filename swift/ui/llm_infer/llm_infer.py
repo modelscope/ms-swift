@@ -180,6 +180,14 @@ class LLMInfer(BaseUI):
                             if not isinstance(value, (Tab, Accordion))
                         ] + [cls.element('log'), model_and_template],
                         cancels=Runtime.log_event)
+                    Runtime.element('kill_task').click(
+                        Runtime.kill_task,
+                        [Runtime.element('running_tasks')],
+                        [Runtime.element('running_tasks')]
+                        + [Runtime.element('log')],
+                        cancels=[Runtime.log_event],
+                    )
+
     @classmethod
     def deploy(cls, *args):
         deploy_args = cls.get_default_value_from_dataclass(DeployArguments)
