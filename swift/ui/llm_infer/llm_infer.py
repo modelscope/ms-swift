@@ -40,8 +40,8 @@ class LLMInfer(BaseUI):
         },
         'llm_infer': {
             'label': {
-                'zh': 'LLM推理',
-                'en': 'LLM Inference',
+                'zh': 'LLM推理' if is_gradio else 'LLM部署',
+                'en': 'LLM Inference' if is_gradio else 'LLM Deployment',
             }
         },
         'load_alert': {
