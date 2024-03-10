@@ -62,6 +62,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
 
 ## 🎉 新闻
+- 🔥2024.03.10: Qwen1.5-7B-Chat与Qwen1.5-72B-Chat从微调到部署[全流程最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md).
 - 🔥2024.03.09: 支持MAMBA模型的训练和推理, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mamba-1.4b/lora/sft.sh)来开始训练！.
 - 2024.03.09: 支持AQLM量化模型的训练和推理, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama2_7b_aqlm_2bit_1x16/lora/sft.sh)开始训练！
 - 2024.03.06: 支持AWQ量化模型的训练和推理, 使用[这个Qwen1.5-AWQ模型脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh)开始训练, 并支持[yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3)的训练和推理.
@@ -134,6 +135,9 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型训练推理
+如果想要了解更多大模型微调的最佳实践, 或者对大模型进行推理, 微调, 量化, 部署的教程, 可以查看[LLM系列文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+
+
 ### WEB UI训练推理
 
 安装SWIFT之后，用如下方式启动界面训练推理：
@@ -154,20 +158,6 @@ swift web-ui
 
 
 [![Watch the video](docs/source/cources/resources/20240119160942.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4)
-
-### 简单使用
-
-- **10分钟**对大模型进行**自我认知微调**, 创建专属于自己的大模型, 可以查看[自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
-- 快速对LLM进行**推理**, 搭建**Web-UI**, 可以查看[LLM推理文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
-- 快速对LLM进行**微调**, 推理并搭建Web-UI, 可以查看[LLM微调文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
-- 使用**界面**方式进行微调和推理, 可以查看[WEB-UI文档](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
-- 支持**DPO训练**, 可以查看[DPO文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md).
-- 对微调的模型进行导出, 包括: merge-lora, AWQ/GPTQ量化, 推送ModelScope Hub, 可以查看[LLM量化文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%A8%A1%E5%9E%8B.md).
-- 使用VLLM进行**推理加速**和**部署(OpenAI API)**. 可以查看[VLLM推理加速与部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md).
-- 查看swift支持的模型和数据集. 可以查看[支持的模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
-- 对swift中的模型, 数据集, 对话模板进行**拓展**, 可以查看[自定义与拓展](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md).
-- 查询微调和推理的命令行参数, 可以查看[命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
-- 查看不同参数下的训练时间和训练显存对比, 可以查看[Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md).
 
 
 ### 快速开始

@@ -488,16 +488,12 @@ def get_model_tokenizer_mamba(model_dir: str,
                               torch_dtype: Optional[Dtype],
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
-                              model_config=None,
-                              tokenizer=None,
-                              automodel_class=AutoModelForCausalLM,
                               **kwargs):
     logger.info(
         '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
         'be really slow!')
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, tokenizer,
-                                         automodel_class, **kwargs)
+                                         load_model, **kwargs)
 
 
 @register_model(
