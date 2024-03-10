@@ -1,3 +1,4 @@
+import os
 from typing import Type
 
 import gradio as gr
@@ -40,10 +41,22 @@ class Generate(BaseUI):
                 'en': 'top_p'
             },
         },
+        'infer_backend': {
+            'label': {
+                'zh': '推理框架',
+                'en': 'Infer backend'
+            },
+        },
         'repetition_penalty': {
             'label': {
                 'zh': 'repetition_penalty',
                 'en': 'repetition_penalty'
+            },
+        },
+        'port': {
+            'label': {
+                'zh': '端口',
+                'en': 'port'
             },
         },
     }
@@ -53,6 +66,7 @@ class Generate(BaseUI):
         with gr.Row():
             gr.Textbox(elem_id='max_new_tokens', lines=1, value='2048')
             gr.Checkbox(elem_id='do_sample', value=True)
+            gr.Dropdown(elem_id='infer_backend', value='pt')
             gr.Slider(
                 elem_id='temperature',
                 minimum=0.0,
@@ -73,3 +87,5 @@ class Generate(BaseUI):
                 maximum=10,
                 step=0.05,
                 value=1.05)
+            if os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
+                gr.Textbox(elem_id='port', lines=1, value='8000')
