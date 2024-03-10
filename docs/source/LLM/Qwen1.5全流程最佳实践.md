@@ -1,7 +1,7 @@
 
 # Qwen1.5全流程最佳实践
 
-这里介绍对**Qwen1.5-7B-Chat**和对**Qwen1.5-72B-Chat**进行推理, 自我认知微调, 量化, 部署. 分别对应低配置和高配置环境.
+这里介绍对**Qwen1.5-7B-Chat**和对**Qwen1.5-72B-Chat**进行推理, 自我认知微调, 量化, 部署. 分别对应**低配置和高配置**环境.
 
 
 ## 目录
@@ -37,7 +37,7 @@ pip install openai
 
 这里我们会对Qwen1.5-7B-Chat及其**awq-int4量化**版本进行**流式**推理, 并展示使用**可视化**方式推理.
 
-使用python推理qwen1half-7b-chat:
+使用python推理`qwen1half-7b-chat`:
 ```python
 # Experimental environment: 3090
 import os
@@ -93,7 +93,7 @@ history: [('浙江的省会在哪里？', '浙江省的省会是杭州市。'), 
 """
 ```
 
-使用python推理qwen1half-7b-chat-awq, 这里我们使用**VLLM**进行推理加速:
+使用python推理`qwen1half-7b-chat-awq`, 这里我们使用**VLLM**进行推理加速:
 ```python
 # Experimental environment: 3090
 import os
@@ -451,10 +451,10 @@ response: 晚上睡不着觉可能是因为压力、焦虑、环境因素等。�
 
 
 ### 推理
-与之前7B演示不同的是, 这里我们使用CLI的方式推理:
+与之前7B演示不同的是, 这里我们使用**CLI**的方式推理:
 
 ```shell
-# Experimental environment: 2 * A100
+# Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
     --model_type qwen1half-72b-chat \
     --infer_backend vllm --tensor_parallel_size 4
@@ -476,10 +476,10 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
 
 ### 自我认知微调
 
-这里使用deepspeed-zero3进行微调:
+这里使用deepspeed-**zero3**进行微调, 大约需要**30分钟**:
 ```shell
 # Experimental environment: 4 * A100
-# 4 * 24GB GPU memory
+# 4 * 70GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
@@ -487,7 +487,7 @@ swift sft \
     --dataset ms-bench-mini \
     --train_dataset_sample 1000 \
     --logging_steps 5 \
-    --max_length 2048 \
+    --max_length 4096 \
     --learning_rate 5e-5 \
     --warmup_ratio 0.4 \
     --output_dir output \
@@ -499,10 +499,99 @@ swift sft \
 ```
 
 ### 微调后推理
-
+同样的, 这里使用CLI的方式进行推理:
+```shell
+# Experimental environment: 4 * A100
+RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
+    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --infer_backend vllm --tensor_parallel_size 4 \
+    --merge_lora true
+```
 
 ### 量化
 
-
+对微调后的模型进行awq-int4量化. 整个量化过程大概需要**2小时**.
+```shell
+# Experimental environment: A100
+# 30GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --quant_bits 4 --quant_method awq \
+    --merge_lora true
+```
 ### 部署
+经过量化后, 我们可以在**单卡A100**上进行部署.
 
+启动服务端:
+```shell
+# Experimental environment: A100
+CUDA_VISIBLE_DEVICES=0 swift deploy \
+    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --infer_backend vllm --max_model_len 8192
+```
+
+使用客户端调用:
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+messages = []
+for query in ['你是谁？', "what's your name?", '你是谁研发的？']:
+    messages.append({
+        'role': 'user',
+        'content': query
+    })
+    resp = client.chat.completions.create(
+        model=model_type,
+        messages=messages,
+        seed=42)
+    response = resp.choices[0].message.content
+    print(f'query: {query}')
+    print(f'response: {response}')
+    messages.append({'role': 'assistant', 'content': response})
+
+# 流式
+for query in ['78654+657=?', '晚上睡不着觉怎么办']:
+    messages.append({'role': 'user', 'content': query})
+    stream_resp = client.chat.completions.create(
+        model=model_type,
+        messages=messages,
+        stream=True,
+        seed=42)
+
+    print(f'query: {query}')
+    print('response: ', end='')
+    for chunk in stream_resp:
+        print(chunk.choices[0].delta.content, end='', flush=True)
+    print()
+    messages.append({'role': 'assistant', 'content': response})
+
+"""
+model_type: qwen1half-72b-chat
+query: 你是谁？
+response: 我是来自阿里云的大规模语言模型，我叫通义千问。
+query: what's your name?
+response: My name is Qwen.
+query: 你是谁研发的？
+response: 我是由阿里云自主研发的大规模预训练模型。
+query: 78654+657=?
+response: 78654 + 657 = 79311
+query: 晚上睡不着觉怎么办
+response: 如果你晚上睡不着觉，可以尝试以下几种方法：
+
+1. 放松身心：进行深呼吸、冥想或者轻松的瑜伽，帮助身心放松。
+2. 舒适的环境：确保睡眠环境安静、黑暗和适宜的温度，有助于提高睡眠质量。
+3. 避免刺激物：晚上避免摄入咖啡因和酒精，它们可能会影响睡眠。
+4. 规律作息：尽量保持固定的睡觉和起床时间，让身体形成规律的生物钟。
+5. 限制午睡：如果你白天睡得太多，可能会影响晚上的睡眠。
+6. 适当运动：定期进行适量的运动，但避免在睡前近两小时内剧烈运动。
+7. 减少电子设备使用：睡前一小时尽量不要使用手机、电脑等电子设备，因为蓝光可能会干扰你的睡眠。
+
+如果以上方法仍然无法解决问题，可能需要寻求专业医生的帮助，看看是否存在睡眠障碍或其他健康问题。
+"""
+```
