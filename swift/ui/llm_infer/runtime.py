@@ -9,13 +9,12 @@ import psutil
 from gradio import Accordion, Tab
 
 from swift.ui.base import BaseUI
-from swift.utils import (get_logger)
+from swift.utils import get_logger
 
 logger = get_logger()
 
 
 class Runtime(BaseUI):
-
     handlers: Dict[str, Tuple[List, Tuple]] = {}
 
     group = 'llm_infer'
@@ -47,7 +46,7 @@ class Runtime(BaseUI):
         },
         'stop_show_log': {
             'value': {
-                'zh': '停止展示部署状态',
+                'zh': '停止展示',
                 'en': 'Stop showing running status'
             },
         },
@@ -64,23 +63,23 @@ class Runtime(BaseUI):
         },
         'running_tasks': {
             'label': {
-                'zh': '运行中任务',
+                'zh': '运行中部署',
                 'en': 'Running Tasks'
             },
             'info': {
-                'zh': '运行中的任务（所有的swift deploy命令）',
+                'zh': '运行中的部署（所有的swift deploy命令）',
                 'en': 'All running tasks(started by swift deploy)'
             }
         },
         'refresh_tasks': {
             'value': {
-                'zh': '刷新运行时任务',
+                'zh': '刷新部署',
                 'en': 'Refresh tasks'
             },
         },
         'kill_task': {
             'value': {
-                'zh': '停止任务',
+                'zh': '杀死部署',
                 'en': 'Kill running task'
             },
         },
@@ -92,18 +91,17 @@ class Runtime(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Dropdown(elem_id='running_tasks', scale=10)
-                    gr.Button(elem_id='refresh_tasks', scale=1)
-                    gr.Button(elem_id='kill_task', scale=1)
+                    gr.Button(
+                        elem_id='refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='show_log', scale=1, variant='primary')
                     gr.Button(elem_id='stop_show_log', scale=1)
+                    gr.Button(elem_id='kill_task', scale=1)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
                 cls.log_event = base_tab.element('show_log').click(
-                    Runtime.update_log, [],
-                    [cls.element('log')]).then(
-                        Runtime.wait, [
-                            base_tab.element('running_tasks')
-                        ], [cls.element('log')])
+                    Runtime.update_log, [], [cls.element('log')]).then(
+                        Runtime.wait, [base_tab.element('running_tasks')],
+                        [cls.element('log')])
 
                 base_tab.element('stop_show_log').click(
                     lambda: None, cancels=cls.log_event)
@@ -153,6 +151,28 @@ class Runtime(BaseUI):
                     yield ['\n'.join(lines)]
         except IOError:
             pass
+
+    @staticmethod
+    def get_all_ports():
+        process_name = 'swift'
+        cmd_name = 'deploy'
+        ports = set()
+        for proc in psutil.process_iter():
+            try:
+                cmdlines = proc.cmdline()
+            except (psutil.ZombieProcess, psutil.AccessDenied,
+                    psutil.NoSuchProcess):
+                cmdlines = []
+            if any([process_name in cmdline
+                    for cmdline in cmdlines]) and any(  # noqa
+                        [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
+
+                ports.add(
+                    int(
+                        Runtime.parse_info_from_cmdline(
+                            Runtime.construct_running_task(proc)).get(
+                                'port', 8000)))
+        return ports
 
     @staticmethod
     def refresh_tasks(running_task=None):
@@ -207,7 +227,7 @@ class Runtime(BaseUI):
             return time_str
 
         return f'pid:{pid}/create:{create_time_formatted}' \
-               f'/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
+               f'/running:{format_time(ts - create_time)}/cmd:{" ".join(proc.cmdline())}'
 
     @staticmethod
     def parse_info_from_cmdline(task):
@@ -232,10 +252,6 @@ class Runtime(BaseUI):
         return [Runtime.refresh_tasks()] + [gr.update(value=None)]
 
     @staticmethod
-    def reset():
-        return None, 'output'
-
-    @staticmethod
     def task_changed(task, base_tab):
         if task:
             all_args = Runtime.parse_info_from_cmdline(task)
@@ -246,13 +262,30 @@ class Runtime(BaseUI):
             if not isinstance(value, (Tab, Accordion))
         ]
         ret = []
+        is_custom_path = 'ckpt_dir' in all_args
         for e in elements:
             if e.elem_id in all_args:
                 if isinstance(e, gr.Dropdown) and e.multiselect:
                     arg = all_args[e.elem_id].split(' ')
                 else:
-                    arg = all_args[e.elem_id]
+                    if e.elem_id == 'model_type':
+                        if is_custom_path:
+                            arg = base_tab.locale('checkpoint',
+                                                  base_tab.lang)['value']
+                        else:
+                            arg = all_args[e.elem_id]
+                    elif e.elem_id == 'model_id_or_path':
+                        if is_custom_path:
+                            arg = all_args['ckpt_dir']
+                        else:
+                            arg = all_args['model_id_or_path']
+                    else:
+                        arg = all_args[e.elem_id]
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type')]]
+        return ret + [
+            gr.update(value=None),
+            [all_args.get('model_type'),
+             all_args.get('template_type')]
+        ]
