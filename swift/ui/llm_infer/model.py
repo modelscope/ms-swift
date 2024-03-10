@@ -10,7 +10,6 @@ from swift.ui.llm_infer.generate import Generate
 
 
 class Model(BaseUI):
-
     llm_train = 'llm_infer'
 
     sub_ui = [Generate]
@@ -32,10 +31,10 @@ class Model(BaseUI):
                 'en': 'Base model supported by SWIFT'
             }
         },
-        'load_checkpoint': {
+        'deploy_checkpoint': {
             'value': {
-                'zh': '加载模型',
-                'en': 'Load model'
+                'zh': '部署模型',
+                'en': 'Deploy model'
             }
         },
         'model_id_or_path': {
@@ -67,6 +66,18 @@ class Model(BaseUI):
                 'zh': 'system字段支持在加载模型后修改',
                 'en': 'system can be modified after the model weights loaded'
             }
+        },
+        'infer_backend': {
+            'label': {
+                'zh': '推理后端',
+                'en': 'Inference backend'
+            },
+        },
+        'gpu_memory_utilization': {
+            'label': {
+                'zh': 'gpu显存使用率',
+                'en': 'Gpu memory utilization'
+            },
         },
         'more_params': {
             'label': {
@@ -108,10 +119,18 @@ class Model(BaseUI):
             model_state = gr.State({})
         with gr.Row():
             system = gr.Textbox(elem_id='system', lines=4, scale=20)
+        with gr.Row():
+            gr.Dropdown(
+                elem_id='infer_backend',
+                choices=['AUTO', 'vllm', 'pt'],
+                value='AUTO',
+                scale=20)
+            gr.Textbox(
+                elem_id='gpu_memory_utilization', value=0.9, lines=1, scale=20)
         Generate.build_ui(base_tab)
         with gr.Row():
             gr.Textbox(elem_id='more_params', lines=1, scale=20)
-            gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
+            gr.Button(elem_id='deploy_checkpoint', scale=2, variant='primary')
 
         def update_input_model(choice, model_state=None):
             if choice == base_tab.locale('checkpoint', cls.lang)['value']:
