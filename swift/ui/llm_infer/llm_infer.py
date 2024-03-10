@@ -1,13 +1,17 @@
+import asyncio
 import collections
+import datetime
 import os
 import re
 import sys
+import time
 from subprocess import PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
 import json
 import torch
+from aiofiles import open as async_open
 from gradio import Accordion, Tab
 
 from swift import snapshot_download
@@ -29,8 +33,8 @@ class LLMInfer(BaseUI):
     locale_dict = {
         'generate_alert': {
             'value': {
-                'zh': '请先加载模型',
-                'en': 'Please load model first',
+                'zh': '请先部署模型',
+                'en': 'Please deploy model first',
             }
         },
         'llm_infer': {
@@ -39,16 +43,16 @@ class LLMInfer(BaseUI):
                 'en': 'LLM Inference',
             }
         },
-        'load_alert': {
+        'deploy_alert': {
             'value': {
-                'zh': '加载模型中，请等待',
-                'en': 'Start to load model, please wait'
+                'zh': '部署模型中，请等待',
+                'en': 'Start to deploy model, please wait'
             }
         },
-        'loaded_alert': {
+        'deployed_alert': {
             'value': {
-                'zh': '模型加载完成',
-                'en': 'Model loaded'
+                'zh': '模型部署完成',
+                'en': 'Model deployed'
             }
         },
         'chatbot': {
@@ -134,7 +138,7 @@ class LLMInfer(BaseUI):
                     fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
 
                 if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-                    cls.element('load_checkpoint').click(
+                    cls.element('deploy_checkpoint').click(
                         cls.update_runtime, [],
                         [cls.element('runtime_tab'),
                          cls.element('log')]).then(
@@ -144,37 +148,45 @@ class LLMInfer(BaseUI):
                              ], [cls.element('log')],
                              queue=True)
                 else:
-                    cls.element('load_checkpoint').click(
-                        cls.reset_memory, [], [model_and_template_type]).then(
-                            cls.reset_loading_button, [],
-                            [cls.element('load_checkpoint')
-                             ]).then(cls.get_model_template_type, [
-                                 value for value in cls.elements().values()
-                                 if not isinstance(value, (Tab, Accordion))
-                             ], [model_and_template_type]).then(
-                                 cls.deploy_local, [
-                                     value
-                                     for value in cls.elements().values()
-                                     if not isinstance(value, (Tab, Accordion))
-                                 ], []).then(
-                                     cls.change_interactive, [],
-                                     [prompt]).then(  # noqa
-                                         cls.clear_session,
-                                         inputs=[],
-                                         outputs=[prompt,
-                                                  chatbot],
-                                         queue=True).then(
-                                             cls.reset_load_button, [],
-                                             [cls.element('load_checkpoint')])
+                    cls.element('deploy_checkpoint').click(
+                        cls.reset_memory, [],
+                        [model_and_template_type
+                         ]).then(cls.get_model_template_type, [
+                             value for value in cls.elements().values()
+                             if not isinstance(value, (Tab, Accordion))
+                         ], [
+                             model_and_template_type
+                         ]).then(cls.reset_deploying_button, [], [
+                             cls.element('deploy_checkpoint')
+                         ]).then(cls.deploy_local, [
+                             value for value in cls.elements().values()
+                             if not isinstance(value, (Tab, Accordion))
+                         ], []).then(cls.change_interactive, [], [
+                             prompt
+                         ]).then(  # noqa
+                             cls.clear_session,
+                             inputs=[],
+                             outputs=[prompt, chatbot
+                                      ],
+                             queue=True).then(
+                                 cls.reset_deploy_button, [],
+                                 [cls.element('deploy_checkpoint')]).then(
+                                     cls.unfold_runtime, [],
+                                     [Runtime.element('runtime_tab')]).then(
+                                         Runtime.refresh_tasks,
+                                         [Runtime.element('running_tasks')],
+                                         [Runtime.element('show_curl')]
+                                         + [Runtime.element('running_tasks')])
 
     @classmethod
-    def reset_load_button(cls):
+    def reset_deploy_button(cls):
+        time.sleep(5)
         return gr.update(
-            value=cls.locale('load_checkpoint', cls.lang)['value'])
+            value=cls.locale('deploy_checkpoint', cls.lang)['value'])
 
     @classmethod
-    def reset_loading_button(cls):
-        return gr.update(value=cls.locale('load_alert', cls.lang)['value'])
+    def reset_deploying_button(cls):
+        return gr.update(value=cls.locale('deploy_alert', cls.lang)['value'])
 
     @classmethod
     def reset_memory(cls):
@@ -294,8 +306,14 @@ class LLMInfer(BaseUI):
         cuda_param = ''
         if gpus != 'cpu':
             cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
-
-        log_file = os.path.join(os.getcwd(), 'run_deploy.log')
+        now = datetime.datetime.now()
+        time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
+        file_path = f'output/{deploy_args.model_type}-{time_str}'
+        if not os.path.exists(file_path):
+            os.mkdir(file_path)
+            time.sleep(1)
+        log_file = os.path.join(os.getcwd(), f'{file_path}/run_deploy.log')
+        deploy_args.log_file = log_file
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
@@ -313,6 +331,9 @@ class LLMInfer(BaseUI):
             lines = collections.deque(
                 maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
             logger.info(f'Run deploying: {run_command}')
+            logger.info(
+                f'logging file of web_ui_deploy will be save to : {deploy_args.log_file}'
+            )
             process = Popen(
                 run_command, shell=True, stdout=PIPE, stderr=STDOUT)
             with process.stdout:
@@ -320,21 +341,55 @@ class LLMInfer(BaseUI):
                     line = line.decode('utf-8')
                     lines.append(line)
                     yield '\n'.join(lines)
+            gr.Info(cls.locale('deployed_alert', cls.lang)['value'])
+            run_and_get_log(deploy_args.log_file, timeout=2)
 
     @classmethod
     def deploy_local(cls, *args):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         run_command, deploy_args = cls.deploy(*args)
         lines = collections.deque(
             maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-        logger.info(f'Run deploying: {run_command}')
         process = Popen(run_command, shell=True, stdout=PIPE, stderr=STDOUT)
+        time.sleep(3)
+        logger.info(f'Run deploying: {run_command}')
+        logger.info(
+            f'logging file of web_ui_deploy will be save to : {deploy_args.log_file}'
+        )
         with process.stdout:
             for line in iter(process.stdout.readline, b''):
                 line = line.decode('utf-8')
                 lines.append(line)
+                print(lines)
                 yield '\n'.join(lines)
+        gr.Info(cls.locale('deployed_alert', cls.lang)['value'])
+        run_and_get_log(deploy_args.log_file, timeout=100)
 
     @classmethod
     def get_model_template_type(cls, *args):
         run_command, deploy_args = cls.deploy(*args)
         return [deploy_args.model_type, deploy_args.template_type]
+
+    @classmethod
+    def unfold_runtime(cls):
+        return gr.update(open=True)
+
+
+async def run_and_get_log(log_file, timeout=None):
+    while True:
+        try:
+            async with async_open(log_file, mode='r') as file:
+                await asyncio.sleep(0.5)
+                end_line = file.tell()
+                file.seek(0)
+                line = await file.readline()
+                if line:
+                    logger.info('===========Web-UI-deploy Log============')
+                    logger.info(line)
+                    file.seek(end_line)
+        except asyncio.TimeoutError:
+            break
+        else:
+            if not line:
+                break
