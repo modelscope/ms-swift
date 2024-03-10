@@ -222,7 +222,7 @@ app_ui_main(infer_args)
     - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) 系列: qwen-audio, qwen-audio-chat.
     - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
     - [cogagent](https://github.com/THUDM/CogVLM) 系列: cogagent-18b-chat, cogagent-18b-instruct.
-    - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b-chat.
+    - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b, internlm-xcomposer2-7b-chat.
   - 通用:
     - [qwen](https://github.com/QwenLM/Qwen) 系列:
       - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.

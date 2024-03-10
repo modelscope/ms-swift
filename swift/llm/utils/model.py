@@ -147,6 +147,7 @@ class ModelType:
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # internlm-xcomposer2
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    internlm_xcomposer2_7b = 'internlm-xcomposer2-7b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -1621,7 +1622,14 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
-
+@register_model(
+    ModelType.internlm_xcomposer2_7b,
+    'Shanghai_AI_Laboratory/internlm-xcomposer2-vl-7b',
+    LoRATM.internlm2,
+    TemplateType.internlm_xcomposer2,
+    eos_token='[UNUSED_TOKEN_145]',
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
