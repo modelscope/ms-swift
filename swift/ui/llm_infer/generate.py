@@ -41,6 +41,12 @@ class Generate(BaseUI):
                 'en': 'top_p'
             },
         },
+        'infer_backend': {
+            'label': {
+                'zh': '推理框架',
+                'en': 'Infer backend'
+            },
+        },
         'repetition_penalty': {
             'label': {
                 'zh': 'repetition_penalty',
@@ -60,6 +66,7 @@ class Generate(BaseUI):
         with gr.Row():
             gr.Textbox(elem_id='max_new_tokens', lines=1, value='2048')
             gr.Checkbox(elem_id='do_sample', value=True)
+            gr.Dropdown(elem_id='infer_backend', value='pt')
             gr.Slider(
                 elem_id='temperature',
                 minimum=0.0,

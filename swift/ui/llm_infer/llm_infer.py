@@ -4,7 +4,7 @@ import re
 import sys
 from datetime import datetime
 from typing import Type
-
+from functools import partial
 import gradio as gr
 import torch
 from gradio import Accordion, Tab
@@ -111,7 +111,7 @@ class LLMInfer(BaseUI):
                 chatbot = gr.Chatbot(
                     elem_id='chatbot', elem_classes='control-height')
                 prompt = gr.Textbox(
-                    elem_id='prompt', lines=1, interactive=False)
+                    elem_id='prompt', lines=1, interactive=True)
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -123,8 +123,8 @@ class LLMInfer(BaseUI):
                         inputs=[
                             model_and_template,
                             cls.element('template_type'), prompt, chatbot,
-                            cls.element('max_new_tokens'),
                             cls.element('system'),
+                            cls.element('max_new_tokens'),
                             cls.element('temperature'),
                             cls.element('top_k'),
                             cls.element('top_p'),
@@ -159,8 +159,8 @@ class LLMInfer(BaseUI):
                             cls.element('running_tasks'),
                             model_and_template,
                             cls.element('template_type'), prompt, chatbot,
-                            cls.element('max_new_tokens'),
                             cls.element('system'),
+                            cls.element('max_new_tokens'),
                             cls.element('temperature'),
                             cls.element('top_k'),
                             cls.element('top_p'),
@@ -171,6 +171,15 @@ class LLMInfer(BaseUI):
 
                     clear_history.click(
                         fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
+
+                    base_tab.element('running_tasks').change(
+                        partial(Runtime.task_changed, base_tab=base_tab),
+                        [base_tab.element('running_tasks')],
+                        [
+                            value for value in base_tab.elements().values()
+                            if not isinstance(value, (Tab, Accordion))
+                        ] + [cls.element('log'), model_and_template],
+                        cancels=Runtime.log_event)
     @classmethod
     def deploy(cls, *args):
         deploy_args = cls.get_default_value_from_dataclass(DeployArguments)
@@ -209,10 +218,10 @@ class LLMInfer(BaseUI):
             if not os.path.exists(model_dir):
                 model_dir = snapshot_download(model_dir)
             kwargs['ckpt_dir'] = model_dir
-        if 'ckpt_dir' in kwargs or (
-                'model_id_or_path' in kwargs
-                and not os.path.exists(kwargs['model_id_or_path'])):
-            kwargs.pop('model_type', None)
+        # if 'ckpt_dir' in kwargs or (
+        #         'model_id_or_path' in kwargs
+        #         and not os.path.exists(kwargs['model_id_or_path'])):
+        #     kwargs.pop('model_type', None)
         deploy_args = DeployArguments(
             **{
                 key: value.split(' ')
@@ -225,6 +234,8 @@ class LLMInfer(BaseUI):
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
+        if 'port' not in kwargs:
+            params += f'--port "{deploy_args.port}" '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -241,7 +252,6 @@ class LLMInfer(BaseUI):
         deploy_args.log_file = log_file
         params += f'--log_file "{log_file}" '
         params += f'--ignore_args_error true '
-        params += f'--port {other_kwargs["port"]} '
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '

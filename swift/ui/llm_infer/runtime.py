@@ -234,8 +234,8 @@ class Runtime(BaseUI):
     @staticmethod
     def kill_task(task):
         all_args = Runtime.parse_info_from_cmdline(task)
-        output_dir = all_args['output_dir']
-        os.system(f'pkill -9 -f {output_dir}')
+        log_file = all_args['log_file']
+        os.system(f'pkill -9 -f {log_file}')
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)]
 
@@ -263,4 +263,4 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        return ret + [gr.update(value=None)]
+        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type')]]
