@@ -37,6 +37,7 @@ from swift.hub.check_model import check_local_model_is_latest
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, create_ms_repo, get_logger
 from swift.utils.constants import Invoke
+from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import (can_return_loss, find_labels, get_function,
                     is_instance_of_ms_model)
 
@@ -588,6 +589,19 @@ class SwiftMixin:
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        if hasattr(self.args, 'galore_config'):
+            optimizer, lr_scheduler = create_optimizer_and_scheduler(self.model, self.args,
+                                                                     self.args.galore_config,
+                                                                     num_training_steps,
+                                                                     lr=self.args.learning_rate,
+                                                                     weight_decay=self.args.weight_decay)
+            self.optimizer = optimizer
+            self.lr_scheduler = lr_scheduler
+        else:
+            self.create_optimizer()
+            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
+
     def create_optimizer(self):
         opt_model = self.model
 
@@ -600,40 +614,7 @@ class SwiftMixin:
                 return super().create_optimizer()
 
             decay_parameters = self.get_decay_parameter_names(opt_model)
-            all_param_names = set()
-            param_groups = []
-            if hasattr(self.args, 'galore_config'):
-                # Galore parameter groups
-                from swift.trainers.optimizers.galore import create_optimizer_group_galore
-                param_names, param_group = create_optimizer_group_galore(
-                    self.model,
-                    self.args.galore_config,
-                    lr=self.args.learning_rate,
-                    weight_decay=self.args.weight_decay)
-                all_param_names.update(param_names)
-                param_groups.append(param_group)
-                param_groups.extend([
-                    {
-                        'params': [
-                            p for n, p in self.model.named_parameters()
-                            if (n in decay_parameters and n not in
-                                all_param_names and p.requires_grad)
-                        ],
-                        'weight_decay':
-                        self.args.weight_decay,
-                    },
-                    {
-                        'params': [
-                            p for n, p in self.model.named_parameters()
-                            if (n not in decay_parameters and n not in
-                                all_param_names and p.requires_grad)
-                        ],
-                        'weight_decay':
-                        0.0,
-                    },
-                ])
-                optimizer_grouped_parameters = param_groups
-            elif isinstance(self.model, SwiftModel):
+            if isinstance(self.model, SwiftModel):
                 # Lora+ parameter groups (or a default one)
                 optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
                     lr=self.args.learning_rate,
@@ -659,33 +640,8 @@ class SwiftMixin:
                     },
                 ]
 
-            if hasattr(self.args, 'galore_config'):
-                from swift.trainers.optimizers.galore import get_optimizer_cls_and_kwargs_galore
-                optimizer_cls, optimizer_kwargs = get_optimizer_cls_and_kwargs_galore(
-                    self.args)
-            else:
-                optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-                    self.args)
-
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+                self.args)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters,
                                            **optimizer_kwargs)
-            if optimizer_cls.__name__ == 'Adam8bit':
-                import bitsandbytes
-
-                manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
-
-                skipped = 0
-                for module in opt_model.modules():
-                    if isinstance(module, nn.Embedding):
-                        skipped += sum({
-                            p.data_ptr(): p.numel()
-                            for p in module.parameters()
-                        }.values())
-                        logger.info(
-                            f'skipped {module}: {skipped/2**20}M params')
-                        manager.register_module_override(
-                            module, 'weight', {'optim_bits': 32})
-                        logger.debug(
-                            f'bitsandbytes: will optimize {module} in fp32')
-                logger.info(f'skipped: {skipped/2**20}M params')
         return self.optimizer

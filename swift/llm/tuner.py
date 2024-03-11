@@ -191,7 +191,7 @@ def prepare_model(model, args: SftArguments):
             update_proj_gap=args.galore_update_proj_gap,
             galore_scale=args.galore_scale,
             proj_type=args.galore_proj_type,
-            embedding=args.apply_galore_to_embedding,
+            optim_per_parameter=args.galore_optim_per_parameter,
         )
 
     class TrainerAdapterCallback(TrainerCallback):

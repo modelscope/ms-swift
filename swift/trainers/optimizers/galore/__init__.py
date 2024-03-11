@@ -5,15 +5,14 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .utils import create_optimizer_group_galore, get_optimizer_cls_and_kwargs_galore, GaLoreConfig
+    from .utils import create_optimizer_and_scheduler, GaLoreConfig
     from .adafactor import GaLoreAdafactor
     from .adamw8bit import GaLoreAdamW8bit
     from .adamw import GaLoreAdamW
 else:
     _import_structure = {
         'utils': [
-            'GaLoreConfig', 'create_optimizer_group_galore',
-            'get_optimizer_cls_and_kwargs_galore'
+            'GaLoreConfig', 'create_optimizer_and_scheduler'
         ],
         'adafactor': ['GaLoreAdafactor'],
         'adamw8bit': ['GaLoreAdamW8bit'],
