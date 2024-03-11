@@ -9,7 +9,7 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-
+from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
@@ -127,12 +127,21 @@ def merge_lora(args: InferArguments,
 
 def prepare_model_template(
         args: InferArguments,
-        device_map: str = 'auto') -> Tuple[PreTrainedModel, Template]:
-    logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map: Optional[str] = None) -> Tuple[PreTrainedModel, Template]:
+    
     seed_everything(args.seed)
 
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
+    model_kwargs['device_map'] = device_map
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
