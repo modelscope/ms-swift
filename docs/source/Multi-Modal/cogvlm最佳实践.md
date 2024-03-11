@@ -41,7 +41,6 @@ The calculation result is '1452+45304=146544'.
 --------------------------------------------------
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
 In a realm where night and day intertwine,
 A boat floats gently, on water so fine.
 Glowing orbs dance, in the starry sky,
