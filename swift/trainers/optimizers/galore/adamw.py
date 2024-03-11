@@ -9,7 +9,7 @@ from torch import nn
 from torch.optim import Optimizer
 from transformers.utils.versions import require_version
 
-from swift.trainers.optimizers.galore.galore_projector import GaLoreProjector
+from .galore_projector import GaLoreProjector
 
 
 class AdamW(Optimizer):

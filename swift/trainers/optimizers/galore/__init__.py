@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from .adamw import GaLoreAdamW
 else:
     _import_structure = {
-        'galore': [
+        'utils': [
             'GaLoreConfig', 'create_optimizer_group_galore',
             'get_optimizer_cls_and_kwargs_galore'
         ],
