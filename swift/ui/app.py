@@ -1,6 +1,7 @@
 import os
 
 import gradio as gr
+from packaging import version
 
 from swift.ui.base import all_langs
 from swift.ui.llm_infer.llm_infer import LLMInfer
@@ -35,7 +36,10 @@ def run_ui():
             LLMInfer.build_ui(LLMInfer)
 
     port = os.environ.get('WEBUI_PORT', None)
-    app.queue(concurrency_count=5).launch(
+    concurrent = {}
+    if version.parse(gr.__version__) < version.parse('4.0.0'):
+        concurrent = {'concurrency_count': 5}
+    app.queue(**concurrent).launch(
         server_name=os.environ.get('WEBUI_SERVER', None),
         server_port=port if port is None else int(port),
         height=800,
