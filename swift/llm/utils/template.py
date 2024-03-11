@@ -47,6 +47,7 @@ class TemplateType:
     deepseek_coder = 'deepseek-coder'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
+    cogvlm_instruct = 'cogvlm-instruct'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
@@ -896,7 +897,7 @@ register_template(
              ['</s>'], ['</s>']))
 
 
-class CogAgentTemplate(Template):
+class CogTemplate(Template):
 
     def encode(
             self, example: Dict[str,
@@ -924,8 +925,10 @@ class CogAgentTemplate(Template):
                                              ] * image_token_len + labels[1:]
         dtype = model.dtype
         inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
-        inputs['cross_images'] = [[cross_img.to(dtype=dtype)]
-                                  for cross_img in inputs2['cross_images']]
+        if 'cross_images' in inputs2:
+            # is cogagent
+            inputs['cross_images'] = [[cross_img.to(dtype=dtype)]
+                                      for cross_img in inputs2['cross_images']]
         inputs['token_type_ids'] = token_type_ids + [0] * (
             len(inputs['input_ids']) - len(token_type_ids))
         return inputs, {}
@@ -934,7 +937,9 @@ class CogAgentTemplate(Template):
                       batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        for key in ['images', 'cross_images']:
+        is_cogagent = 'cross_images' in batch[0]
+        keys = ['images', 'cross_images'] if is_cogagent else ['images']
+        for key in keys:
             res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
         token_type_ids = pad_sequence(
@@ -945,15 +950,21 @@ class CogAgentTemplate(Template):
 
 register_template(
     TemplateType.cogagent_chat,
-    CogAgentTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
+    CogTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
 
 register_template(
     TemplateType.cogagent_instruct,
-    CogAgentTemplate(['<s>'], ['<EOI>Question: {{QUERY}} Answer:'], None,
-                     ['</s>']),
+    CogTemplate(['<s>'], ['<EOI>Question: {{QUERY}} Answer:'], None, ['</s>']),
+    use_model=True,
+    infer_media_type='dialogue',
+    lazy_tokenize=True)
+
+register_template(
+    TemplateType.cogvlm_instruct,
+    CogTemplate(['<s>'], ['Question: {{QUERY}} Answer:'], None, ['</s>']),
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
