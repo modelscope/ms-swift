@@ -118,6 +118,7 @@ class SftArguments:
     use_dora: bool = False
 
     # galore
+    use_galore: bool = False
     galore_rank: int = 128
     galore_update_proj_gap: int = 50
     galore_scale: float = 1.0

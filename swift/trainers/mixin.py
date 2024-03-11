@@ -600,7 +600,39 @@ class SwiftMixin:
                 return super().create_optimizer()
             else:
                 decay_parameters = self.get_decay_parameter_names(opt_model)
-            if isinstance(self.model, SwiftModel):
+            
+            all_param_names = set()
+            param_groups = []
+            if hasattr(self.args, 'galore_config'):
+                from swift.trainers.optimizers.galore import create_optimizer_group_galore
+                param_names, param_group = create_optimizer_group_galore(
+                    self.model, self.args.galore_config, lr=self.args.learning_rate,
+                    weight_decay=self.args.weight_decay)
+                all_param_names.update(param_names)
+                param_groups.append(param_group)
+                decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
+                param_groups.extend([
+                    {
+                        'params': [
+                            p for n, p in self.model.named_parameters()
+                            if (n in decay_parameters and n not in all_param_names
+                                and p.requires_grad)
+                        ],
+                        'weight_decay':
+                        self.args.weight_decay,
+                    },
+                    {
+                        'params': [
+                            p for n, p in self.model.named_parameters()
+                            if (n not in decay_parameters and n not in all_param_names
+                                and p.requires_grad)
+                        ],
+                        'weight_decay':
+                        0.0,
+                    },
+                ])
+                optimizer_grouped_parameters = param_groups
+            elif isinstance(self.model, SwiftModel):
                 optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
                     lr=self.args.learning_rate,
                     weight_decay=self.args.weight_decay)
@@ -624,7 +656,7 @@ class SwiftMixin:
                     },
                 ]
 
-            if 'galore' in self.args.optim.lower():
+            if hasattr(self.args, 'galore_config'):
                 from swift.trainers.optimizers.galore import get_optimizer_cls_and_kwargs_galore
                 optimizer_cls, optimizer_kwargs = get_optimizer_cls_and_kwargs_galore(
                     self.args)

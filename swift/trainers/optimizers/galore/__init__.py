@@ -59,8 +59,8 @@ def create_optimizer_group_galore(model, config: GaloreConfig, **defaults):
         print('enable GaLore for weights in module: ', module_name)
         galore_params.append(module.weight)
         names.add(module_name + '.weight')
-    param_groups = [{'params': galore_params, 'rank': config.rank, 'update_proj_gap': config.update_proj_gap,
-                     'scale': config.galore_scale, 'proj_type': config.proj_type, **defaults}]
+    param_groups = {'params': galore_params, 'rank': config.rank, 'update_proj_gap': config.update_proj_gap,
+                     'scale': config.galore_scale, 'proj_type': config.proj_type, **defaults}
     return names, param_groups
 
 
@@ -78,15 +78,15 @@ def get_optimizer_cls_and_kwargs_galore(args: TrainingArguments) -> Tuple[Any, A
         "betas": (args.adam_beta1, args.adam_beta2),
         "eps": args.adam_epsilon,
     }
-    if args.optim == 'galore_adafactor':
+    if 'adafactor' in args.optim:
         from swift.trainers.optimizers.galore.adafactor import Adafactor as GaLoreAdafactor
         optimizer_cls = GaLoreAdafactor
         optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
-    elif args.optim == 'galore_adamw':
+    elif 'adamw' in args.optim:
         from swift.trainers.optimizers.galore.adamw import AdamW as GaLoreAdamW
         optimizer_cls = GaLoreAdamW
         optimizer_kwargs.update(adam_kwargs)
-    elif args.optim == 'galore_adamw8bit':
+    elif 'adamw8bit' in args.optim:
         try:
             from swift.trainers.optimizers.galore.adamw8bit import AdamW8bit as GaLoreAdamW8bit
             optimizer_cls = GaLoreAdamW8bit

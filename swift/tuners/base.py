@@ -263,13 +263,6 @@ class SwiftModel(nn.Module):
     def create_optimizer_param_groups(self, **defaults):
         all_param_names = set()
         param_groups = []
-        if 'galore' in self.args.optim.lower():
-            from swift.trainers.optimizers.galore import create_optimizer_group_galore
-            param_names, param_group = create_optimizer_group_galore(
-                self.model, self.args.galore_config, **defaults)
-            all_param_names.update(param_names)
-            param_groups.append(param_group)
-
         for output in self.adapters.values():
             if output.optimizer_group_callback:
                 param_names, param_group = output.optimizer_group_callback(
