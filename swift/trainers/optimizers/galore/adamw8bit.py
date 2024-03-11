@@ -110,3 +110,6 @@ class AdamW8bit(Optimizer2State):
             torch.cuda.synchronize()
 
         return loss
+
+
+GaLoreAdamW8bit = AdamW8bit

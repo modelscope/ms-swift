@@ -604,7 +604,7 @@ class SwiftMixin:
             param_groups = []
             if hasattr(self.args, 'galore_config'):
                 # Galore parameter groups
-                from swift.trainers.optimizers import create_optimizer_group_galore
+                from swift.trainers.optimizers.galore import create_optimizer_group_galore
                 param_names, param_group = create_optimizer_group_galore(
                     self.model,
                     self.args.galore_config,

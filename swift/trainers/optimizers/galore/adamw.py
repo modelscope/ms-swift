@@ -158,3 +158,6 @@ class AdamW(Optimizer):
                     p.add_(p, alpha=(-group['lr'] * group['weight_decay']))
 
         return loss
+
+
+GaLoreAdamW = AdamW
