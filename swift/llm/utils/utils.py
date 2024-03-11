@@ -36,9 +36,9 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
-from ...tuners.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()

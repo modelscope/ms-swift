@@ -7,7 +7,7 @@ swift sft \
     --use_galore true \
     --galore_update_proj_gap 400 \
     --train_dataset_sample -1 \
-    --eval_steps 100 \
+    --eval_steps 1000 \
     --output_dir output \
     --num_train_epochs 1 \
     --max_length 4096 \
