@@ -187,6 +187,7 @@ def prepare_model(model, args: SftArguments):
                 break
         args.training_args.galore_config = GaLoreConfig(
             model_type=model_type,
+            target_modules=args.galore_target_modules,
             rank=args.galore_rank,
             update_proj_gap=args.galore_update_proj_gap,
             galore_scale=args.galore_scale,
