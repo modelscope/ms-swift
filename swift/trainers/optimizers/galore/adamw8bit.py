@@ -2,7 +2,7 @@
 import torch
 from bitsandbytes.optim.optimizer import Optimizer2State
 
-from .galore_projector import GaLoreProjector
+from swift.trainers.optimizers.galore.galore_projector import GaLoreProjector
 
 
 class AdamW8bit(Optimizer2State):

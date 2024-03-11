@@ -625,8 +625,8 @@ class SwiftMixin:
                 ]
 
             if 'galore' in self.args.optim.lower():
-                from swift.tuners.galore.galore import Galore
-                optimizer_cls, optimizer_kwargs = Galore.get_optimizer_cls_and_kwargs_galore(
+                from swift.trainers.optimizers.galore import get_optimizer_cls_and_kwargs_galore
+                optimizer_cls, optimizer_kwargs = get_optimizer_cls_and_kwargs_galore(
                     self.args)
             else:
                 optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(

@@ -176,6 +176,22 @@ def prepare_model(model, args: SftArguments):
         model = Swift.prepare_model(model, {'neftune': neftune_config})
         logger.info(f'neftune_config: {neftune_config}')
 
+    if 'galore' in args.optim.lower():
+        from swift.trainers.optimizers.galore import GaloreConfig
+        model_type = args.model_type or args.model_id_or_path
+        for key in MODEL_KEYS_MAPPING.keys():
+            if key in model_type.lower():
+                model_type = key
+                break
+        args.training_args = GaloreConfig(
+            model_type=model_type,
+            rank=args.galore_rank,
+            update_proj_gap=args.galore_update_proj_gap,
+            galore_scale=args.galore_scale,
+            proj_type=args.galore_proj_type,
+            embedding=args.apply_galore_to_embedding,
+        )
+
     class TrainerAdapterCallback(TrainerCallback):
 
         def __init__(self):
