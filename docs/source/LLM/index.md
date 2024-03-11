@@ -9,11 +9,11 @@
 
 ### Multi-Modal最佳实践系列
 
-1. [Qwen-VL最佳实践](#../Multi-Modal/qwen-vl最佳实践)
-2. [Qwen-Audio最佳实践](#../Multi-Modal/qwen-auidio最佳实践)
-3. [Yi-VL最佳实践.md](#../Multi-Modal/yi-vl最佳实践)
-4. [CogVLM最佳实践](#../Multi-Modal/cogvlm最佳实践.md)
-5. [Internlm2-Xcomposers最佳实践](#../Multi-Modal/internlm2-xcomposer2最佳实践)
+1. [Qwen-VL最佳实践](../Multi-Modal/qwen-vl最佳实践)
+2. [Qwen-Audio最佳实践](../Multi-Modal/qwen-auidio最佳实践)
+3. [Internlm2-Xcomposers最佳实践](../Multi-Modal/internlm-xcomposer2最佳实践)
+4. [Yi-VL最佳实践.md](../Multi-Modal/yi-vl最佳实践)
+5. [CogVLM最佳实践](../Multi-Modal/cogvlm最佳实践.md)
 
 
 ### 教程
