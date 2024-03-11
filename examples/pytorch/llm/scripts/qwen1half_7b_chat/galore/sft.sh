@@ -5,6 +5,7 @@ swift sft \
     --model_type qwen1half-7b-chat \
     --sft_type full \
     --use_galore true \
+    --galore_update_proj_gap 400 \
     --train_dataset_sample -1 \
     --eval_steps 100 \
     --output_dir output \
