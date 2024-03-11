@@ -34,9 +34,9 @@
 - [Contact Us](#-contact-us)
 
 ## 📝 Introduction
-SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
+SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framework designed to facilitate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
 
-Currently supported approches (and counting):
+Currently supported approaches (and counting):
 
 1. 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)
@@ -54,8 +54,8 @@ Currently supported approches (and counting):
 
 Key features:
 
-1. By integrating the ModelScope library, models can be readily obatined via a model-id.
-2. Tuners provided by SWIFT can be combined together to allow exploration of multiple tuners on a model for best result.
+1. By integrating the ModelScope library, models can be readily obtained via a model-id.
+2. Tuners provided by SWIFT can be combined to allow exploration of multiple tuners on a model for best result.
 3. Support calling `activate_adapter` or `deactivate_adapter` or `set_active_adapters`  to activate/deactivate tuners. User can inference with one model and multiple tuners in different threads independently.
 4. Support training and inference with scripts/CLI，meanwhile support inference with Web-UI.
 5. Support model deployment(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/部署指南.md) for details.
