@@ -120,7 +120,7 @@ class SftArguments:
     # galore
     use_galore: bool = False
     galore_rank: int = 128
-    galore_target_modules: Optional[str, List[str]] = None
+    galore_target_modules: Union[str, List[str]] = None
     galore_update_proj_gap: int = 50
     galore_scale: float = 1.0
     galore_proj_type: str = 'std'
