@@ -6,7 +6,7 @@ matplotlib
 modelscope>=1.9.3
 nltk
 numpy
-optimum
+optimum>=1.17.0
 pandas
 peft>=0.9.0,<0.10.0
 requests

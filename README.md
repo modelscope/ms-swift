@@ -34,9 +34,9 @@
 - [Contact Us](#-contact-us)
 
 ## 📝 Introduction
-SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framwork designed to faciliate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
+SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framework designed to facilitate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
 
-Currently supported approches (and counting):
+Currently supported approaches (and counting):
 
 1. 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)
@@ -54,8 +54,8 @@ Currently supported approches (and counting):
 
 Key features:
 
-1. By integrating the ModelScope library, models can be readily obatined via a model-id.
-2. Tuners provided by SWIFT can be combined together to allow exploration of multiple tuners on a model for best result.
+1. By integrating the ModelScope library, models can be readily obtained via a model-id.
+2. Tuners provided by SWIFT can be combined to allow exploration of multiple tuners on a model for best result.
 3. Support calling `activate_adapter` or `deactivate_adapter` or `set_active_adapters`  to activate/deactivate tuners. User can inference with one model and multiple tuners in different threads independently.
 4. Support training and inference with scripts/CLI，meanwhile support inference with Web-UI.
 5. Support model deployment(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/部署指南.md) for details.
@@ -65,6 +65,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 ## 🎉 News
 - 🔥2024.03.11: Support [GaLore](https://arxiv.org/abs/2403.03507), which can efficiently reduce the memory usage(almost half of the original memory) when training the full model.
+- 🔥2024.03.10: For the end-to-end best practice of fine-tuning to deployment of Qwen1.5-7B-Chat and Qwen1.5-72B-Chat, you can refer to the [Qwen1.5 Full Workflow Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md).
 - 🔥2024.03.09: Support training and inference of MAMBA series, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mamba-1.4b/lora/sft.sh) to begin.
 - 2024.03.09: Support training and inference of AQLM quantized models, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama2_7b_aqlm_2bit_1x16/lora/sft.sh) to begin.
 - 2024.03.06: Support training and inference of AWQ quantized models, use [this Qwen1.5-AWQ script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh) to begin, support training and inference of [yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3).
@@ -107,7 +108,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 2023.12.08: Support [sus-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/sus_34b_chat), support yi-6b-200k, yi-34b-200k.
 - 2023.12.07: Support [Multi-Node DDP training](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md#%E4%BD%BF%E7%94%A8cli).
 - 2023.12.04: Supported models: zephyr-7b-beta-chat, openbuddy-zephyr-7b-chat. Supported datasets: hc3-zh, hc3-en.
-- 🔥 2023.12.02: [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), **10 minutes for self-cognition fine-tuning for LLM**, creating a LLM that is specific to oneself.
+- 🔥 2023.12.02: [Best Practice for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), **10 minutes for self-cognition fine-tuning for LLM**, creating a LLM that is specific to oneself.
 - 🔥 2023.11.30: Support for training and inference of the **qwen-1_8b**, **qwen-72b**, and **qwen-audio** model series. The corresponding shell scripts can be viewed at [qwen_1_8b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_1_8b_chat), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat), [qwen_audio_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_audio_chat).
 - 🔥 2023.11.29: Support the training and inference for **AnimateDiff**
 - 🔥 2023.11.24: Support for **yi-34b-chat**, **codefuse-codellama-34b-chat**: The corresponding shell script can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
@@ -137,6 +138,9 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM Training and Inference
+If you want to learn more about best practices for fine-tuning LLM or tutorials on inference, fine-tuning, quantization, and deployment of LLM, you can refer to the [LLM series documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+
+
 ### WEB UI training and inference
 
 After installation, you can use web-ui training/inference like:
@@ -155,20 +159,6 @@ SWIFT_UI_LANG=en swift web-ui
 Here is a simple introduction of web-ui:
 
 [![Watch the video](docs/source/cources/resources/20240119160942.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4)
-
-### Simple Usage
-
-- **Self-cognition fine-tuning** for large models in **10 minutes**, creating a personalized large model, please refer to [Best Practices for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md).
-- Quickly perform **inference** on LLM and build a **Web-UI**, see the [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM推理文档.md).
-- Rapidly **fine-tune** and perform inference on LLM, and build a Web-UI, see the [LLM Fine-tuning Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM微调文档.md).
-- Using **interface** to fine-tuning and perform inference, see the [WEB-UI Documentation](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
-- **DPO training** supported, see the [DPO Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md).
-- Export fine-tuned models, including: merge-lora, AWQ/GPTQ quantization, and push to ModelScope Hub. For more details, please refer to the [LLM Quantization Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%A8%A1%E5%9E%8B.md).
-- Utilize VLLM for **inference acceleration** and **deployment(OpenAI API)**. Please refer to [VLLM Inference Acceleration and Deployment](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md) for more information.
-- View the models and datasets supported by Swift. You can check [supported models and datasets](https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md).
-- Expand and customize models, datasets, and dialogue templates in Swift, see [Customization and Expansion](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md).
-- Check command-line parameters for fine-tuning and inference, see [Command-Line parameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
-- View the training time and training GPU memory comparison under different parameters, you can check [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md).
 
 
 ### Quick Start
@@ -232,7 +222,7 @@ You can refer to the following scripts to customize your own training script.
     - [qwen-vl](https://github.com/QwenLM/Qwen-VL) series: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
     - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) series: qwen-audio, qwen-audio-chat.
     - [yi-vl](https://github.com/01-ai/Yi) series: yi-vl-6b-chat, yi-vl-34b-chat.
-    - [cogagent](https://github.com/THUDM/CogVLM) series: cogagent-18b-chat, cogagent-18b-instruct.
+    - [cogagent](https://github.com/THUDM/CogVLM) series: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
     - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) series: internlm-xcomposer2-7b-chat.
   - General:
     - [qwen](https://github.com/QwenLM/Qwen) series:
@@ -298,7 +288,7 @@ You can refer to the following scripts to customize your own training script.
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
-  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogagent-chat, cogagent-instruct, orion, openbmb, gemma, chatml.
+  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, openbmb, gemma, chatml.
 
 
 ## 🔥SCEdit

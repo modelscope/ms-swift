@@ -11,6 +11,9 @@ import torch
 import torch.distributed as dist
 from datasets import concatenate_datasets
 from torch import dtype as Dtype
+from transformers.utils import (is_torch_bf16_gpu_available,
+                                is_torch_cuda_available,
+                                is_torch_npu_available)
 from transformers.utils.versions import require_version
 
 from swift import get_logger
@@ -826,7 +829,8 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 def select_dtype(
     args: Union[SftArguments, InferArguments]
 ) -> Tuple[Optional[Dtype], bool, bool]:
-    if not torch.cuda.is_available():
+    if not is_torch_cuda_available() and not is_torch_npu_available():
+        # cpu
         if args.dtype == 'AUTO':
             args.dtype = 'fp32'
             logger.info(f'Setting args.dtype: {args.dtype}')
@@ -837,8 +841,8 @@ def select_dtype(
             return torch.bfloat16, False, True
         else:
             raise ValueError(f'args.dtype: {args.dtype}')
-
-    if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
+    # cuda, npu
+    if args.dtype == 'AUTO' and not is_torch_bf16_gpu_available():
         args.dtype = 'fp16'
     if args.dtype == 'AUTO' and ('int4' in args.model_type
                                  or 'int8' in args.model_type):
@@ -865,7 +869,7 @@ def select_dtype(
             logger.info(f'Setting torch_dtype: {torch_dtype}')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
-        support_bf16 = torch.cuda.is_bf16_supported()
+        support_bf16 = is_torch_bf16_gpu_available()
         if not support_bf16:
             logger.warning(f'support_bf16: {support_bf16}')
         fp16, bf16 = False, True
@@ -985,19 +989,21 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def prepare_push_ms_hub(args: SftArguments) -> None:
+    if not args.push_to_hub:
+        return
     if args.hub_model_id is None:
         args.hub_model_id = f'{args.model_type}-{args.sft_type}'
         logger.info(f'Setting hub_model_id: {args.hub_model_id}')
-    if args.push_to_hub:
-        api = HubApi()
-        if args.hub_token is None:
-            args.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if args.hub_token is not None:
-            api.login(args.hub_token)
-        else:
-            assert ModelScopeConfig.get_token(
-            ) is not None, 'Please enter hub_token'
-        logger.info('hub login successful!')
+
+    api = HubApi()
+    if args.hub_token is None:
+        args.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+    if args.hub_token is not None:
+        api.login(args.hub_token)
+    else:
+        assert ModelScopeConfig.get_token(
+        ) is not None, 'Please enter hub_token'
+    logger.info('hub login successful!')
 
 
 def _check_path(

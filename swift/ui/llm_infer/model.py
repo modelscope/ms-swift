@@ -15,6 +15,8 @@ class Model(BaseUI):
 
     sub_ui = [Generate]
 
+    is_gradio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+
     locale_dict = {
         'checkpoint': {
             'value': {
@@ -34,8 +36,8 @@ class Model(BaseUI):
         },
         'load_checkpoint': {
             'value': {
-                'zh': '加载模型',
-                'en': 'Load model'
+                'zh': '加载模型' if is_gradio else '部署模型',
+                'en': 'Load model' if is_gradio else 'Deploy model',
             }
         },
         'model_id_or_path': {

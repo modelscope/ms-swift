@@ -245,6 +245,7 @@ class ModelType:
     # phi
     phi2_3b = 'phi2-3b'
     # cogagent
+    cogvlm_17b_instruct = 'cogvlm-17b-instruct'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -278,6 +279,10 @@ class LoRATM(NamedTuple):
         'vision_expert_query_key_value', 'vision_expert_dense',
         'language_expert_query_key_value', 'language_expert_dense', 'query',
         'key_value', 'dense'
+    ]
+    cogvlm = [
+        'vision_expert_query_key_value', 'vision_expert_dense',
+        'language_expert_query_key_value', 'language_expert_dense'
     ]
     phi = ['Wqkv']
     internlm2 = ['wqkv']
@@ -488,18 +493,21 @@ def get_model_tokenizer_mamba(model_dir: str,
                               torch_dtype: Optional[Dtype],
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
-                              model_config=None,
-                              tokenizer=None,
-                              automodel_class=AutoModelForCausalLM,
                               **kwargs):
     logger.info(
         '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
         'be really slow!')
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, tokenizer,
-                                         automodel_class, **kwargs)
+                                         load_model, **kwargs)
 
 
+@register_model(
+    ModelType.cogvlm_17b_instruct,
+    'ZhipuAI/cogvlm-chat',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm_instruct,
+    support_gradient_checkpointing=False,
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.cogagent_18b_chat,
     'ZhipuAI/cogagent-chat',
