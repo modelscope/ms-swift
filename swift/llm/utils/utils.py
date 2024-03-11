@@ -36,6 +36,7 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
 from .template import History, StopWords, StopWordsCriteria, Template
@@ -367,8 +368,10 @@ def find_all_linears(model: Module, quantization_bit: int,
                      model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
-    if model_type.startswith('chatglm'):
-        head_module_name = 'output_layer'
+    if model_type in MODEL_KEYS_MAPPING:
+        output = MODEL_KEYS_MAPPING[model_type].output
+        idx = output.rfind('.')
+        head_module_name = output[idx + 1:]
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
         linear_cls = [Linear4bit]

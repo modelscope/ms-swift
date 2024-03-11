@@ -120,6 +120,16 @@ class SftArguments:
     lora_loftq_config: Dict = field(default_factory=dict)
     use_dora: bool = False
 
+    # galore
+    use_galore: bool = False
+    galore_rank: int = 128
+    galore_target_modules: Union[str, List[str]] = None
+    galore_update_proj_gap: int = 50
+    galore_scale: float = 1.0
+    galore_proj_type: str = 'std'
+    galore_optim_per_parameter: bool = False
+    galore_with_embedding: bool = False
+
     # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
