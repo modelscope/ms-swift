@@ -315,7 +315,7 @@ class LLMTrain(BaseUI):
             else:
                 params += f'--{e} "{kwargs[e]}" '
         params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
-                  f'--logging_dir {sft_args.logging_dir}'
+                  f'--logging_dir {sft_args.logging_dir} '
         for key, param in more_params.items():
             params += f'--{key} "{param}" '
         ddp_param = ''
