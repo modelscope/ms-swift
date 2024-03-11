@@ -137,7 +137,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 
 
 ## ✨ LLM Training and Inference
-If you want to learn more about best practices for fine-tuning LLM or tutorials on inference, fine-tuning, quantization, and deployment of LLM, you can refer to the [LLM series documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+If you want to learn more about **best practices** for LLM or multimodal LLM, or if you are interested in **tutorials** on inference, fine-tuning, quantization, and deployment of LLM, you can refer to the [LLM series documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
 
 
 ### WEB UI training and inference

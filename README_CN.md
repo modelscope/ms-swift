@@ -135,7 +135,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型训练推理
-如果想要了解更多大模型微调的最佳实践, 或者对大模型进行推理, 微调, 量化, 部署的教程, 可以查看[LLM系列文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+如果想要了解更多大模型或者多模态大模型的**最佳实践**, 或者对大模型进行推理, 微调, 量化, 部署的**教程**, 可以查看[LLM系列文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
 
 
 ### WEB UI训练推理
