@@ -55,26 +55,26 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset aishell1-mini-zh \
 ```
 
-自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子: 
+自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 支持每轮对话含多段语音或不含语音, 支持传入本地路径或URL)
 
 ```json
 [
     {"conversations": [
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\n11111"}, 
+        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\n11111"},
         {"from": "assistant", "value": "22222"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nAudio 2:<audio>audio_path2</audio>\nAudio 3:<audio>audio_path3</audio>\naaaaa"}, 
-        {"from": "assistant", "value": "bbbbb"}, 
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nccccc"}, 
+        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nAudio 2:<audio>audio_path2</audio>\nAudio 3:<audio>audio_path3</audio>\naaaaa"},
+        {"from": "assistant", "value": "bbbbb"},
+        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nccccc"},
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "AAAAA"}, 
-        {"from": "assistant", "value": "BBBBB"}, 
-        {"from": "user", "value": "CCCCC"}, 
+        {"from": "user", "value": "AAAAA"},
+        {"from": "assistant", "value": "BBBBB"},
+        {"from": "user", "value": "CCCCC"},
         {"from": "assistant", "value": "DDDDD"}
     ]}
 ]

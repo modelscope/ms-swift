@@ -609,7 +609,7 @@ class YiVLTemplate(Template):
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:\n'],
+    YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:'],
                  ['\n'], ['\n###'], yi_vl_default_system, ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',

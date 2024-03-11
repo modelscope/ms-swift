@@ -81,26 +81,26 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-mini-en \
 ```
 
-自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子: 
+自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 支持每轮对话含多张图片或不含图片, 支持传入本地路径或URL)
 
 ```json
 [
     {"conversations": [
-        {"from": "user", "value": "Picture 1:<img>img_path</img>\n11111"}, 
+        {"from": "user", "value": "Picture 1:<img>img_path</img>\n11111"},
         {"from": "assistant", "value": "22222"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "Picture 1:<img>img_path</img>\nPicture 2:<img>img_path2</img>\nPicture 3:<img>img_path3</img>\naaaaa"}, 
-        {"from": "assistant", "value": "bbbbb"}, 
-        {"from": "user", "value": "Picture 1:<img>img_path</img>\nccccc"}, 
+        {"from": "user", "value": "Picture 1:<img>img_path</img>\nPicture 2:<img>img_path2</img>\nPicture 3:<img>img_path3</img>\naaaaa"},
+        {"from": "assistant", "value": "bbbbb"},
+        {"from": "user", "value": "Picture 1:<img>img_path</img>\nccccc"},
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "AAAAA"}, 
-        {"from": "assistant", "value": "BBBBB"}, 
-        {"from": "user", "value": "CCCCC"}, 
+        {"from": "user", "value": "AAAAA"},
+        {"from": "assistant", "value": "BBBBB"},
+        {"from": "user", "value": "CCCCC"},
         {"from": "assistant", "value": "DDDDD"}
     ]}
 ]
