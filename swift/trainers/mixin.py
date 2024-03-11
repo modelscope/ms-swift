@@ -598,25 +598,26 @@ class SwiftMixin:
                     f'If you are using lora+, please remember using transformers>=4.34.0, '
                     f'but now is {transformers.__version__}')
                 return super().create_optimizer()
-            else:
-                decay_parameters = self.get_decay_parameter_names(opt_model)
-            
+
+            decay_parameters = self.get_decay_parameter_names(opt_model)
             all_param_names = set()
             param_groups = []
             if hasattr(self.args, 'galore_config'):
-                from swift.trainers.optimizers.galore import create_optimizer_group_galore
+                # Galore parameter groups
+                from swift.trainers.optimizers import create_optimizer_group_galore
                 param_names, param_group = create_optimizer_group_galore(
-                    self.model, self.args.galore_config, lr=self.args.learning_rate,
+                    self.model,
+                    self.args.galore_config,
+                    lr=self.args.learning_rate,
                     weight_decay=self.args.weight_decay)
                 all_param_names.update(param_names)
                 param_groups.append(param_group)
-                decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
                 param_groups.extend([
                     {
                         'params': [
                             p for n, p in self.model.named_parameters()
-                            if (n in decay_parameters and n not in all_param_names
-                                and p.requires_grad)
+                            if (n in decay_parameters and n not in
+                                all_param_names and p.requires_grad)
                         ],
                         'weight_decay':
                         self.args.weight_decay,
@@ -624,8 +625,8 @@ class SwiftMixin:
                     {
                         'params': [
                             p for n, p in self.model.named_parameters()
-                            if (n not in decay_parameters and n not in all_param_names
-                                and p.requires_grad)
+                            if (n not in decay_parameters and n not in
+                                all_param_names and p.requires_grad)
                         ],
                         'weight_decay':
                         0.0,
@@ -633,10 +634,12 @@ class SwiftMixin:
                 ])
                 optimizer_grouped_parameters = param_groups
             elif isinstance(self.model, SwiftModel):
+                # Lora+ parameter groups (or a default one)
                 optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
                     lr=self.args.learning_rate,
                     weight_decay=self.args.weight_decay)
             else:
+                # Default parameter groups
                 optimizer_grouped_parameters = [
                     {
                         'params': [
