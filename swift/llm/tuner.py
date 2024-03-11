@@ -60,6 +60,8 @@ def handle_modules_to_save(model, args: SftArguments) -> None:
 
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
+    if 'galore' in args.optim.lower():
+        assert args.sft_type == 'full', 'Galore only supports Full fine-tuning'
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
             handle_target_modules(model, args)
