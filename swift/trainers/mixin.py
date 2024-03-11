@@ -6,7 +6,7 @@ import re
 import shutil
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -18,7 +18,8 @@ from packaging import version
 from peft import PeftModel
 from torch import nn
 from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, is_bitsandbytes_available
+from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
+                          is_bitsandbytes_available)
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
@@ -587,50 +588,6 @@ class SwiftMixin:
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
-    @staticmethod
-    def get_optimizer_cls_and_kwargs_galore(args: TrainingArguments) -> Tuple[Any, Any]:
-        # parse args.optim_args
-        optim_args = {}
-        if args.optim_args:
-            for mapping in args.optim_args.replace(" ", "").split(","):
-                key, value = mapping.split("=")
-                optim_args[key] = value
-
-        optimizer_kwargs = {"lr": args.learning_rate}
-
-        adam_kwargs = {
-            "betas": (args.adam_beta1, args.adam_beta2),
-            "eps": args.adam_epsilon,
-        }
-        if args.optim == 'galore_adafactor':
-            from .optimizers import GaLoreAdafactor
-            optimizer_cls = GaLoreAdafactor
-            optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
-        elif args.optim == 'galore_adamw':
-            from .optimizers import GaLoreAdamW
-            optimizer_cls = GaLoreAdamW
-            optimizer_kwargs.update(adam_kwargs)
-        elif args.optim == 'galore_adamw8bit':
-            try:
-                from bitsandbytes.optim import AdamW, Lion, RMSprop
-                from .optimizers import GaLoreAdamW8bit
-                optimizer_cls = GaLoreAdamW8bit
-                optimizer_kwargs.update(adam_kwargs)
-                optimizer_kwargs.update({"optim_bits": 8})
-            except ImportError:
-                raise ValueError("Trainer tried to instantiate bnb optimizer but bnb is not installed!")
-            if is_bitsandbytes_available() and version.parse(
-                importlib.metadata.version("bitsandbytes")
-            ) < version.parse("0.41.1"):
-                logger.warning(
-                    "You are using 8-bit optimizers with a version of `bitsandbytes` < 0.41.1. "
-                    "It is recommended to update your version as a major bug has been fixed in 8-bit optimizers."
-                )
-        else:
-            raise ValueError(f'Galore not supported for optimizer type: {args.optim}')
-        return optimizer_cls, optimizer_kwargs
-
-
     def create_optimizer(self):
         opt_model = self.model
 
@@ -667,8 +624,13 @@ class SwiftMixin:
                     },
                 ]
 
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-                self.args)
+            if 'galore' in self.args.optim.lower():
+                from swift.tuners.galore.galore import Galore
+                optimizer_cls, optimizer_kwargs = Galore.get_optimizer_cls_and_kwargs_galore(
+                    self.args)
+            else:
+                optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+                    self.args)
 
             self.optimizer = optimizer_cls(optimizer_grouped_parameters,
                                            **optimizer_kwargs)

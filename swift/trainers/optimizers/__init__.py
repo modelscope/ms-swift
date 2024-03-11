@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .galore import GaLoreAdafactor, GaLoreAdamW, GaLoreAdamW8bit
+    pass
 else:
     _import_structure = {
         'galore': ['GaLoreAdafactor', 'GaLoreAdamW', 'GaLoreAdamW8bit'],
