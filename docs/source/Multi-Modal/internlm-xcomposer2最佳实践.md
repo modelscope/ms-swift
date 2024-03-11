@@ -89,19 +89,20 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 [
     {"conversations": [
         {"from": "user", "value": "<img>img_path</img>11111"}, 
-        {"from": "assistant", "value": "22222"}]},
+        {"from": "assistant", "value": "22222"}
+    ]},
     {"conversations": [
         {"from": "user", "value": "<img>img_path</img><img>img_path2</img><img>img_path3</img>aaaaa"}, 
         {"from": "assistant", "value": "bbbbb"}, 
         {"from": "user", "value": "<img>img_path</img>ccccc"}, 
-        {"from": "assistant", "value": "ddddd"}]
-    },
+        {"from": "assistant", "value": "ddddd"}
+    ]},
     {"conversations": [
         {"from": "user", "value": "AAAAA"}, 
         {"from": "assistant", "value": "BBBBB"}, 
         {"from": "user", "value": "CCCCC"}, 
-        {"from": "assistant", "value": "DDDDD"}]
-    }
+        {"from": "assistant", "value": "DDDDD"}
+    ]}
 ]
 ```
 
