@@ -15,9 +15,7 @@ pip instal ms-swift[llm] -U
 
 ## 推理
 
-推理internlm-xcomposer2-7b-chat:
-
-模型链接: https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary
+推理[internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary):
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory
