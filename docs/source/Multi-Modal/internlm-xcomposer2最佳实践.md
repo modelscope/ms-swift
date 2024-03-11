@@ -15,7 +15,7 @@ pip instal ms-swift[llm] -U
 
 ## 推理
 
-推理internlm-xcomposer2-7b-chat, 支持传入本地路径或URL:
+推理internlm-xcomposer2-7b-chat:
 
 模型链接: https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary
 ```shell
@@ -24,7 +24,7 @@ pip instal ms-swift[llm] -U
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type internlm-xcomposer2-7b-chat
 ```
 
-输出:
+输出: (支持传入本地路径或URL)
 ```python
 """
 <<< 你是谁？
@@ -54,20 +54,24 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type internlm-xcomposer2-7b-chat
 示例图片如下:
 
 cat:
+
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png" width="250" style="display: inline-block;">
 
 animal:
+
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png" width="250" style="display: inline-block;">
 
 math:
+
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png" width="250" style="display: inline-block;">
 
 poem:
+
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
 
 ## 微调
-多模态大模型微调通常使用**自定义数据集**进行微调, 这里展示1个可直接运行的demo:
+多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
 ```shell
 # Experimental environment: A10, 3090, V100, ...
@@ -77,9 +81,10 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-mini-en \
 ```
 
-自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子:
+自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子: 
 
-支持多轮对话, 支持每轮对话多张图片或不含图片, 支持传入本地路径或URL:.
+(支持多轮对话, 支持每轮对话多张图片或不含图片, 支持传入本地路径或URL)
+
 ```json
 [
     {"conversations": [
@@ -104,8 +109,6 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ## 微调后推理
 
 ```shell
-# Experimental environment: A10, 3090, V100, ...
-# 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/internlm-xcomposer2-7b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
