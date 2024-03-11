@@ -44,13 +44,6 @@ class AdamW(Optimizer):
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
     ):
-        if not no_deprecation_warning:
-            warnings.warn(
-                'This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch'
-                ' implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this'
-                ' warning',
-                FutureWarning,
-            )
         require_version('torch>=1.5.0')  # add_ with alpha
         if lr < 0.0:
             raise ValueError(f'Invalid learning rate: {lr} - should be >= 0.0')

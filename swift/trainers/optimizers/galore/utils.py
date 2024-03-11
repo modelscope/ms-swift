@@ -1,13 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
 from typing import Any, Tuple, List, Union, Dict
-
+import torch
 from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from transformers import TrainingArguments, get_scheduler
 
-from swift import Trainer
+from transformers import Trainer
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import get_logger
 
@@ -39,6 +39,7 @@ class GaLoreConfig:
     update_proj_gap: int = 50
     galore_scale: float = 1.0
     proj_type: str = 'std'
+    with_embedding: bool = False
     optim_per_parameter: bool = False
 
 
@@ -46,13 +47,14 @@ class GaloreOptimizerWrapper(Optimizer):
 
     def __init__(self, optimizers: Dict[Any, Optimizer]):
         self.optimizers = optimizers
+        super().__init__([torch.tensor([1., 2., 3.])], {"lr": 1.})
 
     def zero_grad(self, *args, **kwargs) -> None:
-        for optim in self.optimizers:
+        for optim in self.optimizers.values():
             optim.zero_grad(*args, **kwargs)
 
     def step(self, *args, **kwargs) -> None:
-        for optim in self.optimizers:
+        for optim in self.optimizers.values():
             optim.step(*args, **kwargs)
 
 
@@ -62,8 +64,9 @@ class GaloreSchedulerWrapper(LRScheduler):
         self.lr_schedulers = lr_schedulers
 
     def step(self, *args, **kwargs) -> None:
-        for lr_scheduler in self.lr_schedulers:
+        for lr_scheduler in self.lr_schedulers.values():
             lr_scheduler.step(*args, **kwargs)
+        self._last_lr = lr_scheduler.get_last_lr()
 
 
 def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
@@ -75,6 +78,12 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
                 MODEL_KEYS_MAPPING[config.model_type].mlp.split('.{}.')[1]
             ]
             config.target_modules = target_modules_list
+            if config.with_embedding:
+                embedding = MODEL_KEYS_MAPPING[config.model_type].embedding
+                idx = embedding.rfind('.')
+                embedding = embedding[idx + 1:]
+                target_modules_list.append(embedding)
+
 
     galore_params = []
     for module_name, module in model.named_modules():
@@ -85,7 +94,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
         if not module.weight.requires_grad:
             continue
 
-        logger.info('Enable GaLore for weights in module: ', module_name)
+        logger.info(f'Enable GaLore for weights in module: {module_name}')
         galore_params.append(module.weight)
     id_galore_params = [id(p) for p in galore_params]
     galore_defaults = {'rank': config.rank, 'update_proj_gap': config.update_proj_gap,
@@ -108,9 +117,9 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
             if p.requires_grad:
                 scheduler_dict[p] = get_scheduler(
                     optimizer=optimizer_dict[p],
-                    scheduler_type=args.lr_scheduler_type,
+                    name=args.lr_scheduler_type,
                     num_training_steps=max_steps * 2,
-                    warmup_steps=args.warmup_steps * 2,
+                    num_warmup_steps=args.warmup_steps * 2,
                     scheduler_specific_kwargs=args.lr_scheduler_kwargs,
                 )
 
@@ -142,9 +151,9 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
         optim = optim_cls(param_groups, **optim_kwargs)
         scheduler = get_scheduler(
             optimizer=optim,
-            scheduler_type=args.lr_scheduler_type,
-            num_training_steps=args.max_steps * 2,
-            warmup_steps=args.warmup_steps * 2,
+            name=args.lr_scheduler_type,
+            num_training_steps=max_steps,
+            num_warmup_steps=args.warmup_steps,
             scheduler_specific_kwargs=args.lr_scheduler_kwargs,
         )
         return optim, scheduler
