@@ -9,6 +9,7 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
@@ -73,7 +74,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
 
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'auto',
+               device_map: Optional[str] = None,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
@@ -97,8 +98,18 @@ def merge_lora(args: InferArguments,
             'skipping the saving process. '
             'you can pass `replace_if_exists=True` to overwrite it.')
         return
+
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+    model_kwargs['device_map'] = device_map
+
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     model_id_or_path = None
     if args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
@@ -127,12 +138,21 @@ def merge_lora(args: InferArguments,
 
 def prepare_model_template(
         args: InferArguments,
-        device_map: str = 'auto') -> Tuple[PreTrainedModel, Template]:
-    logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map: Optional[str] = None) -> Tuple[PreTrainedModel, Template]:
+
     seed_everything(args.seed)
 
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+    model_kwargs['device_map'] = device_map
+
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
