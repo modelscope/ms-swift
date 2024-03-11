@@ -11,9 +11,7 @@ if TYPE_CHECKING:
     from .adamw import GaLoreAdamW
 else:
     _import_structure = {
-        'utils': [
-            'GaLoreConfig', 'create_optimizer_and_scheduler'
-        ],
+        'utils': ['GaLoreConfig', 'create_optimizer_and_scheduler'],
         'adafactor': ['GaLoreAdafactor'],
         'adamw8bit': ['GaLoreAdamW8bit'],
         'adamw': ['GaLoreAdamW'],

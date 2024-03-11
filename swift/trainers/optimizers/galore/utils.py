@@ -1,13 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Any, Tuple, List, Union, Dict
+from typing import Any, Dict, List, Tuple, Union
+
 import torch
 from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
-from transformers import TrainingArguments, get_scheduler
+from transformers import Trainer, TrainingArguments, get_scheduler
 
-from transformers import Trainer
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import get_logger
 
@@ -47,7 +47,7 @@ class GaloreOptimizerWrapper(Optimizer):
 
     def __init__(self, optimizers: Dict[Any, Optimizer]):
         self.optimizers = optimizers
-        super().__init__([torch.tensor([1., 2., 3.])], {"lr": 1.})
+        super().__init__([torch.tensor([1., 2., 3.])], {'lr': 1.})
 
     def zero_grad(self, *args, **kwargs) -> None:
         for optim in self.optimizers.values():
@@ -70,12 +70,13 @@ class GaloreSchedulerWrapper(LRScheduler):
 
 
 def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
-                                   config: GaLoreConfig, max_steps, **defaults):
+                                   config: GaLoreConfig, max_steps,
+                                   **defaults):
     if not config.target_modules:
         if config.model_type in MODEL_KEYS_MAPPING:
             target_modules_list = [
-                MODEL_KEYS_MAPPING[config.model_type].attention.split('.{}.')[1],
-                MODEL_KEYS_MAPPING[config.model_type].mlp.split('.{}.')[1]
+                MODEL_KEYS_MAPPING[config.model_type].attention.split('.{}.')
+                [1], MODEL_KEYS_MAPPING[config.model_type].mlp.split('.{}.')[1]
             ]
             config.target_modules = target_modules_list
             if config.with_embedding:
@@ -83,7 +84,6 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
                 idx = embedding.rfind('.')
                 embedding = embedding[idx + 1:]
                 target_modules_list.append(embedding)
-
 
     galore_params = []
     for module_name, module in model.named_modules():
@@ -97,19 +97,31 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
         logger.info(f'Enable GaLore for weights in module: {module_name}')
         galore_params.append(module.weight)
     id_galore_params = [id(p) for p in galore_params]
-    galore_defaults = {'rank': config.rank, 'update_proj_gap': config.update_proj_gap,
-                       'scale': config.galore_scale, 'proj_type': config.proj_type, **defaults}
+    galore_defaults = {
+        'rank': config.rank,
+        'update_proj_gap': config.update_proj_gap,
+        'scale': config.galore_scale,
+        'proj_type': config.proj_type,
+        **defaults
+    }
     optim_cls, optim_kwargs = get_optimizer(args)
 
     if config.optim_per_parameter:
         optimizer_dict = {}
-        galore_defaults['update_proj_gap'] = galore_defaults['update_proj_gap'] * 2
+        galore_defaults[
+            'update_proj_gap'] = galore_defaults['update_proj_gap'] * 2
         for p in model.parameters():
             if p.requires_grad:
                 if id(p) in id_galore_params:
-                    optimizer_dict[p] = optim_cls([{'params': [p], **galore_defaults}], **optim_kwargs)
+                    optimizer_dict[p] = optim_cls([{
+                        'params': [p],
+                        **galore_defaults
+                    }], **optim_kwargs)
                 else:
-                    optimizer_dict[p] = optim_cls([{'params': [p], **defaults}], **optim_kwargs)
+                    optimizer_dict[p] = optim_cls([{
+                        'params': [p],
+                        **defaults
+                    }], **optim_kwargs)
 
         # get scheduler dict
         scheduler_dict = {}
@@ -123,7 +135,8 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
                     scheduler_specific_kwargs=args.lr_scheduler_kwargs,
                 )
 
-        return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(scheduler_dict)
+        return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(
+            scheduler_dict)
     else:
         decay_parameters = Trainer.get_decay_parameter_names(Trainer, model)
         param_groups = [{
@@ -134,18 +147,20 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
             {
                 'params': [
                     p for n, p in model.named_parameters()
-                    if (n in decay_parameters and id(p) not in
-                        id_galore_params and p.requires_grad)
+                    if (n in decay_parameters and id(p) not in id_galore_params
+                        and p.requires_grad)
                 ],
-                'weight_decay': defaults['weight_decay'],
+                'weight_decay':
+                defaults['weight_decay'],
             },
             {
                 'params': [
                     p for n, p in model.named_parameters()
-                    if (n not in decay_parameters and id(p) not in
-                        id_galore_params and p.requires_grad)
+                    if (n not in decay_parameters
+                        and id(p) not in id_galore_params and p.requires_grad)
                 ],
-                'weight_decay': 0.0,
+                'weight_decay':
+                0.0,
             },
         ])
         optim = optim_cls(param_groups, **optim_kwargs)
@@ -159,8 +174,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
         return optim, scheduler
 
 
-def get_optimizer(
-        args: TrainingArguments) -> Tuple[Any, Any]:
+def get_optimizer(args: TrainingArguments) -> Tuple[Any, Any]:
     # parse args.optim_args
     optim_args = {}
     if args.optim_args:

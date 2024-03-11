@@ -591,16 +591,20 @@ class SwiftMixin:
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         if hasattr(self.args, 'galore_config'):
-            optimizer, lr_scheduler = create_optimizer_and_scheduler(self.model, self.args,
-                                                                     self.args.galore_config,
-                                                                     num_training_steps,
-                                                                     lr=self.args.learning_rate,
-                                                                     weight_decay=self.args.weight_decay)
+            optimizer, lr_scheduler = create_optimizer_and_scheduler(
+                self.model,
+                self.args,
+                self.args.galore_config,
+                num_training_steps,
+                lr=self.args.learning_rate,
+                weight_decay=self.args.weight_decay)
             self.optimizer = optimizer
             self.lr_scheduler = lr_scheduler
         else:
             self.create_optimizer()
-            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
+            self.create_scheduler(
+                num_training_steps=num_training_steps,
+                optimizer=self.optimizer)
 
     def create_optimizer(self):
         opt_model = self.model
