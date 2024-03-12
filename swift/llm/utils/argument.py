@@ -955,8 +955,9 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         model_id_or_path = args.model_id_or_path
         model_id_or_path_lower = model_id_or_path.lower()
         if model_id_or_path_lower not in model_mapping_reversed:
-            if isinstance(args,
-                          InferArguments) and 'checkpoint' in model_id_or_path:
+            if (isinstance(args, InferArguments)
+                    and 'checkpoint' in model_id_or_path
+                    and args.ckpt_dir is None):
                 raise ValueError(
                     'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
                 )
