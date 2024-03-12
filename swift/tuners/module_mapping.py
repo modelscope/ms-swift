@@ -9,6 +9,8 @@ class ModelKeys:
 
     module_list: str = None
 
+    embedding: str = None
+
     mlp: str = None
 
     down_proj: str = None
@@ -27,6 +29,8 @@ class ModelKeys:
 
     qk_proj: str = None
 
+    output: str = None
+
 
 LLAMA_KEYS = ModelKeys(
     **{
@@ -38,6 +42,8 @@ LLAMA_KEYS = ModelKeys(
         'q_proj': 'model.layers.{}.self_attn.q_proj',
         'k_proj': 'model.layers.{}.self_attn.k_proj',
         'v_proj': 'model.layers.{}.self_attn.v_proj',
+        'embedding': 'model.embed_tokens',
+        'output': 'lm_head',
     })
 
 MISTRAL_KEYS = LLAMA_KEYS
@@ -62,6 +68,8 @@ CHATGLM_KEYS = ModelKeys(
         'o_proj': 'transformer.encoder.layers.{}.self_attention.dense',
         'qkv_proj':
         'transformer.encoder.layers.{}.self_attention.query_key_value',
+        'embedding': 'transformer.embedding',
+        'output': 'transformer.output_layer',
     })
 
 BAICHUAN_KEYS = ModelKeys(
@@ -71,6 +79,8 @@ BAICHUAN_KEYS = ModelKeys(
         'down_proj': 'model.layers.{}.mlp.down_proj',
         'attention': 'model.layers.{}.self_attn',
         'qkv_proj': 'model.layers.{}.self_attn.W_pack',
+        'embedding': 'model.embed_tokens',
+        'output': 'lm_head',
     })
 
 YUAN_KEYS = ModelKeys(
@@ -84,16 +94,20 @@ YUAN_KEYS = ModelKeys(
         'q_proj': 'model.layers.{}.self_attn.q_proj',
         'k_proj': 'model.layers.{}.self_attn.k_proj',
         'v_proj': 'model.layers.{}.self_attn.v_proj',
+        'embedding': 'model.embed_tokens',
+        'output': 'lm_head',
     })
 
 CODEFUSE_KEYS = ModelKeys(
     **{
         'module_list': 'gpt_neox.layers',
-        'mlp': 'model.layers.{}.mlp',
-        'down_proj': 'model.layers.{}.mlp.dense_4h_to_h',
-        'attention': 'model.layers.{}.attention',
-        'o_proj': 'model.layers.{}.attention.dense',
-        'qkv_proj': 'model.layers.{}.attention.query_key_value',
+        'mlp': 'gpt_neox.layers.{}.mlp',
+        'down_proj': 'gpt_neox.layers.{}.mlp.dense_4h_to_h',
+        'attention': 'gpt_neox.layers.{}.attention',
+        'o_proj': 'gpt_neox.layers.{}.attention.dense',
+        'qkv_proj': 'gpt_neox.layers.{}.attention.query_key_value',
+        'embedding': 'gpt_neox.embed_in',
+        'output': 'gpt_neox.embed_out',
     })
 
 PHI2_KEYS = ModelKeys(
@@ -104,6 +118,8 @@ PHI2_KEYS = ModelKeys(
         'attention': 'transformer.h.{}.mixer',
         'o_proj': 'transformer.h.{}.mixer.out_proj',
         'qkv_proj': 'transformer.h.{}.mixer.Wqkv',
+        'embedding': 'transformer.embd',
+        'output': 'lm_head',
     })
 
 QWEN_KEYS = ModelKeys(
@@ -114,6 +130,8 @@ QWEN_KEYS = ModelKeys(
         'attention': 'transformer.h.{}.attn',
         'o_proj': 'transformer.h.{}.attn.c_proj',
         'qkv_proj': 'transformer.h.{}.attn.c_attn',
+        'embedding': 'transformer.wte',
+        'output': 'lm_head',
     })
 
 MODEL_KEYS_MAPPING = OrderedDict([

@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple, Type
 import gradio as gr
 import psutil
 from gradio import Accordion, Tab
+from packaging import version
 
 from swift.ui.base import BaseUI
 from swift.utils import get_logger
@@ -98,10 +99,14 @@ class Runtime(BaseUI):
                     gr.Button(elem_id='kill_task', scale=1)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
+
+                concurrency_limit = {}
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
+                    concurrency_limit = {'concurrency_limit': 5}
                 cls.log_event = base_tab.element('show_log').click(
                     Runtime.update_log, [], [cls.element('log')]).then(
                         Runtime.wait, [base_tab.element('running_tasks')],
-                        [cls.element('log')])
+                        [cls.element('log')], **concurrency_limit)
 
                 base_tab.element('stop_show_log').click(
                     lambda: None, cancels=cls.log_event)

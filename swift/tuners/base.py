@@ -295,6 +295,7 @@ class SwiftModel(nn.Module):
                 0.0,
             },
         ])
+
         return param_groups
 
     @classmethod
