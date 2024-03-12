@@ -8,7 +8,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from transformers import Trainer, TrainingArguments, get_scheduler
 
-from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -23,7 +22,6 @@ class GaLoreConfig:
     See https://arxiv.org/abs/2403.03507
 
     Args:
-        model_type (`str`): The model_type of Galore
         rank (`int`): The galore rank
         target_modules (`Union[str, List[str]]`): The target modules to use, if `None`,
             will use all attn and mlp linears
@@ -33,13 +31,11 @@ class GaLoreConfig:
         galore_scale(float): the scale of gradient
         optim_per_parameter(bool): Gives one optimizer per parameter
     """
-    model_type: str = None
     rank: int = 128
     target_modules: Union[str, List[str]] = None
     update_proj_gap: int = 50
     galore_scale: float = 1.0
     proj_type: str = 'std'
-    with_embedding: bool = False
     optim_per_parameter: bool = False
 
 
@@ -72,19 +68,6 @@ class GaloreSchedulerWrapper(LRScheduler):
 def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
                                    config: GaLoreConfig, max_steps,
                                    **defaults):
-    if not config.target_modules:
-        if config.model_type in MODEL_KEYS_MAPPING:
-            target_modules_list = [
-                MODEL_KEYS_MAPPING[config.model_type].attention.split('.{}.')
-                [1], MODEL_KEYS_MAPPING[config.model_type].mlp.split('.{}.')[1]
-            ]
-            config.target_modules = target_modules_list
-            if config.with_embedding:
-                embedding = MODEL_KEYS_MAPPING[config.model_type].embedding
-                idx = embedding.rfind('.')
-                embedding = embedding[idx + 1:]
-                target_modules_list.append(embedding)
-
     galore_params = []
     for module_name, module in model.named_modules():
         if not isinstance(module, (nn.Linear, nn.Embedding)) or \
