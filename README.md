@@ -222,8 +222,8 @@ You can refer to the following scripts to customize your own training script.
   - Multi-Modal:
     - [qwen-vl](https://github.com/QwenLM/Qwen-VL) series: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
     - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) series: qwen-audio, qwen-audio-chat.
-    - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) series: internlm-xcomposer2-7b-chat.
     - [deepseek-vl](https://github.com/deepseek-ai/DeepSeek-VL) series: deepseek-vl-1_3b-chat, deepseek-vl-7b-chat.
+    - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) series: internlm-xcomposer2-7b-chat.
     - [yi-vl](https://github.com/01-ai/Yi) series: yi-vl-6b-chat, yi-vl-34b-chat.
     - [cogvlm](https://github.com/THUDM/CogVLM) series: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
   - General:
