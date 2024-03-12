@@ -178,20 +178,17 @@ def prepare_model(model, args: SftArguments):
 
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
-        model_type = args.model_type
-        for key in MODEL_KEYS_MAPPING.keys():
-            if key in model_type.lower():
-                model_type = key
-                break
+        if args.galore_target_modules is None:
+            args.galore_target_modules = find_all_linears(model, 0, args.model_type)
+        if args.galore_with_embedding:
+            args.galore_target_modules += find_embedding(model)
         args.training_args.galore_config = GaLoreConfig(
-            model_type=model_type,
             target_modules=args.galore_target_modules,
             rank=args.galore_rank,
             update_proj_gap=args.galore_update_proj_gap,
             galore_scale=args.galore_scale,
             proj_type=args.galore_proj_type,
             optim_per_parameter=args.galore_optim_per_parameter,
-            with_embedding=args.galore_with_embedding,
         )
 
     class TrainerAdapterCallback(TrainerCallback):
