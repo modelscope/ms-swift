@@ -799,8 +799,6 @@ class InternLMXComposer2(Template):
     def data_collator(self,
                       batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
-        tokenizer = self.tokenizer
-        assert tokenizer.pad_token_id is not None
         inputs_embeds = [b['inputs_embeds'] for b in batch]
         labels = [torch.tensor(b['labels']) for b in batch]
         im_mask = [b['im_mask'][0] for b in batch]
@@ -882,6 +880,7 @@ register_template(
         'and other non-computer science questions, you will refuse to answer\n'
         )))
 
+
 def _findall(token_list: List[int], token: int) -> List[int]:
     """Find the index of a token in the token_list."""
     res = []
@@ -921,30 +920,80 @@ class DeepseekVLTemplate(Template):
             images.append(image)
 
         vl_chat_processor = self.tokenizer.vl_chat_processor
-        input_ids = torch.tensor(inputs['input_ids'])
-        image_indices = (input_ids == vl_chat_processor.image_id).nonzero()
-        input_ids, num_image_tokens = vl_chat_processor.add_image_token(image_indices, input_ids)
-        images_outputs = vl_chat_processor.image_processor(images, return_tensors="pt")
+        input_ids, labels = inputs['input_ids'], inputs['labels']
+        idx_list = _findall(input_ids, vl_chat_processor.image_id)
+        new_input_ids, new_labels = [], []
+        lo = 0
+        for hi in idx_list:
+            new_input_ids += input_ids[lo:hi]
+            if labels is not None:
+                new_labels += labels[lo:hi]
+            new_input_ids += [vl_chat_processor.image_id
+                              ] * vl_chat_processor.num_image_tokens
+            new_labels += [-100] * vl_chat_processor.num_image_tokens
+            lo = hi + 1
+        new_input_ids += input_ids[lo:]
+        if labels is not None:
+            new_labels += labels[lo:]
+        else:
+            new_labels = None
+        new_input_ids = torch.tensor(new_input_ids)
+        num_image_tokens = torch.tensor([vl_chat_processor.num_image_tokens]
+                                        * len(idx_list))
+        images_outputs = vl_chat_processor.image_processor(
+            images, return_tensors='pt')
         from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
-        output = VLChatProcessorOutput(sft_format=None, input_ids=input_ids, 
-                              pixel_values=images_outputs.pixel_values,
-                              num_image_tokens=num_image_tokens)
+        output = VLChatProcessorOutput(
+            sft_format=None,
+            input_ids=new_input_ids,
+            pixel_values=images_outputs.pixel_values,
+            num_image_tokens=num_image_tokens)
         batched_output = vl_chat_processor.batchify([output])
-        batched_output = batched_output.to(device=self.model.device,
-                                            dtype=self.model.dtype)
-        inputs_embeds = self.model.prepare_inputs_embeds(**batched_output)[0]
+        model = self.model.multi_modal_model[0]
+        batched_output = batched_output.to(
+            device=model.device, dtype=model.dtype)
+        inputs_embeds = model.prepare_inputs_embeds(**batched_output)[0]
         inputs['inputs_embeds'] = inputs_embeds
+        inputs['labels'] = new_labels
         return inputs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        inputs_embeds = [b['inputs_embeds'] for b in batch]
+        labels = [torch.tensor(b['labels']) for b in batch]
+        attention_mask = [
+            torch.ones(inputs_embeds[i].shape[0], dtype=torch.int64)
+            for i in range(len(inputs_embeds))
+        ]
+
+        inputs_embeds = pad_sequence(
+            inputs_embeds, batch_first=True, padding_value=0)
+        attention_mask = pad_sequence(
+            attention_mask, batch_first=True, padding_value=0)
+        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+
+        return {
+            'inputs_embeds': inputs_embeds,
+            'attention_mask': attention_mask,
+            'labels': labels,
+        }
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
-register_template(
-    TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True,
-    support_stream=False, infer_media_type='round', dataloader_num_workers=0)
 
+register_template(
+    TemplateType.deepseek_vl,
+    DeepseekVLTemplate(),
+    use_model=True,
+    lazy_tokenize=True,
+    support_stream=False,
+    infer_media_type='round',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)  # only 'cpu' can pin_memory
 
 register_template(
     TemplateType.zephyr,

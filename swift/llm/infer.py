@@ -14,8 +14,9 @@ from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
-from .utils import (InferArguments, Template, get_additional_saved_files,
-                    get_dataset, get_model_tokenizer, get_template, inference,
+from .utils import (TEMPLATE_MAPPING, InferArguments, Template,
+                    get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, inference,
                     inference_stream, is_adapter, set_generation_config)
 
 logger = get_logger()
@@ -339,7 +340,7 @@ def llm_infer(args: InferArguments) -> None:
                     new_history = resp_list[0]['history']
                     print(response)
             else:
-                template_info = TEMPLATE_MAPPING[self.template_type]
+                template_info = TEMPLATE_MAPPING[args.template_type]
                 support_stream = template_info.get('support_stream', True)
                 if args.stream and support_stream:
                     gen = inference_stream(model, template, query, history,

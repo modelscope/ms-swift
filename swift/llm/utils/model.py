@@ -1684,6 +1684,41 @@ def _git_clone_github(github_url: str, model_dir: str,
     return local_repo_path
 
 
+def __prepare_inputs_embeds(
+    self,
+    input_ids: torch.LongTensor,
+    pixel_values: torch.FloatTensor,
+    images_seq_mask: torch.LongTensor,
+    images_emb_mask: torch.LongTensor,
+    **kwargs,
+):
+    # for patching deepseek-vl
+    from einops import rearrange
+    bs, n = pixel_values.shape[0:2]
+    images = rearrange(pixel_values, 'b n c h w -> (b n) c h w')
+    # [b x n, T2, D]
+    images_embeds = self.aligner(self.vision_model(images))
+
+    # [b x n, T2, D] -> [b, n x T2, D]
+    images_embeds = rearrange(
+        images_embeds, '(b n) t d -> b (n t) d', b=bs, n=n)
+    # [b, n, T2] -> [b, n x T2]
+    images_emb_mask = rearrange(images_emb_mask, 'b n t -> b (n t)')
+
+    # [b, T, D]
+    input_ids[input_ids < 0] = 0  # ignore the image embeddings
+    inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
+
+    # replace with the image embeddings (FIX)
+    inputs_embeds.data[images_seq_mask] = images_embeds[images_emb_mask]
+
+    return inputs_embeds
+
+
+def _patch_deepseek_vl(model) -> None:
+    model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
+
+
 @register_model(
     ModelType.deepseek_vl_7b_chat,
     'deepseek-ai/deepseek-vl-7b-chat',
@@ -1734,10 +1769,13 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         model_config=model_config,
         tokenizer=tokenizer,
         **kwargs)
-    if load_model:
-        model.generate = model.language_model.generate
-        model.generation_config = model.language_model.generation_config
     tokenizer.vl_chat_processor = vl_chat_processor
+    if load_model:
+        _patch_deepseek_vl(model)
+        multi_modal_model = model
+        model = multi_modal_model.language_model
+        model.multi_modal_model = [multi_modal_model
+                                   ]  # avoid recursion error: use list
     return model, tokenizer
 
 
