@@ -128,7 +128,6 @@ class SftArguments:
     galore_scale: float = 1.0
     galore_proj_type: str = 'std'
     galore_optim_per_parameter: bool = False
-    galore_with_embedding: bool = False
 
     # adalora
     adalora_target_r: int = 8

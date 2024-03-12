@@ -39,7 +39,6 @@ class GaLoreConfig:
     update_proj_gap: int = 50
     galore_scale: float = 1.0
     proj_type: str = 'std'
-    with_embedding: bool = False
     optim_per_parameter: bool = False
 
 
@@ -79,11 +78,6 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
                 [1], MODEL_KEYS_MAPPING[config.model_type].mlp.split('.{}.')[1]
             ]
             config.target_modules = target_modules_list
-            if config.with_embedding:
-                embedding = MODEL_KEYS_MAPPING[config.model_type].embedding
-                idx = embedding.rfind('.')
-                embedding = embedding[idx + 1:]
-                target_modules_list.append(embedding)
 
     galore_params = []
     for module_name, module in model.named_modules():

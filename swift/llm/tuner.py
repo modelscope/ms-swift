@@ -198,7 +198,6 @@ def prepare_model(model, args: SftArguments):
             galore_scale=args.galore_scale,
             proj_type=args.galore_proj_type,
             optim_per_parameter=args.galore_optim_per_parameter,
-            with_embedding=args.galore_with_embedding,
         )
 
     class TrainerAdapterCallback(TrainerCallback):
