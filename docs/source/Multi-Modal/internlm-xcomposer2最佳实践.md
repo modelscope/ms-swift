@@ -70,6 +70,56 @@ poem:
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
 
+**单样本推理**
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, 
+    get_default_template_type, inference_stream
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.internlm_xcomposer2_7b_chat
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+
+model, tokenizer = get_model_tokenizer(model_type, torch.float16, 
+                                       model_kwargs={'device_map': 'auto'})
+model.generation_config.max_new_tokens = 256
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+
+query = """<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？"""
+response, history = inference(model, template, query)
+print(f'query: {query}')
+print(f'response: {response}')
+
+query = '距离最远的城市是哪？'
+response, history = inference(model, template, query, history)
+print(f'query: {query}')
+print(f'response: {response}')
+print(f'history: {history}')
+"""
+query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？
+response:  马鞍山距离阳江62公里，广州距离广州293公里。
+query: 距离最远的城市是哪？
+response:  最远的距离是地球的两极，南极和北极。
+history: [('<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', ' 马鞍山距离阳江62公里，广州距离广州293公里。'), ('距离最远的城市是哪？', ' 最远的距离是地球的两极，南极和北极。')]
+"""
+"""
+```
+
+示例图片如下:
+
+road:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
+
+
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 

@@ -43,6 +43,56 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-audio-chat
 """
 ```
 
+**单样本推理**
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, 
+    get_default_template_type, inference_stream
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.qwen_audio_chat
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+
+model, tokenizer = get_model_tokenizer(model_type, torch.float16, 
+                                       model_kwargs={'device_map': 'auto'})
+model.generation_config.max_new_tokens = 256
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+
+query = """Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
+这段语音说了什么"""
+response, history = inference(model, template, query)
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+query = '这段语音是男生还是女生'
+gen = inference_stream(model, template, query, history)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+print(f'history: {history}')
+"""
+query: Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
+这段语音说了什么
+response: 这段语音说了中文："今天天气真好呀"。
+query: 这段语音是男生还是女生
+response: 根据音色判断，这段语音是男性。
+history: [('Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>\n这段语音说了什么', '这段语音说了中文："今天天气真好呀"。'), ('这段语音是男生还是女生', '根据音色判断，这段语音是男性。')]
+"""
+```
+
 
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:

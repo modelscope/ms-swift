@@ -76,6 +76,65 @@ poem:
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
 
+**单样本推理**
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType, 
+    get_default_template_type, inference_stream
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.deepseek_vl_7b_chat
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+
+model, tokenizer = get_model_tokenizer(model_type, torch.float16, 
+                                       model_kwargs={'device_map': 'auto'})
+model.generation_config.max_new_tokens = 256
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
+query = '距离各城市多远？'
+response, history = inference(model, template, query, images=images)
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+query = '距离最远的城市是哪？'
+images = images * 2
+response, history = inference(model, template, query, history, images=images)
+print(f'query: {query}')
+print(f'response: {response}')
+print(f'history: {history}')
+"""
+query: 距离各城市多远？
+response: 这个标志显示了从当前位置到以下城市的距离：
+
+- 马塔（Mata）：14公里
+- 阳江（Yangjiang）：62公里
+- 广州（Guangzhou）：293公里
+
+这些信息是根据图片中的标志提供的。
+query: 距离最远的城市是哪？
+response: 距离最远的那个城市是广州，根据标志所示，从当前位置到广州的距离是293公里。
+history: [('距离各城市多远？', '这个标志显示了从当前位置到以下城市的距离：\n\n- 马塔（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些信息是根据图片中的标志提供的。'), ('距离最远的城市是哪？', '距离最远的那个城市是广州，根据标志所示，从当前位置到广州的距离是293公里。')]
+"""
+```
+
+示例图片如下:
+
+road:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
+
+
+
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
