@@ -182,6 +182,7 @@ def prepare_model(model, args: SftArguments):
 
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
+        handle_target_modules(model, args)
         model_type = args.model_type
         for key in MODEL_KEYS_MAPPING.keys():
             if key in model_type.lower():
