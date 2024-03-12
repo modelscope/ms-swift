@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-
 import torch
 from torch import nn
 
@@ -36,12 +35,12 @@ class NEFTune(SwiftAdapter):
     def prepare_model(model: nn.Module, config: NEFTuneConfig,
                       adapter_name: str) -> SwiftOutput:
         """Prepare a model with `NEFTuneConfig`"""
-        for sub_module in model.modules():
+        for module_key, sub_module in model.named_modules():   
             if isinstance(sub_module, torch.nn.Embedding):
 
                 def neftune_hook(module, args, output):
                     if module.training and getattr(module, 'nef_activated'):
-                        dims = torch.tensor(output.size(1) * output.size(2))
+                        dims = torch.tensor(output.size(-1) * output.size(-2))
                         mag_norm = config.noise_alpha / torch.sqrt(dims)
                         output = output + torch.zeros_like(output).uniform_(
                             -mag_norm, mag_norm)

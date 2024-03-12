@@ -147,7 +147,10 @@ class SftArguments:
     llamapro_num_new_blocks: int = 4
     llamapro_num_groups: Optional[int] = None
 
+    # neftune
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
+    neftune_backend: Optional[str] = None # swift, transformers
+
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
@@ -459,9 +462,11 @@ class SftArguments:
         kwargs = {}
         parameters = inspect.signature(
             Seq2SeqTrainingArguments.__init__).parameters
-        for key in ['neftune_noise_alpha']:
-            if key in parameters:
-                kwargs[key] = getattr(self, key)
+        
+        if self.neftune_backend != 'swift':
+            for key in ['neftune_noise_alpha']:
+                if key in parameters:
+                    kwargs[key] = getattr(self, key)
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
