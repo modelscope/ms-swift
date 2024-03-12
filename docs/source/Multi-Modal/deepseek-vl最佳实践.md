@@ -105,7 +105,6 @@ response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
-# 流式
 query = '距离最远的城市是哪？'
 images = images * 2
 response, history = inference(model, template, query, history, images=images)
