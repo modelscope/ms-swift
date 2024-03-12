@@ -22,7 +22,7 @@ pip install -e .[llm]
 ```shell
 # Experimental environment: A100
 # 30GB GPU memory
-CUDA_VISIBLE_DEVICES=1 swift infer --model_type deepseek-vl-7b-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-7b-chat
 
 # 如果你想在3090上运行, 可以推理1.3b模型
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
