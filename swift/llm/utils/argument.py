@@ -296,6 +296,9 @@ class SftArguments:
                 self.ia3_target_modules)
             self.ia3_modules_to_save = self._prepare_modules_to_save(
                 self.ia3_modules_to_save)
+        elif self.use_galore:
+            self.galore_target_modules = self._prepare_target_modules(
+                self.galore_target_modules)
         else:
             self.lora_target_modules = self._prepare_target_modules(
                 self.lora_target_modules)

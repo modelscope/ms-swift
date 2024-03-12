@@ -25,6 +25,8 @@ def handle_target_modules(model, args: SftArguments) -> None:
         assert len(args.ia3_feedforward_modules) > 0, (
             'Setting ia3_target_modules to `ALL` '
             'need to pass MLP linear names to `ia3_feedforward_modules`')
+    elif args.use_galore:
+        target_modules = args.galore_target_modules
     else:
         target_modules = args.lora_target_modules
     if args.lora_use_embedding:
@@ -35,6 +37,8 @@ def handle_target_modules(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         args.ia3_target_modules = target_modules
         logger.info(f'ia3_target_modules: {args.ia3_target_modules}')
+    elif args.use_galore:
+        args.galore_target_modules = target_modules
     else:
         args.lora_target_modules = target_modules
         logger.info(f'lora_target_modules: {args.lora_target_modules}')
@@ -183,6 +187,9 @@ def prepare_model(model, args: SftArguments):
             if key in model_type.lower():
                 model_type = key
                 break
+        assert model_type is not None or args.galore_target_modules is not None, \
+            f'The input model type not supported: {args.model_type}, ' \
+            f'please pass galore_target_modules manually'
         args.training_args.galore_config = GaLoreConfig(
             model_type=model_type,
             target_modules=args.galore_target_modules,
