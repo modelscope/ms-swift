@@ -22,7 +22,7 @@ pip install -e .[llm]
 ```shell
 # Experimental environment: A100
 # 30GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-7b-chat
+CUDA_VISIBLE_DEVICES=1 swift infer --model_type deepseek-vl-7b-chat
 
 # 如果你想在3090上运行, 可以推理1.3b模型
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
@@ -35,20 +35,25 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 这幅图片捕捉到了一只小猫咪迷人的场景，它的眼睛睁得大大的，带着好奇心。小猫的毛发是白色和灰色的混合，给它一种几乎是空灵的外观。它的耳朵尖尖的，警觉地向上指，而它的鼻子是柔和的粉红色。小猫的眼睛是醒目的蓝色，充满了天真和好奇。小猫舒适地坐在一块白色的布料上，与它的灰色和白色毛发形成了美丽的对比。背景模糊，使人们的焦点集中在小猫的脸上，突出了它特征的精细细节。这幅图片散发出一种温暖和柔软的感觉，捕捉到了小猫的纯真和魅力。
 --------------------------------------------------
-<<< 图中有几只羊
+<<< 图中有几只羊？
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
-图片中有一只羊。
+图片中有四只羊。
 --------------------------------------------------
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-计算结果是1452 + 45304 = 46756。
+将1452和45304相加的结果是1452 + 45304 = 46756。
 --------------------------------------------------
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
 星辉洒落湖面静，
 独舟轻摇夜风中。
-灯火摇曳星光里，
-心随波涛逐梦行。
+灯火摇曳伴星辰，
+波光粼粼映山影。
+
+翠竹轻拂夜色浓，
+银河倒挂水天清。
+渔火点点入梦来，
+一舟一人话星辰。
 """
 ```
 
@@ -76,13 +81,13 @@ poem:
 
 ```shell
 # Experimental environment: A10, 3090, V100
-# 20GB GPU memory
+# 22GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \
 ```
 
-自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子:
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
 
