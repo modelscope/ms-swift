@@ -82,7 +82,7 @@ poem:
 (默认只对LLM部分的qkv进行lora微调. 如果你想对LLM部分的所有linear进行微调, 可以指定`--lora_target_modules ALL`. 该模型暂不支持对vision模型部分微调)
 ```shell
 # Experimental environment: A10, 3090, V100
-# 22GB GPU memory
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \
