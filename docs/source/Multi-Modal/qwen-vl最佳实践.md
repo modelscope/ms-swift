@@ -125,6 +125,7 @@ road:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
 
+
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
