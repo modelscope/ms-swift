@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
+
 import torch
 from torch import nn
 
@@ -35,7 +36,7 @@ class NEFTune(SwiftAdapter):
     def prepare_model(model: nn.Module, config: NEFTuneConfig,
                       adapter_name: str) -> SwiftOutput:
         """Prepare a model with `NEFTuneConfig`"""
-        for module_key, sub_module in model.named_modules():   
+        for sub_module in model.modules():
             if isinstance(sub_module, torch.nn.Embedding):
 
                 def neftune_hook(module, args, output):

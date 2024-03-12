@@ -149,7 +149,7 @@ class SftArguments:
 
     # neftune
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
-    neftune_backend: Optional[str] = None # swift, transformers
+    neftune_backend: Optional[str] = None  # swift, transformers
 
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
@@ -462,7 +462,7 @@ class SftArguments:
         kwargs = {}
         parameters = inspect.signature(
             Seq2SeqTrainingArguments.__init__).parameters
-        
+
         if self.neftune_backend != 'swift':
             for key in ['neftune_noise_alpha']:
                 if key in parameters:
