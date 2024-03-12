@@ -492,12 +492,12 @@ def inference_stream(model: PreTrainedModel,
     if 'input_ids' in inputs:
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
     if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
-    else:
-        token_len = input_ids.shape[1]
+
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -630,12 +630,12 @@ def inference(model: PreTrainedModel,
     if 'input_ids' in inputs:
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
     if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
-    else:
-        token_len = input_ids.shape[1]
+
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
