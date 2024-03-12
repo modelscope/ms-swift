@@ -9,7 +9,9 @@ import json
 import numpy as np
 import torch
 import torch.distributed as dist
+import transformers
 from datasets import concatenate_datasets
+from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import (is_torch_bf16_gpu_available,
                                 is_torch_cuda_available,
@@ -149,7 +151,7 @@ class SftArguments:
 
     # neftune
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
-    neftune_backend: Optional[str] = None  # swift, transformers
+    neftune_backend: Literal['swift', 'transformers'] = None
 
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
@@ -388,6 +390,10 @@ class SftArguments:
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
+        if self.neftune_backend is None:
+            self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
+                else 'transformers'
+
         prepare_push_ms_hub(self)
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
@@ -460,13 +466,8 @@ class SftArguments:
                 self.model_type)
 
         kwargs = {}
-        parameters = inspect.signature(
-            Seq2SeqTrainingArguments.__init__).parameters
-
         if self.neftune_backend != 'swift':
-            for key in ['neftune_noise_alpha']:
-                if key in parameters:
-                    kwargs[key] = getattr(self, key)
+            kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
