@@ -170,8 +170,9 @@ def prepare_model(model, args: SftArguments):
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
-    if version.parse(transformers.__version__) < version.parse(
-            '4.35') and args.neftune_noise_alpha not in {None, 0.}:
+    if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {
+            None, 0.
+    }:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_noise_alpha)
         model = Swift.prepare_model(model, {'neftune': neftune_config})
         logger.info(f'neftune_config: {neftune_config}')
