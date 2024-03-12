@@ -7,9 +7,9 @@ from trl import DPOTrainer as HFDPOTrainer
 
 from swift.llm.utils.template import Context, Template
 from swift.llm.utils.utils import sort_by_max_length
-from swift.trainers.callback import (DefaultFlowCallbackNew,
+from .callback import (DefaultFlowCallbackNew,
                                      PrinterCallbackNew, ProgressCallbackNew)
-from swift.trainers.mixin import PushToMsHubMixin, SwiftMixin
+from .mixin import PushToMsHubMixin, SwiftMixin
 from swift.utils import get_logger
 
 logger = get_logger()
