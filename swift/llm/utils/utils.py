@@ -489,11 +489,12 @@ def inference_stream(model: PreTrainedModel,
     if 'input_ids' in inputs:
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
-        token_len = input_ids.shape[1]
-    else:
+    if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
+    else:
+        token_len = input_ids.shape[1]
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -524,7 +525,9 @@ def inference_stream(model: PreTrainedModel,
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
     if generation_info is not None:
-        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
+        generation_info['num_prompt_tokens'] = token_len
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
     gen = model.generate_stream(
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
@@ -624,11 +627,12 @@ def inference(model: PreTrainedModel,
     if 'input_ids' in inputs:
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
-        token_len = input_ids.shape[1]
-    else:
+    if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
+    else:
+        token_len = input_ids.shape[1]
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -667,7 +671,9 @@ def inference(model: PreTrainedModel,
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
     if generation_info is not None:
-        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
+        generation_info['num_prompt_tokens'] = token_len
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
     generate_ids = model.generate(
         streamer=streamer,
         generation_config=generation_config,
@@ -758,8 +764,8 @@ def messages_to_history(messages: Messages) -> Dict[str, Any]:
 
 def set_generation_config(model: Module,
                           generation_config: GenerationConfig) -> None:
-    if hasattr(model, 'generation_config'):
-        old_generation_config = model.generation_config
+    old_generation_config = getattr(model, 'generation_config', None)
+    if old_generation_config is not None:
         for k, v in old_generation_config.__dict__.items():
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)

@@ -45,6 +45,7 @@ class TemplateType:
     sus = 'sus'
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
+    deepseek_vl = 'deepseek-vl'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
     cogvlm_instruct = 'cogvlm-instruct'
@@ -881,6 +882,70 @@ register_template(
         'and other non-computer science questions, you will refuse to answer\n'
         )))
 
+def _findall(token_list: List[int], token: int) -> List[int]:
+    """Find the index of a token in the token_list."""
+    res = []
+    idx = -1
+    try:
+        while True:
+            idx = token_list.index(token, idx + 1)
+            res.append(idx)
+    except ValueError:
+        pass
+    return res
+
+
+class DeepseekVLTemplate(Template):
+    DEEPSEEK_VL_SYSTEM = (
+        'You are a helpful language and vision assistant. '
+        'You are able to understand the visual content that the user provides, '
+        'and assist the user with a variety of tasks using natural language.')
+
+    def __init__(self):
+        return super().__init__(
+            ['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
+            ['User: <image_placeholder>{{QUERY}}\n\nAssistant:'],
+            ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'],
+            self.DEEPSEEK_VL_SYSTEM)
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        images_path = example['images']
+        if not isinstance(images_path, (list, tuple)):
+            images_path = [images_path]
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
+
+        vl_chat_processor = self.tokenizer.vl_chat_processor
+        input_ids = torch.tensor(inputs['input_ids'])
+        image_indices = (input_ids == vl_chat_processor.image_id).nonzero()
+        input_ids, num_image_tokens = vl_chat_processor.add_image_token(image_indices, input_ids)
+        images_outputs = vl_chat_processor.image_processor(images, return_tensors="pt")
+        from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        output = VLChatProcessorOutput(sft_format=None, input_ids=input_ids, 
+                              pixel_values=images_outputs.pixel_values,
+                              num_image_tokens=num_image_tokens)
+        batched_output = vl_chat_processor.batchify([output])
+        batched_output = batched_output.to(device=self.model.device,
+                                            dtype=self.model.dtype)
+        inputs_embeds = self.model.prepare_inputs_embeds(**batched_output)[0]
+        inputs['inputs_embeds'] = inputs_embeds
+        return inputs, {}
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+register_template(
+    TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True,
+    support_stream=False, infer_media_type='round', dataloader_num_workers=0)
+
+
 register_template(
     TemplateType.zephyr,
     Template([], ['<|user|>\n{{QUERY}}</s>\n<|assistant|>\n'], ['</s>\n'],
@@ -902,7 +967,7 @@ class CogTemplate(Template):
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        images_path = example.get('images')
+        images_path = example['images']
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)

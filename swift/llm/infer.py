@@ -339,7 +339,9 @@ def llm_infer(args: InferArguments) -> None:
                     new_history = resp_list[0]['history']
                     print(response)
             else:
-                if args.stream:
+                template_info = TEMPLATE_MAPPING[self.template_type]
+                support_stream = template_info.get('support_stream', True)
+                if args.stream and support_stream:
                     gen = inference_stream(model, template, query, history,
                                            system, **infer_kwargs)
                     print_idx = 0
