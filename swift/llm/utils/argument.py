@@ -697,8 +697,7 @@ class InferArguments:
                     'To use VLLM, you need to provide the complete weight parameters. '
                     'Please set `--merge_lora true`.')
         template_info = TEMPLATE_MAPPING[self.template_type]
-        support_stream = template_info.get('support_stream', True)
-        if self.num_beams != 1 or not support_stream:
+        if self.num_beams != 1:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')

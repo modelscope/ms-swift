@@ -73,6 +73,7 @@ poem:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
+(默认只对LLM部分的qkv进行lora微调. 不支持`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory
@@ -81,7 +82,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-mini-en \
 ```
 
-自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子:
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 支持每轮对话含多张图片或不含图片, 支持传入本地路径或URL)
 
