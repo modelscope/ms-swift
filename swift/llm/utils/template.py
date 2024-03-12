@@ -609,7 +609,7 @@ class YiVLTemplate(Template):
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:\n'],
+    YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:'],
                  ['\n'], ['\n###'], yi_vl_default_system, ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',
@@ -825,7 +825,7 @@ class InternLMXComposer2(Template):
     @staticmethod
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
-        return generate_ids[0, 1:].tolist()
+        return generate_ids[0].tolist()
 
 
 register_template(

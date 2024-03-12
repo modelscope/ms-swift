@@ -136,7 +136,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 
 
 ## ✨ 大模型训练推理
-如果想要了解更多大模型微调的最佳实践, 或者对大模型进行推理, 微调, 量化, 部署的教程, 可以查看[LLM系列文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+如果想要了解更多大模型或者多模态大模型的**最佳实践**, 或者对大模型进行推理, 微调, 量化, 部署的**教程**, 可以查看[LLM系列文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
 
 
 ### WEB UI训练推理
@@ -221,9 +221,9 @@ app_ui_main(infer_args)
   - 多模态:
     - [qwen-vl](https://github.com/QwenLM/Qwen-VL) 系列: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
     - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) 系列: qwen-audio, qwen-audio-chat.
-    - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
-    - [cogagent](https://github.com/THUDM/CogVLM) 系列: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
     - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b-chat.
+    - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
+    - [cogvlm](https://github.com/THUDM/CogVLM) 系列: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
   - 通用:
     - [qwen](https://github.com/QwenLM/Qwen) 系列:
       - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.
