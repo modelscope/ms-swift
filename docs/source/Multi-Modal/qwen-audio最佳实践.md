@@ -55,7 +55,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset aishell1-mini-zh \
 ```
 
-自定义数据集支持json, jsonl样式, 以下是自定义数据集的例子:
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 支持每轮对话含多段语音或不含语音, 支持传入本地路径或URL)
 
