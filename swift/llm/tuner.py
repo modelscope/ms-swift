@@ -179,7 +179,8 @@ def prepare_model(model, args: SftArguments):
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
         if args.galore_target_modules is None:
-            args.galore_target_modules = find_all_linears(model, 0, args.model_type)
+            args.galore_target_modules = find_all_linears(
+                model, 0, args.model_type)
         if args.galore_with_embedding:
             args.galore_target_modules += find_embedding(model)
         args.training_args.galore_config = GaLoreConfig(
