@@ -1,0 +1,165 @@
+
+# Yi-VL 最佳实践
+
+## 目录
+- [环境准备](#环境准备)
+- [推理](#推理)
+- [微调](#微调)
+- [微调后推理](#微调后推理)
+
+
+## 环境准备
+```shell
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .[llm]
+```
+
+## 推理
+
+推理[yi-vl-6b-chat](https://modelscope.cn/models/01ai/Yi-VL-6B/summary):
+```shell
+# Experimental environment: A10, 3090, V100...
+# 18GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-vl-6b-chat
+```
+
+输出: (支持传入本地路径或URL)
+```python
+"""
+<<< 描述这种图片
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+图片显示一只小猫坐在地板上,眼睛睁开,凝视着摄像机。小猫看起来很可爱,有灰色和白色的毛皮,以及蓝色的眼睛。它似乎正在看摄像机,可能对周围环境很好奇。
+--------------------------------------------------
+<<< 图中有几只羊
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+图中有四只羊.
+--------------------------------------------------
+<<< 计算结果是多少
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
+1452 + 45304 = ?
+--------------------------------------------------
+<<< 根据图片中的内容写首诗
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
+星光闪烁,照亮了宁静的夜晚,
+在湖上,一艘小船静静地漂浮着,
+船上有灯,像星星一样闪耀,
+船上有两个人,在星光下静静地坐着。
+
+森林的影子在湖边摇曳,
+在星光下,它显得神秘而美丽。
+船在湖中,在星光下,
+在星光下,它显得神秘而美丽。
+
+星光闪烁,照亮了宁静的夜晚,
+在湖上,一艘小船静静地漂浮着,
+船上有灯,像星星一样闪耀,
+船上有两个人,在星光下静静地坐着。
+"""
+```
+
+示例图片如下:
+
+cat:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png" width="250" style="display: inline-block;">
+
+animal:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png" width="250" style="display: inline-block;">
+
+math:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png" width="250" style="display: inline-block;">
+
+poem:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+**单样本推理**
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType,
+    get_default_template_type, inference_stream
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.yi_vl_6b_chat
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+
+model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+                                       model_kwargs={'device_map': 'auto'})
+model.generation_config.max_new_tokens = 256
+template = get_template(template_type, tokenizer)
+seed_everything(2)  # ...
+
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
+query = '距离各城市多远？'
+response, history = inference(model, template, query, images=images)
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+query = '距离最远的城市是哪？'
+images = images * 2
+gen = inference_stream(model, template, query, history, images=images)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+print(f'history: {history}')
+"""
+query: 距离各城市多远？
+response: 距离甲塔14公里,距离阳江62公里,距离广州293公里,距离广州293公里。
+query: 距离最远的城市是哪？
+response: 最远的距离是293公里。
+history: [('距离各城市多远？', '距离甲塔14公里,距离阳江62公里,距离广州293公里,距离广州293公里。'), ('距离最远的城市是哪？', '最远的距离是293公里。')]
+"""
+```
+
+示例图片如下:
+
+road:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
+
+
+## 微调
+多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
+
+(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
+```shell
+# Experimental environment: A10, 3090, V100...
+# 19GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type yi-vl-6b-chat \
+    --dataset coco-mini-en-2 \
+```
+
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
+
+(支持多轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+
+```jsonl
+{"query": "55555", "response": "66666", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path", "image_path2", "image_path3"]}
+```
+
+
+## 微调后推理
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx \
+    --load_dataset_config true \
+```

@@ -84,6 +84,7 @@ def llm_dpo(args: DPOArguments) -> str:
     model, _ = prepare_model(model, args)
 
     show_layers(model)
+    model_info = None
     if not is_deepspeed_zero3_enabled():
         model_info = get_model_info(model)
         logger.info(model_info)

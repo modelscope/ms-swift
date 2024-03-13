@@ -165,6 +165,9 @@ class ModelType:
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
     deepseek_math_7b_chat = 'deepseek-math-7b-chat'
+    # deepseek-vl
+    deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
+    deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # gemma
     gemma_2b = 'gemma-2b'
     gemma_7b = 'gemma-7b'
@@ -245,6 +248,7 @@ class ModelType:
     # phi
     phi2_3b = 'phi2-3b'
     # cogagent
+    cogvlm_17b_instruct = 'cogvlm-17b-instruct'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -278,6 +282,10 @@ class LoRATM(NamedTuple):
         'vision_expert_query_key_value', 'vision_expert_dense',
         'language_expert_query_key_value', 'language_expert_dense', 'query',
         'key_value', 'dense'
+    ]
+    cogvlm = [
+        'vision_expert_query_key_value', 'vision_expert_dense',
+        'language_expert_query_key_value', 'language_expert_dense'
     ]
     phi = ['Wqkv']
     internlm2 = ['wqkv']
@@ -488,18 +496,21 @@ def get_model_tokenizer_mamba(model_dir: str,
                               torch_dtype: Optional[Dtype],
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
-                              model_config=None,
-                              tokenizer=None,
-                              automodel_class=AutoModelForCausalLM,
                               **kwargs):
     logger.info(
         '[IMPORTANT] Remember installing causal-conv1d>=1.2.0 and mamba-ssm, or you training and inference will'
         'be really slow!')
     return get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs,
-                                         load_model, model_config, tokenizer,
-                                         automodel_class, **kwargs)
+                                         load_model, **kwargs)
 
 
+@register_model(
+    ModelType.cogvlm_17b_instruct,
+    'ZhipuAI/cogvlm-chat',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm_instruct,
+    support_gradient_checkpointing=False,
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.cogagent_18b_chat,
     'ZhipuAI/cogagent-chat',
@@ -1662,6 +1673,112 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
+def _git_clone_github(github_url: str, model_dir: str,
+                      local_repo_name: str) -> str:
+    git_cache_dir = os.path.dirname(model_dir)
+    local_repo_path = os.path.join(git_cache_dir, local_repo_name)
+    if not os.path.exists(local_repo_path):
+        command = f'git -C {git_cache_dir} clone {github_url} {local_repo_name}'
+        logger.info(f'Run the command: `{command}`')
+        os.system(command)
+    return local_repo_path
+
+
+def __prepare_inputs_embeds(
+    self,
+    input_ids: torch.LongTensor,
+    pixel_values: torch.FloatTensor,
+    images_seq_mask: torch.LongTensor,
+    images_emb_mask: torch.LongTensor,
+    **kwargs,
+):
+    # for patching deepseek-vl
+    from einops import rearrange
+    bs, n = pixel_values.shape[0:2]
+    images = rearrange(pixel_values, 'b n c h w -> (b n) c h w')
+    # [b x n, T2, D]
+    images_embeds = self.aligner(self.vision_model(images))
+
+    # [b x n, T2, D] -> [b, n x T2, D]
+    images_embeds = rearrange(
+        images_embeds, '(b n) t d -> b (n t) d', b=bs, n=n)
+    # [b, n, T2] -> [b, n x T2]
+    images_emb_mask = rearrange(images_emb_mask, 'b n t -> b (n t)')
+
+    # [b, T, D]
+    input_ids[input_ids < 0] = 0  # ignore the image embeddings
+    inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
+
+    # replace with the image embeddings (FIX)
+    inputs_embeds.data[images_seq_mask] = images_embeds[images_emb_mask]
+
+    return inputs_embeds
+
+
+def _patch_deepseek_vl(model) -> None:
+    model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
+
+
+@register_model(
+    ModelType.deepseek_vl_7b_chat,
+    'deepseek-ai/deepseek-vl-7b-chat',
+    LoRATM.llama2,
+    TemplateType.deepseek_vl,
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
+@register_model(
+    ModelType.deepseek_vl_1_3b_chat,
+    'deepseek-ai/deepseek-vl-1.3b-chat',
+    LoRATM.llama2,
+    TemplateType.deepseek_vl,
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
+def get_model_tokenizer_deepseek_vl(model_dir: str,
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    # compat with python==3.10
+    if sys.version_info.minor >= 10:
+        import collections
+        import collections.abc
+        for type_name in collections.abc.__all__:
+            setattr(collections, type_name, getattr(collections.abc,
+                                                    type_name))
+    local_repo_path = _git_clone_github(
+        'https://github.com/deepseek-ai/DeepSeek-VL', model_dir,
+        'deepseek_vl_github')
+    sys.path.append(os.path.join(local_repo_path))
+    from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
+    vl_chat_processor = VLChatProcessor.from_pretrained(model_dir)
+    tokenizer = vl_chat_processor.tokenizer
+    # flash_attn
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if version.parse(transformers.__version__) >= version.parse('4.36'):
+        if use_flash_attn:
+            model_config.language_config._attn_implementation = 'flash_attention_2'
+    else:
+        model_config.language_config._flash_attn_2_enabled = use_flash_attn
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        tokenizer=tokenizer,
+        **kwargs)
+    tokenizer.vl_chat_processor = vl_chat_processor
+    if load_model:
+        _patch_deepseek_vl(model)
+        multi_modal_model = model
+        model = multi_modal_model.language_model
+        model.multi_modal_model = [multi_modal_model
+                                   ]  # avoid recursion error: use list
+    return model, tokenizer
+
+
 @register_model(
     ModelType.llama2_7b,
     'modelscope/Llama-2-7b-ms',
@@ -2369,13 +2486,9 @@ def get_model_tokenizer_yi_vl(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    git_cache_dir = os.path.dirname(model_dir)
-    yi_github_path = os.path.join(git_cache_dir, 'yi_github')
-    if not os.path.exists(yi_github_path):
-        command = f'git -C {git_cache_dir} clone https://github.com/01-ai/Yi.git yi_github'
-        logger.info(f'Run the command: `{command}`')
-        os.system(command)
-    sys.path.append(os.path.join(yi_github_path, 'VL'))
+    local_repo_path = _git_clone_github('https://github.com/01-ai/Yi.git',
+                                        model_dir, 'yi_github')
+    sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
 

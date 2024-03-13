@@ -1205,7 +1205,7 @@ register_dataset(
         value_key='content',
         error_strategy='delete'),
     get_dataset_from_repo,
-    tag=['chat', 'medical', '🔥'])
+    tags=['chat', 'medical', '🔥'])
 
 register_dataset(
     DatasetName.disc_law_sft_zh,
@@ -1216,7 +1216,7 @@ register_dataset(
         'output': 'response'
     }),
     get_dataset_from_repo,
-    tag=['chat', 'law', '🔥'])
+    tags=['chat', 'law', '🔥'])
 
 register_dataset(
     DatasetName.pileval,
@@ -1226,7 +1226,7 @@ register_dataset(
         'text': 'response',
     }),
     get_dataset_from_repo,
-    tag=['text-generation', 'awq'])
+    tags=['text-generation', 'awq'])
 
 
 def add_self_cognition_dataset(

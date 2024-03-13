@@ -9,6 +9,7 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import is_torch_npu_available
 
 from swift.trainers import Seq2SeqTrainer
 from swift.utils import (check_json_format, compute_acc_metrics,
@@ -30,7 +31,10 @@ logger = get_logger()
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'args: {args}')
     training_args = args.training_args
-    print(f'device_count: {torch.cuda.device_count()}')
+    if is_torch_npu_available():
+        print(f'device_count: {torch.npu.device_count()}')
+    else:
+        print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
@@ -43,7 +47,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                 device=device_id)
 
     # Loading Model and Tokenizer
-    if is_deepspeed_zero3_enabled():
+    if is_torch_npu_available():
+        model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
+    elif is_deepspeed_zero3_enabled():
         model_kwargs = {'device_map': None}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
@@ -91,6 +97,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     model, callbacks = prepare_model(model, args)
 
     show_layers(model)
+    model_info = None
     if not is_deepspeed_zero3_enabled():
         model_info = get_model_info(model)
         logger.info(model_info)

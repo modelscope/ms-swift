@@ -47,10 +47,11 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         }
 
     def train(self, *args, **kwargs) -> torch.Tensor:
-        super().train(*args, **kwargs)
+        res = super().train(*args, **kwargs)
         for i in range(torch.cuda.device_count()):
             self.perf['memory'][
                 f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
+        return res
 
     def prediction_step(
         self,

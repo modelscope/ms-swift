@@ -36,6 +36,7 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           TextStreamer, trainer)
 
 from swift.hub import ModelScopeConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
 from .template import History, StopWords, StopWordsCriteria, Template
@@ -367,8 +368,10 @@ def find_all_linears(model: Module, quantization_bit: int,
                      model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
-    if model_type.startswith('chatglm'):
-        head_module_name = 'output_layer'
+    if model_type in MODEL_KEYS_MAPPING:
+        output = MODEL_KEYS_MAPPING[model_type].output
+        idx = output.rfind('.')
+        head_module_name = output[idx + 1:]
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
         linear_cls = [Linear4bit]
@@ -490,10 +493,11 @@ def inference_stream(model: PreTrainedModel,
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
-    else:
+    if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
+
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -524,7 +528,9 @@ def inference_stream(model: PreTrainedModel,
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
     if generation_info is not None:
-        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
+        generation_info['num_prompt_tokens'] = token_len
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
     gen = model.generate_stream(
         generation_config=stream_config,
         stopping_criteria=stopping_criteria,
@@ -625,10 +631,11 @@ def inference(model: PreTrainedModel,
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
-    else:
+    if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
+
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -667,7 +674,9 @@ def inference(model: PreTrainedModel,
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
     if generation_info is not None:
-        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
+        generation_info['num_prompt_tokens'] = token_len
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
     generate_ids = model.generate(
         streamer=streamer,
         generation_config=generation_config,
@@ -758,8 +767,8 @@ def messages_to_history(messages: Messages) -> Dict[str, Any]:
 
 def set_generation_config(model: Module,
                           generation_config: GenerationConfig) -> None:
-    if hasattr(model, 'generation_config'):
-        old_generation_config = model.generation_config
+    old_generation_config = getattr(model, 'generation_config', None)
+    if old_generation_config is not None:
         for k, v in old_generation_config.__dict__.items():
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)

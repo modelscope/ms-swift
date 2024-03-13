@@ -8,8 +8,14 @@ from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 import json
 import numpy as np
 import torch
+import torch.distributed as dist
+import transformers
 from datasets import concatenate_datasets
+from packaging import version
 from torch import dtype as Dtype
+from transformers.utils import (is_torch_bf16_gpu_available,
+                                is_torch_cuda_available,
+                                is_torch_npu_available)
 from transformers.utils.versions import require_version
 
 from swift import get_logger
@@ -120,6 +126,16 @@ class SftArguments:
     adapter_act: str = 'gelu'
     adapter_length: int = 128
 
+    # galore
+    use_galore: bool = False
+    galore_rank: int = 128
+    galore_target_modules: Optional[List[str]] = None
+    galore_update_proj_gap: int = 50
+    galore_scale: float = 1.0
+    galore_proj_type: str = 'std'
+    galore_optim_per_parameter: bool = False
+    galore_with_embedding: bool = False
+
     # adalora
     adalora_target_r: int = 8
     adalora_init_r: int = 12
@@ -137,7 +153,10 @@ class SftArguments:
     llamapro_num_new_blocks: int = 4
     llamapro_num_groups: Optional[int] = None
 
+    # neftune
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
+    neftune_backend: Literal['swift', 'transformers'] = None
+
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
     deepspeed: Optional[str] = None
@@ -375,6 +394,10 @@ class SftArguments:
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
             self)
 
+        if self.neftune_backend is None:
+            self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
+                else 'transformers'
+
         prepare_push_ms_hub(self)
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
@@ -447,11 +470,8 @@ class SftArguments:
                 self.model_type)
 
         kwargs = {}
-        parameters = inspect.signature(
-            Seq2SeqTrainingArguments.__init__).parameters
-        for key in ['neftune_noise_alpha']:
-            if key in parameters:
-                kwargs[key] = getattr(self, key)
+        if self.neftune_backend != 'swift':
+            kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
@@ -687,8 +707,7 @@ class InferArguments:
                     'To use VLLM, you need to provide the complete weight parameters. '
                     'Please set `--merge_lora true`.')
         template_info = TEMPLATE_MAPPING[self.template_type]
-        support_stream = template_info.get('support_stream', True)
-        if self.num_beams != 1 or not support_stream:
+        if self.num_beams != 1:
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
@@ -827,7 +846,8 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 def select_dtype(
     args: Union[SftArguments, InferArguments]
 ) -> Tuple[Optional[Dtype], bool, bool]:
-    if not torch.cuda.is_available():
+    if not is_torch_cuda_available() and not is_torch_npu_available():
+        # cpu
         if args.dtype == 'AUTO':
             args.dtype = 'fp32'
             logger.info(f'Setting args.dtype: {args.dtype}')
@@ -838,8 +858,8 @@ def select_dtype(
             return torch.bfloat16, False, True
         else:
             raise ValueError(f'args.dtype: {args.dtype}')
-
-    if args.dtype == 'AUTO' and not torch.cuda.is_bf16_supported():
+    # cuda, npu
+    if args.dtype == 'AUTO' and not is_torch_bf16_gpu_available():
         args.dtype = 'fp16'
     if args.dtype == 'AUTO' and ('int4' in args.model_type
                                  or 'int8' in args.model_type):
@@ -866,7 +886,7 @@ def select_dtype(
             logger.info(f'Setting torch_dtype: {torch_dtype}')
         fp16, bf16 = True, False
     elif torch_dtype == torch.bfloat16:
-        support_bf16 = torch.cuda.is_bf16_supported()
+        support_bf16 = is_torch_bf16_gpu_available()
         if not support_bf16:
             logger.warning(f'support_bf16: {support_bf16}')
         fp16, bf16 = False, True
@@ -947,8 +967,9 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         model_id_or_path = args.model_id_or_path
         model_id_or_path_lower = model_id_or_path.lower()
         if model_id_or_path_lower not in model_mapping_reversed:
-            if isinstance(args,
-                          InferArguments) and 'checkpoint' in model_id_or_path:
+            if (isinstance(args, InferArguments)
+                    and 'checkpoint' in model_id_or_path
+                    and args.ckpt_dir is None):
                 raise ValueError(
                     'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
                 )
@@ -986,19 +1007,21 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def prepare_push_ms_hub(args: SftArguments) -> None:
+    if not args.push_to_hub:
+        return
     if args.hub_model_id is None:
         args.hub_model_id = f'{args.model_type}-{args.sft_type}'
         logger.info(f'Setting hub_model_id: {args.hub_model_id}')
-    if args.push_to_hub:
-        api = HubApi()
-        if args.hub_token is None:
-            args.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if args.hub_token is not None:
-            api.login(args.hub_token)
-        else:
-            assert ModelScopeConfig.get_token(
-            ) is not None, 'Please enter hub_token'
-        logger.info('hub login successful!')
+
+    api = HubApi()
+    if args.hub_token is None:
+        args.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+    if args.hub_token is not None:
+        api.login(args.hub_token)
+    else:
+        assert ModelScopeConfig.get_token(
+        ) is not None, 'Please enter hub_token'
+    logger.info('hub login successful!')
 
 
 def _check_path(
