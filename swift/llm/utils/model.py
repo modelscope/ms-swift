@@ -1678,8 +1678,8 @@ def _git_clone_github(github_url: str,
                       local_repo_name: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
-    github_url = github_url.rstrip('/')
     if local_repo_name is None:
+        github_url = github_url.rstrip('/')
         local_repo_name = github_url.rsplit('/', 1)[1]
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
     if not os.path.exists(local_repo_path):
