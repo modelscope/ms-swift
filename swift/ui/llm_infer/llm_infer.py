@@ -26,7 +26,8 @@ class LLMInfer(BaseUI):
 
     sub_ui = [Model, Runtime]
 
-    is_inference = os.environ.get('USE_INFERENCE') == 'true' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+    is_inference = os.environ.get('USE_INFERENCE') == 'true' or os.environ.get(
+        'MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
         'generate_alert': {
@@ -434,7 +435,8 @@ class LLMInfer(BaseUI):
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
         model, template = model_and_template
-        model.cuda()
+        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            model.cuda()
         if not template_type.endswith('generation'):
             old_history, history = limit_history_length(
                 template, prompt, history, int(max_new_tokens))
@@ -446,6 +448,7 @@ class LLMInfer(BaseUI):
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            max_new_tokens=int(max_new_tokens),
             repetition_penalty=repetition_penalty)
         gen = inference_stream(
             model,
@@ -458,4 +461,5 @@ class LLMInfer(BaseUI):
         for _, history in gen:
             total_history = old_history + history
             yield '', total_history
-        model.cpu()
+        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+            model.cpu()

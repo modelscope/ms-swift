@@ -15,7 +15,8 @@ class Model(BaseUI):
 
     sub_ui = [Generate]
 
-    is_inference = os.environ.get('USE_INFERENCE') == 'true' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+    is_inference = os.environ.get('USE_INFERENCE') == 'true' or os.environ.get(
+        'MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
         'checkpoint': {
