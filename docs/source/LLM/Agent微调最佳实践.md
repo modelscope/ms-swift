@@ -278,13 +278,40 @@ swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observat
 运行命令后，改变system字段：
 
 ```shell
->>> reset-system
->>> Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!
+<<< reset-system
+<<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!
 ```
 
-为方便表示，这里将system转换为单行输入。下面就可以进行Agent问答：
+为方便表示，这里将system转换为单行输入。如果需要以多行方式输入，可以用下面的命令(多行信息以#号结束)：
+
 ```shell
->>> 输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点
+<<< multi-line#
+<<<[M] reset-system#
+<<<[MS] Answer the following questions as best you can. You have access to the following APIs:
+1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
+
+2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
+
+3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+
+4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
+
+Use the following format:
+
+Thought: you should always think about what to do
+Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+Begin!#
+```
+
+下面就可以进行Agent问答：
+
+```shell
+<<< 输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点
 Thought: I need to use the fire\_recognition API to analyze the input image and determine if there are any signs of fire.
 
 Action: Use the fire\_recognition API to analyze the input image.
@@ -292,7 +319,7 @@ Action: Use the fire\_recognition API to analyze the input image.
 Action Input: /tmp/1.jpg
 
 Observation:
->>> [{'coordinate': [101.1, 200.9], 'on_fire': True}]
+<<< [{'coordinate': [101.1, 200.9], 'on_fire': True}]
 Thought: The fire\_recognition API has returned a result indicating that there is fire in the input image.
 
 Final Answer: There is fire in the input image.
