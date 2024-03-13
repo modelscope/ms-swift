@@ -468,7 +468,7 @@ def inference_stream(model: PreTrainedModel,
 
     # agent support
     is_observation = history[-1][-1].endswith(
-        'Observation:') if history else False
+        'Observation:') if history and history[-1][-1] else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         act_length = len(history[-1][-1])
@@ -576,7 +576,7 @@ def inference_stream(model: PreTrainedModel,
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
     if not is_observation:
-        history[-1] = (query, response)
+        history[-1] = [query, response]
     else:
         history[-1][-1] = history[-1][-1][:act_length] + response
     yield response, history
@@ -607,7 +607,7 @@ def inference(model: PreTrainedModel,
         history = deepcopy(history)
 
     is_observation = history[-1][-1].endswith(
-        'Observation:') if history else False
+        'Observation:') if history and history[-1][-1] else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         query = None
@@ -701,7 +701,7 @@ def inference(model: PreTrainedModel,
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
     if not is_observation:
-        history.append((query, response))
+        history.append([query, response])
     else:
         history[-1][-1] = history[-1][-1] + response
     return response, history
