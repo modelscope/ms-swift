@@ -134,7 +134,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(支持多轮对话, 支持每轮对话含多张图片或不含图片, 支持传入本地路径或URL)
+(支持多轮对话, 支持每轮对话含多张图片或不含图片, 支持传入本地路径或URL. 该模型不支持merge-lora)
 
 ```json
 [
@@ -159,7 +159,6 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 
 ## 微调后推理
-
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/internlm-xcomposer2-7b-chat/vx-xxx/checkpoint-xxx \

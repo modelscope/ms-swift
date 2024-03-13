@@ -97,6 +97,8 @@ history: [('Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/i
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
+LoRA微调:
+
 (默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含audio模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A10, 3090, V100...
@@ -104,6 +106,28 @@ history: [('Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/i
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen-audio-chat \
     --dataset aishell1-mini-zh \
+```
+
+全参数微调:
+```shell
+# MP
+# Experimental environment: 2 * A100
+# 2 * 50 GPU memory
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type qwen-audio-chat \
+    --dataset aishell1-mini-zh \
+    --train_dataset_sample -1 \
+    --sft_type full \
+
+# ZeRO2
+# Experimental environment: 4 * A100
+# 2 * 80 GPU memory
+NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type qwen-audio-chat \
+    --dataset aishell1-mini-zh \
+    --train_dataset_sample -1 \
+    --sft_type full \
+    --deepspeed default-zero2
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
@@ -133,9 +157,20 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 
 ## 微调后推理
-
+直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/qwen-audio-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
+```
+
+**merge-lora**并推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/qwen-audio-chat/vx-xxx/checkpoint-xxx \
+    --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/qwen-audio-chat/vx-xxx/checkpoint-xxx-merged \
+    --load_dataset_config true
 ```

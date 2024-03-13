@@ -129,6 +129,8 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
+LoRA微调:
+
 (默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: 3090
@@ -136,6 +138,17 @@ road:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen-vl-chat \
     --dataset coco-mini-en \
+```
+
+全参数微调:
+```shell
+# Experimental environment: 2 * A100
+# 2 * 55 GPU memory
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type qwen-vl-chat \
+    --dataset coco-mini-en \
+    --train_dataset_sample -1 \
+    --sft_type full \
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
@@ -165,9 +178,20 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 
 ## 微调后推理
-
+直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
+```
+
+**merge-lora**并推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx \
+    --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx-merged \
+    --load_dataset_config true
 ```
