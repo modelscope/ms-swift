@@ -218,7 +218,7 @@ def inference_stream_vllm(
 
         # agent support
         is_observation = history[-1][-1].endswith(
-            'Observation:') if history else False
+            'Observation:') if history and history[-1][-1] else False
         act_length = None
         if is_observation:
             history[-1][-1] = history[-1][-1] + request['query']
@@ -302,7 +302,7 @@ def inference_vllm(llm_engine: LLMEngine,
             history = []
 
         is_observation = history[-1][-1].endswith(
-            'Observation:') if history else False
+            'Observation:') if history and history[-1][-1] else False
         if is_observation:
             history[-1][-1] = history[-1][-1] + request['query']
             request['query'] = None
