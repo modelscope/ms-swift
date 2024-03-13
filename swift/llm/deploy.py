@@ -178,7 +178,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             for output in result.outputs:
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
-                    message=ChatMessage(role='assistant', content=output.text),
+                    message=ChatMessage(role='assistant', 
+                    content=template.tokenizer.decode(output.token_ids, True)),
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
@@ -193,7 +194,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             for output in result.outputs:
                 choice = CompletionResponseChoice(
                     index=output.index,
-                    text=output.text,
+                    text=template.tokenizer.decode(output.token_ids, True),
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
@@ -219,7 +220,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
-                    delta_text = output.text[print_idx_list[output.index]:]
+                    text = template.tokenizer.decode(output.token_ids, True)
+                    delta_text = text[print_idx_list[output.index]:]
                     print_idx_list[output.index] += len(delta_text)
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
@@ -236,7 +238,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             else:
                 choices = []
                 for output in result.outputs:
-                    delta_text = output.text[print_idx_list[output.index]:]
+                    text = template.tokenizer.decode(output.token_ids, True)
+                    delta_text = text[print_idx_list[output.index]:]
                     print_idx_list[output.index] += len(delta_text)
                     choice = CompletionResponseStreamChoice(
                         index=output.index,

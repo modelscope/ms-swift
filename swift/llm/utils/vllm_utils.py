@@ -330,7 +330,7 @@ def inference_vllm(llm_engine: LLMEngine,
         query = request['query']
         history = request['history']
         if not is_observation:
-            history.append((query, response))
+            history.append([query, response])
         else:
             history[-1][-1] = history[-1][-1] + response
         resp_list[i] = {'response': response, 'history': history}
