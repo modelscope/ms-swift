@@ -12,10 +12,10 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from modelscope.hub.utils.utils import get_cache_dir
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
                         snapshot_download)
+from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
@@ -1723,6 +1723,19 @@ def __prepare_inputs_embeds(
 def _patch_deepseek_vl(model) -> None:
     model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
 
+    def get_new_func(func_name: str):
+
+        def new_func(*args, **kwargs):
+            return getattr(model.language_model, func_name)(*args, **kwargs)
+
+        return new_func
+
+    for key in [
+            'generate', 'get_input_embeddings',
+            'gradient_checkpointing_enable', 'forward'
+    ]:
+        setattr(model, key, get_new_func(key))
+
 
 @register_model(
     ModelType.deepseek_vl_7b_chat,
@@ -1776,10 +1789,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer.vl_chat_processor = vl_chat_processor
     if load_model:
         _patch_deepseek_vl(model)
-        model.generate = model.language_model.generate
-        model.get_input_embeddings = model.language_model.get_input_embeddings
-        model.gradient_checkpointing_enable = model.language_model.gradient_checkpointing_enable
-        model.forward = model.language_model.forward
     return model, tokenizer
 
 
