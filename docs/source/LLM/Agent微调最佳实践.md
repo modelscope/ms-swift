@@ -278,13 +278,15 @@ swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observat
 运行命令后，改变system字段：
 
 ```shell
+# 单行system
 <<< reset-system
 <<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!
 ```
 
-为方便表示，这里将system转换为单行输入。如果需要以多行方式输入，可以用下面的命令(多行信息以#号结束)：
+如果需要以多行方式输入，可以用下面的命令(多行信息以#号结束)：
 
 ```shell
+# 多行system
 <<< multi-line#
 <<<[M] reset-system#
 <<<[MS] Answer the following questions as best you can. You have access to the following APIs:
