@@ -289,7 +289,7 @@ Thought: I need to use the fire\_recognition API to analyze the input image and 
 
 Action: Use the fire\_recognition API to analyze the input image.
 
-Action Input: /tmp/2.jpg
+Action Input: /tmp/1.jpg
 
 Observation:
 >>> [{'coordinate': [101.1, 200.9], 'on_fire': True}]
