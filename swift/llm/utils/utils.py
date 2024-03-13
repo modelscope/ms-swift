@@ -468,7 +468,7 @@ def inference_stream(model: PreTrainedModel,
 
     # agent support
     is_observation = history[-1][-1].endswith(
-        'Observation:') if history else False
+        'Observation:') if history and history[-1][-1] else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         act_length = len(history[-1][-1])
@@ -607,7 +607,7 @@ def inference(model: PreTrainedModel,
         history = deepcopy(history)
 
     is_observation = history[-1][-1].endswith(
-        'Observation:') if history else False
+        'Observation:') if history and history[-1][-1] else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         query = None

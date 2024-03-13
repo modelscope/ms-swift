@@ -26,7 +26,7 @@ class LLMInfer(BaseUI):
 
     sub_ui = [Model, Runtime]
 
-    is_inference = os.environ.get('USE_INFERENCE') == 'true' or os.environ.get(
+    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get(
         'MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
