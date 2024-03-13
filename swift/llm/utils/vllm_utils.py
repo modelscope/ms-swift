@@ -379,6 +379,7 @@ def prepare_vllm_engine_template(
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
+        stop=args.stop_words,
         repetition_penalty=args.repetition_penalty,
         num_beams=args.num_beams)
     logger.info(f'generation_config: {generation_config}')

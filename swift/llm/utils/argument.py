@@ -607,6 +607,7 @@ class InferArguments:
     top_p: float = 0.7
     repetition_penalty: float = 1.
     num_beams: int = 1
+    stop_words: List[str] = None
 
     # other
     use_flash_attn: Optional[bool] = None
