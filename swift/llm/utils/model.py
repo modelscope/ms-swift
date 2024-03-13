@@ -1772,10 +1772,10 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer.vl_chat_processor = vl_chat_processor
     if load_model:
         _patch_deepseek_vl(model)
-        multi_modal_model = model
-        model = multi_modal_model.language_model
-        model.multi_modal_model = [multi_modal_model
-                                   ]  # avoid recursion error: use list
+        model.generate = model.language_model.generate
+        model.get_input_embeddings = model.language_model.get_input_embeddings
+        model.gradient_checkpointing_enable = model.language_model.gradient_checkpointing_enable
+        model.forward = model.language_model.forward
     return model, tokenizer
 
 

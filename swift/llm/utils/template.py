@@ -949,7 +949,7 @@ class DeepseekVLTemplate(Template):
             pixel_values=images_outputs.pixel_values,
             num_image_tokens=num_image_tokens)
         batched_output = vl_chat_processor.batchify([output])
-        model = self.model.multi_modal_model[0]
+        model = self.model
         batched_output = batched_output.to(
             device=model.device, dtype=model.dtype)
         inputs_embeds = model.prepare_inputs_embeds(**batched_output)[0]
