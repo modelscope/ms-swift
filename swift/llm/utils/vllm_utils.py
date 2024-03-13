@@ -257,7 +257,8 @@ def inference_stream_vllm(
             if not request_temp[i][0]:
                 history[-1] = [query, safe_response]
             else:
-                history[-1][-1] = history[-1][-1][:request_temp[i][1]] + safe_response
+                history[-1][
+                    -1] = history[-1][-1][:request_temp[i][1]] + safe_response
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()

@@ -46,7 +46,6 @@ class XRequestConfig:
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
     length_penalty: float = 1.
-    
 
     # additional
     num_beams: int = 1

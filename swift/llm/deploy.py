@@ -178,8 +178,10 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             for output in result.outputs:
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
-                    message=ChatMessage(role='assistant', 
-                    content=template.tokenizer.decode(output.token_ids, True)),
+                    message=ChatMessage(
+                        role='assistant',
+                        content=template.tokenizer.decode(
+                            output.token_ids, True)),
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
