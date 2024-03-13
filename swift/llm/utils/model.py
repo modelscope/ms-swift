@@ -1683,6 +1683,8 @@ def _git_clone_github(github_url: str,
         local_repo_name = github_url.rsplit('/', 1)[1]
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
     if not os.path.exists(local_repo_path):
+        if not github_url.endswith('.git'):
+            github_url = f'{github_url}.git'
         command = f'git -C {git_cache_dir} clone {github_url} {local_repo_name}'
         logger.info(f'Run the command: `{command}`')
         os.system(command)
@@ -2499,7 +2501,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    local_repo_path = _git_clone_github('https://github.com/01-ai/Yi.git')
+    local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
