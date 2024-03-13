@@ -588,7 +588,7 @@ class InferArguments:
     val_dataset_sample: int = 10  # -1: all dataset
     save_result: bool = True
     system: Optional[str] = None
-    max_length: int = 2048  # -1: no limit
+    max_length: int = -1  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none'
@@ -958,6 +958,7 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         if model_id_or_path_lower not in model_mapping_reversed:
             if (isinstance(args, InferArguments)
                     and 'checkpoint' in model_id_or_path
+                    and 'merged' not in model_id_or_path
                     and args.ckpt_dir is None):
                 raise ValueError(
                     'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
