@@ -26,31 +26,31 @@ class LLMInfer(BaseUI):
 
     sub_ui = [Model, Runtime]
 
-    is_gradio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+    is_inference = os.environ.get('USE_INFERENCE') == 'true' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
         'generate_alert': {
             'value': {
                 'zh':
-                '请先加载模型' if is_gradio else '请先部署模型',
+                '请先加载模型' if is_inference else '请先部署模型',
                 'en':
                 'Please load model first'
-                if is_gradio else 'Please deploy model first',
+                if is_inference else 'Please deploy model first',
             }
         },
         'llm_infer': {
             'label': {
-                'zh': 'LLM推理' if is_gradio else 'LLM部署',
-                'en': 'LLM Inference' if is_gradio else 'LLM Deployment',
+                'zh': 'LLM推理' if is_inference else 'LLM部署',
+                'en': 'LLM Inference' if is_inference else 'LLM Deployment',
             }
         },
         'load_alert': {
             'value': {
                 'zh':
-                '加载中，请等待' if is_gradio else '部署中，请点击"展示部署状态"查看',
+                '加载中，请等待' if is_inference else '部署中，请点击"展示部署状态"查看',
                 'en':
                 'Start to load model, please wait'
-                if is_gradio else 'Start to deploy model, '
+                if is_inference else 'Start to deploy model, '
                 'please Click "Show running '
                 'status" to view details',
             }
@@ -132,7 +132,7 @@ class LLMInfer(BaseUI):
                     clear_history = gr.Button(elem_id='clear_history')
                     submit = gr.Button(elem_id='submit')
 
-                if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+                if cls.is_inference:
                     submit.click(
                         cls.generate_chat,
                         inputs=[
