@@ -127,6 +127,7 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --dataset aishell1-mini-zh \
     --train_dataset_sample -1 \
     --sft_type full \
+    --use_flash_attn true \
     --deepspeed default-zero2
 ```
 
