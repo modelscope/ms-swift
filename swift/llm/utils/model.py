@@ -1637,6 +1637,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
+
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
