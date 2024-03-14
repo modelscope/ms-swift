@@ -136,7 +136,7 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对LLM部分的所有linear进行微调, 可以指定`--lora_target_modules ALL`. 该模型暂不支持对vision模型部分微调)
+(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A10, 3090, V100
 # 20GB GPU memory
@@ -157,9 +157,20 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 
 ## 微调后推理
-
+直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/deepseek-vl-7b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
+```
+
+**merge-lora**并推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/deepseek-vl-7b-chat/vx-xxx/checkpoint-xxx \
+    --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/deepseek-vl-7b-chat/vx-xxx/checkpoint-xxx-merged \
+    --load_dataset_config true
 ```

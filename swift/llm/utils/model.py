@@ -15,6 +15,7 @@ import transformers
 from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
                         snapshot_download)
+from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
@@ -1673,11 +1674,17 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def _git_clone_github(github_url: str, model_dir: str,
-                      local_repo_name: str) -> str:
-    git_cache_dir = os.path.dirname(model_dir)
+def _git_clone_github(github_url: str,
+                      local_repo_name: Optional[str] = None) -> str:
+    git_cache_dir = os.path.join(get_cache_dir(), '_github')
+    os.makedirs(git_cache_dir, exist_ok=True)
+    if local_repo_name is None:
+        github_url = github_url.rstrip('/')
+        local_repo_name = github_url.rsplit('/', 1)[1]
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
     if not os.path.exists(local_repo_path):
+        if not github_url.endswith('.git'):
+            github_url = f'{github_url}.git'
         command = f'git -C {git_cache_dir} clone {github_url} {local_repo_name}'
         logger.info(f'Run the command: `{command}`')
         os.system(command)
@@ -1718,6 +1725,19 @@ def __prepare_inputs_embeds(
 def _patch_deepseek_vl(model) -> None:
     model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
 
+    def get_new_func(func_name: str):
+
+        def new_func(*args, **kwargs):
+            return getattr(model.language_model, func_name)(*args, **kwargs)
+
+        return new_func
+
+    for key in [
+            'generate', 'get_input_embeddings',
+            'gradient_checkpointing_enable', 'forward'
+    ]:
+        setattr(model, key, get_new_func(key))
+
 
 @register_model(
     ModelType.deepseek_vl_7b_chat,
@@ -1746,8 +1766,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
             setattr(collections, type_name, getattr(collections.abc,
                                                     type_name))
     local_repo_path = _git_clone_github(
-        'https://github.com/deepseek-ai/DeepSeek-VL', model_dir,
-        'deepseek_vl_github')
+        'https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
     vl_chat_processor = VLChatProcessor.from_pretrained(model_dir)
@@ -1772,10 +1791,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer.vl_chat_processor = vl_chat_processor
     if load_model:
         _patch_deepseek_vl(model)
-        multi_modal_model = model
-        model = multi_modal_model.language_model
-        model.multi_modal_model = [multi_modal_model
-                                   ]  # avoid recursion error: use list
     return model, tokenizer
 
 
@@ -2486,8 +2501,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    local_repo_path = _git_clone_github('https://github.com/01-ai/Yi.git',
-                                        model_dir, 'yi_github')
+    local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
@@ -2721,10 +2735,14 @@ def get_model_tokenizer(
 
 
 def get_additional_saved_files(model_type: str) -> List[str]:
-    if 'qwen-vl' in model_type:
-        return ['SimSun.ttf']
-    elif 'qwen-audio' in model_type:
-        return ['mel_filters.npz']
+    files_mapping = {
+        'qwen-vl': ['SimSun.ttf'],
+        'qwen-audio': ['mel_filters.npz'],
+        'deepseek-vl': ['preprocessor_config.json']
+    }
+    for key, files_list in files_mapping.items():
+        if key in model_type:
+            return files_list
     return []
 
 

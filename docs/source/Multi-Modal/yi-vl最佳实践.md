@@ -157,9 +157,20 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 
 ## 微调后推理
-
+直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
+```
+
+**merge-lora**并推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx \
+    --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx-merged \
+    --load_dataset_config true
 ```
