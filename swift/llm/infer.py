@@ -315,6 +315,7 @@ def llm_infer(args: InferArguments) -> None:
             if not template.support_multi_round:
                 history = []
                 infer_kwargs = {}
+
             read_media_file(infer_kwargs, args.infer_media_type)
             if args.infer_backend == 'vllm':
                 request_list = [{
@@ -340,6 +341,8 @@ def llm_infer(args: InferArguments) -> None:
                     new_history = resp_list[0]['history']
                     print(response)
             else:
+                if args.stop_words:
+                    infer_kwargs['stop_words'] = args.stop_words
                 template_info = TEMPLATE_MAPPING[args.template_type]
                 support_stream = template_info.get('support_stream', True)
                 if args.stream and support_stream:

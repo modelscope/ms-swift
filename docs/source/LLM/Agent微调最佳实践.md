@@ -267,6 +267,150 @@ Begin!
 
 ![image-20240201133359457](resources/image-20240201133359457.png)
 
+### 在命令行中使用Agent
+
+目前命令行的Agent推理支持需要指定`--eval_human true`，因为该参数为false的时候会读取数据集内容，此时无法手动传入`Observation:`后面的API调用结果。
+
+```shell
+swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
+```
+
+运行命令后，改变system字段：
+
+```shell
+# 单行system
+<<< reset-system
+<<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!
+```
+
+如果需要以多行方式输入，可以用下面的命令(多行信息以#号结束)：
+
+```shell
+# 多行system
+<<< multi-line#
+<<<[M] reset-system#
+<<<[MS] Answer the following questions as best you can. You have access to the following APIs:
+1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
+
+2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
+
+3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+
+4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
+
+Use the following format:
+
+Thought: you should always think about what to do
+Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+Begin!#
+```
+
+下面就可以进行Agent问答：
+
+```shell
+<<< 输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点
+Thought: I need to use the fire\_recognition API to analyze the input image and determine if there are any signs of fire.
+
+Action: Use the fire\_recognition API to analyze the input image.
+
+Action Input: /tmp/1.jpg
+
+Observation:
+<<< [{'coordinate': [101.1, 200.9], 'on_fire': True}]
+Thought: The fire\_recognition API has returned a result indicating that there is fire in the input image.
+
+Final Answer: There is fire in the input image.
+```
+
+可以看到，模型已经返回了API调用的结果分析。用户可以继续问问题进行多轮Agent场景。也可以指定`--infer_backend vllm`和`--stream true`来使用vllm和流式推理。
+
+### 在部署中使用Agent
+
+由于部署不支持history管理，因此agent的API调用结果拼接需要用户自行进行，下面给出一个OpenAI格式可运行的代码范例。
+
+服务端：
+
+```shell
+swift deploy --model_type chatglm3-6b-32k --stop_words Observation:
+```
+
+客户端：
+
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+system = """Answer the following questions as best you can. You have access to the following APIs:
+1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{\"name\": \"image\", \"description\": \"The input image to recognize fire\", \"required\": \"True\"}]
+
+2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
+
+3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+
+4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
+
+Use the following format:
+
+Thought: you should always think about what to do
+Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+Begin!"""
+messages = [{
+    'role': 'system',
+    'content': system
+}, {
+    'role': 'user',
+    'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'
+}]
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stop=['Observation:'],
+    seed=42)
+response = resp.choices[0].message.content
+print(f'response: {response}')
+
+# # 流式
+messages.append({'role': 'assistant', 'content': response + "\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"})
+print(messages)
+stream_resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stop=['Observation:'],
+    stream=True,
+    seed=42)
+
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+## Output:
+# model_type: chatglm3-6b-32k
+# response: Thought: I need to check if there is fire in the image
+# Action: Use fire\_recognition API
+# Action Input: /tmp/2.jpg
+# Observation:
+# [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/2.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/2.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
+# response:
+# Final Answer: There is fire in the image at coordinates [101.1, 200.9]
+```
+
+
+
 ## 总结
 
 通过SWIFT支持的Agent训练能力，我们使用ms-agent和ms-bench对qwen-7b-chat模型进行了微调。可以看到微调后模型保留了通用知识问答能力，并在system字段增加了API的情况下可以正确调用并完成任务。需要注意的是：
