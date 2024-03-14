@@ -174,9 +174,9 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
-    # openbmb
-    openbmb_minicpm_2b_sft_chat = 'openbmb-minicpm-2b-sft-chat'
-    openbmb_minicpm_2b_chat = 'openbmb-minicpm-2b-chat'
+    # openbmb-minicpm
+    minicpm_2b_sft_chat = 'minicpm-2b-sft-chat'
+    minicpm_2b_chat = 'minicpm-2b-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
@@ -2533,18 +2533,18 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
 
 @register_model(
-    ModelType.openbmb_minicpm_2b_sft_chat,
+    ModelType.minicpm_2b_sft_chat,
     'OpenBMB/MiniCPM-2B-sft-fp32',
     LoRATM.llama2,
-    TemplateType.openbmb,
+    TemplateType.minicpm,
     support_flash_attn=True)
 @register_model(
-    ModelType.openbmb_minicpm_2b_chat,
+    ModelType.minicpm_2b_chat,
     'OpenBMB/MiniCPM-2B-dpo-fp32',
     LoRATM.llama2,
-    TemplateType.openbmb,
+    TemplateType.minicpm,
     support_flash_attn=True)
-def get_model_tokenizer_openbmb(model_dir: str,
+def get_model_tokenizer_minicpm(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,

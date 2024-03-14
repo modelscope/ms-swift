@@ -52,7 +52,7 @@ class TemplateType:
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
-    openbmb = 'openbmb'
+    minicpm = 'minicpm'
     gemma = 'gemma'
     # compatibility. (Deprecated)
     chatml = 'chatml'
@@ -1084,7 +1084,7 @@ register_template(
     lazy_tokenize=True)
 
 register_template(
-    TemplateType.openbmb,
+    TemplateType.minicpm,
     Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
 gemma_template = Template(
