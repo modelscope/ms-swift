@@ -137,8 +137,10 @@ class EvalModel(CustomModel):
         if args.infer_backend == 'vllm':
             from .utils import prepare_vllm_engine_template
             self.llm_engine, self.template = prepare_vllm_engine_template(args)
+            self.max_model_len = self.model.config.max_position_embeddings
         else:
             self.model, self.template = prepare_model_template(args)
+            self.max_model_len = self.model.config.max_position_embeddings
             if args.overwrite_generation_config:
                 assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
                 self.model.generation_config.save_pretrained(args.ckpt_dir)
@@ -158,6 +160,16 @@ class EvalModel(CustomModel):
                 'history': kwargs.get('history'),
                 'system': kwargs.get('system')
             }]
+            if 'temperature' in kwargs['infer_cfg']:
+                self.llm_engine.generation_config.temperature = kwargs['infer_cfg']['temperature']
+            if 'max_new_tokens' in kwargs['infer_cfg']:
+                self.llm_engine.generation_config.max_new_tokens = kwargs['infer_cfg']['max_new_tokens']
+            if 'top_k' in kwargs['infer_cfg']:
+                self.llm_engine.generation_config.top_k = kwargs['infer_cfg']['top_k']
+            if 'top_p' in kwargs['infer_cfg']:
+                self.llm_engine.generation_config.top_p = kwargs['infer_cfg']['top_p']
+            if 'repetition_penalty' in kwargs['infer_cfg']:
+                self.llm_engine.generation_config.repetition_penalty = kwargs['infer_cfg']['repetition_penalty']
             resp_list = inference_vllm(self.llm_engine, self.template,
                                        request_list)
             response = resp_list[0]['response']
@@ -193,12 +205,10 @@ class EvalModel(CustomModel):
 def run_eval_single_model(args: EvalArguments,
                           model_name,
                           dataset,
-                          generation_config,
                           model_args,
                           record=None):
     eval_cfg = {
         'model_args': model_args,
-        'generation_config': generation_config,
         'dataset_args': {},
         'model': EvalModel(args, model_name, config=record or {}),
         'eval_type': 'custom',
@@ -237,14 +247,6 @@ def llm_eval(args: EvalArguments) -> None:
                     copied,
                     output.name,
                     ds,
-                    generation_config={
-                        'do_sample': copied.do_sample,
-                        'top_p': copied.top_p,
-                        'top_k': copied.top_k,
-                        'max_new_tokens': copied.max_new_tokens,
-                        'temperature': copied.temperature,
-                        'num_beams': copied.num_beams,
-                    },
                     model_args={
                         'device_map':
                         'auto',
@@ -258,14 +260,6 @@ def llm_eval(args: EvalArguments) -> None:
                 args,
                 args.model_type or args.model_id_or_path or args.ckpt_dir,
                 ds,
-                generation_config={
-                    'do_sample': args.do_sample,
-                    'top_p': args.top_p,
-                    'top_k': args.top_k,
-                    'max_new_tokens': args.max_new_tokens,
-                    'temperature': args.temperature,
-                    'num_beams': args.num_beams,
-                },
                 model_args={
                     'device_map':
                     'auto',

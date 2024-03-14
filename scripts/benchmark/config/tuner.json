@@ -95,6 +95,81 @@
         }
       },
       {
+        "name": "full+galore128",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "4"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "full+galore64",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "4"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "64",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "full+galore32",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "4"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "32",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
+        "name": "full+galore_emb",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "4"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "true"
+        }
+      },
+      {
+        "name": "full+galore_perparam",
+        "requirements":{
+          "gpu": "4",
+          "ddp": "4"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "true",
+          "galore_with_embedding": "false"
+        }
+      },
+      {
         "name": "adalora",
         "args": {
           "sft_type": "adalora",
