@@ -226,6 +226,7 @@ You can refer to the following scripts to customize your own training script.
     - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) series: internlm-xcomposer2-7b-chat.
     - [yi-vl](https://github.com/01-ai/Yi) series: yi-vl-6b-chat, yi-vl-34b-chat.
     - [cogvlm](https://github.com/THUDM/CogVLM) series: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
+    - [minicpm-v](https://github.com/OpenBMB/MiniCPM) series: minicpm-v-3b-chat.
   - General:
     - [qwen](https://github.com/QwenLM/Qwen) series:
       - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.
@@ -290,7 +291,7 @@ You can refer to the following scripts to customize your own training script.
   - Custom Dataset
 - Supported Templates:
   - Text Generation: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
-  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, minicpm, gemma, chatml.
+  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, minicpm, minicpm-v, gemma, chatml.
 
 
 ## 🔥SCEdit

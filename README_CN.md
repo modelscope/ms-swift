@@ -226,6 +226,7 @@ app_ui_main(infer_args)
     - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b-chat.
     - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
     - [cogvlm](https://github.com/THUDM/CogVLM) 系列: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
+    - [minicpm-v](https://github.com/OpenBMB/MiniCPM) 系列: minicpm-v-3b-chat.
   - 通用:
     - [qwen](https://github.com/QwenLM/Qwen) 系列:
       - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.
@@ -290,7 +291,7 @@ app_ui_main(infer_args)
   - 自定义数据集
 - 支持的对话模板:
   - 文本生成: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
-  - 对话: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, minicpm, gemma, chatml.
+  - 对话: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, minicpm, minicpm-v, gemma, chatml.
 
 
 ## 🔥SCEdit

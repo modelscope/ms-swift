@@ -53,6 +53,7 @@ class TemplateType:
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
     minicpm = 'minicpm'
+    minicpm_v = 'minicpm-v'
     gemma = 'gemma'
     # compatibility. (Deprecated)
     chatml = 'chatml'
@@ -1086,6 +1087,62 @@ register_template(
 register_template(
     TemplateType.minicpm,
     Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
+
+
+class MiniCPMVTemlate(Template):
+
+    def __init__(self):
+        return super().__init__(['<s>{{SYSTEM}}'],
+                                ['<用户><image><unk></image>\n{{QUERY}}<AI>'],
+                                [], ['</s>'])
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        images_path = example['images']
+        assert len(images_path) == 1
+        image = _read_from_path(images_path[0])
+        inputs, _ = super().encode(example)
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx = input_ids.index(0)
+        config = self.model.config
+        input_ids = (
+            input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num
+            + input_ids[idx + 1:])
+        if labels is not None:
+            labels = (
+                labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
+        image_bound = [torch.tensor([[idx, idx + config.query_num]])]
+        pixel_values = self.model.transform(image)[None].to(
+            device=self.model.device)
+        inputs_embeds, _ = self.model.get_vllm_embedding({
+            'input_ids':
+            torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound':
+            image_bound,
+            'pixel_values': [pixel_values]
+        })
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        inputs['inputs_embeds'] = inputs_embeds[0]
+        return inputs, {}
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+
+register_template(
+    TemplateType.minicpm_v,
+    MiniCPMVTemlate(),
+    use_model=True,
+    lazy_tokenize=True,
+    support_stream=False,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
 
 gemma_template = Template(
     ['<bos>'],

@@ -1,0 +1,157 @@
+
+# MiniCPM-V 最佳实践
+
+## 目录
+- [环境准备](#环境准备)
+- [推理](#推理)
+- [微调](#微调)
+- [微调后推理](#微调后推理)
+
+
+## 环境准备
+```shell
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .[llm]
+```
+
+## 推理
+
+推理[minicpm-v-3b-chat](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary):
+```shell
+# Experimental environment: A10, 3090, V100, ...
+# 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-3b-chat
+```
+
+输出: (支持传入本地路径或URL)
+```python
+"""
+<<< 描述这种图片
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+ 该图像描绘了一只黑白相间的猫，它正坐在地板上。这只猫看起来很小，可能是幼猫。它的眼睛睁得大大的，似乎在观察周围环境。
+--------------------------------------------------
+<<< clear
+<<< 图中有几只羊？
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+ 图中有四只羊。
+--------------------------------------------------
+<<< clear
+<<< 计算结果是多少
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
+ 计算结果为1452 + 4530 = 5982。
+--------------------------------------------------
+<<< clear
+<<< 根据图片中的内容写首诗
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
+ 在宁静的湖面上，一艘小船缓缓驶过。
+"""
+```
+
+示例图片如下:
+
+cat:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png" width="250" style="display: inline-block;">
+
+animal:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png" width="250" style="display: inline-block;">
+
+math:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png" width="250" style="display: inline-block;">
+
+poem:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+**单样本推理**
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_model_tokenizer, get_template, inference, ModelType,
+    get_default_template_type, inference_stream
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.minicpm_v_3b_chat
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+
+model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+                                       model_kwargs={'device_map': 'auto'})
+model.generation_config.max_new_tokens = 256
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
+query = '距离各城市多远？'
+response, history = inference(model, template, query, images=images)
+print(f'query: {query}')
+print(f'response: {response}')
+
+query = '距离最远的城市是哪？'
+gen = inference(model, template, query, history, images=images)
+print(f'query: {query}')
+print(f'response: {response}')
+"""
+query: 距离各城市多远？
+response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
+query: 距离最远的城市是哪？
+response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
+"""
+```
+
+示例图片如下:
+
+road:
+
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
+
+
+## 微调
+多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
+
+(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
+```shell
+# Experimental environment: A10, 3090, V100, ...
+# 10GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type minicpm-v-3b-chat \
+    --dataset coco-mini-en-2 \
+```
+
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
+
+(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
+
+```jsonl
+{"query": "55555", "response": "66666", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+```
+
+
+## 微调后推理
+直接推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/minicpm-v-3b-chat/vx-xxx/checkpoint-xxx \
+    --load_dataset_config true \
+```
+
+**merge-lora**并推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir output/minicpm-v-3b-chat/vx-xxx/checkpoint-xxx \
+    --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/minicpm-v-3b-chat/vx-xxx/checkpoint-xxx-merged \
+    --load_dataset_config true
+```
