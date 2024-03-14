@@ -35,26 +35,33 @@ Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.co
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 图中有四只羊.
 --------------------------------------------------
+<<< clear
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-1452 + 45304 = ?
+1452 + 45304 = 46756
 --------------------------------------------------
+<<< clear
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-星光闪烁,照亮了宁静的夜晚,
-在湖上,一艘小船静静地漂浮着,
-船上有灯,像星星一样闪耀,
-船上有两个人,在星光下静静地坐着。
+夜幕降临,星光闪烁,
+一艘小船在河上飘荡,
+船头挂着一盏明亮的灯,
+照亮了周围的黑暗。
 
-森林的影子在湖边摇曳,
-在星光下,它显得神秘而美丽。
-船在湖中,在星光下,
-在星光下,它显得神秘而美丽。
+船上有两个人,
+一个在船头,另一个在船尾,
+他们似乎在谈话,
+在星光下享受着宁静的时刻。
 
-星光闪烁,照亮了宁静的夜晚,
-在湖上,一艘小船静静地漂浮着,
-船上有灯,像星星一样闪耀,
-船上有两个人,在星光下静静地坐着。
+河岸边,树木在黑暗中站着,
+在星光下投下长长的影子。
+这景象是那么的宁静,
+让人想起一个古老的传说。
+
+小船,人,和星光,
+构成了一个美丽的画面,
+它唤起一种宁静的感觉,
+在喧嚣的城市生活之外。
 """
 ```
 
