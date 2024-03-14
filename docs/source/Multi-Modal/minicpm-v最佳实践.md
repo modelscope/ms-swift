@@ -96,14 +96,14 @@ print(f'query: {query}')
 print(f'response: {response}')
 
 query = '距离最远的城市是哪？'
-gen = inference(model, template, query, history, images=images)
+response, history = inference(model, template, query, history, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 """
 query: 距离各城市多远？
 response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
 query: 距离最远的城市是哪？
-response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
+response:  距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳14公里。
 """
 ```
 
