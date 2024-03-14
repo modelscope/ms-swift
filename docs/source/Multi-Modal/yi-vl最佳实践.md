@@ -35,26 +35,38 @@ Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.co
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 图中有四只羊.
 --------------------------------------------------
+<<< clear
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-1452 + 45304 = ?
+1452 + 45304 = 46756
 --------------------------------------------------
+<<< clear
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-星光闪烁,照亮了宁静的夜晚,
-在湖上,一艘小船静静地漂浮着,
-船上有灯,像星星一样闪耀,
-船上有两个人,在星光下静静地坐着。
+夜幕降临,星光闪烁,
+一艘小船静静地漂浮在河上,
+它独自旅行,没有同伴,
+只有星光和微风伴随它。
 
-森林的影子在湖边摇曳,
-在星光下,它显得神秘而美丽。
-船在湖中,在星光下,
-在星光下,它显得神秘而美丽。
-
-星光闪烁,照亮了宁静的夜晚,
-在湖上,一艘小船静静地漂浮着,
 船上有灯,像星星一样闪耀,
-船上有两个人,在星光下静静地坐着。
+照亮了小船的旅程,
+在河上,它似乎在移动,
+在星光下,它似乎在移动。
+
+在河岸上,在森林的边缘,
+有一个小屋,静静地坐着,
+它站在那儿,看着小船远去,
+在星光下,它似乎在移动。
+
+小船,小屋,星光,森林,
+构成了一个宁静的景象,
+在星光下,小船似乎在移动,
+在星光下,小屋似乎在移动。
+
+这是一个宁静的时刻,一个宁静的时刻,
+小船独自旅行,没有同伴,
+只有星光和微风伴随它,
+在星光下,它似乎在移动。
 """
 ```
 
