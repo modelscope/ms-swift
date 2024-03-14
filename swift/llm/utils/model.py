@@ -174,10 +174,10 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
-    # openbmb-minicpm
+    # minicpm
     minicpm_2b_sft_chat = 'minicpm-2b-sft-chat'
     minicpm_2b_chat = 'minicpm-2b-chat'
-    # openbmb-minicpm-v
+    # minicpm-v
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'

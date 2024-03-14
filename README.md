@@ -77,7 +77,7 @@ Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用
 - 2024.02.16: Support deepseek-math series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
 - 🔥2024.02.05: Support **Qwen1.5** series, To view all supported Qwen1.5 models please check [Model List](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B). The [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8) fine-tuned scripts are provided.
 - 2024.02.05: Support the training of **SDXL**, **SD**, **ControlNet**, or techniques like **DreamBooth**, you can check the [training scripts](https://github.com/modelscope/swift/tree/main/examples/pytorch/sdxl/scripts) for details.
-- 2024.02.01: Support openbmb-minicpm series: [minicpm-2b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/minicpm_2b_sft_chat), minicpm-2b-chat.
+- 2024.02.01: Support minicpm series: [minicpm-2b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/minicpm_2b_sft_chat), minicpm-2b-chat.
 - 🔥2024.02.01: Support dataset mixture to reduce **Catastrophic Forgetting**. Use `--train_dataset_mix_ratio 2.0` to train! We also provide a common knowledge dataset [ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary).
 - 🔥2024.02.01: Support Agent training! Agent training algorithm comes from this [paper](https://arxiv.org/pdf/2309.00986.pdf). We also introduce the [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary) dataset. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to begin an agent training!
 - 🔥2024.02.01: Support SFT loss to DPO training to reduce the repeat generation problem caused by the KL-divergence loss.
@@ -248,7 +248,7 @@ You can refer to the following scripts to customize your own training script.
       - internlm2-1_8b, internlm2-1_8b-sft-chat, internlm2-1_8b-chat, internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
     - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) series: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
     - [gemma](https://github.com/google/gemma_pytorch) series: gemma-2b, gemma-2b-instruct, gemma-7b, gemma-7b-instruct.
-    - [openbmb-minicpm](https://github.com/OpenBMB/mlc-MiniCPM) series: minicpm-2b-sft-chat, minicpm-2b-chat.
+    - [minicpm](https://github.com/OpenBMB/mlc-MiniCPM) series: minicpm-2b-sft-chat, minicpm-2b-chat.
     - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) series: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat, openbuddy-mixtral-moe-7b-chat.
     - [mistral](https://github.com/mistralai/mistral-src) series: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
     - [mixtral](https://github.com/mistralai/mistral-src) series: mixtral-moe-7b, mixtral-moe-7b-instruct.
