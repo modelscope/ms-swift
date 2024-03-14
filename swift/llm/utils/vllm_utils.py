@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import vllm
-from modelscope import GenerationConfig, snapshot_download
+from modelscope import GenerationConfig
 from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
@@ -16,7 +16,7 @@ from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
 
 from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
-from .model import MODEL_MAPPING, get_model_tokenizer
+from .model import get_model_tokenizer
 from .template import Template, get_template
 from .utils import _is_chinese_char
 
@@ -210,10 +210,22 @@ def inference_stream_vllm(
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
+    request_temp = []
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
             history = []
+
+        # agent support
+        is_observation = history[-1][-1].endswith(
+            'Observation:') if history and history[-1][-1] else False
+        act_length = None
+        if is_observation:
+            history[-1][-1] = history[-1][-1] + request['query']
+            act_length = len(history[-1][-1])
+            request['query'] = None
+        request_temp.append((is_observation, act_length))
+
         request['history'] = history
         inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
@@ -240,9 +252,13 @@ def inference_stream_vllm(
             safe_response = response[:print_idx_list[i]]
             query = request['query']
             history = request['history']
-            if resp_list[i] is None:
+            if resp_list[i] is None and not request_temp[i][0]:
                 history.append(None)
-            history[-1] = (query, safe_response)
+            if not request_temp[i][0]:
+                history[-1] = [query, safe_response]
+            else:
+                history[-1][
+                    -1] = history[-1][-1][:request_temp[i][1]] + safe_response
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
@@ -284,6 +300,12 @@ def inference_vllm(llm_engine: LLMEngine,
         history = request.get('history', None)
         if history is None:
             history = []
+
+        is_observation = history[-1][-1].endswith(
+            'Observation:') if history and history[-1][-1] else False
+        if is_observation:
+            history[-1][-1] = history[-1][-1] + request['query']
+            request['query'] = None
         request['history'] = history
         inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
@@ -308,7 +330,10 @@ def inference_vllm(llm_engine: LLMEngine,
         response = tokenizer.decode(output.outputs[0].token_ids, True)
         query = request['query']
         history = request['history']
-        history.append((query, response))
+        if not is_observation:
+            history.append([query, response])
+        else:
+            history[-1][-1] = history[-1][-1] + response
         resp_list[i] = {'response': response, 'history': history}
         if verbose:
             print(
@@ -355,6 +380,7 @@ def prepare_vllm_engine_template(
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
+        stop=args.stop_words,
         repetition_penalty=args.repetition_penalty,
         num_beams=args.num_beams)
     logger.info(f'generation_config: {generation_config}')

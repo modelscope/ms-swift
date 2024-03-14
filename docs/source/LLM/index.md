@@ -1,10 +1,21 @@
-## 以下是LLM文档的索引
+## LLM文档
 
-### 最佳实践系列
+### LLM最佳实践系列
 
 1. [自我认知微调最佳实践](自我认知微调最佳实践.md)
 2. [Agent训练与通用数据混合最佳实践](Agent微调最佳实践.md)
-3. [Qwen1.5全流程最佳实践](Qwen1.5全流程最佳实践)
+3. [Qwen1.5全流程最佳实践](Qwen1.5全流程最佳实践.md)
+
+
+### Multi-Modal最佳实践系列
+
+1. [Qwen-VL最佳实践](../Multi-Modal/qwen-vl最佳实践.md)
+2. [Qwen-Audio最佳实践](../Multi-Modal/qwen-auidio最佳实践.md)
+3. [Deepseek-VL最佳实践](../Multi-Modal/deepseek-vl最佳实践.md)
+4. [Internlm2-Xcomposers最佳实践](../Multi-Modal/internlm-xcomposer2最佳实践.md)
+5. [Yi-VL最佳实践.md](../Multi-Modal/yi-vl最佳实践.md)
+6. [CogVLM最佳实践](../Multi-Modal/cogvlm最佳实践.md)
+
 
 ### 教程
 

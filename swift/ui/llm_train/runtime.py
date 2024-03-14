@@ -149,13 +149,13 @@ class Runtime(BaseUI):
         },
         'refresh_tasks': {
             'value': {
-                'zh': '刷新运行时任务',
-                'en': 'Refresh tasks'
+                'zh': '找回运行时任务',
+                'en': 'Find running tasks'
             },
         },
         'kill_task': {
             'value': {
-                'zh': '停止任务',
+                'zh': '杀死任务',
                 'en': 'Kill running task'
             },
         },
