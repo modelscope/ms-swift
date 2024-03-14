@@ -756,7 +756,7 @@ class EvalArguments(InferArguments):
 
     exp_dir: Optional[str] = None
 
-    eval_dataset: List[str] = field(default_factory=['mmlu', 'ceval', 'gsm8k', 'arc', 'hellaswag', 'bbh'])
+    eval_dataset: List[str] = field(default_factory=lambda: ['mmlu', 'ceval', 'gsm8k', 'arc', 'hellaswag', 'bbh'])
 
 
 @dataclass
