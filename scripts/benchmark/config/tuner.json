@@ -5,7 +5,7 @@
         "ddp": "2"
     },
     "args": {
-      "model_type": "llama2-7b-chat",
+      "model_type": "qwen-7b-chat",
       "dataset": "ms-agent",
       "train_dataset_mix_ratio": 3,
       "batch_size": 4,
