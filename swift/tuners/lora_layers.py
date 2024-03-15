@@ -25,6 +25,7 @@ from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import (_get_submodules, get_auto_gptq_quant_linear,
                         get_quantization_config)
+from peft.utils.other import transpose
 from transformers import Conv1D
 
 from swift import LoraConfig, get_logger
@@ -109,6 +110,21 @@ class LoRAActivationMixin(ActivationMixin):
                 'please set `USE_UNIQUE_THREAD=1` in env variable to merge LoRA.'
             )
         return super().merge(*args, **kwargs)
+
+    def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
+        """
+        From LoraLayer._apply_dora, to support `weight.to(x.dtype)`
+        """
+        lora_weight = lora_B.weight @ lora_A.weight
+        magnitude = self.lora_magnitude_vector[active_adapter]
+        weight = self.get_base_layer().weight
+        weight_norm = self._get_weight_norm(weight, lora_weight, scaling)
+        weight_norm = weight_norm.detach()
+        mag_norm_scale = (magnitude / weight_norm).view(1, -1)
+        result_dora = (mag_norm_scale - 1) * (F.linear(
+            x, transpose(weight.to(x.dtype), self.fan_in_fan_out)
+        )) + mag_norm_scale * lora_B(lora_A(x)) * scaling
+        return result_dora
 
 
 if is_bnb_available():
