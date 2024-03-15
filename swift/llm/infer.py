@@ -5,6 +5,7 @@ import shutil
 from typing import Any, Dict, Literal, Optional, Tuple
 
 import json
+import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
@@ -370,11 +371,18 @@ def llm_infer(args: InferArguments) -> None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
     else:
-        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
-                                     args.dataset_seed)
-        if args.val_dataset_sample >= 0:
-            val_dataset = val_dataset.select(
-                range(min(args.val_dataset_sample, val_dataset.shape[0])))
+        random_state = np.random.RandomState(args.dataset_seed)
+        _, val_dataset = get_dataset(
+            args.dataset,
+            args.dataset_test_ratio,
+            random_state,
+            check_dataset_strategy=args.check_dataset_strategy)
+        if args.val_dataset_sample >= 0 and val_dataset.shape[
+                0] > args.val_dataset_sample:
+            logger.info(f'val_dataset_sample: {args.val_dataset_sample}')
+            val_idxs = random_state.permutation(args.val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
+
         logger.info(f'val_dataset: {val_dataset}')
         if args.verbose is None:
             if len(val_dataset) >= 100:
