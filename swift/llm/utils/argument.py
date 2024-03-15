@@ -126,6 +126,7 @@ class SftArguments:
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     dataloader_num_workers: int = 1
+    dataloader_drop_last: bool=True
 
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -179,6 +180,7 @@ class SftArguments:
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
     metric_warmup_step: Optional[float] = 1
+    use_profiler: Optional[bool] = False
 
     def __post_init__(self) -> None:
         handle_compatibility(self)

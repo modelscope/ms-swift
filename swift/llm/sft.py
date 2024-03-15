@@ -11,6 +11,7 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 
 from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from swift.trainers.utils import can_return_loss, find_labels
+from swift.trainers.callback import ProfCallback
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -100,7 +101,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info('Setting model.config.use_cache: False')
         model = ta_accelerate(
             model,
-            world_size,
+            # world_size,
+            1,
             args.model_layer_cls_name,
             args.bf16,
             args.fp16,
@@ -173,6 +175,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         data_collate_fn,
         tokenizer=tokenizer,
         padding_to=args.max_length if args.sft_type == 'longlora' else None,
+        # padding_to=args.max_length,
         bucket_sizes=bucket_sizes)
     # Setting training_args
     evaluation_strategy = args.evaluation_strategy
@@ -220,6 +223,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         fp16=args.fp16,
         eval_steps=args.eval_steps,
         dataloader_num_workers=args.dataloader_num_workers,
+        dataloader_drop_last=args.dataloader_drop_last,
         load_best_model_at_end=load_best_model_at_end,
         metric_for_best_model='rouge-l'
         if args.predict_with_generate else 'loss',
@@ -310,7 +314,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                     indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    trainer.train(training_args.resume_from_checkpoint)
+
+    if args.use_profiler:
+        with torch.profiler.profile(
+            schedule=torch.profiler.schedule(wait=20, warmup=20, active=5),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join(args.output_dir, './profile')),
+            with_stack=False) as prof:
+            trainer.add_callback(ProfCallback(prof))
+            trainer.train()
+    else:
+        trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')

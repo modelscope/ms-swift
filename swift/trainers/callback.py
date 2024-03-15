@@ -109,3 +109,10 @@ class PrinterCallbackNew(TrainerCallback):
         _ = logs.pop('total_flos', None)
         if state.is_local_process_zero:
             print(logs, flush=True)
+
+class ProfCallback(TrainerCallback):
+    def __init__(self, prof):
+        self.prof = prof
+
+    def on_step_end(self, args, state, control, **kwargs):
+        self.prof.step()
