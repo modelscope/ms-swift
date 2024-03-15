@@ -924,13 +924,25 @@ def select_bnb(
 
 
 def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
+    template_type_mapping = {
+        'chatglm2-generation': 'chatglm-generation',
+        'chatml': 'qwen'
+    }
+    model_type_mapping = {
+        'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
+        'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
+    }
+    for k, v in template_type_mapping.items():
+        if k == args.template_type:
+            args.template_type = v
+            break
+    for k, v in model_type_mapping.items():
+        if k == args.model_type:
+            args.model_type = v
+            break
     if args.dataset is not None and len(
             args.dataset) == 1 and ',' in args.dataset[0]:
         args.dataset = args.dataset[0].split(',')
-    if args.template_type == 'chatglm2-generation':
-        args.template_type = 'chatglm-generation'
-    if args.template_type == 'chatml':
-        args.template_type = TemplateType.qwen
     if args.truncation_strategy == 'ignore':
         args.truncation_strategy = 'delete'
     if isinstance(args, InferArguments):

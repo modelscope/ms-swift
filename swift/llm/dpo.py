@@ -116,7 +116,8 @@ def llm_dpo(args: DPOArguments) -> str:
     if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
         if val_dataset.shape[0] > val_dataset_sample:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
-            val_dataset = val_dataset.select(range(val_dataset_sample))
+            val_idxs = random_state.permutation(val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
 
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO

@@ -136,6 +136,8 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
+LoRA微调:
+
 (默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A10, 3090, V100
@@ -143,6 +145,19 @@ road:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \
+```
+
+全参数微调:
+```shell
+# Experimental environment: 4 * A100
+# 2 * 70GB GPU memory
+NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type deepseek-vl-7b-chat \
+    --dataset coco-mini-en-2 \
+    --train_dataset_sample -1 \
+    --sft_type full \
+    --use_flash_attn true \
+    --deepspeed default-zero2
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
