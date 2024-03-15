@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from queue import Queue
 from typing import Any, Dict
-
+import shutil
 import json
 import torch
 
@@ -77,6 +77,8 @@ class ExpManager:
             logger.warn(f'Experiment {exp.name} already done, skip')
         elif any([exp.name == e.name for e in self.exps]):
             raise ValueError(f'Why exp name duplicate? {exp.name}')
+        elif exp.cmd == 'export' and any([exp.cmd == 'export' for exp in self.exps]):
+            raise AssertionError(f'Cannot run parallel export task.')
         else:
             exp.create_time = time.time()
             runtime = self._build_cmd(exp)
@@ -198,8 +200,11 @@ class ExpManager:
                 ckpt_dir, ckpt_name = os.path.split(exp_args.ckpt_dir)
                 path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
             if os.path.exists(path):
+                shutil.rmtree(exp.name, ignore_errors=True)
+                os.makedirs(exp.name, exist_ok=True)
+                shutil.move(path, os.path.join(exp.name, path))
                 return {
-                    'best_model_checkpoint': path,
+                    'best_model_checkpoint': os.path.join(exp.name, path),
                 }
         else:
             logging_dir = exp.runtime.get('logging_dir')
