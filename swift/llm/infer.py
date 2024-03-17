@@ -5,16 +5,19 @@ import shutil
 from typing import Any, Dict, Literal, Optional, Tuple
 
 import json
+import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
-from .utils import (InferArguments, Template, get_additional_saved_files,
-                    get_dataset, get_model_tokenizer, get_template, inference,
+from .utils import (TEMPLATE_MAPPING, InferArguments, Template,
+                    get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, inference,
                     inference_stream, is_adapter, set_generation_config)
 
 logger = get_logger()
@@ -73,7 +76,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
 
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'auto',
+               device_map: Optional[str] = None,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
@@ -97,8 +100,18 @@ def merge_lora(args: InferArguments,
             'skipping the saving process. '
             'you can pass `replace_if_exists=True` to overwrite it.')
         return
+
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+    model_kwargs['device_map'] = device_map
+
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     model_id_or_path = None
     if args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
@@ -127,12 +140,21 @@ def merge_lora(args: InferArguments,
 
 def prepare_model_template(
         args: InferArguments,
-        device_map: str = 'auto') -> Tuple[PreTrainedModel, Template]:
-    logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map: Optional[str] = None) -> Tuple[PreTrainedModel, Template]:
+
     seed_everything(args.seed)
 
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+    model_kwargs['device_map'] = device_map
+
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -294,6 +316,7 @@ def llm_infer(args: InferArguments) -> None:
             if not template.support_multi_round:
                 history = []
                 infer_kwargs = {}
+
             read_media_file(infer_kwargs, args.infer_media_type)
             if args.infer_backend == 'vllm':
                 request_list = [{
@@ -319,6 +342,8 @@ def llm_infer(args: InferArguments) -> None:
                     new_history = resp_list[0]['history']
                     print(response)
             else:
+                if args.stop_words:
+                    infer_kwargs['stop_words'] = args.stop_words
                 if args.stream:
                     gen = inference_stream(model, template, query, history,
                                            system, **infer_kwargs)
@@ -344,11 +369,18 @@ def llm_infer(args: InferArguments) -> None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
     else:
-        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
-                                     args.dataset_seed)
-        if args.val_dataset_sample >= 0:
-            val_dataset = val_dataset.select(
-                range(min(args.val_dataset_sample, val_dataset.shape[0])))
+        random_state = np.random.RandomState(args.dataset_seed)
+        _, val_dataset = get_dataset(
+            args.dataset,
+            args.dataset_test_ratio,
+            random_state,
+            check_dataset_strategy=args.check_dataset_strategy)
+        if args.val_dataset_sample >= 0 and val_dataset.shape[
+                0] > args.val_dataset_sample:
+            logger.info(f'val_dataset_sample: {args.val_dataset_sample}')
+            val_idxs = random_state.permutation(args.val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
+
         logger.info(f'val_dataset: {val_dataset}')
         if args.verbose is None:
             if len(val_dataset) >= 100:

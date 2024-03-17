@@ -108,7 +108,7 @@ class TestRun(unittest.TestCase):
                 '--max_new_tokens', '100', '--use_flash_attn', 'true',
                 '--lora_target_modules', 'ALL', '--seed', '0',
                 '--lora_bias_trainable', 'all', '--lora_modules_to_save',
-                'wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head'
+                'EMBEDDING', 'LN', 'lm_head'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -378,6 +378,24 @@ class TestRun(unittest.TestCase):
     #             ckpt_dir=best_model_checkpoint,
     #             load_dataset_config=True,
     #             val_dataset_sample=1))
+
+    def test_deepseek_vl_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        torch.cuda.empty_cache()
+        sft_main(
+            SftArguments(
+                model_type=ModelType.deepseek_vl_1_3b_chat,
+                #   dataset=DatasetName.capcha_images,
+                lora_target_modules='ALL',
+                train_dataset_sample=100,
+                eval_steps=5,
+                custom_train_dataset_path=[
+                    os.path.join(folder, 'multi_modal.jsonl')
+                ],
+                lazy_tokenize=False))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],

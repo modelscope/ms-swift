@@ -9,6 +9,7 @@ from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
+from threading import Thread
 from typing import (Any, Callable, Dict, Iterator, List, Mapping, Optional,
                     Sequence, Tuple, Union)
 
@@ -34,8 +35,10 @@ from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase, StoppingCriteriaList,
                           TextStreamer, trainer)
+from transformers.generation.streamers import BaseStreamer
 
 from swift.hub import ModelScopeConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
 from .template import History, StopWords, StopWordsCriteria, Template
@@ -367,8 +370,10 @@ def find_all_linears(model: Module, quantization_bit: int,
                      model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
-    if model_type.startswith('chatglm'):
-        head_module_name = 'output_layer'
+    if model_type in MODEL_KEYS_MAPPING:
+        output = MODEL_KEYS_MAPPING[model_type].output
+        idx = output.rfind('.')
+        head_module_name = output[idx + 1:]
     if quantization_bit == 4:
         from bitsandbytes.nn import Linear4bit
         linear_cls = [Linear4bit]
@@ -443,6 +448,34 @@ def to_device(inputs: Any, device: Device) -> Any:
     return res
 
 
+class TokenListIteratorStreamer(BaseStreamer):
+
+    def __init__(self, timeout: Optional[float] = None):
+        self.token_queue = Queue()  # Queue[int]
+        self.stop_signal = None
+        self.timeout = timeout
+
+    def put(self, value: torch.Tensor) -> None:
+        if value.ndim > 1:
+            value = value[0]
+        value = value.tolist()
+        for v in value:
+            self.token_queue.put(v)
+
+    def end(self) -> None:
+        self.token_queue.put(self.stop_signal)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        value = self.token_queue.get(timeout=self.timeout)
+        if value == self.stop_signal:
+            raise StopIteration()
+        else:
+            return value
+
+
 def inference_stream(model: PreTrainedModel,
                      template: Template,
                      query: str,
@@ -465,7 +498,7 @@ def inference_stream(model: PreTrainedModel,
 
     # agent support
     is_observation = history[-1][-1].endswith(
-        'Observation:') if history else False
+        'Observation:') if history and history[-1][-1] else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         act_length = len(history[-1][-1])
@@ -490,10 +523,11 @@ def inference_stream(model: PreTrainedModel,
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
-    else:
+    if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
+
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -504,42 +538,44 @@ def inference_stream(model: PreTrainedModel,
     if generation_config.num_beams != 1:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
-    from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
-    model.__class__.generate_stream = NewGenerationMixin.generate
-    model.__class__.sample_stream = NewGenerationMixin.sample_stream
-    stream_config = StreamGenerationConfig(
-        **generation_config.to_dict(), do_stream=True)
+
     if tokenizer.eos_token_id is not None:
-        stream_config.eos_token_id = tokenizer.eos_token_id
+        generation_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:
-        stream_config.pad_token_id = tokenizer.pad_token_id
+        generation_config.pad_token_id = tokenizer.pad_token_id
     if tokenizer.bos_token_id is not None:
-        stream_config.bos_token_id = tokenizer.bos_token_id
-    if stream_config.max_new_tokens is not None:
-        stream_config.max_length = 20  # fix max_length, max_new_tokens warning
-    stream_config.do_sample = True  # avoid is_greedy_gen_mode = True
+        generation_config.bos_token_id = tokenizer.bos_token_id
+    if generation_config.max_new_tokens is not None:
+        generation_config.max_length = 20  # fix max_length, max_new_tokens warning
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
     if generation_info is not None:
-        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
-    gen = model.generate_stream(
-        generation_config=stream_config,
-        stopping_criteria=stopping_criteria,
-        seed=-1,
-        **inputs)
-    raw_generate_ids = []
+        generation_info['num_prompt_tokens'] = token_len
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
+    streamer = TokenListIteratorStreamer()
+    generation_kwargs = {
+        'streamer': streamer,
+        'generation_config': generation_config,
+        'stopping_criteria': stopping_criteria,
+        **inputs
+    }
+    thread = Thread(target=model.generate, kwargs=generation_kwargs)
+    thread.start()
+    raw_generate_ids, generate_ids = [], []
     response, safe_response = '', ''
     print_idx = 0
     if not is_observation:
         history.append(None)  # dummy
-    for token in gen:
-        raw_generate_ids.append(token.item())
+    for token in streamer:
+        raw_generate_ids.append(token)
+        generate_ids = template.get_generate_ids(
+            torch.tensor(raw_generate_ids)[None], token_len)
         if generation_info is not None:
-            generation_info['num_generated_tokens'] = len(raw_generate_ids)
-        generate_ids = raw_generate_ids
+            generation_info['num_generated_tokens'] = len(generate_ids)
         # avoid printing template.suffix[-1])
         if isinstance(template.suffix[-1], list):
             generate_ids = generate_ids[:-len(template.suffix[-1])]
@@ -560,17 +596,16 @@ def inference_stream(model: PreTrainedModel,
                 history[-1][-1] = history[-1][-1][:act_length] + safe_response
             yield safe_response, history
     # avoid printing template.suffix[-1])
-    if (isinstance(template.suffix[-1], list)
-            and raw_generate_ids[-len(template.suffix[-1]):]
-            == template.suffix[-1]):
-        raw_generate_ids = raw_generate_ids[:-len(template.suffix[-1])]
-    response = tokenizer.decode(raw_generate_ids, **tokenizer_kwargs)
+    if (isinstance(template.suffix[-1], list) and
+            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
+        generate_ids = generate_ids[:-len(template.suffix[-1])]
+    response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
     if isinstance(
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
     if not is_observation:
-        history[-1] = (query, response)
+        history[-1] = [query, response]
     else:
         history[-1][-1] = history[-1][-1][:act_length] + response
     yield response, history
@@ -601,7 +636,7 @@ def inference(model: PreTrainedModel,
         history = deepcopy(history)
 
     is_observation = history[-1][-1].endswith(
-        'Observation:') if history else False
+        'Observation:') if history and history[-1][-1] else False
     if is_observation:
         history[-1][-1] = history[-1][-1] + query
         query = None
@@ -625,10 +660,11 @@ def inference(model: PreTrainedModel,
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
-    else:
+    if 'inputs_embeds' in inputs:
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
+
     inputs['attention_mask'] = torch.ones(token_len)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
@@ -667,7 +703,9 @@ def inference(model: PreTrainedModel,
         [StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs = to_device(inputs, device)
     if generation_info is not None:
-        generation_info['num_prompt_tokens'] = len(inputs['input_ids'][0])
+        generation_info['num_prompt_tokens'] = token_len
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
     generate_ids = model.generate(
         streamer=streamer,
         generation_config=generation_config,
@@ -692,7 +730,7 @@ def inference(model: PreTrainedModel,
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
         response = response[:-len(template.suffix[-1])]
     if not is_observation:
-        history.append((query, response))
+        history.append([query, response])
     else:
         history[-1][-1] = history[-1][-1] + response
     return response, history
@@ -758,8 +796,8 @@ def messages_to_history(messages: Messages) -> Dict[str, Any]:
 
 def set_generation_config(model: Module,
                           generation_config: GenerationConfig) -> None:
-    if hasattr(model, 'generation_config'):
-        old_generation_config = model.generation_config
+    old_generation_config = getattr(model, 'generation_config', None)
+    if old_generation_config is not None:
         for k, v in old_generation_config.__dict__.items():
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)

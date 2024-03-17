@@ -15,5 +15,4 @@ safetensors
 tensorboard
 tqdm
 transformers>=4.33,<4.39
-transformers_stream_generator
 trl>=0.7.7
