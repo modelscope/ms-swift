@@ -95,15 +95,23 @@ response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
+# 流式
 query = '距离最远的城市是哪？'
-response, history = inference(model, template, query, history, images=images)
-print(f'query: {query}')
-print(f'response: {response}')
+gen = inference_stream(model, template, query, history, images=images)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+print(f'history: {history}')
 """
 query: 距离各城市多远？
 response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
 query: 距离最远的城市是哪？
-response:  距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳14公里。
+response: 距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳圳14公里。
+history: [['距离各城市多远？', ' 广州到深圳的距离是293公里，而深圳到广州的距离是14公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳14公里。']]
 """
 ```
 

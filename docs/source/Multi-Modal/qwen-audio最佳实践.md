@@ -89,7 +89,7 @@ query: Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images
 response: 这段语音说了中文："今天天气真好呀"。
 query: 这段语音是男生还是女生
 response: 根据音色判断，这段语音是男性。
-history: [('Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>\n这段语音说了什么', '这段语音说了中文："今天天气真好呀"。'), ('这段语音是男生还是女生', '根据音色判断，这段语音是男性。')]
+history: [['Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>\n这段语音说了什么', '这段语音说了中文："今天天气真好呀"。'], ['这段语音是男生还是女生', '根据音色判断，这段语音是男性。']]
 """
 ```
 

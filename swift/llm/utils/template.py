@@ -731,9 +731,9 @@ class InternLMXComposer2(Template):
         pattern = r'<img>(.+?)</img>'
         replace_token = '</s>'
         new_history = []
-        for i, h in enumerate(new_history):
+        for i, h in enumerate(history):
             images_path += re.findall(pattern, h[0])
-            new_history[i] = re.sub(pattern, replace_token, h[0])
+            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
         history = new_history
         images_path += re.findall(pattern, example['query'])
         example['query'] = re.sub(pattern, replace_token, example['query'])
@@ -833,7 +833,6 @@ register_template(
     InternLMXComposer2(),
     use_model=True,
     lazy_tokenize=True,
-    support_stream=False,
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
@@ -991,7 +990,6 @@ register_template(
     DeepseekVLTemplate(),
     use_model=True,
     lazy_tokenize=True,
-    support_stream=False,
     infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)  # only 'cpu' can pin_memory
@@ -1139,7 +1137,6 @@ register_template(
     MiniCPMVTemlate(),
     use_model=True,
     lazy_tokenize=True,
-    support_stream=False,
     infer_media_type='dialogue',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
