@@ -1748,6 +1748,7 @@ def _patch_deepseek_vl(model) -> None:
         'forward'
     ]
     _use_submodel_func(model, 'language_model', func_list)
+    model.generation_config = model.language_model.generation_config
 
 
 @register_model(

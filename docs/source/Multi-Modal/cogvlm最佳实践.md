@@ -112,7 +112,7 @@ print()
 query: How far is it from each city?
 response: From Mata, it is 14 km; from Yangjiang, it is 62 km; and from Guangzhou, it is 293 km.
 query: Which city is the farthest?
-response: The city 'Mata' is the farthest with a distance of 14 km.
+response: Guangzhou is the farthest city with a distance of 293 km.
 """
 ```
 
