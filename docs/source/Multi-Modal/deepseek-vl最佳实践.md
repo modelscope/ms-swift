@@ -150,7 +150,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 全参数微调:
 ```shell
 # Experimental environment: 4 * A100
-# 2 * 70GB GPU memory
+# 4 * 70GB GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \

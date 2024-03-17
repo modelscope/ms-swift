@@ -110,7 +110,6 @@ query: 距离最远的城市是哪？
 response:  最远的距离是地球的两极，南极和北极。
 history: [('<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', ' 马鞍山距离阳江62公里，广州距离广州293公里。'), ('距离最远的城市是哪？', ' 最远的距离是地球的两极，南极和北极。')]
 """
-"""
 ```
 
 示例图片如下:
