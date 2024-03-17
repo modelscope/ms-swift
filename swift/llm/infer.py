@@ -344,7 +344,6 @@ def llm_infer(args: InferArguments) -> None:
             else:
                 if args.stop_words:
                     infer_kwargs['stop_words'] = args.stop_words
-                template_info = TEMPLATE_MAPPING[args.template_type]
                 if args.stream:
                     gen = inference_stream(model, template, query, history,
                                            system, **infer_kwargs)
