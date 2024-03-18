@@ -10,9 +10,7 @@
 
 ## 环境准备
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .[llm]
+pip install ms-swift[llm] -U
 ```
 
 ## 推理
@@ -105,11 +103,17 @@ response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
+# 流式
 query = '距离最远的城市是哪？'
 images = images * 2
-response, history = inference(model, template, query, history, images=images)
-print(f'query: {query}')
-print(f'response: {response}')
+gen = inference_stream(model, template, query, history, images=images)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
 print(f'history: {history}')
 """
 query: 距离各城市多远？
@@ -122,7 +126,7 @@ response: 这个标志显示了从当前位置到以下城市的距离：
 这些信息是根据图片中的标志提供的。
 query: 距离最远的城市是哪？
 response: 距离最远的那个城市是广州，根据标志所示，从当前位置到广州的距离是293公里。
-history: [('距离各城市多远？', '这个标志显示了从当前位置到以下城市的距离：\n\n- 马塔（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些信息是根据图片中的标志提供的。'), ('距离最远的城市是哪？', '距离最远的那个城市是广州，根据标志所示，从当前位置到广州的距离是293公里。')]
+history: [['距离各城市多远？', '这个标志显示了从当前位置到以下城市的距离：\n\n- 马塔（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些信息是根据图片中的标志提供的。'], ['距离最远的城市是哪？', '距离最远的那个城市是广州，根据标志所示，从当前位置到广州的距离是293公里。']]
 """
 ```
 
@@ -150,7 +154,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 全参数微调:
 ```shell
 # Experimental environment: 4 * A100
-# 2 * 70GB GPU memory
+# 4 * 70GB GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \

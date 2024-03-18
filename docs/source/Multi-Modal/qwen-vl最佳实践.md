@@ -10,7 +10,7 @@
 
 ## 环境准备
 ```shell
-pip instal ms-swift[llm] -U
+pip install ms-swift[llm] -U
 ```
 
 ## 推理
@@ -115,7 +115,7 @@ query: Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images
 response: 马路边距离马路边14公里；阳江边距离马路边62公里；广州边距离马路边293公里。
 query: 距离最远的城市是哪？
 response: 距离最远的城市是广州，距离马路边293公里。
-history: [('Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>\n距离各城市多远？', '马路边距离马路边14公里；阳江边距离马路边62公里；广州边距离马路边293公里。'), ('距离最远的城市是哪？', '距离最远的城市是广州，距离马路边293公里。')]
+history: [['Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>\n距离各城市多远？', '马路边距离马路边14公里；阳江边距离马路边62公里；广州边距离马路边293公里。'], ['距离最远的城市是哪？', '距离最远的城市是广州，距离马路边293公里。']]
 """
 ```
 

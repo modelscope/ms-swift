@@ -23,6 +23,9 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         use_qa_lora(bool): Use
             QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717)
             instead of LoRA. QA-LoRA only supports AutoGPTQ quantized models.
+        lora_dtype(str): The dtype for all lora modules, supported values are `fp32`, `fp16`, `bf16`.
+            Default value is `None`, which means follow the dtype of original module's weight.
+        lr_ratio(float): The lr_ratio argument for [LoRA+](https://arxiv.org/abs/2402.12354)
     """
 
     use_qa_lora: bool = field(
@@ -59,19 +62,22 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         self.swift_type = SwiftTuners.LORA
 
     def can_be_saved_to_peft(self) -> bool:
-        return not self.use_qa_lora and not self.use_merged_linear \
-            and (not self.lora_dtype or self.lora_dtype == 'fp32')
+        if self.use_qa_lora or self.use_merged_linear:
+            logger.warn(
+                'QA-LoRA and MergedLinear cannot be saved to peft format')
+            return False
+        return True
 
     def to_peft_config(self) -> LoraConfig:
         _dict = asdict(self)
-        _dict.pop('use_qa_lora')
-        _dict.pop('enable_lora')
-        _dict.pop('lora_dtype')
-        _dict.pop('use_merged_linear')
+        _dict.pop('use_qa_lora', None)
+        _dict.pop('enable_lora', None)
+        _dict.pop('lora_dtype', None)
+        _dict.pop('use_merged_linear', None)
         _dict['peft_type'] = _dict['swift_type']
-        _dict.pop('swift_type')
-        _dict.pop('lr_ratio')
-        _dict.pop('model_key_mapping')
+        _dict.pop('swift_type', None)
+        _dict.pop('lr_ratio', None)
+        _dict.pop('model_key_mapping', None)
         return LoraConfig(**_dict)
 
 

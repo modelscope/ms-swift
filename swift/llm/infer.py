@@ -44,8 +44,11 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             if model_dir is None:
                 continue
             src_path = os.path.join(model_dir, fname)
-            if os.path.exists(src_path):
+            if os.path.isfile(src_path):
                 shutil.copy(src_path, tgt_path)
+                break
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, tgt_path)
                 break
     # configuration.json
     configuration_fname = 'configuration.json'
@@ -344,9 +347,7 @@ def llm_infer(args: InferArguments) -> None:
             else:
                 if args.stop_words:
                     infer_kwargs['stop_words'] = args.stop_words
-                template_info = TEMPLATE_MAPPING[args.template_type]
-                support_stream = template_info.get('support_stream', True)
-                if args.stream and support_stream:
+                if args.stream:
                     gen = inference_stream(model, template, query, history,
                                            system, **infer_kwargs)
                     print_idx = 0

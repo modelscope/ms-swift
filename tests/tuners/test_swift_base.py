@@ -281,6 +281,34 @@ class TestSwift(unittest.TestCase):
         Swift.save_to_peft_format(
             os.path.join(self.tmp_dir, 'original'),
             os.path.join(self.tmp_dir, 'converted'))
+        # A duplicate conversion
+        Swift.save_to_peft_format(
+            os.path.join(self.tmp_dir, 'original'),
+            os.path.join(self.tmp_dir, 'converted'))
+
+        # -------------------base case--------------------
+        model2 = SbertForSequenceClassification(SbertConfig())
+        model2 = PeftModel.from_pretrained(
+            model2, os.path.join(self.tmp_dir, 'converted'))
+        model2.load_adapter(
+            os.path.join(os.path.join(self.tmp_dir, 'converted'), 'lora'),
+            'lora')
+        state_dict = model.state_dict()
+        state_dict2 = {
+            key[len('base_model.model.'):]: value
+            for key, value in model2.state_dict().items() if 'lora' in key
+        }
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(
+                all(
+                    torch.isclose(state_dict[key],
+                                  state_dict2[key]).flatten().detach().cpu()))
+
+        # -------------------override case--------------------
+        Swift.save_to_peft_format(
+            os.path.join(self.tmp_dir, 'converted'),
+            os.path.join(self.tmp_dir, 'converted'))
         model2 = SbertForSequenceClassification(SbertConfig())
         model2 = PeftModel.from_pretrained(
             model2, os.path.join(self.tmp_dir, 'converted'))
