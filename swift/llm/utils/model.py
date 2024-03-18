@@ -2520,8 +2520,9 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
     model_config = LlavaConfig.from_pretrained(model_dir)
     mm_vision_tower = model_config.mm_vision_tower
-    model_config.mm_vision_tower = os.path.join(model_dir, 
-                *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
+    model_config.mm_vision_tower = os.path.join(
+        model_dir,
+        *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
     model_config.attention_dropout = 0.
     key_info['model_path'] = model_dir
     model, tokenizer = get_model_tokenizer_with_flash_attn(
