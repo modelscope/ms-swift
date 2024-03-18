@@ -1,10 +1,11 @@
 import os
 import subprocess
 import time
+from collections import deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from queue import Queue
-from typing import Any, Dict
+from typing import Any, Dict, List
 import shutil
 import json
 import torch
@@ -25,6 +26,10 @@ class Experiment:
 
     requirements: Dict = field(default_factory=dict)
 
+    eval_requirements: Dict = field(default_factory=dict)
+
+    eval_dataset: List = field(default_factory=list)
+
     args: Dict = field(default_factory=dict)
 
     env: Dict = field(default_factory=dict)
@@ -36,6 +41,8 @@ class Experiment:
     runtime: Dict = field(default_factory=dict)
 
     input_args: Any = None
+
+    do_eval = False
 
     def __init__(self,
                  name,
@@ -75,7 +82,20 @@ class ExpManager:
         if os.path.exists(
                 os.path.join(exp.input_args.save_dir, exp.name + '.json')):
             logger.warn(f'Experiment {exp.name} already done, skip')
-        elif any([exp.name == e.name for e in self.exps]):
+
+        if exp.do_eval:
+            runtime = self._build_eval_cmd(exp)
+            envs = deepcopy(runtime.get('env', {}))
+            envs.update(os.environ)
+            logger.info(
+                f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
+            )
+            exp.handler = subprocess.Popen(
+                runtime['running_cmd'], env=envs, shell=True)
+            self.exps.append(exp)
+            return
+
+        if any([exp.name == e.name for e in self.exps]):
             raise ValueError(f'Why exp name duplicate? {exp.name}')
         elif exp.cmd == 'export' and any([exp.cmd == 'export' for exp in self.exps]):
             raise AssertionError(f'Cannot run parallel export task.')
@@ -91,6 +111,25 @@ class ExpManager:
             exp.handler = subprocess.Popen(
                 runtime['running_cmd'], env=envs, shell=True)
             self.exps.append(exp)
+
+    def _build_eval_cmd(self, exp: Experiment):
+        gpu = exp.eval_requirements.get('gpu', None)
+        env = {}
+        allocated = []
+        if gpu:
+            allocated = self._find_free_gpu(int(gpu))
+            assert allocated, 'No free gpu for now!'
+            allocated = [str(gpu) for gpu in allocated]
+            env['CUDA_VISIBLE_DEVICES'] = ','.join(allocated)
+
+        best_model_checkpoint = exp.record.get('best_model_checkpoint')
+        eval_datasets = exp.eval_dataset
+        cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --eval_dataset {" ".join(eval_datasets)}'
+        return {
+            'running_cmd': cmd,
+            'gpu': allocated,
+            'env': env,
+        }
 
     def _build_cmd(self, exp: Experiment):
         gpu = exp.requirements.get('gpu', None)
@@ -235,9 +274,13 @@ class ExpManager:
 
                 has_finished = True
                 if rt == 0:
-                    all_metric = self._get_metric(exp)
-                    if all_metric:
-                        exp.record.update(all_metric)
+                    if not exp.do_eval:
+                        all_metric = self._get_metric(exp)
+                        if all_metric:
+                            exp.record.update(all_metric)
+                            exp.do_eval = True
+                            self.exp_queue.appendleft(exp)
+                    else:
                         self.write_record(exp)
                 logger.info(
                     f'Running {exp.name} finished with return code: {rt}')
@@ -252,32 +295,32 @@ class ExpManager:
         exps = self.prepare_experiments(args)
         logger.info(f'all exps: {exps}')
         exps.sort(key=lambda e: e.priority)
-        exp_queue = Queue(-1)
+        self.exp_queue = deque()
         for exp in exps:
-            exp_queue.put(exp)
+            self.exp_queue.append(exp)
 
-        while not exp_queue.empty() or len(self.exps) > 0:
-            while not exp_queue.empty():
+        while len(self.exp_queue) or len(self.exps) > 0:
+            while len(self.exp_queue):
                 try:
-                    logger.info(f'Running exp: {exp_queue.queue[0].name}')
-                    self.run(exp_queue.queue[0])
+                    logger.info(f'Running exp: {self.exp_queue[0].name}')
+                    self.run(self.exp_queue[0])
                 except Exception as e:
                     if not isinstance(e, AssertionError):
                         logger.error(
-                            f'Adding exp {exp_queue.queue[0].name} error because of:'
+                            f'Adding exp {self.exp_queue[0].name} error because of:'
                         )
                         logger.error(e)
-                        exp_queue.get()
+                        self.exp_queue.popleft()
                     else:
                         logger.info(
-                            f'Adding exp {exp_queue.queue[0].name} error because of no free gpu.'
+                            f'Adding exp {self.exp_queue[0].name} error because of no free gpu.'
                         )
                     break
                 else:
-                    exp_queue.get()
+                    self.exp_queue.popleft()
             self._poll()
         logger.info(
-            f'Run task finished because of exp queue: {exp_queue.queue} and exps: {self.exps}'
+            f'Run task finished because of exp queue: {self.exp_queue} and exps: {self.exps}'
         )
 
 

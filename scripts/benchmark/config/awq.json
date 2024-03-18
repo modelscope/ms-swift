@@ -4,6 +4,10 @@
         "gpu": "2",
         "ddp": "2"
     },
+    "eval_requirements": {
+      "gpu": "1"
+    },
+    "eval_dataset": ["mmlu", "ceval", "gsm8k", "arc", "hellaswag", "bbh"],
     "args": {
       "model_type": "qwen1half-7b-chat-awq",
       "dataset": "ms-agent",

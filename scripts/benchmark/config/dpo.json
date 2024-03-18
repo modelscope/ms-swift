@@ -4,6 +4,10 @@
         "gpu": "8",
         "ddp": "8"
     },
+    "eval_requirements": {
+      "gpu": "1"
+    },
+    "eval_dataset": ["mmlu", "ceval", "gsm8k", "arc", "hellaswag", "bbh"],
     "args": {
         "model_type": "llama2-7b",
         "ref_model_type": "llama2-7b",

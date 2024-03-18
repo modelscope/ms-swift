@@ -229,44 +229,17 @@ def run_eval_single_model(args: EvalArguments,
 def llm_eval(args: EvalArguments) -> None:
     dtypes = {value: key for key, value in dtype_mapping.items()}
     for ds in args.eval_dataset:
-        if args.exp_dir is not None:
-            outputs = []
-            for dirpath, dirnames, filenames in os.walk(args.exp_dir):
-                for file in filenames:
-                    if file.endswith('.json'):
-                        outputs.append(
-                            parse_output(os.path.join(dirpath, file)))
-            for output in outputs:
-                fs = {f.name: getattr(args, f.name) for f in fields(args)}
-                fs['model_type'] = None
-                fs['model_id_or_path'] = None
-                fs['load_args_from_ckpt_dir'] = True
-                fs['ckpt_dir'] = output.best_model_checkpoint
-                copied = EvalArguments(**fs)
-                run_eval_single_model(
-                    copied,
-                    output.name,
-                    ds,
-                    model_args={
-                        'device_map':
-                        'auto',
-                        'precision':
-                        dtypes[copied.dtype]
-                        if copied.dtype != 'AUTO' else dtypes['fp16'],
-                    },
-                    record=output)
-        else:
-            run_eval_single_model(
-                args,
-                args.model_type or args.model_id_or_path or args.ckpt_dir,
-                ds,
-                model_args={
-                    'device_map':
-                    'auto',
-                    'precision':
-                    dtypes[args.dtype]
-                    if args.dtype != 'AUTO' else dtypes['fp16'],
-                })
+        run_eval_single_model(
+            args,
+            args.model_type or args.model_id_or_path or args.ckpt_dir,
+            ds,
+            model_args={
+                'device_map':
+                'auto',
+                'precision':
+                dtypes[args.dtype]
+                if args.dtype != 'AUTO' else dtypes['fp16'],
+            })
 
 
 eval_main = get_main(EvalArguments, llm_eval)
