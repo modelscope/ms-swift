@@ -287,8 +287,11 @@ class ExpManager:
                         all_metric = self._get_metric(exp)
                         if all_metric:
                             exp.record.update(all_metric)
-                            exp.do_eval = True
-                            self.exp_queue.appendleft(exp)
+                            if exp.eval_dataset:
+                                exp.do_eval = True
+                                self.exp_queue.appendleft(exp)
+                            else:
+                                self.write_record(exp)
                     else:
                         self.write_record(exp)
                 logger.info(

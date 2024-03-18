@@ -1,12 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
-import os
+import json
 import time
-from copy import copy
-from dataclasses import fields
 from typing import Any, Dict
 
-import json
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
 from llmuses.run import run_task
