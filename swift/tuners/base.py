@@ -879,12 +879,14 @@ class Swift:
                         'because you have special parameters or adapter types.'
                     )
 
+        os.makedirs(output_dir, exist_ok=True)
+        shutil.copytree(ckpt_dir, output_dir, dirs_exist_ok=True)
+
         for adapter in adapter_names:
             safe_serialization = os.path.isfile(
-                os.path.join(ckpt_dir, adapter, SAFETENSORS_WEIGHTS_NAME))
+                os.path.join(output_dir, adapter, SAFETENSORS_WEIGHTS_NAME))
             state_dict = SwiftModel.load_state_file(
-                os.path.join(ckpt_dir, adapter))
-            os.makedirs(os.path.join(output_dir, adapter), exist_ok=True)
+                os.path.join(output_dir, adapter))
             new_state_dict = {}
             for key, value in state_dict.items():
                 if not key.startswith('base_model.model.'):
@@ -901,7 +903,7 @@ class Swift:
                                         os.path.join(output_dir, adapter),
                                         safe_serialization)
             from swift import LoRAConfig
-            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
+            with open(os.path.join(output_dir, adapter, CONFIG_NAME)) as f:
                 _json = json.load(f)
                 peft_config = LoRAConfig(**_json).to_peft_config()
             peft_config.save_pretrained(os.path.join(output_dir, adapter))
