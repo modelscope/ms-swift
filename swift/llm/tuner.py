@@ -76,6 +76,7 @@ def prepare_model(model, args: SftArguments):
                 'rank_pattern': args.lora_rank_pattern,
                 'alpha_pattern': args.lora_alpha_pattern,
                 'loftq_config': args.lora_loftq_config,
+                'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
             }
             if args.sft_type == 'lora':
@@ -84,6 +85,7 @@ def prepare_model(model, args: SftArguments):
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
+                    assert args.lora_lr_ratio is None, 'Please use tuner_backend="swift" to use LoRA+'
                     lora_config = LoraConfig(
                         task_type='CAUSAL_LM', **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
