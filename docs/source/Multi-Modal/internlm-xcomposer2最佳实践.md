@@ -10,9 +10,7 @@
 
 ## 环境准备
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .[llm]
+pip install ms-swift[llm] -U
 ```
 
 ## 推理
@@ -98,18 +96,23 @@ response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
 
+# 流式
 query = '距离最远的城市是哪？'
-response, history = inference(model, template, query, history)
-print(f'query: {query}')
-print(f'response: {response}')
+gen = inference_stream(model, template, query, history)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
 print(f'history: {history}')
 """
 query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？
 response:  马鞍山距离阳江62公里，广州距离广州293公里。
 query: 距离最远的城市是哪？
-response:  最远的距离是地球的两极，南极和北极。
-history: [('<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', ' 马鞍山距离阳江62公里，广州距离广州293公里。'), ('距离最远的城市是哪？', ' 最远的距离是地球的两极，南极和北极。')]
-"""
+response: 距离最最远的城市是广州，距离广州293公里。
+history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', ' 马鞍山距离阳江62公里，广州距离广州293公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是广州，距离广州293公里。']]
 """
 ```
 
