@@ -62,19 +62,22 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         self.swift_type = SwiftTuners.LORA
 
     def can_be_saved_to_peft(self) -> bool:
-        return not self.use_qa_lora and not self.use_merged_linear \
-            and (not self.lora_dtype or self.lora_dtype == 'fp32')
+        if self.use_qa_lora or self.use_merged_linear:
+            logger.warn(
+                'QA-LoRA and MergedLinear cannot be saved to peft format')
+            return False
+        return True
 
     def to_peft_config(self) -> LoraConfig:
         _dict = asdict(self)
-        _dict.pop('use_qa_lora')
-        _dict.pop('enable_lora')
-        _dict.pop('lora_dtype')
-        _dict.pop('use_merged_linear')
+        _dict.pop('use_qa_lora', None)
+        _dict.pop('enable_lora', None)
+        _dict.pop('lora_dtype', None)
+        _dict.pop('use_merged_linear', None)
         _dict['peft_type'] = _dict['swift_type']
-        _dict.pop('swift_type')
-        _dict.pop('lr_ratio')
-        _dict.pop('model_key_mapping')
+        _dict.pop('swift_type', None)
+        _dict.pop('lr_ratio', None)
+        _dict.pop('model_key_mapping', None)
         return LoraConfig(**_dict)
 
 

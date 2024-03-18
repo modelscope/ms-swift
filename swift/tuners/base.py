@@ -853,6 +853,9 @@ class Swift:
             ckpt_dir(`str`): Original swift output dir
             output_dir(`str`): Converted peft format dir
         """
+        assert ckpt_dir and output_dir, 'Please pass in valid ckpt_dir and output_dir.'
+        assert os.path.exists(
+            ckpt_dir), f'ckpt_dir: {ckpt_dir} must exists in local disk.'
         if os.path.exists(os.path.join(ckpt_dir, SwiftModel.EXTRA_STATE_DIR)):
             raise AssertionError(
                 'Cannot transfer to peft format, because you are additional state dicts.'
@@ -864,7 +867,9 @@ class Swift:
         ]
 
         def has_custom_content(_json):
-            if _json.get('swift_type') != SwiftTuners.LORA:
+            if _json.get('swift_type',
+                         _json.get('peft_type')) != SwiftTuners.LORA:
+                logger.warn('Only LoRA can be converted to peft format')
                 return True
 
             from swift import LoRAConfig
@@ -880,7 +885,8 @@ class Swift:
                     )
 
         os.makedirs(output_dir, exist_ok=True)
-        shutil.copytree(ckpt_dir, output_dir, dirs_exist_ok=True)
+        if ckpt_dir != output_dir:
+            shutil.copytree(ckpt_dir, output_dir, dirs_exist_ok=True)
 
         for adapter in adapter_names:
             safe_serialization = os.path.isfile(
