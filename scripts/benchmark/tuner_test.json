@@ -4,6 +4,10 @@
         "gpu": "2",
         "ddp": "2"
     },
+    "eval_requirements": {
+      "gpu": "1"
+    },
+    "eval_dataset": ["mmlu"],
     "args": {
       "model_type": "llama2-7b-chat",
       "dataset": "ms-agent",

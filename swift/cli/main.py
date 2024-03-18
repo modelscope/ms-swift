@@ -14,7 +14,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'deploy': 'swift.cli.deploy',
     'dpo': 'swift.cli.dpo',
     'export': 'swift.cli.export',
-    'exp': 'swift.cli.exp'
+    'eval': 'swift.cli.eval'
 }
 
 ROUTE_MAPPING.update(

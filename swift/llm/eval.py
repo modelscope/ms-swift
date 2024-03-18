@@ -149,7 +149,7 @@ class EvalModel(CustomModel):
         super(EvalModel, self).__init__(
             config={
                 'model_id': model_name,
-                **config.__dict__
+                **config
             }, **kwargs)
         self.model_name = model_name
 
@@ -219,7 +219,7 @@ def run_eval_single_model(args: EvalArguments,
         'dataset_hub': 'ModelScope',
         'dataset_dir': DEFAULT_ROOT_CACHE_DIR,
         'stage': 'all',
-        'limit': None,
+        'limit': 3,
         'debug': False
     }
 

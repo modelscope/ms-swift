@@ -48,6 +48,8 @@ class Experiment:
                  name,
                  cmd,
                  requirements=None,
+                 eval_requirements=None,
+                 eval_dataset=None,
                  args=None,
                  input_args=None,
                  **kwargs):
@@ -59,6 +61,8 @@ class Experiment:
         self.env = {}
         self.runtime = {}
         self.input_args = input_args
+        self.eval_requirements = eval_requirements or {}
+        self.eval_dataset = eval_dataset or []
 
     @property
     def priority(self):
@@ -82,7 +86,8 @@ class ExpManager:
         if os.path.exists(
                 os.path.join(exp.input_args.save_dir, exp.name + '.json')):
             logger.warn(f'Experiment {exp.name} already done, skip')
-
+            return
+            
         if exp.do_eval:
             runtime = self._build_eval_cmd(exp)
             envs = deepcopy(runtime.get('env', {}))
@@ -123,8 +128,8 @@ class ExpManager:
             env['CUDA_VISIBLE_DEVICES'] = ','.join(allocated)
 
         best_model_checkpoint = exp.record.get('best_model_checkpoint')
-        eval_datasets = exp.eval_dataset
-        cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --eval_dataset {" ".join(eval_datasets)}'
+        eval_dataset = exp.eval_dataset
+        cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --eval_dataset {" ".join(eval_dataset)}'
         return {
             'running_cmd': cmd,
             'gpu': allocated,
@@ -206,6 +211,8 @@ class ExpManager:
                     run_args = main_cfg['args']
                     env = main_cfg.get('env', {})
                     requirements = main_cfg.get('requirements', {})
+                    eval_requirements = main_cfg.get('eval_requirements', {})
+                    eval_dataset = main_cfg.get('eval_dataset', {})
                     if 'args' in exp:
                         run_args.update(exp['args'])
                     if 'requirements' in exp:
@@ -219,6 +226,8 @@ class ExpManager:
                             args=run_args,
                             env=env,
                             requirements=requirements,
+                            eval_requirements=eval_requirements,
+                            eval_dataset=eval_dataset,
                             input_args=args))
         return experiments
 
