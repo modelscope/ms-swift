@@ -846,7 +846,7 @@ class Swift:
                 sub_module.unmerge(**kwargs)
 
     @staticmethod
-    def save_to_peft_format(ckpt_dir: str, output_dir: str):
+    def save_to_peft_format(ckpt_dir: str, output_dir: str) -> None:
         """Save swift format to peft format
 
         Args:

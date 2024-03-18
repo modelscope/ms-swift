@@ -622,6 +622,9 @@ class InferArguments:
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
+    vllm_enable_lora: bool = False
+    vllm_max_lora_rank: int = 16
+    vllm_lora_modules: List[str] = field(default_factory=list)
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
@@ -687,6 +690,7 @@ class InferArguments:
             self.sft_type = 'full'
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
+        self.vllm_lora_request_list = None
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
@@ -694,15 +698,23 @@ class InferArguments:
                      or self.sft_type == 'lora' and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
+                if self.vllm_enable_lora:
+                    self.infer_backend = 'vllm'
         if self.infer_backend == 'vllm':
             require_version('vllm')
             assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
-            if self.sft_type == 'lora':
+            if self.sft_type == 'lora' and not self.vllm_enable_lora:
                 assert self.merge_lora is True, (
                     'To use VLLM, you need to provide the complete weight parameters. '
                     'Please set `--merge_lora true`.')
+            if self.vllm_enable_lora:
+                self.vllm_lora_modules.append(
+                    f'default-lora={self.ckpt_dir}')
+                self.vllm_lora_request_list = _parse_vllm_lora_modules(
+                    self.vllm_lora_modules)
+                logger.info(f'args.vllm_lora_request_list: {self.vllm_lora_request_list}')
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
             self.stream = False
@@ -1158,3 +1170,14 @@ def handle_dataset_mixture(args: SftArguments, train_dataset,
         return concatenate_datasets([train_dataset, mixed_dataset])
     else:
         return train_dataset
+
+
+def _parse_vllm_lora_modules(
+        vllm_lora_modules: List[str]) -> List['LoRARequest']:
+    from .vllm_utils import LoRARequest
+    lora_request_list = []
+    for i, vllm_lora_module in enumerate(vllm_lora_modules):
+        lora_name, lora_local_path = vllm_lora_module.split('=')
+        lora_request_list.append(
+            LoRARequest(lora_name, i + 1, lora_local_path))
+    return lora_request_list

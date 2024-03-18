@@ -14,11 +14,17 @@ from transformers import PreTrainedTokenizerBase
 from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
                   SamplingParams)
 
+from swift.tuners import Swift
 from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template
 from .utils import _is_chinese_char
+
+try:
+    from vllm.lora.request import LoRARequest
+except ImportError:
+    pass
 
 logger = get_logger()
 
@@ -32,6 +38,9 @@ def get_vllm_engine(model_type: str,
                     max_model_len: Optional[int] = None,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
+                    enable_lora: bool = False,
+                    max_loras: int = 1,
+                    max_lora_rank: int = 16,
                     **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
@@ -59,6 +68,17 @@ def get_vllm_engine(model_type: str,
     else:
         engine_args_cls = EngineArgs
         llm_engine_cls = LLMEngine
+
+    parameters = inspect.signature(engine_args_cls.__init__).parameters
+    if 'enable_lora' in parameters:
+        engine_kwargs['enable_lora'] = enable_lora
+        engine_kwargs['max_loras'] = max_loras
+        engine_kwargs['max_lora_rank'] = max_lora_rank
+    else:
+        assert not enable_lora, (
+            'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+        )
+
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
@@ -184,6 +204,7 @@ def inference_stream_vllm(
         request_list: List[Dict[str, Any]],
         *,
         generation_config: Optional[VllmGenerationConfig] = None,
+        lora_request: Optional['LoRARequest'] = None,
         use_tqdm: bool = False,
         **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
@@ -210,6 +231,17 @@ def inference_stream_vllm(
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
+    parameters = inspect.signature(llm_engine.add_request).parameters
+    add_request_kwargs = {}
+    if 'lora_request' in parameters:
+        if lora_request is not None:
+            lora_local_path = lora_request.lora_local_path
+            Swift.save_to_peft_format(lora_local_path, f'{lora_local_path}-peft')
+        add_request_kwargs['lora_request'] = lora_request
+    else:
+        assert lora_request is None, (
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
+        )
     request_temp = []
     for i, request in enumerate(request_list):
         history = request.get('history', None)
@@ -229,7 +261,8 @@ def inference_stream_vllm(
         request['history'] = history
         inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
-        llm_engine.add_request(str(i), None, generation_config, input_ids)
+        llm_engine.add_request(
+            str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     batch_size = len(request_list)
     resp_list = [None] * batch_size
@@ -270,6 +303,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    request_list: List[Dict[str, Any]],
                    *,
                    generation_config: Optional[VllmGenerationConfig] = None,
+                   lora_request: Optional['LoRARequest'] = None,
                    use_tqdm: bool = False,
                    verbose: bool = False,
                    prompt_prefix: str = '[PROMPT]',
@@ -296,6 +330,18 @@ def inference_vllm(llm_engine: LLMEngine,
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
+    parameters = inspect.signature(llm_engine.add_request).parameters
+    add_request_kwargs = {}
+    if 'lora_request' in parameters:
+        if lora_request is not None:
+            lora_local_path = lora_request.lora_local_path
+            Swift.save_to_peft_format(lora_local_path, f'{lora_local_path}-peft')
+        add_request_kwargs['lora_request'] = lora_request
+    else:
+        assert lora_request is None, (
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
+        )
+
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
@@ -309,7 +355,8 @@ def inference_vllm(llm_engine: LLMEngine,
         request['history'] = history
         inputs = template.encode(request)[0]
         input_ids = inputs['input_ids']
-        llm_engine.add_request(str(i), None, generation_config, input_ids)
+        llm_engine.add_request(
+            str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     batch_size = len(request_list)
     if use_tqdm is True:
@@ -350,7 +397,8 @@ def prepare_vllm_engine_template(
     seed_everything(args.seed)
 
     assert args.quantization_bit == 0, 'not support bnb'
-    assert args.sft_type == 'full', 'you need to merge lora'
+    assert not (args.sft_type == 'lora'
+                and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
     model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
@@ -364,7 +412,10 @@ def prepare_vllm_engine_template(
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         use_async=use_async,
-        model_id_or_path=model_id_or_path)
+        model_id_or_path=model_id_or_path,
+        enable_lora=args.vllm_enable_lora,
+        max_loras=len(args.vllm_lora_modules),
+        max_lora_rank=args.vllm_max_lora_rank)
     tokenizer = llm_engine.hf_tokenizer
     if use_async:
         model_config = asyncio.run(llm_engine.get_model_config())

@@ -42,6 +42,10 @@ try:
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine,
                                  inference_stream_vllm, inference_vllm,
                                  prepare_vllm_engine_template)
+        try:
+            from .vllm_utils import LoRARequest
+        except ImportError:
+            pass
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()
