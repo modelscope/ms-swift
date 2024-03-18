@@ -23,6 +23,9 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         use_qa_lora(bool): Use
             QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717)
             instead of LoRA. QA-LoRA only supports AutoGPTQ quantized models.
+        lora_dtype(str): The dtype for all lora modules, supported values are `fp32`, `fp16`, `bf16`.
+            Default value is `None`, which means follow the dtype of original module's weight.
+        lr_ratio(float): The lr_ratio argument for [LoRA+](https://arxiv.org/abs/2402.12354)
     """
 
     use_qa_lora: bool = field(
