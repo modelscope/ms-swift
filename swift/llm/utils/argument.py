@@ -710,11 +710,12 @@ class InferArguments:
                     'To use VLLM, you need to provide the complete weight parameters. '
                     'Please set `--merge_lora true`.')
             if self.vllm_enable_lora:
-                self.vllm_lora_modules.append(
-                    f'default-lora={self.ckpt_dir}')
+                self.vllm_lora_modules.append(f'default-lora={self.ckpt_dir}')
                 self.vllm_lora_request_list = _parse_vllm_lora_modules(
                     self.vllm_lora_modules)
-                logger.info(f'args.vllm_lora_request_list: {self.vllm_lora_request_list}')
+                logger.info(
+                    f'args.vllm_lora_request_list: {self.vllm_lora_request_list}'
+                )
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
             self.stream = False

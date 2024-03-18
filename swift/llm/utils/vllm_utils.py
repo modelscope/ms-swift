@@ -236,7 +236,8 @@ def inference_stream_vllm(
     if 'lora_request' in parameters:
         if lora_request is not None:
             lora_local_path = lora_request.lora_local_path
-            Swift.save_to_peft_format(lora_local_path, f'{lora_local_path}-peft')
+            Swift.save_to_peft_format(lora_local_path,
+                                      f'{lora_local_path}-peft')
         add_request_kwargs['lora_request'] = lora_request
     else:
         assert lora_request is None, (
@@ -335,7 +336,8 @@ def inference_vllm(llm_engine: LLMEngine,
     if 'lora_request' in parameters:
         if lora_request is not None:
             lora_local_path = lora_request.lora_local_path
-            Swift.save_to_peft_format(lora_local_path, f'{lora_local_path}-peft')
+            Swift.save_to_peft_format(lora_local_path,
+                                      f'{lora_local_path}-peft')
         add_request_kwargs['lora_request'] = lora_request
     else:
         assert lora_request is None, (
