@@ -2519,8 +2519,10 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     from llava.model.constants import key_info
 
     model_config = LlavaConfig.from_pretrained(model_dir)
-    model_config.mm_vision_tower = os.path.join(model_dir,
-                                                model_config.mm_vision_tower)
+    mm_vision_tower = model_config.mm_vision_tower
+    model_config.mm_vision_tower = os.path.join(
+        model_dir,
+        *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
     model_config.attention_dropout = 0.
     key_info['model_path'] = model_dir
     model, tokenizer = get_model_tokenizer_with_flash_attn(
@@ -2771,7 +2773,8 @@ def get_additional_saved_files(model_type: str) -> List[str]:
     files_mapping = {
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
-        'deepseek-vl': ['preprocessor_config.json']
+        'deepseek-vl': ['preprocessor_config.json'],
+        'yi-vl': ['vit']
     }
     for key, files_list in files_mapping.items():
         if key in model_type:

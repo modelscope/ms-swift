@@ -44,8 +44,11 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             if model_dir is None:
                 continue
             src_path = os.path.join(model_dir, fname)
-            if os.path.exists(src_path):
+            if os.path.isfile(src_path):
                 shutil.copy(src_path, tgt_path)
+                break
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, tgt_path)
                 break
     # configuration.json
     configuration_fname = 'configuration.json'
