@@ -1192,7 +1192,9 @@ def _parse_vllm_lora_modules(
     try:
         from .vllm_utils import LoRARequest
     except ImportError:
-        logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
+        logger.warning(
+            'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+        )
         raise
     lora_request_list = []
     for i, vllm_lora_module in enumerate(vllm_lora_modules):
