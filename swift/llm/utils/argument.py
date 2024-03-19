@@ -1178,15 +1178,15 @@ def handle_dataset_mixture(args: SftArguments, train_dataset,
 def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     if 'default' in os.listdir(lora_checkpoint_path):  # swift_backend
         new_lora_checkpoint_path = f'{lora_checkpoint_path}-peft'
-        Swift.save_to_peft_format(lora_checkpoint_path, new_lora_checkpoint_path)
+        Swift.save_to_peft_format(lora_checkpoint_path,
+                                  new_lora_checkpoint_path)
         lora_checkpoint_path = new_lora_checkpoint_path
-        logger.info(
-            'Converting the swift format checkpoint to peft format, '
-            f"and saving it to: '{new_lora_checkpoint_path}'")
+        logger.info('Converting the swift format checkpoint to peft format, '
+                    f"and saving it to: '{new_lora_checkpoint_path}'")
     else:
-        logger.info(
-            'The format of the checkpoint is already in peft format.')
+        logger.info('The format of the checkpoint is already in peft format.')
     return lora_checkpoint_path
+
 
 def _parse_vllm_lora_modules(
         vllm_lora_modules: List[str]) -> List['LoRARequest']:

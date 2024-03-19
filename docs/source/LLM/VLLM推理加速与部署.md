@@ -550,7 +550,7 @@ lora_checkpoint = 'output/llama2-7b-chat/vx-xxx/checkpoint-xxx-peft'
 lora_request = LoRARequest('default-lora', 1, lora_checkpoint)
 
 model_type = ModelType.llama2_7b_chat
-llm_engine = get_vllm_engine(model_type, torch.float16, enable_lora=True, 
+llm_engine = get_vllm_engine(model_type, torch.float16, enable_lora=True,
                              max_loras=1, max_lora_rank=16)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer)
