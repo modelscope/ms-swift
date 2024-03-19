@@ -762,6 +762,7 @@ class DeployArguments(InferArguments):
 
 @dataclass
 class ExportArguments(InferArguments):
+    to_peft_format: bool = False
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
@@ -771,8 +772,6 @@ class ExportArguments(InferArguments):
     quant_n_samples: Optional[int] = None
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
-
-    to_peft_format: bool = False
 
     # push to ms hub
     push_to_hub: bool = False
