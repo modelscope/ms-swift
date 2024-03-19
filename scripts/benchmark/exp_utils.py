@@ -96,7 +96,7 @@ class ExpManager:
                 f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
             )
             exp.handler = subprocess.Popen(
-                runtime['running_cmd'], env=envs, shell=True)
+                runtime['running_cmd'] + f' > {exp.name}.eval.log', env=envs, shell=True)
             self.exps.append(exp)
             return
 
@@ -233,7 +233,13 @@ class ExpManager:
 
     @staticmethod
     def _get_metric(exp: Experiment):
-        if exp.cmd == 'export':
+        if exp.do_eval:
+            if os.path.isfile(f'{exp.name}.eval.log'):
+                with open(f'{exp.name}.eval.log', 'r') as f:
+                    for line in f.readlines():
+                        if 'Final report:' in line:
+                            return json.loads(line.split('Final report:')[1].replace('\'', '"'))
+        elif exp.cmd == 'export':
             exp_args = ExportArguments(**exp.args)
             if exp_args.quant_bits > 0:
                 if exp_args.ckpt_dir is None:
@@ -292,8 +298,15 @@ class ExpManager:
                                 self.exp_queue.appendleft(exp)
                             else:
                                 self.write_record(exp)
+                        else:
+                            logger.error(f'Running {exp.name} task, but no result found')
                     else:
-                        self.write_record(exp)
+                        all_metric = self._get_metric(exp)
+                        exp.record['eval_result'] = all_metric
+                        if all_metric:
+                            self.write_record(exp)
+                        else:
+                            logger.error(f'Running {exp.name} eval task, but no eval result found')
                 logger.info(
                     f'Running {exp.name} finished with return code: {rt}')
 

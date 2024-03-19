@@ -7,7 +7,7 @@
     "eval_requirements": {
       "gpu": "1"
     },
-    "eval_dataset": ["mmlu"],
+    "eval_dataset": ["arc"],
     "args": {
       "model_type": "llama2-7b-chat",
       "dataset": "ms-agent",
@@ -33,6 +33,15 @@
     "experiment": [
       {
         "name": "lora",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32
+        }
+      },
+      {
+        "name": "lora+",
         "args": {
           "sft_type": "lora",
           "lora_target_modules": "ALL",

@@ -212,7 +212,8 @@ def run_eval_single_model(args: EvalArguments,
     logger.info(f'Eval task config: {task_config}')
     run_task(task_cfg=task_config)
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_config)
-    logger.info(f'*** Final report ***\n {final_report}\n')
+    print(f'Final report:{final_report}\n', flush=True)
+    return final_report
 
 
 def llm_eval(args: EvalArguments) -> None:
