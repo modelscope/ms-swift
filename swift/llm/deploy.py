@@ -41,7 +41,14 @@ def create_error_response(status_code: Union[int, str, HTTPStatus],
 @app.get('/v1/models')
 async def get_available_models():
     global _args
-    return ModelList(data=[Model(id=_args.model_type)])
+    model_list = [_args.model_type]
+    if _args.vllm_lora_request_list is not None:
+        model_list += [
+            lora_request.lora_name
+            for lora_request in _args.vllm_lora_request_list
+        ]
+    data = [Model(id=model_id) for model_id in model_list]
+    return ModelList(data=data)
 
 
 async def check_length(request: Union[ChatCompletionRequest,
@@ -87,7 +94,7 @@ def is_generation_template(template_type: str) -> bool:
 async def inference_vllm_async(request: Union[ChatCompletionRequest,
                                               CompletionRequest],
                                raw_request: Request):
-    global llm_engine, template
+    global llm_engine, template, _args
     from .utils import VllmGenerationConfig
     error_msg = await check_model(request)
     if error_msg is not None:
@@ -154,8 +161,19 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     logger.info(request_info)
 
     created_time = int(time.time())
+    generate_kwargs = {}
+    if _args.vllm_enable_lora and request.model != _args.model_type:
+        lora_request = None
+        for lora_req in _args.vllm_lora_request_list:
+            if lora_req.lora_name == request.model:
+                lora_request = lora_req
+                break
+        assert lora_request is not None, (
+            f"request.model: '{request.model}', "
+            f'available_models: {await get_available_models()}')
+        generate_kwargs['lora_request'] = lora_request
     result_generator = llm_engine.generate(None, generation_config, request_id,
-                                           input_ids)
+                                           input_ids, **generate_kwargs)
 
     async def _generate_full():
         result = None
