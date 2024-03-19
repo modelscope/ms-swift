@@ -2653,7 +2653,6 @@ def get_model_tokenizer_llava(model_dir: str,
         vision_tower.load_model(device_map=device_map)
     if device_map != 'auto':
         vision_tower.to(device=device_map, dtype=model.dtype)
-    image_processor = vision_tower.image_processor
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     _patch_llava(model)
