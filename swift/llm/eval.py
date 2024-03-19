@@ -2,7 +2,7 @@
 import dataclasses
 import json
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
@@ -204,23 +204,15 @@ def run_eval_single_model(args: EvalArguments,
                           dataset,
                           model_args,
                           record=None):
-    eval_cfg = {
-        'model_args': model_args,
-        'dataset_args': {},
-        'model': EvalModel(args, model_name, config=record or {}),
-        'eval_type': 'custom',
-        'datasets': [dataset],
-        'work_dir': DEFAULT_ROOT_CACHE_DIR,
-        'outputs': DEFAULT_ROOT_CACHE_DIR,
-        'mem_cache': False,
-        'dataset_hub': 'ModelScope',
-        'dataset_dir': DEFAULT_ROOT_CACHE_DIR,
-        'stage': 'all',
-        'limit': 3,
-        'debug': False
-    }
-
-    run_task(task_cfg=eval_cfg)
+    from llmuses.config import TaskConfig
+    from llmuses.summarizer import Summarizer
+    eval_model = EvalModel(args, model_name, config=record or {})
+    task_config: TaskConfig = TaskConfig()
+    task_config = task_config.load(custom_model=eval_model, tasks=args.eval_dataset)
+    logger.info(f'Eval task config: {task_config}')
+    run_task(task_cfg=task_config)
+    final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_config)
+    logger.info(f'*** Final report ***\n {final_report}\n')
 
 
 def llm_eval(args: EvalArguments) -> None:

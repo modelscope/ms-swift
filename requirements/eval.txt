@@ -3,7 +3,7 @@ auto-gptq
 cachetools
 datasets>=2.14.5
 editdistance
-https://sail-moe.oss-cn-hangzhou.aliyuncs.com/open_data/packages/llmuses-0.2.7rc1-py3-none-any.whl
+https://sail-moe.oss-cn-hangzhou.aliyuncs.com/open_data/packages/llmuses-0.2.7rc2-py3-none-any.whl
 jieba
 jsonlines
 matplotlib
