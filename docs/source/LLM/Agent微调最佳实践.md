@@ -1,5 +1,9 @@
 # Agent微调最佳实践
 
+用消费级显卡训练属于自己的Agent！
+
+SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent场景的训练，并将loss-scale技术(https://arxiv.org/pdf/2309.00986.pdf)应用到agent训练中，使中小模型API Call能力更稳定，并支持使用单张商业级显卡进行Agent推理和部署，可以直接在生产场景中全链路闭环落地使用。
+
 ## 目录
 
 - [环境安装](#环境安装)
@@ -149,7 +153,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 运行命令和其他超参数如下:
 
 ```shell
-# Experimental environment: A100
+# Experimental environment: 8GPU
 nproc_per_node=8
 
 PYTHONPATH=../../.. \
@@ -167,7 +171,7 @@ torchrun \
     --train_dataset_mix_ratio 2.0 \
     --train_dataset_sample -1 \
     --num_train_epochs 2 \
-    --max_length 2048 \
+    --max_length 1500 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -189,7 +193,13 @@ torchrun \
     --logging_steps 10
 ```
 
-训练过程使用了8*A100硬件环境，训练时长3小时。该训练使用单卡也可以运行，用户可以将DDP改为单卡命令即可。
+在官方实验中，训练过程使用了8*A100硬件环境，训练时长3小时。
+
+> [!NOTE]
+>
+> 1. 该训练使用消费级单显卡也可以运行（对应的训练过程约15个小时，占用显存22G），用户可以将DDP改为单卡命令即可
+>
+> 2. LoRA训练的遗忘问题并不严重，可以适当调低ms-bench数据集的比例，提高训练速度
 
 ## 推理
 
@@ -272,7 +282,11 @@ Begin!
 目前命令行的Agent推理支持需要指定`--eval_human true`，因为该参数为false的时候会读取数据集内容，此时无法手动传入`Observation:`后面的API调用结果。
 
 ```shell
-swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
+# 使用训练后的模型
+swift infer --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --eval_human true --stop_words Observation: --infer_backend pt
+# 也可以使用原始模型，如qwn-7b-chat或chatglm3-6b-32k等运行agent
+# swift infer --model_type qwen-7b-chat --eval_human true --stop_words Observation: --infer_backend pt
+# swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
 ```
 
 运行命令后，改变system字段：
@@ -287,7 +301,7 @@ swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observat
 
 ```shell
 # 多行system
-<<< multi-line#
+<<< multi-line
 <<<[M] reset-system#
 <<<[MS] Answer the following questions as best you can. You have access to the following APIs:
 1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
@@ -310,7 +324,7 @@ Final Answer: the final answer to the original input question
 Begin!#
 ```
 
-下面就可以进行Agent问答：
+下面就可以进行Agent问答(注意如果使用多行模式输入行尾额外增加#号)：
 
 ```shell
 <<< 输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点
@@ -336,7 +350,11 @@ Final Answer: There is fire in the input image.
 服务端：
 
 ```shell
-swift deploy --model_type chatglm3-6b-32k --stop_words Observation:
+# 使用训练后的模型
+swift deploy --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --stop_words Observation:
+# 也可以使用原始模型，如qwen-7b-chat或chatglm3-6b-32k等运行agent
+# swift deploy --model_type qwn-7b-chat --stop_words Observation:
+# swift deploy --model_type chatglm3-6b-32k --stop_words Observation:
 ```
 
 客户端：
@@ -399,7 +417,7 @@ for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
 ## Output:
-# model_type: chatglm3-6b-32k
+# model_type: qwen-7b-chat
 # response: Thought: I need to check if there is fire in the image
 # Action: Use fire\_recognition API
 # Action Input: /tmp/2.jpg

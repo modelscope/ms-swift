@@ -15,7 +15,7 @@ python llm_sft.py \
     --train_dataset_mix_ratio 2.0 \
     --train_dataset_sample -1 \
     --num_train_epochs 2 \
-    --max_length 2048 \
+    --max_length 1500 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
