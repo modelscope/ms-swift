@@ -6,7 +6,7 @@
 - [推理加速](#推理加速)
 - [Web-UI加速](#web-ui加速)
 - [部署](#部署)
-- [VLLM & LoRA](#vllm-&-lora)
+- [VLLM & LoRA](#vllm--lora)
 
 
 ## 环境准备
@@ -492,7 +492,7 @@ VLLM & LoRA支持的模型可以查看: https://docs.vllm.ai/en/latest/models/su
 ### 准备LoRA
 ```shell
 # Experimental environment: 4 * A100
-# 2 * 30GB GPU memory
+# 4 * 30GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
