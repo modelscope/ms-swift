@@ -18,12 +18,12 @@ from transformers.utils import (is_torch_bf16_gpu_available,
                                 is_torch_npu_available)
 from transformers.utils.versions import require_version
 
-from swift import get_logger
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
+from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, get_pai_tensorboard_dir, is_dist,
-                         is_mp, is_pai_training_job)
+                         get_dist_setting, get_logger, get_pai_tensorboard_dir,
+                         is_dist, is_mp, is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
@@ -772,6 +772,8 @@ class ExportArguments(InferArguments):
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
+    to_peft_format: bool = False
+
     # push to ms hub
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -1173,12 +1175,26 @@ def handle_dataset_mixture(args: SftArguments, train_dataset,
         return train_dataset
 
 
+def swift_to_peft_format(lora_checkpoint_path: str) -> str:
+    if 'default' in os.listdir(lora_checkpoint_path):  # swift_backend
+        new_lora_checkpoint_path = f'{lora_checkpoint_path}-peft'
+        Swift.save_to_peft_format(lora_checkpoint_path, new_lora_checkpoint_path)
+        lora_checkpoint_path = new_lora_checkpoint_path
+        logger.info(
+            'Converting the swift format checkpoint to peft format, '
+            f"and saving it to: '{new_lora_checkpoint_path}'")
+    else:
+        logger.info(
+            'The format of the checkpoint is already in peft format.')
+    return lora_checkpoint_path
+
 def _parse_vllm_lora_modules(
         vllm_lora_modules: List[str]) -> List['LoRARequest']:
     from .vllm_utils import LoRARequest
     lora_request_list = []
     for i, vllm_lora_module in enumerate(vllm_lora_modules):
         lora_name, lora_local_path = vllm_lora_module.split('=')
+        lora_local_path = swift_to_peft_format(lora_local_path)
         lora_request_list.append(
             LoRARequest(lora_name, i + 1, lora_local_path))
     return lora_request_list

@@ -42,9 +42,11 @@ def create_error_response(status_code: Union[int, str, HTTPStatus],
 async def get_available_models():
     global _args
     model_list = [_args.model_type]
-    model_list += [
-        lora_request.lora_name for lora_request in _args.vllm_lora_request_list
-    ]
+    if _args.vllm_lora_request_list is not None:
+        model_list += [
+            lora_request.lora_name
+            for lora_request in _args.vllm_lora_request_list
+        ]
     data = [Model(id=model_id) for model_id in model_list]
     return ModelList(data=data)
 
