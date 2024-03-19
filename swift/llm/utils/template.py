@@ -30,6 +30,7 @@ class TemplateType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     llama = 'llama'
+    llava_mistral = 'llava-mistral'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
     internlm2 = 'internlm2'
@@ -580,14 +581,11 @@ class YiVLTemplate(Template):
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
-        model = self.model
         model = self.model.model
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor
         images_path = example['images']
-        if not isinstance(images_path, (list, tuple)):
-            images_path = [images_path]
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -604,8 +602,7 @@ class YiVLTemplate(Template):
                       batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        if batch[0].get('images') is not None:
-            res['images'] = torch.concat([b['images'] for b in batch])
+        res['images'] = torch.concat([b['images'] for b in batch])
         return res
 
 
@@ -881,6 +878,55 @@ register_template(
         )))
 
 
+class LLavaTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'],
+                         ['</s>[INST] '], ['</s>'])
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        images_path = example['images']
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
+        image_sizes = [x.size for x in images]
+        from llava.mm_utils import process_images
+        model = self.model.model
+        if not hasattr(model, 'vision_tower'):
+            model = model.model
+        image_processor = model.vision_tower.image_processor
+        images_tensor = process_images(images, image_processor,
+                                       self.model.config)
+        inputs['images'] = images_tensor.to(model.dtype)
+        inputs['image_sizes'] = image_sizes
+        return inputs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['images'] = torch.concat([b['images'] for b in batch])
+        res['image_sizes'] = sum([b['image_sizes'] for b in batch], start=[])
+        return res
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+
+register_template(
+    TemplateType.llava_mistral,
+    LLavaTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+
 def _findall(token_list: List[int], token: int) -> List[int]:
     """Find the index of a token in the token_list."""
     res = []
@@ -912,8 +958,6 @@ class DeepseekVLTemplate(Template):
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         images_path = example['images']
-        if not isinstance(images_path, (list, tuple)):
-            images_path = [images_path]
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)

@@ -121,7 +121,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 
 # ZeRO2
 # Experimental environment: 4 * A100
-# 2 * 80 GPU memory
+# 4 * 80 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type qwen-audio-chat \
     --dataset aishell1-mini-zh \
