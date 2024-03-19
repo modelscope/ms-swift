@@ -2,7 +2,7 @@
 
 用消费级显卡训练属于自己的Agent！
 
-SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent场景的训练，并将loss-scale技术(https://arxiv.org/pdf/2309.00986.pdf)应用到agent训练中，使中小模型API Call能力更稳定，并支持使用单张商业级显卡进行Agent推理和部署，可以直接在生产场景中全链路闭环落地使用。
+SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent场景的训练，并将[loss-scale技术](https://arxiv.org/pdf/2309.00986.pdf)应用到agent训练中，使中小模型API Call能力更稳定，并支持使用单张商业级显卡进行Agent推理和部署，可以直接在生产场景中全链路闭环落地使用。
 
 ## 目录
 
@@ -31,8 +31,8 @@ pip install -r requirements/llm.txt  -U
 
 为训练Agent能力，魔搭官方提供了两个开源数据集：
 
-- 魔搭通用问答知识数据集 该数据集包含了38万条通用知识多轮对话数据
-- 魔搭通用Agent训练数据集 该数据集包含了3万条Agent格式的API调用数据
+- [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
+- [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
 
 该数据集数据格式如下：
 
@@ -193,11 +193,11 @@ torchrun \
     --logging_steps 10
 ```
 
-在官方实验中，训练过程使用了8*A100硬件环境，训练时长3小时。
+在官方实验中，训练过程使用了8GPU硬件环境，**训练时长3小时**。
 
 > [!NOTE]
 >
-> 1. 该训练使用消费级单显卡也可以运行（对应的训练过程约15个小时，占用显存22G），用户可以将DDP改为单卡命令即可
+> 1. 该训练使用消费级单显卡也可以运行（对应**占用显存22G**），用户将DDP命令改为单卡命令即可
 >
 > 2. LoRA训练的遗忘问题并不严重，可以适当调低ms-bench数据集的比例，提高训练速度
 
@@ -420,9 +420,9 @@ print()
 # model_type: qwen-7b-chat
 # response: Thought: I need to check if there is fire in the image
 # Action: Use fire\_recognition API
-# Action Input: /tmp/2.jpg
+# Action Input: /tmp/1.jpg
 # Observation:
-# [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/2.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/2.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
+# [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/1.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
 # response:
 # Final Answer: There is fire in the image at coordinates [101.1, 200.9]
 ```
@@ -435,3 +435,5 @@ print()
 
 1. 训练从LoRA变为全参数训练，知识遗忘问题会更加严重，数据集混合比例需要实际测试调整
 2. 部分模型可能在训练后仍然调用效果不佳，可以测试该模型本身预训练能力是否扎实
+3. Agent训练集格式、语种有细节改变后，对应推理阶段的格式也需要相应调整，否则可能效果不佳
+4. 重要位置的`\n`等特殊字符比较重要，请注意推理和训练格式统一
