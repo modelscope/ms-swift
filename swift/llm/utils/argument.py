@@ -165,7 +165,7 @@ class SftArguments:
     adam_beta1: float = 0.9
     adam_beta2: float = 0.999
     learning_rate: Optional[float] = None
-    weight_decay: float = 0.01
+    weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
@@ -653,6 +653,8 @@ class InferArguments:
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
         set_model_type(self)
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
@@ -661,8 +663,6 @@ class InferArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
         has_dataset = (
             len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
             or len(self.custom_val_dataset_path) > 0)
@@ -1079,6 +1079,14 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
 
 
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
+    dataset = []
+    for d in args.dataset:
+        if os.path.exists(d):
+            args.custom_train_dataset_path.append(d)
+        else:
+            dataset.append(d)
+    args.dataset = dataset
+
     for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
         value = getattr(args, key)
         if isinstance(value, str):
