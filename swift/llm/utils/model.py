@@ -113,7 +113,7 @@ class ModelType:
     llama2_70b_chat = 'llama2-70b-chat'
     llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
     # llava
-    llava1d6_mistral_7b_chat = 'llava1d6-mistral-7b-chat'
+    llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -2617,7 +2617,7 @@ def _patch_llava(model):
 
 
 @register_model(
-    ModelType.llava1d6_mistral_7b_chat,
+    ModelType.llava1d6_mistral_7b_instruct,
     'AI-ModelScope/llava-v1.6-mistral-7b',
     LoRATM.llama2,
     TemplateType.llava_mistral_instruct,

@@ -17,11 +17,11 @@ pip install -e .[llm]
 
 ## 推理
 
-推理[llava1d6-mistral-7b-chat](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary):
+推理[llava1d6-mistral-7b-instruct](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary):
 ```shell
 # Experimental environment: A10, 3090, V100...
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1d6-mistral-7b-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1d6-mistral-7b-instruct
 ```
 
 输出: (支持传入本地路径或URL)
@@ -104,7 +104,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.llava1d6_mistral_7b_chat
+model_type = ModelType.llava1d6_mistral_7b_instruct
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -161,7 +161,7 @@ LoRA微调:
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1d6-mistral-7b-chat \
+    --model_type llava1d6-mistral-7b-instruct \
     --dataset coco-mini-en-2 \
 ```
 
@@ -170,7 +170,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 # Experimental environment: 4 * A100
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1d6-mistral-7b-chat \
+    --model_type llava1d6-mistral-7b-instruct \
     --dataset coco-mini-en-2 \
     --train_dataset_sample -1 \
     --sft_type full \
@@ -193,17 +193,17 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/llava1d6-mistral-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/llava1d6-mistral-7b-instruct/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/llava1d6-mistral-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/llava1d6-mistral-7b-instruct/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/llava1d6-mistral-7b-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/llava1d6-mistral-7b-instruct/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```
