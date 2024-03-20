@@ -163,7 +163,6 @@ LoRA微调:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type llava1d6-mistral-7b-chat \
     --dataset coco-mini-en-2 \
-    --lora_target_modules ALL \
 ```
 
 全参数微调:
