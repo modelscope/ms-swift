@@ -1,4 +1,4 @@
-# LLM-Adapter
+# SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning)
 
 <p align="center">
     <br>
@@ -24,12 +24,12 @@
 
 ##  📖 目录
 - [简介](#-简介)
-- [新闻](#-新闻)
-- 🔥[大模型训练推理](#-大模型训练推理)
+- 🔥[新闻](#-新闻)
 - [安装](#-安装)
-- [快速开始](#-快速开始)
-- [了解更多](#-了解更多)
+- 🔥[快速开始](#-快速开始)
+- [文档](#-文档)
 - [License](#license)
+- [引用](#-引用)
 - [联系我们](#-联系我们)
 
 ## 📝 简介
@@ -150,6 +150,8 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 ```
 
 ## 🚀 快速开始
+
+本章节介绍基本使用，更丰富的使用方式请查看[文档部分](#-文档)。
 
 ### web-ui
 
@@ -294,7 +296,7 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 | --------------------------------------------------- | ------------------------------------------------------------ | --------- | ------------------------- | --------------------------------------- |
 | Qwen/Qwen1.5                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文/英文 | 1.8B-72B,包含量化版本     | base模型/chat模型                       |
 | ChatGLM2/ChatGLM3/Codegeex2                         | [智谱ChatGLM系列模型](https://github.com/THUDM/)             | 中文/英文 | 6B                        | base模型/chat模型                       |
-| Baichuan/Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文/英文 | 7B/13B                    | base模型/chat模型                       |
+| Baichuan/Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文/英文 | 7B-13B                    | base模型/chat模型                       |
 | Yuan2                                               | [浪潮源系列模型](https://github.com/IEIT-Yuan)               | 中文/英文 | 2B-102B                   | chat模型                                |
 | XVerse                                              | [元象系列模型](https://github.com/xverse-ai)                 | 中文/英文 | 7B-65B                    | base模型/chat模型                       |
 | LLaMA2                                              | [LLaMA2系列模型](https://github.com/facebookresearch/llama)  | 英文      | 7B-70B，包含量化版本      | base模型/chat模型                       |
@@ -314,7 +316,7 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 | PolyLM                                              | [通义实验室自研的PolyLM系列模型](https://github.com/DAMO-NLP-MT/PolyLM) | 多语种    | 13B                       | base模型                                |
 | SeqGPT                                              | [通义实验室自研的文本理解模型，用于信息抽取和文本分类](https://github.com/Alibaba-NLP/SeqGPT) | 中文      | 560M                      | 语义理解模型                            |
 | SUS                                                 | [南方科技大学基于YI Fine-Tune的模型](https://github.com/SUSTech-IDEA/SUS-Chat) | 中文/英文 | 34B                       | chat模型                                |
-| Tongyi-Finance                                      | [通义金融系列模型](https://github.com/QwenLM/Qwen)           | 中文/英文 | 13B                       | 经济类目模型，base模型/chat模型         |
+| Tongyi-Finance                                      | [通义金融系列模型](https://github.com/QwenLM/Qwen)           | 中文/英文 | 13B                       | 经济类目base模型/chat模型               |
 | CodeFuse-CodeLLaMA/CodeFuse-Codegeex2/CodeFuse-Qwen | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)       | 中文/英文 | 6B-34B                    | 代码生成模型                            |
 | phi2                                                | 微软PHI2模型                                                 | 英文      | 3B                        | 生成模型                                |
 
@@ -358,13 +360,30 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 
 ### 支持的技术
 
-| 技术名称 | 过程                                                       |      |
-| -------- | ---------------------------------------------------------- | ---- |
-| LoRA     | 训练                                                       |      |
-|          | 单轮/多轮/Agent训练/自我认知/多模态图文问答/多模态语音问答 |      |
-| 人类对齐 | DPO                                                        |      |
-| 文生图   | DreamBooth                                                 |      |
-| 文生视频 | -                                                          |      |
+| 技术名称                                                     |
+| ------------------------------------------------------------ |
+| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685) |
+| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf) |
+| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf) |
+| 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  \|  [Project Page](https://scedit.github.io/) > |
+| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914) |
+| QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717) |
+| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307) |
+| ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317) |
+| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751) |
+| Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119) |
+| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503) |
+| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \|  [Project Page](https://res-tuning.github.io/)  \|  [Usage](docs/source/GetStarted/ResTuning.md) > |
+| [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等 |
+
+### 支持的硬件
+
+| 硬件环境                  | 备注                            |
+| ------------------------- | ------------------------------- |
+| CPU                       |                                 |
+| RTX20系列/30系列/40系列等 | 30序列之后可使用BF16和FlashAttn |
+| 计算卡系列 A10/A100等     |                                 |
+| 华为昇腾NPU               |                                 |
 
 ### Benchmark
 
@@ -372,7 +391,38 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 
 ### 深度学习教程
 
+| 教程名称                                                     |
+| ------------------------------------------------------------ |
+| [深度学习入门](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/A.%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E5%85%A5%E9%97%A8%E4%BB%8B%E7%BB%8D.md) |
+| [大模型基础知识](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/B.%E9%AD%94%E6%90%AD%E7%A4%BE%E5%8C%BA%E5%92%8CLLM%E5%A4%A7%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86.md) |
+| [提示词工程](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/C.%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%B7%A5%E7%A8%8B-prompt%20engineering.md) |
+| [Transformer结构介绍](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/D.Transformer%E7%BB%93%E6%9E%84.md) |
+| [训练技术选型](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/E.%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B.md) |
+| [数据预处理](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/F.%E6%95%B0%E6%8D%AE%E9%A2%84%E5%A4%84%E7%90%86.md) |
+| [量化](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/G.%E9%87%8F%E5%8C%96.md) |
+| [训练](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/H.%E8%AE%AD%E7%BB%83.md) |
+| [推理](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/I.LLM%E5%92%8C%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A8%A1%E5%9E%8B%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86%E5%AE%9E%E8%B7%B5.md) |
+| [部署](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/J.%E9%83%A8%E7%BD%B2.md) |
+| [评估](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/K.%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%87%AA%E5%8A%A8%E8%AF%84%E4%BC%B0%E7%90%86%E8%AE%BA%E5%92%8C%E5%AE%9E%E6%88%98--LLM%20Automatic%20Evaluation.md) |
+
 ### 使用文档
+
+| 文档名称                                                     |
+| ------------------------------------------------------------ |
+| [使用web-ui](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md) |
+| [使用tuners](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E4%BD%BF%E7%94%A8tuners.md) |
+| [LLM微调](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md) |
+| [LLM推理](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
+| [LLM量化](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md) |
+| [LLM推理加速和部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md) |
+| [量化](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/G.%E9%87%8F%E5%8C%96.md) |
+| [命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md) |
+| [支持的模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md) |
+| [自定义新模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md) |
+| [Agent微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Agent%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) [自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) [Qwen1.5最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) [多模态模型训练最佳实践](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal) |
+| [RLHF](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) |
+| [AnimateDiff训练](https://github.com/modelscope/swift/blob/main/docs/source/AIGC/AnimateDiff%E5%BE%AE%E8%B0%83%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
+
 
 ### 最佳实践
 
@@ -384,7 +434,7 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 
 ## License
 
-本项目使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。
+本框架使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。模型和数据集请查看原资源页面并遵守对应License。
 
 ## 引用
 
