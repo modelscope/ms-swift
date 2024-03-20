@@ -740,10 +740,10 @@ def limit_history_length(template: Template, query: str,
                          history: Optional[History],
                          max_length: Optional[int]) -> Tuple[History, History]:
     """binary search"""
-    if max_length is None:
-        return [], history
     if history is None:
         history = []
+    if max_length is None:
+        return [], history
 
     def compute_token_length(history_length: int) -> int:
         assert history_length != 0
