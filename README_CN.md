@@ -62,6 +62,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
 
 ## 🎉 新闻
+- 🔥2024.03.20: 支持**llava**系列的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.03.12: 支持**deepseek-vl**系列推理和微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/deepseek-vl最佳实践.md).
 - 🔥2024.03.11: 支持[GaLore](https://arxiv.org/abs/2403.03507), 用于在全参数训练中有效减小显存占用至原来的1/2.
 - 🔥2024.03.10: Qwen1.5-7B-Chat与Qwen1.5-72B-Chat从微调到部署[全流程最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md).
@@ -222,6 +223,7 @@ app_ui_main(infer_args)
   - 多模态:
     - [qwen-vl](https://github.com/QwenLM/Qwen-VL) 系列: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
     - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) 系列: qwen-audio, qwen-audio-chat.
+    - [llava](https://github.com/haotian-liu/LLaVA) 系列: llava1d6-mistral-7b-chat.
     - [deepseek-vl](https://github.com/deepseek-ai/DeepSeek-VL) 系列: deepseek-vl-1_3b-chat, deepseek-vl-7b-chat.
     - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
     - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b-chat.

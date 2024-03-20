@@ -407,7 +407,10 @@ class SftArguments:
             self.max_length = None
 
         if self.deepspeed is not None:
-            assert not is_mp(), 'DeepSpeed is not compatible with MP.'
+            if is_mp():
+                raise ValueError('DeepSpeed is not compatible with MP. '
+                                 f'n_gpu: {torch.cuda.device_count()}, '
+                                 f'local_world_size: {get_dist_setting()[3]}.')
             require_version('deepspeed')
             if self.deepspeed.endswith('.json') or os.path.isfile(
                     self.deepspeed):

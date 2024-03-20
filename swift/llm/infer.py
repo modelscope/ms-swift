@@ -478,6 +478,10 @@ def llm_infer(args: InferArguments) -> None:
                     print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
+    if args.val_dataset_sample == 10:  # is default
+        logger.info(
+            'You can set `--val_dataset_sample -1` to perform inference on the entire dataset.'
+        )
     return {'result': result}
 
 
