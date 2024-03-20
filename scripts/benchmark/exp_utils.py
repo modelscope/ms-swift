@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import time
 from collections import deque
@@ -6,7 +7,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from queue import Queue
 from typing import Any, Dict, List
-import shutil
+
 import json
 import torch
 
@@ -64,6 +65,16 @@ class Experiment:
         self.eval_requirements = eval_requirements or {}
         self.eval_dataset = eval_dataset or []
 
+    def load(self, _json):
+        self.name = _json['name']
+        self.cmd = _json['cmd']
+        self.requirements = _json['requirements']
+        self.args = _json['args']
+        self.record = _json['record']
+        self.env = _json['env']
+        self.eval_requirements = _json['eval_requirements']
+        self.eval_dataset = _json['eval_dataset']
+
     @property
     def priority(self):
         return self.requirements.get('gpu', 0)
@@ -85,9 +96,21 @@ class ExpManager:
     def run(self, exp: Experiment):
         if os.path.exists(
                 os.path.join(exp.input_args.save_dir, exp.name + '.json')):
-            logger.warn(f'Experiment {exp.name} already done, skip')
-            return
-            
+            with open(
+                    os.path.join(exp.input_args.save_dir, exp.name + '.json'),
+                    'r') as f:
+                _json = json.load(f)
+                if exp.eval_dataset and 'eval_result' not in _json['record']:
+                    if not exp.do_eval:
+                        logger.info(
+                            f'Experiment {exp.name} need eval, load from file.'
+                        )
+                        exp.load(_json)
+                        exp.do_eval = True
+                else:
+                    logger.warn(f'Experiment {exp.name} already done, skip')
+                    return
+
         if exp.do_eval:
             runtime = self._build_eval_cmd(exp)
             envs = deepcopy(runtime.get('env', {}))
@@ -96,14 +119,17 @@ class ExpManager:
                 f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
             )
             exp.handler = subprocess.Popen(
-                runtime['running_cmd'] + f' > {exp.name}.eval.log', env=envs, shell=True)
+                runtime['running_cmd'] + f' > {exp.name}.eval.log',
+                env=envs,
+                shell=True)
             self.exps.append(exp)
             return
 
         if any([exp.name == e.name for e in self.exps]):
             raise ValueError(f'Why exp name duplicate? {exp.name}')
-        elif exp.cmd == 'export' and any([exp.cmd == 'export' for exp in self.exps]):
-            raise AssertionError(f'Cannot run parallel export task.')
+        elif exp.cmd == 'export' and any(
+            [exp.cmd == 'export' for exp in self.exps]):  # noqa
+            raise AssertionError('Cannot run parallel export task.')
         else:
             exp.create_time = time.time()
             runtime = self._build_cmd(exp)
@@ -238,7 +264,9 @@ class ExpManager:
                 with open(f'{exp.name}.eval.log', 'r') as f:
                     for line in f.readlines():
                         if 'Final report:' in line:
-                            return json.loads(line.split('Final report:')[1].replace('\'', '"'))
+                            return json.loads(
+                                line.split('Final report:')[1].replace(
+                                    '\'', '"'))
         elif exp.cmd == 'export':
             exp_args = ExportArguments(**exp.args)
             if exp_args.quant_bits > 0:
@@ -296,17 +324,20 @@ class ExpManager:
                             if exp.eval_dataset:
                                 exp.do_eval = True
                                 self.exp_queue.appendleft(exp)
-                            else:
-                                self.write_record(exp)
+                            self.write_record(exp)
                         else:
-                            logger.error(f'Running {exp.name} task, but no result found')
+                            logger.error(
+                                f'Running {exp.name} task, but no result found'
+                            )
                     else:
                         all_metric = self._get_metric(exp)
                         exp.record['eval_result'] = all_metric
                         if all_metric:
                             self.write_record(exp)
                         else:
-                            logger.error(f'Running {exp.name} eval task, but no eval result found')
+                            logger.error(
+                                f'Running {exp.name} eval task, but no eval result found'
+                            )
                 logger.info(
                     f'Running {exp.name} finished with return code: {rt}')
 

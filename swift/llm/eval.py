@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
-import json
 import time
 from typing import Any, Dict, List
 
+import json
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
 from llmuses.run import run_task
@@ -158,15 +158,20 @@ class EvalModel(CustomModel):
                 'system': kwargs.get('system')
             }]
             if 'temperature' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.temperature = kwargs['infer_cfg']['temperature']
+                self.llm_engine.generation_config.temperature = kwargs[
+                    'infer_cfg']['temperature']
             if 'max_new_tokens' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.max_new_tokens = kwargs['infer_cfg']['max_new_tokens']
+                self.llm_engine.generation_config.max_new_tokens = kwargs[
+                    'infer_cfg']['max_new_tokens']
             if 'top_k' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.top_k = kwargs['infer_cfg']['top_k']
+                self.llm_engine.generation_config.top_k = kwargs['infer_cfg'][
+                    'top_k']
             if 'top_p' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.top_p = kwargs['infer_cfg']['top_p']
+                self.llm_engine.generation_config.top_p = kwargs['infer_cfg'][
+                    'top_p']
             if 'repetition_penalty' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.repetition_penalty = kwargs['infer_cfg']['repetition_penalty']
+                self.llm_engine.generation_config.repetition_penalty = kwargs[
+                    'infer_cfg']['repetition_penalty']
             resp_list = inference_vllm(self.llm_engine, self.template,
                                        request_list)
             response = resp_list[0]['response']
@@ -208,10 +213,15 @@ def run_eval_single_model(args: EvalArguments,
     from llmuses.summarizer import Summarizer
     eval_model = EvalModel(args, model_name, config=record or {})
     task_config: TaskConfig = TaskConfig()
-    task_config = task_config.load(custom_model=eval_model, tasks=args.eval_dataset)
+    task_config = task_config.load(
+        custom_model=eval_model, tasks=args.eval_dataset)
+    if args.eval_limit:
+        task_config.limit = args.eval_limit
+    logger.warn('Eval does not support temperature/top_p/do_sample argument')
     logger.info(f'Eval task config: {task_config}')
     run_task(task_cfg=task_config)
-    final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_config)
+    final_report: List[dict] = Summarizer.get_report_from_cfg(
+        task_cfg=task_config)
     print(f'Final report:{final_report}\n', flush=True)
     return final_report
 
@@ -227,8 +237,7 @@ def llm_eval(args: EvalArguments) -> None:
                 'device_map':
                 'auto',
                 'precision':
-                dtypes[args.dtype]
-                if args.dtype != 'AUTO' else dtypes['fp16'],
+                dtypes[args.dtype] if args.dtype != 'AUTO' else dtypes['fp16'],
             })
 
 
