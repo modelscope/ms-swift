@@ -112,7 +112,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.float16,
                                        model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
-seed_everything(2)  # ...
+seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = 'How far is it from each city?'
