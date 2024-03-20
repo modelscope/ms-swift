@@ -45,9 +45,10 @@ Picture 2:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.pn
 计算结果是多少#
 1452 + 45304 = 46756
 --------------------------------------------------
+<<< clear
 <<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>
 根据图片中的内容写首诗#
-湖面星光点点闪，孤舟独影静如眠。男子举灯照山谷，小猫陪伴在身边。
+月光如水船如星，独坐船头吹夜风。深林倒影照水面，萤火点点照船行。
 """
 ```
 
