@@ -77,7 +77,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
-    train_dataset_mix_ratio: Optional[float] = None
+    train_dataset_mix_ratio: float = 0.
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
@@ -1186,7 +1186,9 @@ def handle_dataset_mixture(args: SftArguments,
         train_dataset_mix_ds.append(dataset_name)
     mix_dataset_sample = len(train_dataset) * args.train_dataset_mix_ratio
     logger.info(f'train_dataset_mix_ds: {train_dataset_mix_ds}')
-    logger.info(f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}')
+    logger.info(
+        f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}'
+    )
     mixed_dataset = get_dataset(
         train_dataset_mix_ds,
         0.0,
@@ -1197,7 +1199,8 @@ def handle_dataset_mixture(args: SftArguments,
             f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
             'lesser than the ratio required by the `train_dataset_mix_ratio` '
             f'argument: {args.train_dataset_mix_ratio}. '
-            f'the actual ratio is: {len(mixed_dataset)/len(train_dataset):.6}.')
+            f'the actual ratio is: {len(mixed_dataset)/len(train_dataset):.6}.'
+        )
     else:
         train_idxs = random_state.permutation(mix_dataset_sample)
         mixed_dataset = mixed_dataset.select(train_idxs)
