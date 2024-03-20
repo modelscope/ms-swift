@@ -142,9 +142,9 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 全参数微调:
 ```shell
-# Experimental environment: 2 * A100
-# 2 * 55 GPU memory
-CUDA_VISIBLE_DEVICES=0,1 swift sft \
+# Experimental environment: 4 * A100
+# 4 * 70 GPU memory
+NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type qwen-vl-chat \
     --dataset coco-mini-en \
     --train_dataset_sample -1 \

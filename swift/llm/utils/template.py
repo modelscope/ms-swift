@@ -30,7 +30,7 @@ class TemplateType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     llama = 'llama'
-    llava_mistral = 'llava-mistral'
+    llava_mistral_instruct = 'llava-mistral-instruct'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
     internlm2 = 'internlm2'
@@ -881,8 +881,8 @@ register_template(
 class LLavaTemplate(Template):
 
     def __init__(self):
-        super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'],
-                         ['</s>[INST] '], ['</s>'])
+        super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'], None,
+                         ['</s>'])
 
     def encode(
             self, example: Dict[str,
@@ -920,7 +920,7 @@ class LLavaTemplate(Template):
 
 
 register_template(
-    TemplateType.llava_mistral,
+    TemplateType.llava_mistral_instruct,
     LLavaTemplate(),
     use_model=True,
     infer_media_type='round',

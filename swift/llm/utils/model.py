@@ -2620,7 +2620,7 @@ def _patch_llava(model):
     ModelType.llava1d6_mistral_7b_chat,
     'AI-ModelScope/llava-v1.6-mistral-7b',
     LoRATM.llama2,
-    TemplateType.llava_mistral,
+    TemplateType.llava_mistral_instruct,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     tags=['multi-modal', 'vision'])
@@ -2651,8 +2651,6 @@ def get_model_tokenizer_llava(model_dir: str,
     device_map = str(model_kwargs.get('device_map', str(model.device)))
     if not vision_tower.is_loaded:
         vision_tower.load_model(device_map=device_map)
-    if device_map != 'auto':
-        vision_tower.to(device=device_map, dtype=model.dtype)
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     _patch_llava(model)
