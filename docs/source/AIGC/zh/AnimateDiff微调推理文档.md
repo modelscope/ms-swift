@@ -22,13 +22,13 @@ Prompt:masterpiece, bestquality, highlydetailed, ultradetailed, girl, walking, o
 
 
 
-![image.png](./resources/1.gif)
+![image.png](../resources/1.gif)
 
 ```text
 Prompt: masterpiece, bestquality, highlydetailed, ultradetailed, beautiful house, mountain, snow top
 ```
 
-![image.png](./resources/2.gif)
+![image.png](../resources/2.gif)
 
 2.5M子数据集训练的生成效果仍存在效果不稳定的情况，开发者使用10M数据集效果会更稳定。
 
@@ -49,7 +49,7 @@ torchrun --nproc_per_node=4 animatediff_sft.py \
   --trainable_modules .*motion_modules.* \
   --batch_size 4 \
   --eval_steps 100 \
-  --gradient_accumulation_steps 16 \
+  --gradient_accumulation_steps 16
 ```
 
 我们使用了A100 * 4进行训练，共需要200GB显存，训练时长约40小时。数据格式如下：
@@ -78,7 +78,7 @@ python animatediff_infer.py \
   --model_id_or_path wyj123456/Realistic_Vision_V5.1_noVAE \
   --sft_type full \
   --ckpt_dir /output/path/like/checkpoints/iter-xxx \
-  --eval_human true  \
+  --eval_human true
 ```
 
 其中的--ckpt_dir 传入训练时输出的文件夹即可。
@@ -106,7 +106,7 @@ python animatediff_sft.py \
   --batch_size 1 \
   --eval_steps 200 \
   --dataset_sample_size 10000 \
-  --gradient_accumulation_steps 16 \
+  --gradient_accumulation_steps 16
 ```
 
 视频数据参数同上。
@@ -124,7 +124,7 @@ python animatediff_infer.py \
   --motion_adapter_id_or_path Shanghai_AI_Laboratory/animatediff-motion-adapter-v1-5-2 \
   --sft_type lora \
   --ckpt_dir /output/path/like/checkpoints/iter-xxx \
-  --eval_human true  \
+  --eval_human true
 ```
 
 其中的--ckpt_dir 传入训练时输出的文件夹即可。
