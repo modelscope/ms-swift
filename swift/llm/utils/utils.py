@@ -738,8 +738,10 @@ def inference(model: PreTrainedModel,
 
 def limit_history_length(template: Template, query: str,
                          history: Optional[History],
-                         max_length: int) -> Tuple[History, History]:
+                         max_length: Optional[int]) -> Tuple[History, History]:
     """binary search"""
+    if max_length is None:
+        return [], history
     if history is None:
         history = []
 
