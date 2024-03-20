@@ -40,7 +40,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
           f'world_size: {world_size}, local_world_size: {local_world_size}')
     seed_everything(args.seed)
 
-    if args.gpu_memory_fraction:
+    if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
             torch.cuda.set_per_process_memory_fraction(
                 max(min(args.gpu_memory_fraction, 1.0), 0.01),
