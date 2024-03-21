@@ -1,9 +1,8 @@
 # Experimental environment: A10, 3090
 # 16GB GPU memory
 # Recommended to use `qwen_14b_chat_int4`
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
-python llm_sft.py \
+swift sft \
     --model_id_or_path qwen/Qwen-14B-Chat \
     --model_revision master \
     --sft_type lora \
