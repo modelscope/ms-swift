@@ -5,10 +5,14 @@ from typing import Any, Dict, List, Tuple, Union
 import torch
 from torch import nn
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
 from transformers import Trainer, TrainingArguments, get_scheduler
 
 from swift.utils import get_logger
+
+try:
+    from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
+except ImportError:
+    from torch.optim.lr_scheduler import LRScheduler as LRScheduler
 
 logger = get_logger()
 
