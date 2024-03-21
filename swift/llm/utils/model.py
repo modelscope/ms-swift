@@ -460,42 +460,42 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'AI-ModelScope/mamba-130m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_370m,
     'AI-ModelScope/mamba-370m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_390m,
     'AI-ModelScope/mamba-390m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_790m,
     'AI-ModelScope/mamba-790m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_1_4b,
     'AI-ModelScope/mamba-1.4b-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_2_8b,
     'AI-ModelScope/mamba-2.8b-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 def get_model_tokenizer_mamba(model_dir: str,
                               torch_dtype: Optional[Dtype],
