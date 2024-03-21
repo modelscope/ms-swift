@@ -1,50 +1,52 @@
-# Agent微调最佳实践
+Here is the translation of the provided text, without any summary:
 
-用消费级显卡训练属于自己的Agent！
+# Agent Fine-tuning Best Practices
 
-SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent场景的训练，并将[loss-scale技术](https://arxiv.org/pdf/2309.00986.pdf)应用到agent训练中，使中小模型API Call能力更稳定，并支持使用单张商业级显卡进行Agent推理和部署，可以直接在生产场景中全链路闭环落地使用。
+Train your own Agent with consumer-grade GPUs!
 
-## 目录
+SWIFT supports open-source models, especially small and medium-sized models (7B, 14B, etc.) for training on Agent scenarios. It applies [loss-scale technique](https://arxiv.org/pdf/2309.00986.pdf) to agent training, making the API calling capability of small and medium models more stable. It also supports using a single commercial-grade GPU for Agent inference and deployment, which can be directly used end-to-end in production scenarios.
 
-- [环境安装](#环境安装)
-- [数据准备](#数据准备)
-- [微调](#微调)
-- [推理](#推理)
-- [总结](#总结)
+## Table of Contents
 
-## 环境安装
+- [Environment Setup](#Environment-Setup)  
+- [Data Preparation](#Data-Preparation)
+- [Fine-tuning](#Fine-tuning)
+- [Inference](#Inference)
+- [Summary](#Summary)
+
+## Environment Setup
 
 ```bash
-# 设置pip全局镜像 (加速下载)
+# Set pip global mirror (speed up download)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-# 安装ms-swift
+# Install ms-swift 
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
-# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
-pip install -r requirements/framework.txt  -U
+# Align environment (usually don't need to run. If you get errors, you can run the code below, the repo tests with the latest environment)
+pip install -r requirements/framework.txt  -U  
 pip install -r requirements/llm.txt  -U
 ```
 
-## 数据准备
+## Data Preparation
 
-为训练Agent能力，魔搭官方提供了两个开源数据集：
+For training Agent capability, the ModelScope team officially provides two open-source datasets:
 
-- [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
-- [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
+- [ModelScope General QA Knowledge Dataset](https://www.modelscope.cn/datasets/iic/ms_bench/summary) This dataset contains 380,000 general knowledge multi-turn dialogue data
+- [ModelScope General Agent Training Dataset](https://www.modelscope.cn/datasets/iic/ms_agent/summary) This dataset contains 30,000 API calling data in Agent format
 
-该数据集数据格式如下：
+The data format of this dataset is as follows:
 
 ```json
 {
 	"id": "MS_Agent_Bench_126374",
 	"conversations": [{
-		"from": "system",
+		"from": "system", 
 		"value": "Answer the following questions as best you can. You have access to the following APIs:\n1. hm_recipe_recommend: Call this tool to interact with the hmreciperecommend API. What is the hmreciperecommend API useful for? . Parameters: [{\"name\": \"keywords_dict\", \"description\": \"盒马推荐菜谱关键词字典。\", \"required\": \"True\"}]\n\n2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{\"name\": \"sku_code_list\", \"description\": \"盒马商品的编码列表\", \"required\": \"True\"}]\n\n3. hm_product_info: Call this tool to interact with the hmproductinfo API. What is the hmproductinfo API useful for? . Parameters: [{\"name\": \"sku_code_list\", \"description\": \"盒马商品的编码列表\", \"required\": \"True\"}, {\"name\": \"sku_name_list\", \"description\": \"盒马商品的名称列表\", \"required\": \"True\"}, {\"name\": \"property_list\", \"description\": \"盒马商品的属性列表\", \"required\": \"True\"}]\n\n4. hm_product_recommend: Call this tool to interact with the hmproductrecommend API. What is the hmproductrecommend API useful for? . Parameters: [{\"name\": \"keywords_dict\", \"description\": \"盒马推荐商品关键词字典。\", \"required\": \"True\"}]\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[hm_recipe_recommend, hm_product_marketing, hm_product_info, hm_product_recommend]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!"
 	}, {
 		"from": "user",
-		"value": "你好，请问你们有哪些手机可以推荐？"
+		"value": "你好，请问你们有哪些手机可以推荐？"  
 	}, {
 		"from": "assistant",
 		"value": "Action: hm_product_recommend\nAction Input: {'keywords_dict': {'商品类目': '手机'}}\nObservation: [{'sku_code': '10518244314', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '10222726664', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '18227073452', 'product_name': '华为畅享 20 Pro 5G手机 128GB', 'bussiness_type': '标品', 'product_price': '2699', 'product_description': '拥有4000mAh的电池容量和优秀的相机而价格非常亲民'}]\nThought: I now know the final answer\nFinal Answer: 您好，我们有以下几款手机供您选择：1.小米11 Ultra 5G手机 256GB：价格为5999元，拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统；2. vivo X60 Pro 5G手机 256GB：售价为4498元，搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足；3. 华为畅享 20 Pro 5G手机 128GB：价格亲民，只需2699元即可拥有优秀的相机和4000mAh的电池容量。这些手机都具有不同的特点和功能，您可以根据自己的需求进行选择。如果您有其他问题或需求，请随时告诉我。"
@@ -53,7 +55,7 @@ pip install -r requirements/llm.txt  -U
 		"value": "我想买一款拍照好的手机，有推荐吗？"
 	}, {
 		"from": "assistant",
-		"value": "Action: hm_product_recommend\nAction Input: {'keywords_dict': {'商品类目': '手机', '适用场景': '拍照'}}\nObservation: [{'sku_code': '15956662254', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '19424216918', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '14347982715', 'product_name': 'OPPO Ace2 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '3999', 'product_description': '拍照实力十足，支持65W超级闪充'}]\nThought: I now know the final answer\nFinal Answer: 如果您想要一款拍照表现出色的手机，我为您推荐以下几款产品：1.小米11 Ultra 5G手机 256GB：价格为5999元，配备了高品质相机系统，可以拍摄出色的照片；2. vivo X60 Pro 5G手机 256GB：售价为4498元，相机系统由ZEISS联合调校，拍照实力十足；3. OPPO Ace2 5G手机 256GB：价格为3999元，不仅拍照实力十足，还支持65W超级闪充，让你的手机充电更加便捷。这些手机都有不同的特点和功能，您可以根据自己的需求进行选择。如果您还有其他问题或需求，请随时告诉我。"
+		"value": "Action: hm_product_recommend\nAction Input: {'keywords_dict': {'商品类目': '手机', '适用场景': '拍照'}}\nObservation: [{'sku_code': '15956662254', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '19424216918', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '14347982715', 'product_name': 'OPPO Ace2 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '3999', 'product_description': '拍照实力十足，支持65W超级闪充'}]\nThought: I now know the final answer\nFinal Answer: 如果您想要一款拍照表现出色的手机，我为您推荐以下几款产品：1.小米11 Ultra 5G手机 256GB：价格为5999元，配备了高品质相机系统，可以拍摄出色的照片；2. vivo X60 Pro 5G手机 256GB：售价为4498元，相机系统由ZEISS联合调校，拍照实力十足；3. OPPO Ace2 5G手机 256GB：价格为3999元，不仅拍照实力十足，还支持65W超级闪充，让你的手机充电更加便捷。这些手机都有不同的特点和功能，您可以根据自己的需求进行选择。如果您还有其他问题或需求，请随时告诉我。"  
 	}, {
 		"from": "user",
 		"value": "小米11 Ultra拍照性能怎么样？"
@@ -64,13 +66,13 @@ pip install -r requirements/llm.txt  -U
 }
 ```
 
-Agent数据集的system字段具体格式如下（将\\"字符转换为"字符, \n转换为换行）：
+The specific format of the system field in the Agent dataset is as follows (convert the \\" character to " and \n to newline):
 
-```text
+```text 
 Answer the following questions as best you can. You have access to the following APIs:
 1. hm_recipe_recommend: Call this tool to interact with the hmreciperecommend API. What is the hmreciperecommend API useful for? . Parameters: [{"name": "keywords_dict", "description": "盒马推荐菜谱关键词字典。", "required": "True"}]
 
-2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}]
+2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}]  
 
 3. hm_product_info: Call this tool to interact with the hmproductinfo API. What is the hmproductinfo API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}, {"name": "sku_name_list", "description": "盒马商品的名称列表", "required": "True"}, {"name": "property_list", "description": "盒马商品的属性列表", "required": "True"}]
 
@@ -78,7 +80,7 @@ Answer the following questions as best you can. You have access to the following
 
 Use the following format:
 
-Thought: you should always think about what to do
+Thought: you should always think about what to do  
 Action: the action to take, should be one of the above tools[hm_recipe_recommend, hm_product_marketing, hm_product_info, hm_product_recommend]
 Action Input: the input to the action
 Observation: the result of the action
@@ -88,69 +90,69 @@ Final Answer: the final answer to the original input question
 Begin!
 ```
 
-API格式:
+API format:
 
 ```text
-Answer the following questions as best you can. You have access to the following APIs:
-序号: API名称: API作用 API参数
+Answer the following questions as best you can. You have access to the following APIs:  
+Number: API Name: API Function API Parameters
 
 ...
 
 Use the following format:
 
 Thought: you should always think about what to do
-Action: the action to take, should be one of the above tools[API名称列表]
+Action: the action to take, should be one of the above tools[API Name List]  
 Action Input: the input to the action
-Observation: the result of the action
+Observation: the result of the action  
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Final Answer: the final answer to the original input question  
 Begin!
 ```
 
-Agent数据集调用API的response的结构如下：
+The structure of the response of calling API in the Agent dataset is as follows:
 
 ```text
 Action: hm_product_recommend
 Action Input: {'keywords_dict': {'商品类目': '手机', '适用场景': '拍照'}}
 Observation: [{'sku_code': '15956662254', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '19424216918', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '14347982715', 'product_name': 'OPPO Ace2 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '3999', 'product_description': '拍照实力十足，支持65W超级闪充'}]
-Thought: I now know the final answer
+Thought: I now know the final answer  
 Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐以下几款产品：1.小米11 Ultra 5G手机 256GB：价格为5999元，配备了高品质相机系统，可以拍摄出色的照片；2. vivo X60 Pro 5G手机 256GB：售价为4498元，相机系统由ZEISS联合调校，拍照实力十足；3. OPPO Ace2 5G手机 256GB：价格为3999元，不仅拍照实力十足，还支持65W超级闪充，让你的手机充电更加便捷。这些手机都有不同的特点和功能，您可以根据自己的需求进行选择。如果您还有其他问题或需求，请随时告诉我。
 ```
 
-- Action：实际调用的API名称
-- Action Input: 实际的输入参数
-- Observation: 该部分是实际调用结果，训练时不参与loss，推理时需要外部调用后填入模型
-- Thought: 模型思考输出
-- Final Answer: 模型的最终回答
+- Action: The actual API name called
+- Action Input: The actual input parameters  
+- Observation: This part is the actual calling result, which does not participate in the loss during training, and needs to be filled into the model after external calling during inference
+- Thought: Model's thinking output
+- Final Answer: Model's final answer
 
-## 微调
+## Fine-tuning
 
-在Agent训练中，为了避免训练后造成严重知识遗忘，我们的数据配比为[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary):[ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary)数据集1比2，其中ms_agent共30000条，随机抽样ms_bench数据集60000条，同时为了改变模型认知，增加自我认知数据3000条。
+In Agent training, in order to avoid severe knowledge forgetting after training, our data ratio is [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary):[ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary) dataset is 1:2, among which ms_agent has a total of 30,000, and 60,000 are randomly sampled from the ms_bench dataset. At the same time, in order to change the model's perception, 3,000 self-recognition data are added.
 
-| 数据集           | 条数            |
-| ---------------- | --------------- |
-| ms-agent         | 30000(全数据集) |
-| ms-bench         | 60000(抽样)     |
-| self-recognition | 3000(重复抽样)  |
+| Dataset | Number of Samples |
+| -------- | -------- |
+| ms-agent | 30000 (full dataset) |
+| ms-bench | 60000 (sampled) |
+| self-recognition | 3000 (repeatedly sampled) | 
 
-我们也支持使用自己的Agent数据集。数据集格式需要符合[自定义数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86)的要求。更具体地，Agent的response/system应该符合上述的Action/Action Input/Observation格式。
+We also support using your own Agent dataset. The dataset format needs to meet the requirements of [custom dataset](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86). More specifically, the Agent's response/system should conform to the above Action/Action Input/Observation format.
 
-我们将**MLP**和**Embedder**加入了lora_target_modules. 你可以通过指定`--lora_target_modules ALL`在所有的linear层(包括qkvo以及mlp和embedder)加lora. 这**通常是效果最好的**.
+We added **MLP** and **Embedder** to lora_target_modules. You can add lora to all linear layers (including qkvo, mlp and embedder) by specifying `--lora_target_modules ALL`. This **usually gives the best effect**.
 
-微调使用了qwen-7b-chat模型，超参数如下：
+The fine-tuning used the qwen-7b-chat model, with the following hyperparameters:
 
-| 超参数                      | 值       |
-| --------------------------- | -------- |
-| LR                          | 5e-5     |
-| Epoch                       | 2        |
-| lora_rank                   | 8        |
-| lora_alpha                  | 32       |
-| lora_target_modules         | ALL      |
-| batch_size                  | 2        |
+| Hyperparameter | Value |
+| -------- | -------- | 
+| LR | 5e-5 |
+| Epoch | 2 |
+| lora_rank | 8 |
+| lora_alpha | 32 |
+| lora_target_modules | ALL |
+| batch_size | 2 |
 | gradient_accumulation_steps | 32 total |
 
-运行命令和其他超参数如下:
+The running command and other hyperparameters are as follows:
 
 ```shell
 # Experimental environment: 8GPU
@@ -193,33 +195,33 @@ torchrun \
     --logging_steps 10
 ```
 
-在官方实验中，训练过程使用了8GPU硬件环境，**训练时长3小时**。
+In the official experiment, the training process used an 8-GPU hardware environment, with **training time of 3 hours**.
 
 > [!NOTE]
+> 
+> 1. This training can also run on a consumer-grade single GPU (corresponding to **22G of video memory occupied**), users can change the DDP command to a single-card command.
 >
-> 1. 该训练使用消费级单显卡也可以运行（对应**占用显存22G**），用户将DDP命令改为单卡命令即可
->
-> 2. LoRA训练的遗忘问题并不严重，可以适当调低ms-bench数据集的比例，提高训练速度
+> 2. The forgetting problem of LoRA training is not serious, the proportion of the ms-bench dataset can be appropriately lowered to improve training speed.
 
-## 推理
+## Inference
 
-我们针对通用知识和Agent进行评测。下面列出了一个简单的评测结果。
+We evaluate general knowledge and Agent. A simple evaluation result is listed below.
 
-### 原始模型
+### Original Model
 
-#### 通用知识
+#### General Knowledge
 
-> 西湖醋鱼怎么做
+> How to make West Lake vinegar fish  
 
-![image-20240201122323540](resources/image-20240201122323540.png)
+![image-20240201122323540](../resources/image-20240201122323540.png)
 
-> 新冠和普通感冒有什么区别
+> What is the difference between COVID-19 and the common cold
 
-![image-20240201122441874](resources/image-20240201122441874.png)
+![image-20240201122441874](../resources/image-20240201122441874.png)
 
-#### Agent能力
+#### Agent Capability
 
-我们使用一个火焰报警场景作为测试用例：
+We use a fire alarm scenario as a test case:  
 
 ```text
 Answer the following questions as best you can. You have access to the following APIs:
@@ -233,7 +235,7 @@ Answer the following questions as best you can. You have access to the following
 
 Use the following format:
 
-Thought: you should always think about what to do
+Thought: you should always think about what to do  
 Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
 Action Input: the input to the action
 Observation: the result of the action
@@ -243,72 +245,68 @@ Final Answer: the final answer to the original input question
 Begin!
 ```
 
-![image-20240201122625473](resources/image-20240201122625473.png)
+![image-20240201122625473](../resources/image-20240201122625473.png)
 
-![image-20240201122725477](resources/image-20240201122725477.png)
+![image-20240201122725477](../resources/image-20240201122725477.png)
 
-![image-20240201131811038](resources/image-20240201131811038.png)
+![image-20240201131811038](../resources/image-20240201131811038.png)
 
-可以看到，人工输入Observation后模型答案并不正确。
+It can be seen that after manually inputting the Observation, the model's answer is not correct.
 
-### 训练后
+### After Training
 
-#### 通用知识
+#### General Knowledge
 
-> 西湖醋鱼怎么做
+> How to make West Lake vinegar fish
 
-![image-20240201132124061](resources/image-20240201132124061.png)
+![image-20240201132124061](../resources/image-20240201132124061.png)
 
-![image-20240201132139698](resources/image-20240201132139698.png)
+![image-20240201132139698](../resources/image-20240201132139698.png)
 
-> 新冠和普通感冒有什么区别
+> What is the difference between COVID-19 and the common cold
+> 
+![image-20240201132308260](../resources/image-20240201132308260.png)
 
-![image-20240201132308260](resources/image-20240201132308260.png)
+#### Agent Capability  
 
-#### Agent能力
+![image-20240201132421298](../resources/image-20240201132421298.png)
 
-![image-20240201132421298](resources/image-20240201132421298.png)
+![image-20240201132454465](../resources/image-20240201132454465.png)
 
-![image-20240201132454465](resources/image-20240201132454465.png)
+It can be seen that after training, the model can correctly call the API and give the final answer.
 
-可以看到，训练后模型可以正确调用API并给出最终答案。
+#### Self-recognition
 
-#### 自我认知
+![image-20240201133359457](../resources/image-20240201133359457.png)
 
-![image-20240201133359457](resources/image-20240201133359457.png)
+### Using Agent in the Command Line
 
-### 在命令行中使用Agent
-
-目前命令行的Agent推理支持需要指定`--eval_human true`，因为该参数为false的时候会读取数据集内容，此时无法手动传入`Observation:`后面的API调用结果。
+Currently, Agent inference support in the command line needs to specify `--eval_human true`, because when this parameter is false, it will read the dataset content, and the API calling results after `Observation:` cannot be manually input at this time.
 
 ```shell
-# 使用训练后的模型
+# Use the trained model
 swift infer --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --eval_human true --stop_words Observation: --infer_backend pt
-# 也可以使用原始模型，如qwn-7b-chat或chatglm3-6b-32k等运行agent
+# The original model such as qwn-7b-chat or chatglm3-6b-32k can also be used to run agent  
 # swift infer --model_type qwen-7b-chat --eval_human true --stop_words Observation: --infer_backend pt
-# swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
+# swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt  
 ```
 
-运行命令后，改变system字段：
-
+After running the command, change the system field:
 ```shell
-# 单行system
+# Single line system
 <<< reset-system
-<<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!
-```
+<<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!```
 
-如果需要以多行方式输入，可以用下面的命令(多行信息以#号结束)：
-
-```shell
-# 多行system
-<<< multi-line
+If you need to input in multiple lines, you can use the following command (multi-line information ends with #):```shell  
+# Multi-line system
+<<< multi-line  
 <<<[M] reset-system#
 <<<[MS] Answer the following questions as best you can. You have access to the following APIs:
 1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
 
 2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
 
-3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []  
 
 4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
 
@@ -316,7 +314,7 @@ Use the following format:
 
 Thought: you should always think about what to do
 Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
-Action Input: the input to the action
+Action Input: the input to the action  
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
@@ -324,10 +322,9 @@ Final Answer: the final answer to the original input question
 Begin!#
 ```
 
-下面就可以进行Agent问答(注意如果使用多行模式输入行尾额外增加#号)：
-
+Next, you can perform Agent question-answering (note that when using multi-line mode input, add an extra # at the end of the line):
 ```shell
-<<< 输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点
+<<< The input image is /tmp/1.jpg, please help determine if there are any fire points in the image
 Thought: I need to use the fire\_recognition API to analyze the input image and determine if there are any signs of fire.
 
 Action: Use the fire\_recognition API to analyze the input image.
@@ -335,35 +332,33 @@ Action: Use the fire\_recognition API to analyze the input image.
 Action Input: /tmp/1.jpg
 
 Observation:
-<<< [{'coordinate': [101.1, 200.9], 'on_fire': True}]
+<<< [{'coordinate': [101.1, 200.9], 'on_fire': True}]  
 Thought: The fire\_recognition API has returned a result indicating that there is fire in the input image.
 
 Final Answer: There is fire in the input image.
 ```
 
-可以看到，模型已经返回了API调用的结果分析。用户可以继续问问题进行多轮Agent场景。也可以指定`--infer_backend vllm`和`--stream true`来使用vllm和流式推理。
+As you can see, the model has returned the API calling result analysis. The user can continue asking questions for multi-turn Agent scenarios. You can also specify `--infer_backend vllm` and `--stream true` to use vllm and streaming inference.
 
-### 在部署中使用Agent
+### Using Agent in Deployment
 
-由于部署不支持history管理，因此agent的API调用结果拼接需要用户自行进行，下面给出一个OpenAI格式可运行的代码范例。
+Since deployment does not support history management, the splicing of Agent's API calling results needs to be done by the user. Here is an example of OpenAI format runnable code.
 
-服务端：
-
+Server side:
 ```shell
-# 使用训练后的模型
+# Use the trained model  
 swift deploy --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --stop_words Observation:
-# 也可以使用原始模型，如qwen-7b-chat或chatglm3-6b-32k等运行agent
+# The original model such as qwen-7b-chat or chatglm3-6b-32k can also be used to run agent
 # swift deploy --model_type qwn-7b-chat --stop_words Observation:
 # swift deploy --model_type chatglm3-6b-32k --stop_words Observation:
 ```
 
-客户端：
-
+Client side:
 ```python
 from openai import OpenAI
 client = OpenAI(
     api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
+    base_url='http://localhost:8000/v1',  
 )
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
@@ -379,16 +374,16 @@ system = """Answer the following questions as best you can. You have access to t
 
 Use the following format:
 
-Thought: you should always think about what to do
+Thought: you should always think about what to do  
 Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
 Action Input: the input to the action
-Observation: the result of the action
+Observation: the result of the action  
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 Begin!"""
 messages = [{
-    'role': 'system',
+    'role': 'system', 
     'content': system
 }, {
     'role': 'user',
@@ -402,7 +397,7 @@ resp = client.chat.completions.create(
 response = resp.choices[0].message.content
 print(f'response: {response}')
 
-# # 流式
+# # Streaming  
 messages.append({'role': 'assistant', 'content': response + "\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"})
 print(messages)
 stream_resp = client.chat.completions.create(
@@ -412,7 +407,7 @@ stream_resp = client.chat.completions.create(
     stream=True,
     seed=42)
 
-print('response: ', end='')
+print('response: ', end='')  
 for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
@@ -420,20 +415,18 @@ print()
 # model_type: qwen-7b-chat
 # response: Thought: I need to check if there is fire in the image
 # Action: Use fire\_recognition API
-# Action Input: /tmp/1.jpg
+# Action Input: /tmp/1.jpg  
 # Observation:
 # [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/1.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
 # response:
 # Final Answer: There is fire in the image at coordinates [101.1, 200.9]
 ```
 
+## Summary
 
+Through the Agent training capability supported by SWIFT, we fine-tuned the qwen-7b-chat model using ms-agent and ms-bench. It can be seen that after fine-tuning, the model retains the general knowledge question-answering ability, and when the system field is added with APIs, it can correctly call and complete tasks. It should be noted that:
 
-## 总结
-
-通过SWIFT支持的Agent训练能力，我们使用ms-agent和ms-bench对qwen-7b-chat模型进行了微调。可以看到微调后模型保留了通用知识问答能力，并在system字段增加了API的情况下可以正确调用并完成任务。需要注意的是：
-
-1. 训练从LoRA变为全参数训练，知识遗忘问题会更加严重，数据集混合比例需要实际测试调整
-2. 部分模型可能在训练后仍然调用效果不佳，可以测试该模型本身预训练能力是否扎实
-3. Agent训练集格式、语种有细节改变后，对应推理阶段的格式也需要相应调整，否则可能效果不佳
-4. 重要位置的`\n`等特殊字符比较重要，请注意推理和训练格式统一
+1. When training changes from LoRA to full-parameter training, the knowledge forgetting problem will become more serious, and the dataset mixing ratio needs to be actually tested and adjusted.
+2. Some models may still have poor calling effects after training, and it can be tested whether the model's own pre-training ability is solid.
+3. After the Agent training set format and language have detailed changes, the format of the corresponding inference stage also needs to be adjusted accordingly, otherwise the effect may be poor.
+4. Special characters such as `\n` in important positions are relatively important, please pay attention to the consistency of inference and training formats.
