@@ -30,7 +30,6 @@ from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING, TemplateType
-from .preprocess import SmartPreprocessor
 from .utils import is_vllm_available
 
 logger = get_logger()
@@ -1089,7 +1088,6 @@ def _register_local_dataset(dataset_name: str, train_dataset_path: List[str],
         '_',
         train_dataset_path,
         val_dataset_path,
-        SmartPreprocessor(),
         get_function=get_custom_dataset,
         exists_ok=True)
 
