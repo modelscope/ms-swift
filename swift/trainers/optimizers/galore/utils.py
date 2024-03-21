@@ -12,7 +12,7 @@ from swift.utils import get_logger
 try:
     from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 except ImportError:
-    from torch.optim.lr_scheduler import LRScheduler as LRScheduler
+    from torch.optim.lr_scheduler import LRScheduler
 
 logger = get_logger()
 
