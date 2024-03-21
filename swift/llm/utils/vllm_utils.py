@@ -257,6 +257,10 @@ def inference_stream_vllm(
 
         request['history'] = history
         inputs = template.encode(request)[0]
+        if len(inputs) == 0:
+            raise ValueError(
+                'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+            )
         input_ids = inputs['input_ids']
         llm_engine.add_request(
             str(i), None, generation_config, input_ids, **add_request_kwargs)
@@ -348,6 +352,10 @@ def inference_vllm(llm_engine: LLMEngine,
             request['query'] = None
         request['history'] = history
         inputs = template.encode(request)[0]
+        if len(inputs) == 0:
+            raise ValueError(
+                'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+            )
         input_ids = inputs['input_ids']
         llm_engine.add_request(
             str(i), None, generation_config, input_ids, **add_request_kwargs)
