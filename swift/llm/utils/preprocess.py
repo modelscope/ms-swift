@@ -159,7 +159,7 @@ class RenameColumnsPreprocessor:
 
 class SmartPreprocessor:
 
-    def __init__(self, error_strategy: Literal['delete', 'raise'] = 'raise') -> None:
+    def __init__(self) -> None:
         self.preprocessor_mapping = {
             'swift': {
                 'required': ['response'],
@@ -171,7 +171,7 @@ class SmartPreprocessor:
             },
             'conversations': {
                 'required': ['conversations'],
-                'preprocessor': ConversationsPreprocessor(error_strategy=error_strategy)
+                'preprocessor': ConversationsPreprocessor()
             },
             'chatml': {
                 'required': ['messages'],
@@ -179,8 +179,7 @@ class SmartPreprocessor:
                 ConversationsPreprocessor(
                     conversations_key='messages',
                     from_key='role',
-                    value_key='content',
-                    error_strategy=error_strategy)
+                    value_key='content')
             }
         }
 

@@ -1089,7 +1089,7 @@ def _register_local_dataset(dataset_name: str, train_dataset_path: List[str],
         '_',
         train_dataset_path,
         val_dataset_path,
-        SmartPreprocessor(error_strategy='delete'),
+        SmartPreprocessor(),
         get_function=get_custom_dataset,
         exists_ok=True)
 
