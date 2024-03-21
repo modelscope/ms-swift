@@ -58,6 +58,7 @@ class TemplateType:
     gemma = 'gemma'
     # compatibility. (Deprecated)
     chatml = 'chatml'
+    telechat = 'telechat'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -1192,6 +1193,11 @@ gemma_template = Template(
     ['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'])
 register_template(TemplateType.gemma, gemma_template)
 
+register_template(
+    TemplateType.telechat,
+    Template(
+        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>']))
 
 def get_template(
     template_type: str,

@@ -263,6 +263,14 @@ class ModelType:
     mamba_790m = 'mamba-790m'
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
+    # teleAI
+    telechat_7b="telechat-7b"
+    telechat_7b_int8="telechat-7b-int8"
+    telechat_7b_int4="telechat-7b-int4"
+    telechat_12b="telechat-12b"
+    telechat_12b_int8="telechat-12b-int8"
+    telechat_12b_int4="telechat-12b-int4"
+    
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -2656,7 +2664,60 @@ def get_model_tokenizer_llava(model_dir: str,
     _patch_llava(model)
     return model, tokenizer
 
-
+@register_model(
+    ModelType.telechat_7b,
+    'TeleAI/telechat-7B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.telechat_7b_int4,
+    'TeleAI/telechat-7B-int4',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.telechat_7b_int8,
+    'TeleAI/telechat-7B-int8',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.telechat_12b,
+    'TeleAI/telechat-12B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.telechat_12b_int4,
+    'TeleAI/telechat-12B-int4',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.telechat_12b_int8,
+    'TeleAI/telechat-12B-int8',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
     if version.parse(transformers.__version__) >= version.parse('4.35'):
