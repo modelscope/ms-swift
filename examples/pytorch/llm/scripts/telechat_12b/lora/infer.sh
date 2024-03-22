@@ -2,7 +2,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 python llm_infer.py \
-    --ckpt_dir "output/mamba-1.4b/vx-xxx/checkpoint-xxx" \
+    --ckpt_dir "output/telechat-12b/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 2048 \
     --use_flash_attn true \
@@ -12,3 +12,4 @@ python llm_infer.py \
     --repetition_penalty 1. \
     --do_sample true \
     --merge_lora false \
+    --dtype fp16
