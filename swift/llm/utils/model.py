@@ -264,13 +264,12 @@ class ModelType:
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
     # teleAI
-    telechat_7b="telechat-7b"
-    telechat_7b_int8="telechat-7b-int8"
-    telechat_7b_int4="telechat-7b-int4"
-    telechat_12b="telechat-12b"
-    telechat_12b_int8="telechat-12b-int8"
-    telechat_12b_int4="telechat-12b-int4"
-    
+    telechat_7b = 'telechat-7b'
+    telechat_7b_int8 = 'telechat-7b-int8'
+    telechat_7b_int4 = 'telechat-7b-int4'
+    telechat_12b = 'telechat-12b'
+    telechat_12b_int8 = 'telechat-12b-int8'
+    telechat_12b_int4 = 'telechat-12b-int4'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -2665,6 +2664,7 @@ def get_model_tokenizer_llava(model_dir: str,
     _patch_llava(model)
     return model, tokenizer
 
+
 @register_model(
     ModelType.telechat_7b,
     'TeleAI/telechat-7B',
@@ -2716,13 +2716,13 @@ def get_model_tokenizer_llava(model_dir: str,
     function_kwargs={'bits': 8},
     support_flash_attn=True)
 def get_model_tokenizer_telechat(model_dir: str,
-                              torch_dtype: Dtype,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
     # patch: telechat dtype bf16 bug
     if torch_dtype == torch.bfloat16:
-        raise ValueError("The model does not support bfloat16 data type.")
+        raise ValueError('The model does not support bfloat16 data type.')
 
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
@@ -2737,6 +2737,7 @@ def get_model_tokenizer_telechat(model_dir: str,
         load_model,
         model_config=model_config,
         **kwargs)
+
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
