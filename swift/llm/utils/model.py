@@ -2671,8 +2671,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.telechat,
     TemplateType.telechat,
     torch_dtype=torch.float16,
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.telechat_7b_int4,
     'TeleAI/telechat-7B-int4',
@@ -2681,8 +2680,7 @@ def get_model_tokenizer_llava(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.telechat_7b_int8,
     'TeleAI/telechat-7B-int8',
@@ -2691,16 +2689,14 @@ def get_model_tokenizer_llava(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.telechat_12b,
     'TeleAI/telechat-12B',
     LoRATM.telechat,
     TemplateType.telechat,
     torch_dtype=torch.float16,
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.telechat_12b_int4,
     'TeleAI/telechat-12B-int4',
@@ -2709,8 +2705,7 @@ def get_model_tokenizer_llava(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 @register_model(
     ModelType.telechat_12b_int8,
     'TeleAI/telechat-12B-int8',
@@ -2719,8 +2714,7 @@ def get_model_tokenizer_llava(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
-    support_flash_attn=True,
-    support_vllm=True)
+    support_flash_attn=True)
 def get_model_tokenizer_telechat(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
