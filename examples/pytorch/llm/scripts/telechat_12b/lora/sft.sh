@@ -1,7 +1,7 @@
-# Experiment env: A10, RTX3090/4090, A100
-# 1 * 12GB GPU memory
+# Experiment env: A100
+# 1 * 32GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=1 \
 python llm_sft.py \
   --model_type telechat-12b \
   --dataset dureader-robust-zh \
