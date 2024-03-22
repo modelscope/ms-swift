@@ -2728,6 +2728,9 @@ def get_model_tokenizer_telechat(model_dir: str,
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        model_config.attn_implementation = 'flash_attention_2'
     return get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
