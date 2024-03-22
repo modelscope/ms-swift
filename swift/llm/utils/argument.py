@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import transformers
+from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from packaging import version
 from torch import dtype as Dtype
@@ -76,7 +77,7 @@ class SftArguments:
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     train_dataset_sample: int = 20000  # -1: all dataset
-    train_dataset_mix_ratio: Optional[float] = None
+    train_dataset_mix_ratio: float = 0.
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])
     val_dataset_sample: Optional[int] = None  # -1: all dataset
@@ -165,7 +166,7 @@ class SftArguments:
     adam_beta1: float = 0.9
     adam_beta2: float = 0.999
     learning_rate: Optional[float] = None
-    weight_decay: float = 0.01
+    weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
@@ -286,6 +287,8 @@ class SftArguments:
         set_model_type(self)
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
+        if isinstance(self.train_dataset_mix_ds, str):
+            self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
@@ -653,6 +656,8 @@ class InferArguments:
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
         set_model_type(self)
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
         register_custom_dataset(self)
         check_flash_attn(self)
         handle_generation_config(self)
@@ -661,8 +666,6 @@ class InferArguments:
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
         has_dataset = (
             len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
             or len(self.custom_val_dataset_path) > 0)
@@ -1078,7 +1081,26 @@ def handle_path(args: Union[SftArguments, InferArguments]) -> None:
         setattr(args, k, value)
 
 
+def _register_local_dataset(dataset_name: str, train_dataset_path: List[str],
+                            val_dataset_path: List[str]) -> None:
+    register_dataset(
+        dataset_name,
+        '_',
+        train_dataset_path,
+        val_dataset_path,
+        get_function=get_custom_dataset,
+        exists_ok=True)
+
+
 def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
+    dataset = []
+    for d in args.dataset:
+        if os.path.exists(d):
+            args.custom_train_dataset_path.append(d)
+        else:
+            dataset.append(d)
+    args.dataset = dataset
+
     for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
         value = getattr(args, key)
         if isinstance(value, str):
@@ -1086,17 +1108,11 @@ def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
     if len(args.custom_train_dataset_path) == 0 and len(
             args.custom_val_dataset_path) == 0:
         return
-    register_dataset(
-        '_custom_dataset',
-        '_custom_dataset',
-        args.custom_train_dataset_path,
-        args.custom_val_dataset_path,
-        get_function=get_custom_dataset,
-        exists_ok=True)
-    if args.dataset is None:
-        args.dataset = ['_custom_dataset']
-    elif '_custom_dataset' not in args.dataset:
-        args.dataset.append('_custom_dataset')
+
+    dataset_name = '_custom_dataset'
+    _register_local_dataset(dataset_name, args.custom_train_dataset_path,
+                            args.custom_val_dataset_path)
+    args.dataset.append(dataset_name)
 
 
 def load_from_ckpt_dir(args: InferArguments) -> None:
@@ -1147,34 +1163,48 @@ def handle_generation_config(
         )
 
 
-def handle_dataset_mixture(args: SftArguments, train_dataset,
-                           mix_dataset_sample) -> None:
+def handle_dataset_mixture(args: SftArguments,
+                           train_dataset: HfDataset) -> None:
     if train_dataset is None:
         return train_dataset
-    train_length = len(train_dataset)
-    random_state = np.random.RandomState(args.dataset_seed)
-    if mix_dataset_sample:
-        assert args.train_dataset_mix_ds is not None
-        train_dataset_mix_ds = [args.train_dataset_mix_ds] if isinstance(
-            args.train_dataset_mix_ds, str) else args.train_dataset_mix_ds
-        mixed_dataset = get_dataset(
-            train_dataset_mix_ds,
-            0.0,
-            random_state,
-            check_dataset_strategy=args.check_dataset_strategy)[0]
-        if len(mixed_dataset) < mix_dataset_sample:
-            logger.warn(
-                f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
-                'lesser than the ratio required by the `train_dataset_mix_ratio` '
-                f'argument:{args.train_dataset_mix_ratio}'
-                f'the actual ratio is : {len(mixed_dataset)/float(train_length)}'
-            )
-        else:
-            train_idxs = random_state.permutation(mix_dataset_sample)
-            mixed_dataset = mixed_dataset.select(train_idxs)
-        return concatenate_datasets([train_dataset, mixed_dataset])
-    else:
+    if args.train_dataset_mix_ratio <= 0 or len(
+            args.train_dataset_mix_ds) == 0:
         return train_dataset
+
+    random_state = np.random.RandomState(args.dataset_seed)
+    train_dataset_mix_ds = []
+    custom_mix_ds = []
+    for mix_ds in args.train_dataset_mix_ds:
+        if os.path.exists(mix_ds):
+            custom_mix_ds.append(mix_ds)
+        else:
+            train_dataset_mix_ds.append(mix_ds)
+
+    if len(custom_mix_ds) > 0:
+        dataset_name = '_custom_mixture'
+        _register_local_dataset(dataset_name, custom_mix_ds, [])
+        train_dataset_mix_ds.append(dataset_name)
+    mix_dataset_sample = len(train_dataset) * args.train_dataset_mix_ratio
+    logger.info(f'train_dataset_mix_ds: {train_dataset_mix_ds}')
+    logger.info(
+        f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}'
+    )
+    mixed_dataset = get_dataset(
+        train_dataset_mix_ds,
+        0.0,
+        random_state,
+        check_dataset_strategy=args.check_dataset_strategy)[0]
+    if len(mixed_dataset) < mix_dataset_sample:
+        logger.warn(
+            f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
+            'lesser than the ratio required by the `train_dataset_mix_ratio` '
+            f'argument: {args.train_dataset_mix_ratio}. '
+            f'the actual ratio is: {len(mixed_dataset)/len(train_dataset):.6}.'
+        )
+    else:
+        train_idxs = random_state.permutation(mix_dataset_sample)
+        mixed_dataset = mixed_dataset.select(train_idxs)
+    return concatenate_datasets([train_dataset, mixed_dataset])
 
 
 def swift_to_peft_format(lora_checkpoint_path: str) -> str:

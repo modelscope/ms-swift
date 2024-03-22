@@ -113,7 +113,7 @@ class ModelType:
     llama2_70b_chat = 'llama2-70b-chat'
     llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
     # llava
-    llava1d6_mistral_7b_chat = 'llava1d6-mistral-7b-chat'
+    llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -469,42 +469,42 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'AI-ModelScope/mamba-130m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_370m,
     'AI-ModelScope/mamba-370m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_390m,
     'AI-ModelScope/mamba-390m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_790m,
     'AI-ModelScope/mamba-790m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_1_4b,
     'AI-ModelScope/mamba-1.4b-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_2_8b,
     'AI-ModelScope/mamba-2.8b-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 def get_model_tokenizer_mamba(model_dir: str,
                               torch_dtype: Optional[Dtype],
@@ -2626,7 +2626,7 @@ def _patch_llava(model):
 
 
 @register_model(
-    ModelType.llava1d6_mistral_7b_chat,
+    ModelType.llava1d6_mistral_7b_instruct,
     'AI-ModelScope/llava-v1.6-mistral-7b',
     LoRATM.llama2,
     TemplateType.llava_mistral_instruct,

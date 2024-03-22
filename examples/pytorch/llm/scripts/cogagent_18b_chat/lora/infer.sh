@@ -4,7 +4,6 @@ swift infer \
     --ckpt_dir "output/cogagent-18b-chat/vx-xxx/checkpoint-xx" \
     --load_args_from_ckpt_dir true \
     --eval_human true \
-    --max_length 2048 \
     --max_new_tokens 2048 \
     --temperature 0.3 \
     --top_p 0.7 \

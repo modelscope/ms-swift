@@ -59,7 +59,7 @@ torchrun \
     --lora_target_modules  ALL  \
     --gradient_checkpointing  true  \
     --batch_size  1  \
-    --weight_decay  0.01  \
+    --weight_decay  0.1  \
     --learning_rate  5e-5  \
     --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
     --max_grad_norm  1.0  \
