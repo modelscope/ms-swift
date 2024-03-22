@@ -903,6 +903,8 @@ class Swift:
                                   'lora_embedding_A.')
                 key = key.replace(f'lora_embedding_B.{adapter}.',
                                   'lora_embedding_B.')
+                key = key.replace(f'lora_magnitude_vector.{adapter}',
+                                  'lora_magnitude_vector')
                 new_state_dict[key] = value
             state_dict = new_state_dict
             SwiftModel._save_state_dict(state_dict,

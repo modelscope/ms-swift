@@ -270,8 +270,10 @@ class TestSwift(unittest.TestCase):
 
     def test_save_to_peft_ok(self):
         model = SbertForSequenceClassification(SbertConfig())
-        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
-        lora2_config = LoRAConfig(target_modules=['query', 'key', 'value'])
+        lora_config = LoRAConfig(
+            target_modules=['query', 'key', 'value'], use_dora=True)
+        lora2_config = LoRAConfig(
+            target_modules=['query', 'key', 'value'], use_dora=True)
         model = Swift.prepare_model(
             model, config={
                 'default': lora_config,
