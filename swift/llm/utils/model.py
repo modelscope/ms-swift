@@ -2718,6 +2718,22 @@ def get_model_tokenizer_llava(model_dir: str,
     function_kwargs={'bits': 8},
     support_flash_attn=True,
     support_vllm=True)
+def get_model_tokenizer_telechat(model_dir: str,
+                              torch_dtype: Dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
+
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
     if version.parse(transformers.__version__) >= version.parse('4.35'):
