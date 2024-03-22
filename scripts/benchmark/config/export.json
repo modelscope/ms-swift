@@ -10,7 +10,7 @@
     "eval_requirements": {
       "gpu": "1"
     },
-    "eval_dataset": ["mmlu", "ceval", "gsm8k", "arc", "hellaswag", "bbh"],
+    "eval_dataset": ["mmlu", "ceval", "gsm8k", "arc", "bbh"],
     "experiment": [
       {
         "name": "gptq-pileval",

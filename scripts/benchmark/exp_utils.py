@@ -72,8 +72,6 @@ class Experiment:
         self.args = _json['args']
         self.record = _json['record']
         self.env = _json['env']
-        self.eval_requirements = _json['eval_requirements']
-        self.eval_dataset = _json['eval_dataset']
 
     @property
     def priority(self):
