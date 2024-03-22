@@ -2725,6 +2725,7 @@ def get_model_tokenizer_telechat(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
+    # patch: telechat dtype bf16 bug
     if torch_dtype == torch.bfloat16:
         raise ValueError("The model does not support bfloat16 data type.")
 
