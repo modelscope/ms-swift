@@ -303,6 +303,7 @@ class LoRATM(NamedTuple):
     phi = ['Wqkv']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
+    telechat = ['self_attention.key_value', 'self_attention.query']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -2667,7 +2668,7 @@ def get_model_tokenizer_llava(model_dir: str,
 @register_model(
     ModelType.telechat_7b,
     'TeleAI/telechat-7B',
-    LoRATM.llama2,
+    LoRATM.telechat,
     TemplateType.telechat,
     torch_dtype=torch.float16,
     # support_flash_attn=True,
@@ -2675,7 +2676,7 @@ def get_model_tokenizer_llava(model_dir: str,
 @register_model(
     ModelType.telechat_7b_int4,
     'TeleAI/telechat-7B-int4',
-    LoRATM.llama2,
+    LoRATM.telechat,
     TemplateType.telechat,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
@@ -2685,7 +2686,7 @@ def get_model_tokenizer_llava(model_dir: str,
 @register_model(
     ModelType.telechat_7b_int8,
     'TeleAI/telechat-7B-int8',
-    LoRATM.llama2,
+    LoRATM.telechat,
     TemplateType.telechat,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
@@ -2695,7 +2696,7 @@ def get_model_tokenizer_llava(model_dir: str,
 @register_model(
     ModelType.telechat_12b,
     'TeleAI/telechat-12B',
-    LoRATM.llama2,
+    LoRATM.telechat,
     TemplateType.telechat,
     torch_dtype=torch.float16,
     support_flash_attn=True,
@@ -2703,7 +2704,7 @@ def get_model_tokenizer_llava(model_dir: str,
 @register_model(
     ModelType.telechat_12b_int4,
     'TeleAI/telechat-12B-int4',
-    LoRATM.llama2,
+    LoRATM.telechat,
     TemplateType.telechat,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
@@ -2713,7 +2714,7 @@ def get_model_tokenizer_llava(model_dir: str,
 @register_model(
     ModelType.telechat_12b_int8,
     'TeleAI/telechat-12B-int8',
-    LoRATM.llama2,
+    LoRATM.telechat,
     TemplateType.telechat,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
