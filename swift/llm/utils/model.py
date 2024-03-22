@@ -2669,7 +2669,7 @@ def get_model_tokenizer_llava(model_dir: str,
     'TeleAI/telechat-7B',
     LoRATM.llama2,
     TemplateType.default_generation,
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     # support_flash_attn=True,
     support_vllm=True)
 @register_model(
@@ -2678,7 +2678,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.llama2,
     TemplateType.default_generation,
     requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
     support_flash_attn=True,
     support_vllm=True)
@@ -2688,7 +2688,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.llama2,
     TemplateType.default_generation,
     requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
     support_flash_attn=True,
     support_vllm=True)
@@ -2697,7 +2697,7 @@ def get_model_tokenizer_llava(model_dir: str,
     'TeleAI/telechat-12B',
     LoRATM.llama2,
     TemplateType.default_generation,
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
@@ -2706,7 +2706,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.llama2,
     TemplateType.default_generation,
     requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     function_kwargs={'bits': 4},
     support_flash_attn=True,
     support_vllm=True)
@@ -2716,7 +2716,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.llama2,
     TemplateType.default_generation,
     requires=['auto_gptq>=0.5'],
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
     support_flash_attn=True,
     support_vllm=True)
@@ -2725,6 +2725,9 @@ def get_model_tokenizer_telechat(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
+    if torch_dtype == torch.bfloat16:
+        raise ValueError("The model does not support bfloat16 data type.")
+
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
