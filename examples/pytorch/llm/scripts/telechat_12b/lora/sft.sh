@@ -3,7 +3,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-  --model_type telechat_7b \
+  --model_type telechat-12b \
   --dataset dureader-robust-zh \
   --batch_size 4 \
   --max_length 1024 \
@@ -15,6 +15,7 @@ python llm_sft.py \
   --train_dataset_sample 10000 \
   --val_dataset_sample 300 \
   --num_train_epochs 2 \
+  --dtype fp16 \
   --check_dataset_strategy none \
   --gradient_checkpointing true \
   --weight_decay 0.01 \
