@@ -2671,7 +2671,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.telechat,
     TemplateType.telechat,
     torch_dtype=torch.float16,
-    # support_flash_attn=True,
+    support_flash_attn=True,
     support_vllm=True)
 @register_model(
     ModelType.telechat_7b_int4,
