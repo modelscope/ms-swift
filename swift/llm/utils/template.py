@@ -1196,8 +1196,8 @@ register_template(TemplateType.gemma, gemma_template)
 register_template(
     TemplateType.telechat,
     Template(
-        [], ['<_user>{{QUERY}}<_bot>\n'],
-        ['<_end>\n'], ['<_end>']))
+        ['<_bos>'], ['<_user>{{QUERY}}<_bot>\n'],
+        ['<_end>'], ['<_end>']))
 
 def get_template(
     template_type: str,
