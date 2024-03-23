@@ -3,7 +3,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=1 \
 python llm_sft.py \
-    --model_type telechat_12b \
+    --model_type telechat-12b \
     --sft_type lora \
     --tuner_backend swift \
     --dtype AUTO \
