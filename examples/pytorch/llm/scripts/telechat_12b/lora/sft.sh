@@ -6,7 +6,7 @@ python llm_sft.py \
     --model_type telechat-12b \
     --sft_type lora \
     --tuner_backend swift \
-    --dtype AUTO \
+    --dtype fp16 \
     --output_dir output \
     --dataset ms-bench-mini \
     --train_dataset_sample 5000 \
