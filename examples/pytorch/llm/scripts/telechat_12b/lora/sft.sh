@@ -1,34 +1,29 @@
-# Experimental environment: A100
-# 30GB GPU memory
+# Experiment env: A10, RTX3090/4090, A100
+# 1 * 12GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=1 \
 python llm_sft.py \
-    --model_type telechat-12b \
-    --sft_type lora \
-    --tuner_backend swift \
-    --dtype fp16 \
-    --output_dir output \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 5000 \
-    --num_train_epochs 2 \
-    --max_length 1024 \
-    --check_dataset_strategy warning \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
-    --gradient_checkpointing true \
-    --batch_size 1 \
-    --weight_decay 0.1 \
-    --learning_rate 1e-4 \
-    --gradient_accumulation_steps 16 \
-    --max_grad_norm 0.5 \
-    --warmup_ratio 0.03 \
-    --eval_steps 100 \
-    --save_steps 100 \
-    --save_total_limit 2 \
-    --logging_steps 10 \
-    --use_flash_attn false \
-    --self_cognition_sample 1000 \
-    --model_name 卡卡罗特 \
-    --model_author 陶白白 \
+  --model_type telechat-12b \
+  --dataset dureader-robust-zh \
+  --batch_size 4 \
+  --max_length 1024 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 5e-5 \
+  --use_flash_attn true \
+  --eval_steps 1000 \
+  --save_steps 1000 \
+  --train_dataset_sample 100000 \
+  --val_dataset_sample 3000 \
+  --num_train_epochs 2 \
+  --check_dataset_strategy none \
+  --gradient_checkpointing true \
+  --weight_decay 0.1 \
+  --max_grad_norm 1.0 \
+  --warmup_ratio 0.03 \
+  --save_total_limit 2 \
+  --logging_steps 10 \
+  --sft_type lora \
+  --lora_target_modules DEFAULT \
+  --lora_rank 8 \
+  --lora_alpha 32 \
+  --dtype fp16
