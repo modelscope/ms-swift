@@ -192,7 +192,7 @@ class TestRun(unittest.TestCase):
             train_dataset_mix_ds=[
                 os.path.join(folder, fname) for fname in mixture_dataset
             ],
-            train_dataset_mix_ratio=2,
+            train_dataset_mix_ratio=0.1,
             check_dataset_strategy='warning')
         torch.cuda.empty_cache()
         best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']

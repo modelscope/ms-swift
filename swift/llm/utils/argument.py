@@ -1184,7 +1184,7 @@ def handle_dataset_mixture(args: SftArguments,
         dataset_name = '_custom_mixture'
         _register_local_dataset(dataset_name, custom_mix_ds, [])
         train_dataset_mix_ds.append(dataset_name)
-    mix_dataset_sample = len(train_dataset) * args.train_dataset_mix_ratio
+    mix_dataset_sample = int(len(train_dataset) * args.train_dataset_mix_ratio)
     logger.info(f'train_dataset_mix_ds: {train_dataset_mix_ds}')
     logger.info(
         f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}'
