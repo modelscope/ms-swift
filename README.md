@@ -93,7 +93,7 @@ Additionally, we are expanding capabilities for other modalities. Currently, we 
 - 2023.11.16: Support **flash attn** for more models: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series. Please use `use_flash_attn` parameter.
 - 🔥2023.11.11: Support **NEFTune**, simply use `Swift.prepare_model(model, NEFTuneConfig())` to enable.  
 - 🔥2023.11.11: Support training and inference by **command line** and inference by **Web-UI**, see `Usage with Swift CLI` section below for details.
-- 🔥2023.11.11: Support **deployment** workflow (vllm/chatglm.cpp/xinference) after model training, see [official documentation](./docs/source/GetStarted/%E9%83%A8%E7%BD%B2%E6%8C%87%E5%8D%97.md) for details.
+- 🔥2023.11.11: Support **deployment** workflow (vllm/chatglm.cpp/xinference) after model training, see [official documentation](docs/source/GetStarted/%E9%83%A8%E7%BD%B2%E6%8C%87%E5%8D%97.md) for details.
 - 🔥2023.11.10: Support **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. Corresponding sh scripts can be found in [bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
 - 🔥2023.11.08: Support training and inference of **xverse-65b** model, script at [xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).  
 - 🔥2023.11.07: Support training and inference of **yi-6b**, **yi-34b** models, scripts at [yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).

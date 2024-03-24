@@ -9,34 +9,33 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Get Started
 
-   GetStarted/快速使用.md
-   GetStarted/SWIFT安装.md
-   GetStarted/界面训练推理.md
-   GetStarted/使用tuners.md
+   GetStarted/Installation.md
+   GetStarted/Web-ui.md
+   GetStarted/Tuners.md
+   GetStarted/SCEdit.md
    GetStarted/ResTuning.md
-   GetStarted/在SWIFT内使用PEFT.md
-   GetStarted/部署指南.md
+   GetStarted/Use-PEFT.md
 
 .. toctree::
    :maxdepth: 2
    :caption: LLM Training and Inference Example
 
-   LLM/自我认知微调最佳实践.md
-   LLM/Agent微调最佳实践.md
-   LLM/LLM推理文档.md
-   LLM/LLM微调文档.md
-   LLM/LLM人类对齐训练文档.md
-   LLM/VLLM推理加速与部署.md
-   LLM/支持的模型和数据集.md
-   LLM/自定义与拓展.md
-   LLM/命令行参数.md
+   LLM/Self-cognition-best-practice.md
+   LLM/Agent-best-practice.md
+   LLM/LLM-fine-tuning.md
+   LLM/LLM-inference.md
+   LLM/RLHF.md
+   LLM/VLLM-inference-acceleration-and-deployment.md
+   LLM/Supported-models-datasets.md
+   LLM/Customization.md
+   LLM/Command-line-parameters.md
    LLM/Benchmark.md
 
 .. toctree::
    :maxdepth: 2
    :caption: AIGC Training and Inference Example
 
-   AIGC/AnimateDiff微调推理文档.md
+   AIGC/AnimateDiff-train-infer.md
 
 .. toctree::
    :maxdepth: 2

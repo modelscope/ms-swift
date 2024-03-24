@@ -1,11 +1,11 @@
-## Multi-Modal文档
+## Multi-Modal Documentation
 
-### Multi-Modal最佳实践系列
+### Multi-Modal Best Practices
 
-1. [Qwen-VL最佳实践](qwen-vl最佳实践.md)
-2. [Qwen-Audio最佳实践](../Multi-Modal/qwen-auidio最佳实践.md)
-3. [Deepseek-VL最佳实践](deepseek-vl最佳实践.md)
-4. [Yi-VL最佳实践.md](yi-vl最佳实践.md)
-5. [Internlm2-Xcomposers最佳实践](internlm-xcomposer2最佳实践.md)
-6. [MiniCPM-V最佳实践](minicpm-v最佳实践.md)
-7. [CogVLM最佳实践](cogvlm最佳实践.md)
+1. [Qwen-VL Best Practices](qwen-vl-best-practice.md)
+2. [Qwen-Audio Best Practices](qwen-audio-best-practice.md)
+3. [Deepseek-VL Best Practices](deepseek-vl-best-practice.md)
+4. [Yi-VL Best Practices.md](yi-vl-best-practice.md)
+5. [Internlm2-Xcomposers Best Practices](internlm-xcomposer2-best-practice.md)
+6. [MiniCPM-V Best Practices](minicpm-v-best-practice.md)
+7. [CogVLM Best Practices](cogvlm-best-practice.md)
