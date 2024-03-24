@@ -375,7 +375,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Mistral<br>Mixtral                            | [Mistral series models](https://github.com/mistralai/mistral-src)       | English            | 7B     | base model<br>instruct model<br>MoE model                     |
 | YI                                             | [01AI's YI series models](https://github.com/01-ai)                     | Chinese<br>English    | 6B-34B                                 | base model<br>chat model<br>long text model            |
 | InternLM<br>InternLM2<br>InternLM2-Math              | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM) | Chinese<br>English | 1.8B-20B                            | base model<br>chat model<br>math model            |
-| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math          | [DeepSeek series models](https://github.com/deepseek-ai)       | Chinese<br>English    | 1.3B-67B                               | base model/chat model/MoE model<br>code model<br>math model |
+| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math          | [DeepSeek series models](https://github.com/deepseek-ai)       | Chinese<br>English    | 1.3B-67B                               | base model<br>chat model<br>MoE model<br>code model<br>math model |
 | MAMBA                                          | [MAMBA temporal convolution model](https://github.com/state-spaces/mamba) | English          | 130M-2.8B                              | base model                                 |
 | Gemma                                          | [Google Gemma series models](https://github.com/google/gemma_pytorch)   | English            | 2B-7B                                  | base model<br>instruct model                       |
 | MiniCPM                                        | [OpenBmB MiniCPM series models](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 2B-3B                                  | chat model                                 |
@@ -387,7 +387,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Zephyr                                         | Zephyr series models based on Mistral                                  | English            | 7B                                     | chat model                                 |
 | PolyLM                                         | [Tongyi Lab self-developed PolyLM series models](https://github.com/DAMO-NLP-MT/PolyLM) | Multilingual | 13B                                 | base model                                 |
 | SeqGPT                                         | [Tongyi Lab self-developed text understanding model for information extraction and text classification](https://github.com/Alibaba-NLP/SeqGPT) | Chinese | 560M                               | semantic understanding model                |
-| SUS                                            | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat) | Chinese/English | 34B                              | chat model                                 |
+| SUS                                            | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat) | Chinese<br>English | 34B                              | chat model                                 |
 | Tongyi-Finance                                 | [Tongyi finance series models](https://github.com/QwenLM/Qwen)          | Chinese<br>English    | 14B                                    | base model<br>chat model<br>financial model        |
 | CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese<br>English    | 6B-34B                                 | chat model<br>code model                      |
 | phi2                                           | Microsoft's PHI2 model                                                 | English            | 3B                                     | base model<br>code model                          |
@@ -396,12 +396,12 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | Model Type       | Model Introduction                                                     | Language           | Model Size        | Model Type         |
 |------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese/English    | 7B, including quantized versions | base model/chat model |
-| Qwen-Audio       | [Tongyi Qwen speech model](https://github.com/QwenLM)               | Chinese/English    | 7B                | base model/chat model |
-| YI-VL            | [01AI's YI series vision models](https://github.com/01-ai)             | Chinese/English    | 6B-34B            | chat model         |
-| XComposer2       | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese/English | 7B              | chat model         |
-| DeepSeek-VL      | [DeepSeek series vision models](https://github.com/deepseek-ai) | Chinese/English    | 1.3B-7B           | chat model         |
-| MiniCPM-V       | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)     | Chinese/English    | 3B                | chat model         |
+| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese<br>English    | 7B, including quantized versions | base model<br>chat model |
+| Qwen-Audio       | [Tongyi Qwen speech model](https://github.com/QwenLM)               | Chinese<br>English    | 7B                | base model<br>chat model |
+| YI-VL            | [01AI's YI series vision models](https://github.com/01-ai)             | Chinese<br>English    | 6B-34B            | chat model         |
+| XComposer2       | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B              | chat model         |
+| DeepSeek-VL      | [DeepSeek series vision models](https://github.com/deepseek-ai) | Chinese<br>English    | 1.3B-7B           | chat model         |
+| MiniCPM-V       | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 3B                | chat model         |
 | CogVLM/CogAgent  | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)   | English    | 17B-18B           | chat model         |
 | Llava      | [Llava series models](https://github.com/haotian-liu/LLaVA)                | English | 7B               | chat model |
 
@@ -487,7 +487,7 @@ make docs
 | [Command Line Arguments](docs/source_en/LLM/Command-line-parameters.md) |
 | [Customizing New Models and Datasets](docs/source_en/LLM/Customization.md) |
 | [Supported Models and Datasets List](docs/source_en/LLM/Supported-models-datasets.md) |
-｜ [Runtime Speed and Memory Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
+| [Runtime Speed and Memory Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
 
 
 ### Best Practices
@@ -496,8 +496,8 @@ make docs
 | ------------------------------------------------------------ |
 | [Agent Fine-Tuning Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Agent%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
 | [Self-Cognition Fine-Tuning Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
-|  [Qwen1.5 Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) ｜
-｜  [Multi-Modal Model Training Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
+|  [Qwen1.5 Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+|  [Multi-Modal Model Training Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
 
 ### Deep Learning Tutorials
 

@@ -488,7 +488,7 @@ make docs
 | [命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md) |
 | [自定义新模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md) |
 | [支持的模型和数据集列表](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md) |
-｜ [运行速度与显存Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
+| [运行速度与显存Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
 
 
 ### 最佳实践
@@ -496,8 +496,8 @@ make docs
 | ------------------------------------------------------------ |
 | [Agent微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Agent%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
 | [自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
-|  [Qwen1.5最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) ｜
-｜  [多模态模型训练最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
+|  [Qwen1.5最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [多模态模型训练最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
 
 ### 深度学习教程
 
