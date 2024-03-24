@@ -286,6 +286,7 @@ swift infer --model_type qwen1half-7b-chat --infer_backend vllm --stream true
 ### Evaluation
 
 ```shell
+# Debugging, on line soon:>
 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
 ```
 
@@ -457,8 +458,8 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 
 ```bibtex
 @Misc{swift,
-  title = {SWIFT},
-  author = "{The ModelScope Team}",
+  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
+  author = {The ModelScope Team},
   howpublished = {\url{https://github.com/modelscope/swift}},
   year = {2024}
 }

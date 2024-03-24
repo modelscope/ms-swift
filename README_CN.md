@@ -288,6 +288,7 @@ swift infer --model_type qwen1half-7b-chat --infer_backend vllm --stream true
 ### 评测
 
 ```shell
+# Debugging, on line soon:>
 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
 ```
 
@@ -459,8 +460,8 @@ make docs
 
 ```bibtex
 @Misc{swift,
-  title = {SWIFT},
-  author = "{The ModelScope Team}",
+  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
+  author = {The ModelScope Team},
   howpublished = {\url{https://github.com/modelscope/swift}},
   year = {2024}
 }
