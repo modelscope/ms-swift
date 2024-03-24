@@ -846,7 +846,7 @@ class Swift:
                 sub_module.unmerge(**kwargs)
 
     @staticmethod
-    def save_to_peft_format(ckpt_dir: str, output_dir: str):
+    def save_to_peft_format(ckpt_dir: str, output_dir: str) -> None:
         """Save swift format to peft format
 
         Args:
@@ -903,6 +903,8 @@ class Swift:
                                   'lora_embedding_A.')
                 key = key.replace(f'lora_embedding_B.{adapter}.',
                                   'lora_embedding_B.')
+                key = key.replace(f'lora_magnitude_vector.{adapter}',
+                                  'lora_magnitude_vector')
                 new_state_dict[key] = value
             state_dict = new_state_dict
             SwiftModel._save_state_dict(state_dict,

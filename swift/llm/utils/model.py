@@ -112,6 +112,8 @@ class ModelType:
     llama2_70b = 'llama2-70b'
     llama2_70b_chat = 'llama2-70b-chat'
     llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
+    # llava
+    llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -458,42 +460,42 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'AI-ModelScope/mamba-130m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_370m,
     'AI-ModelScope/mamba-370m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_390m,
     'AI-ModelScope/mamba-390m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_790m,
     'AI-ModelScope/mamba-790m-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_1_4b,
     'AI-ModelScope/mamba-1.4b-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 @register_model(
     ModelType.mamba_2_8b,
     'AI-ModelScope/mamba-2.8b-hf',
     LoRATM.mamba,
     TemplateType.default_generation,
-    requires=['transformers>=4.39.0.dev0'],
+    requires=['transformers>=4.39.0'],
     support_vllm=False)
 def get_model_tokenizer_mamba(model_dir: str,
                               torch_dtype: Optional[Dtype],
@@ -2499,6 +2501,7 @@ def get_model_tokenizer_orion(model_dir: str,
     '01ai/Yi-VL-34B',
     LoRATM.llama2,
     TemplateType.yi_vl,
+    support_flash_attn=True,
     requires=['transformers>=4.34'],
     tags=['multi-modal', 'vision'])
 @register_model(
@@ -2506,6 +2509,7 @@ def get_model_tokenizer_orion(model_dir: str,
     '01ai/Yi-VL-6B',
     LoRATM.llama2,
     TemplateType.yi_vl,
+    support_flash_attn=True,
     requires=['transformers>=4.34'],
     tags=['multi-modal', 'vision'])
 def get_model_tokenizer_yi_vl(model_dir: str,
@@ -2593,6 +2597,63 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
         model.resampler.to(torch_dtype)  # fix float32
         func_list = ['generate', 'get_input_embeddings', 'forward']
         _use_submodel_func(model, 'llm', func_list)
+    return model, tokenizer
+
+
+def _patch_llava(model):
+    if hasattr(model, '__old_generate'):
+        return
+    generate = model.generate
+    model.__old_generate = generate
+
+    @wraps(generate)
+    def _new_generate(inputs=None, *args, **kwargs):
+        input_ids = kwargs.pop('input_ids', None)
+        if inputs is None and input_ids is not None:
+            inputs = input_ids
+        return generate(inputs, *args, **kwargs)
+
+    model.generate = _new_generate
+
+
+@register_model(
+    ModelType.llava1d6_mistral_7b_instruct,
+    'AI-ModelScope/llava-v1.6-mistral-7b',
+    LoRATM.llama2,
+    TemplateType.llava_mistral_instruct,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
+def get_model_tokenizer_llava(model_dir: str,
+                              torch_dtype: Dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    local_repo_path = _git_clone_github(
+        'https://github.com/haotian-liu/LLaVA.git')
+    sys.path.append(os.path.join(local_repo_path))
+
+    from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
+    model_config = LlavaMistralConfig.from_pretrained(model_dir)
+    model_config.mm_vision_tower = snapshot_download(
+        'AI-ModelScope/clip-vit-large-patch14-336')
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        automodel_class=LlavaMistralForCausalLM,
+        **kwargs)
+
+    model.resize_token_embeddings(len(tokenizer))
+    vision_tower = model.get_vision_tower()
+    device_map = str(model_kwargs.get('device_map', str(model.device)))
+    if not vision_tower.is_loaded:
+        vision_tower.load_model(device_map=device_map)
+    if not hasattr(model.config, 'max_sequence_length'):
+        model.config.max_sequence_length = 2048
+    _patch_llava(model)
     return model, tokenizer
 
 

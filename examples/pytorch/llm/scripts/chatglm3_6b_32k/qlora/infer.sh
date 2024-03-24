@@ -4,7 +4,6 @@ CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
     --ckpt_dir "output/chatglm3-6b-32k/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
-    --max_length 4096 \
     --max_new_tokens 2048 \
     --temperature 0.1 \
     --top_p 0.7 \

@@ -18,7 +18,7 @@ swift sft \
     --lora_target_modules DEFAULT \
     --gradient_checkpointing false \
     --batch_size 1 \
-    --weight_decay 0.01 \
+    --weight_decay 0.1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \

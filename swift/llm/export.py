@@ -11,7 +11,8 @@ from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
                          seed_everything, show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import (ExportArguments, Template, get_dataset,
-                    get_model_tokenizer, get_template, set_generation_config)
+                    get_model_tokenizer, get_template, set_generation_config,
+                    swift_to_peft_format)
 
 logger = get_logger()
 
@@ -158,6 +159,9 @@ def gptq_model_quantize(model, tokenizer):
 def llm_export(args: ExportArguments) -> None:
     global _args, template
     logger.info(f'args: {args}')
+    if args.to_peft_format:
+        assert args.sft_type == 'lora'
+        args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.quant_bits > 0:
