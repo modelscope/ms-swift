@@ -27,13 +27,12 @@
 - [Installation](#%EF%B8%8F-installation)
 - [Getting Started](#-getting-started)
 - [Documentation](#-documentation)
-- [Learn More](#-learn-more)
 - [License](#-License)
 - [Citation](#-citation)
 - [Contact Us](#-contact-us)
 
 ## 📝 Introduction
-SWIFT supports training, inference, evaluation and deployment of nearly 200 LLMs and MLLMs (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete Adapters library to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
+SWIFT supports training, inference, evaluation and deployment of nearly **200 LLMs and MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
 To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
 
@@ -153,7 +152,7 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 
 This section introduces basic usage, see the [Documentation](#-documentation) section for more ways to use.
 
-### web-ui
+### Web-UI
 
 ```shell
 swift web-ui
@@ -180,7 +179,7 @@ You can refer to the following scripts to customize your own training script.
 | Training Process | Training Method                                                               |
 |------------------|-------------------------------------------------------------------------------|
 | Pretraining      | Text Generation                                                               |
-| Fine-tuning      | Single-turn/Multi-turn/Agent Training/Self-cognition/Multi-modal QA/Speech QA |
+| Fine-tuning      | Single-turn/Multi-turn<br>Agent Training/Self-cognition<br>Multi-modal Vision/Multi-modal Speech|
 | Human Alignment  | DPO                                                                           |
 | Text-to-Image    | DreamBooth, etc.                                                              |
 | Text-to-Video    | -                                                                             |
@@ -189,162 +188,222 @@ You can refer to the following scripts to customize your own training script.
 
 Start single GPU fine-tuning with the following command:
 
+LoRA:
 ```shell
+# Experimental Environment: A100
+# GPU Memory Requirement: 20GB
+# Runtime: 3.1 hours
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
     --output_dir output \
-    --lora_target_modules ALL \
-    --self_cognition_sample 500 \
-    --model_name 小黄 'Xiao Huang' \
-    --model_author 魔搭 ModelScope
+    --eval_steps 200 \
 ```
+
+Full-parameter:
+```shell
+# Experimental Environment: A100
+# GPU Memory Requirement: 80GB
+# Runtime: 2.5 hours
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type full \
+    --output_dir output \
+    --eval_steps 500 \
+```
+
 
 #### Model Parallel Training
 
-Model parallel training modifies the `CUDA_VISIBLE_DEVICES` environment variable based on the above command:
 
 ```shell
+# Experimental Environment: 2 * A100
+# GPU Memory Requirement: 10GB + 13GB
+# Runtime: 3.4 hours
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
     --output_dir output \
-    --lora_target_modules ALL \
-    --self_cognition_sample 500 \
-    --model_name 小黄 'Xiao Huang' \
-    --model_author 魔搭 ModelScope
 ```
 
 #### Data Parallel Training
 
-Data parallel training modifies the `NPROC_PER_NODE` environment variable based on the above command:
-
 ```shell
-# If the number of CUDA_VISIBLE_DEVICES is an integer multiple of NPROC_PER_NODE (greater than 1), data parallel is launched according to NPROC_PER_NODE, and model parallel is launched according to CUDA_VISIBLE_DEVICES number/NPROC_PER_NODE
-CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=2 \
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 30GB
+# Runtime: 0.8 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
     --output_dir output \
-    --lora_target_modules ALL \
-    --self_cognition_sample 500 \
-    --model_name 小黄 'Xiao Huang' \
-    --model_author 魔搭 ModelScope
+```
+
+Combining Model Parallelism and Data Parallelism:
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 2*14GB + 2*18GB
+# Runtime: 1.7 hours
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
 #### Deepspeed Training
 
+ZeRO2:
 ```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 21GB
+# Runtime: 0.9 hours
 NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
-    --logging_steps 5 \
-    --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
     --output_dir output \
-    --lora_target_modules ALL \
-    --self_cognition_sample 500 \
-    --model_name 小黄 'Xiao Huang' \
-    --model_author 魔搭 ModelScope \
-    --deepspeed default-zero3
+    --deepspeed default-zero2 \
+```
+
+ZeRO3:
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 19GB
+# Runtime: 3.2 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed default-zero3 \
 ```
 
 ### Inference
-
+Original model:
 ```shell
-swift infer --model_type qwen1half-7b-chat --stream true
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
+# use VLLM
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat \
+    --infer_backend vllm --max_model_len 8192
 ```
 
-##### VLLM Inference
-
+LoRA fine-tuned:
 ```shell
-swift infer --model_type qwen1half-7b-chat --infer_backend vllm --stream true
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+# use VLLM
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
+    --merge_lora true --infer_backend vllm --max_model_len 8192
 ```
 
 ### Evaluation
 
 ```shell
 # Debugging, on line soon:>
-swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
 ```
 
 ### Export
 
+Original model:
 ```shell
-swift export --model_type qwen1half-7b-chat --quant_bits 4 --quant_method awq
+CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat \
+    --quant_bits 4 --quant_method awq
+```
+
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
+    --quant_method awq --quant_bits 4 \
+    --merge_lora true \
 ```
 
 ### Deployment
 
+Original model:
 ```shell
-swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len 8192
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat \
+    --infer_backend vllm --max_model_len 8192
+```
+
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift deploy \
+    --ckpt_dir xxx/checkpoint-xxx --merge_lora true \
+    --infer_backend vllm --max_model_len 8192
 ```
 
 ### Supported Models
 
-#### LLM Models
+#### LLMs
 
 | Model Type                                     | Model Introduction                                                     | Language           | Model Size                             | Model Type                                 |
 |------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
-| Qwen/Qwen1.5                                   | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese/English    | 1.8B-72B, including quantized versions | base model/chat model                      |
-| ChatGLM2/ChatGLM3/Codegeex2                    | [Zhipu ChatGLM series models](https://github.com/THUDM/)               | Chinese/English    | 6B                                     | base model/chat model  |
-| Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese/English    | 7B-13B                                 | base model/chat model                       |
-| Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese/English    | 2B-102B                                | chat model                                 |
-| XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese/English    | 7B-65B                                 | base model/chat model                       |
-| LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B, including quantized versions   | base model/chat model                       |
-| Mistral/Mistral-MoE                            | [Mistral series models](https://github.com/mistralai/mistral-src)       | English            | 7B, including quantized and MoE versions | base model/chat model                     |
-| YI                                             | [01AI's YI series models](https://github.com/01-ai)                     | Chinese/English    | 6B-34B                                 | base model/chat model                       |
-| InternLM/InternLM2/InternLM2-Math              | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM) | Chinese/English | 1.8B-20B                            | base model/chat model/math model            |
-| DeepSeek/DeepSeek-Coder/DeepSeek-Math          | [DeepSeek series models](https://github.com/deepseek-ai)       | Chinese/English    | 1.3B-67B                               | base model/chat model/code generation model/math model |
+| Qwen<br>Qwen1.5                                   | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-72B<br>including quantized versions | base model<br>chat model                      |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2                    | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B                                     | base model<br>chat model<br>code model  |
+| Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
+| Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
+| XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model               |
+| LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B<br>including quantized versions   | base model<br>chat model                       |
+| Mistral<br>Mixtral                            | [Mistral series models](https://github.com/mistralai/mistral-src)       | English            | 7B     | base model<br>instruct model<br>MoE model                     |
+| YI                                             | [01AI's YI series models](https://github.com/01-ai)                     | Chinese<br>English    | 6B-34B                                 | base model<br>chat model<br>long text model            |
+| InternLM<br>InternLM2<br>InternLM2-Math              | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM) | Chinese<br>English | 1.8B-20B                            | base model<br>chat model<br>math model            |
+| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math          | [DeepSeek series models](https://github.com/deepseek-ai)       | Chinese<br>English    | 1.3B-67B                               | base model<br>chat model<br>MoE model<br>code model<br>math model |
 | MAMBA                                          | [MAMBA temporal convolution model](https://github.com/state-spaces/mamba) | English          | 130M-2.8B                              | base model                                 |
-| Gemma                                          | [Google Gemma series models](https://github.com/google/gemma_pytorch)   | English            | 2B-7B                                  | base model/chat model                       |
-| MiniCPM                                        | [OpenBmB MiniCPM series models](https://github.com/OpenBMB/MiniCPM)     | Chinese/English    | 2B-3B                                  | chat model                                 |
-| OpenBuddy                                      | [OpenBuddy series models](https://github.com/OpenBuddy/OpenBuddy)       | Chinese/English    | 7B-67B                                 | base model/chat model                       |
-| Orion                                          | [OrionStar AI series models](https://github.com/OrionStarAI)            | Chinese/English    | 14B                                    | base model/chat model                       |
-| BlueLM                                         | [VIVO BlueLM large model](https://github.com/vivo-ai-lab/BlueLM)        | Chinese/English    | 7B                                     | base model/chat model                       |
-| Ziya2                                          | [Fengshenbang series models](https://github.com/IDEA-CCNL/Fengshenbang-LM) | Chinese/English  | 13B                                    | base model/chat model                       |
-| Skywork                                        | [Skywork series models](https://github.com/SkyworkAI/Skywork) | Chinese/English    | 13B                                    | base model/chat model                       |
+| Gemma                                          | [Google Gemma series models](https://github.com/google/gemma_pytorch)   | English            | 2B-7B                                  | base model<br>instruct model                       |
+| MiniCPM                                        | [OpenBmB MiniCPM series models](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 2B-3B                                  | chat model                                 |
+| OpenBuddy                                      | [OpenBuddy series models](https://github.com/OpenBuddy/OpenBuddy)       | Chinese<br>English    | 7B-67B                                 | base model<br>chat model                       |
+| Orion                                          | [OrionStar AI series models](https://github.com/OrionStarAI)            | Chinese<br>English    | 14B                                    | base model<br>chat model                       |
+| BlueLM                                         | [VIVO BlueLM large model](https://github.com/vivo-ai-lab/BlueLM)        | Chinese<br>English    | 7B                                     | base model<br>chat model                       |
+| Ziya2                                          | [Fengshenbang series models](https://github.com/IDEA-CCNL/Fengshenbang-LM) | Chinese<br>English  | 13B                                    | base model<br>chat model                       |
+| Skywork                                        | [Skywork series models](https://github.com/SkyworkAI/Skywork) | Chinese<br>English    | 13B                                    | base model<br>chat model                       |
 | Zephyr                                         | Zephyr series models based on Mistral                                  | English            | 7B                                     | chat model                                 |
 | PolyLM                                         | [Tongyi Lab self-developed PolyLM series models](https://github.com/DAMO-NLP-MT/PolyLM) | Multilingual | 13B                                 | base model                                 |
 | SeqGPT                                         | [Tongyi Lab self-developed text understanding model for information extraction and text classification](https://github.com/Alibaba-NLP/SeqGPT) | Chinese | 560M                               | semantic understanding model                |
-| SUS                                            | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat) | Chinese/English | 34B                              | chat model                                 |
-| Tongyi-Finance                                 | [Tongyi finance series models](https://github.com/QwenLM/Qwen)          | Chinese/English    | 13B                                    | finance domain base model/chat model        |
-| CodeFuse-CodeLLaMA/CodeFuse-Codegeex2/CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese/English    | 6B-34B                                 | code generation model                      |
-| phi2                                           | Microsoft's PHI2 model                                                 | English            | 3B                                     | generation model                           |
+| SUS                                            | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat) | Chinese<br>English | 34B                              | chat model                                 |
+| Tongyi-Finance                                 | [Tongyi finance series models](https://github.com/QwenLM/Qwen)          | Chinese<br>English    | 14B                                    | base model<br>chat model<br>financial model        |
+| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese<br>English    | 6B-34B                                 | chat model<br>code model                      |
+| phi2                                           | Microsoft's PHI2 model                                                 | English            | 3B                                     | base model<br>code model                          |
 
-#### MLLM Models
+#### MLLMs
 
 | Model Type       | Model Introduction                                                     | Language           | Model Size        | Model Type         |
 |------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese/English    | 7B, including quantized versions | base model/chat model |
-| Qwen-Audio       | [Tongyi Qwen speech model](https://github.com/QwenLM)               | Chinese/English    | 7B                | base model/chat model |
-| YI-VL            | [01AI's YI series vision models](https://github.com/01-ai)             | Chinese/English    | 6B-34B            | chat model         |
-| xcomposer2       | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese/English | 7B              | chat model         |
-| DeepSeek-VL      | [DeepSeek series vision models](https://github.com/deepseek-ai) | Chinese/English    | 1.3B-7B           | chat model         |
-| MiniCPM-VL       | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)     | Chinese/English    | 3B                | chat model         |
-| CogAgent/CogVLM  | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)   | Chinese/English    | 17B-18B           | chat model         |
+| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese<br>English    | 7B<br>including quantized versions | base model<br>chat model |
+| Qwen-Audio       | [Tongyi Qwen speech model](https://github.com/QwenLM)               | Chinese<br>English    | 7B                | base model<br>chat model |
+| YI-VL            | [01AI's YI series vision models](https://github.com/01-ai)             | Chinese<br>English    | 6B-34B            | chat model         |
+| XComposer2       | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B              | chat model         |
+| DeepSeek-VL      | [DeepSeek series vision models](https://github.com/deepseek-ai) | Chinese<br>English    | 1.3B-7B           | chat model         |
+| MiniCPM-V       | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 3B                | chat model         |
+| CogVLM<br>CogAgent  | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)   | English    | 17B-18B           | chat model         |
+| Llava      | [Llava series models](https://github.com/haotian-liu/LLaVA)                | English | 7B               | chat model |
 
 #### Diffusion Models
 
@@ -400,8 +459,6 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 | Computing cards A10/A100, etc. | Support BF16 and FlashAttn                      |
 | Huawei Ascend NPU              |                                                 |
 
-### Benchmark
-
 ## 📃 Documentation
 
 ### Documentation Compiling
@@ -411,22 +468,36 @@ make docs
 # Check docs/build/html/index.html in web-browser
 ```
 
-### Usage Documentation
+### User Guide
 
 | Document Name                                                |
 | ------------------------------------------------------------ |
-| [Using web-ui](docs/source_en/GetStarted/Web-ui.md)          |
-| [Using tuners](docs/source_en/GetStarted/Tuners.md)          |
+| [Using Web-UI](docs/source_en/GetStarted/Web-ui.md)          |
+| [Using Tuners](docs/source_en/GetStarted/Tuners.md)          |
 | [LLM Fine-tuning](docs/source_en/LLM/LLM-fine-tuning.md)     |
 | [LLM Inference](docs/source_en/LLM/LLM-inference.md)         |
 | [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
-| [LLM Inference Acceleration and Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
-| [Command Line Arguments](docs/source_en/LLM/Command-line-parameters.md) |
-| [Supported Models and Datasets](docs/source_en/LLM/Supported-models-datasets.md) |
-| [Customizing New Models and Datasets](docs/source_en/LLM/Customization.md) |
-| [Agent Fine-Tuning Best Practices](docs/source_en/LLM/Agent-best-practice.md) [Self-Cognition Fine-Tuning Best Practices](docs/source_en/LLM/Self-cognition-best-practice) [Qwen1.5 Best Practices](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) [Multi-Modal Model Training Best Practices](docs/source_en/Multi-Modal) |
+| [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
 | [DPO Human Alignment Training](docs/source_en/LLM/RLHF.md)   |
 | [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
+
+### Reference Documentation
+| Document Name                                                |
+| ------------------------------------------------------------ |
+| [Command Line Arguments](docs/source_en/LLM/Command-line-parameters.md) |
+| [Customizing New Models and Datasets](docs/source_en/LLM/Customization.md) |
+| [Supported Models and Datasets List](docs/source_en/LLM/Supported-models-datasets.md) |
+| [Runtime Speed and Memory Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
+
+
+### Best Practices
+
+| Best Practices Name                                                |
+| ------------------------------------------------------------ |
+| [Agent Fine-Tuning Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Agent%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [Self-Cognition Fine-Tuning Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+|  [Qwen1.5 Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+|  [Multi-Modal Model Training Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
 
 ### Deep Learning Tutorials
 
@@ -443,12 +514,6 @@ make docs
 | [Inference](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/I.LLM%E5%92%8C%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A8%A1%E5%9E%8B%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86%E5%AE%9E%E8%B7%B5.md) |
 | [Deployment](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/J.%E9%83%A8%E7%BD%B2.md) |
 | [Evaluation](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/K.%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%87%AA%E5%8A%A8%E8%AF%84%E4%BC%B0%E7%90%86%E8%AE%BA%E5%92%8C%E5%AE%9E%E6%88%98--LLM%20Automatic%20Evaluation.md) |
-
-## 🔍 Learn More
-
-- [ModelScope Library](https://github.com/modelscope/modelscope/) The ModelScope library is the model library of the ModelScope project, containing popular deep learning models for various modalities.
-
-- [Contribute Your Own Models to ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
 
 ## 🏛 License
 

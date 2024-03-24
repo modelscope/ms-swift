@@ -1,6 +1,8 @@
 # PR type
 - [ ] Bug Fix
 - [ ] New Feature
+- [ ] Document Updates
+- [ ] More Model or Dataset Support
 
 # PR information
 
