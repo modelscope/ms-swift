@@ -191,6 +191,7 @@ class ModelType:
     openbuddy_mixtral_moe_7b_chat = 'openbuddy-mixtral-moe-7b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
+    mistral_7b_v2 = 'mistral-7b-v2'
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
     mixtral_moe_7b = 'mixtral-moe-7b'
@@ -1177,6 +1178,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
 @register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.mistral_7b_v2,
+    'AI-ModelScope/mistral-7B-v0.2',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
