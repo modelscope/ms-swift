@@ -9,13 +9,7 @@
 
 ### 🍀Multi-Modal Best Practices!
 
-1. [Qwen-VL Best Practices](../Multi-Modal/qwen-vl-best-practice.md)
-2. [Qwen-Audio Best Practices](../Multi-Modal/qwen-audio-best-practice.md)
-3. [Deepseek-VL Best Practices](../Multi-Modal/deepseek-vl-best-practice.md)
-4. [Yi-VL Best Practices.md](../Multi-Modal/yi-vl-best-practice.md)
-5. [Internlm2-Xcomposers Best Practices](../Multi-Modal/internlm-xcomposer2-best-practice.md)
-6. [MiniCPM-V Best Practices](../Multi-Modal/minicpm-v-best-practice.md)
-7. [CogVLM Best Practices](../Multi-Modal/cogvlm-best-practice.md)
+Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)
 
 
 ### 📚Tutorials!
