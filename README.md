@@ -34,7 +34,7 @@
 ## 📝 Introduction
 SWIFT supports training, inference, evaluation and deployment of nearly **200 LLMs and MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
-To facilitate use by users unfamiliar with deep learning, we provide a Gradio **web-ui** for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
+To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
 
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
@@ -251,7 +251,7 @@ swift sft \
     --output_dir output \
 ```
 
-MP + DDP:
+Combining Model Parallelism and Data Parallelism:
 ```shell
 # Experimental Environment: 4 * A100
 # GPU Memory Requirement: 2*14GB + 2*18GB
