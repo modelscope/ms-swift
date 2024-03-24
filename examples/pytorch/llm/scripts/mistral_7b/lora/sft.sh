@@ -3,7 +3,7 @@
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=1 \
 python llm_sft.py \
-    --model_id_or_path AI-ModelScope/mistral-7B-v0.2 \
+    --model_id_or_path AI-ModelScope/Mistral-7B-v0.2-hf \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
