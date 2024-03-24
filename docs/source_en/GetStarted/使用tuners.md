@@ -1,5 +1,3 @@
-Here is the English translation without a summary:
-
 # Basic Usage
 
 "Tuner" refers to additional structures attached to a model to reduce the number of training parameters or improve training accuracy. Currently, SWIFT supports the following tuners:
@@ -111,7 +109,7 @@ from swift import Swift, LoRAConfig
 from swift.llm import get_template, TemplateType
 import torch
 
-# Load model
+# æèµ·æ¨¡å
 model = AutoModelForCausalLM.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16, device_map='auto', trust_remote_code=True)
 lora_config = LoRAConfig(
                 r=16,
@@ -152,7 +150,7 @@ train_args = Seq2SeqTrainingArguments(
     per_device_train_batch_size=1,
     gradient_accumulation_steps=16,
     logging_steps=10,
-) 
+)
 
 trainer = Seq2SeqTrainer(
     model=model,
@@ -181,14 +179,14 @@ model = Swift.from_pretrained(model, './output')
 
 ```python
 # A100 14G memory
-import torch 
+import torch
 from modelscope import AutoModelForCausalLM, GenerationConfig
 from modelscope import AutoTokenizer
 
 from swift import Swift
 from swift.llm import get_template, TemplateType, to_device
 
-# Load model
+# æèµ·æ¨¡å
 model = AutoModelForCausalLM.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16,
                                              device_map='auto', trust_remote_code=True)
 model = Swift.from_pretrained(model, 'output/checkpoint-xxx')
@@ -228,21 +226,21 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
 ## Swift Class Static Interfaces
 
 - `Swift.prepare_model(model, config, **kwargs)`
-  - Interface function: Load a tuner onto the model. If it is a subclass of PeftConfig, use the corresponding interface of the Peft library to load the tuner. When using SwiftConfig, this interface can accept a SwiftModel instance and be called repeatedly, which has the same effect as passing a dictionary to config.
+  - Explain: Load a tuner onto the model. If it is a subclass of PeftConfig, use the corresponding interface of the Peft library to load the tuner. When using SwiftConfig, this interface can accept a SwiftModel instance and be called repeatedly, which has the same effect as passing a dictionary to config.
     - This interface supports parallel loading of multiple tuners of different types for simultaneous use.
   - Parameters:
     - `model`: An instance of `torch.nn.Module` or `SwiftModel`, the model to be loaded
     - `config`: An instance of `SwiftConfig`, `PeftConfig`, or a dictionary of custom tuner names to configs
   - Return value: An instance of `SwiftModel` or `PeftModel`
 - `Swift.merge_and_unload(model)`
-  - Interface function: Merge the LoRA weights back into the original model and completely unload the LoRA part
+  - Explain: Merge the LoRA weights back into the original model and completely unload the LoRA part
   - Parameters: 
     - model: An instance of `SwiftModel` or `PeftModel`, the model instance with LoRA loaded
   - Return value: None
 
 - `Swift.merge(model)`
 
-  - Interface function: Merge the LoRA weights back into the original model without unloading the LoRA part
+  - Explain: Merge the LoRA weights back into the original model without unloading the LoRA part
 
   - Parameters:
     - model: An instance of `SwiftModel` or `PeftModel`, the model instance with LoRA loaded
@@ -251,7 +249,7 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
 
 - `Swift.unmerge(model)`
 
-  - Interface function: Split the LoRA weights from the original model weights back into the LoRA structure 
+  - Explain: Split the LoRA weights from the original model weights back into the LoRA structure 
 
   - Parameters:
     - model: An instance of `SwiftModel` or `PeftModel`, the model instance with LoRA loaded
@@ -260,7 +258,7 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
 
 - `Swift.save_to_peft_format(ckpt_dir, output_dir)`
   
-  - Interface function: Convert the stored LoRA checkpoint to a Peft compatible format. The main changes are:
+  - Explain: Convert the stored LoRA checkpoint to a Peft compatible format. The main changes are:
     
     - `default` will be split from the corresponding `default` folder into the output_dir root directory
     - The `{tuner_name}.` field in weights will be removed, for example `model.layer.0.self.in_proj.lora_A.default.weight` will become `model.layer.0.self.in_proj.lora_A.weight`  
@@ -276,7 +274,7 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
   - Return value: None
 
 - `Swift.from_pretrained(model, model_id, adapter_name, revision, **kwargs)`
-  - Interface function: Load tuners from the stored weights directory onto the model. If adapter_name is not passed, all tuners under the model_id directory will be loaded. Same as `prepare_model`, this interface can be called repeatedly.
+  - Explain: Load tuners from the stored weights directory onto the model. If adapter_name is not passed, all tuners under the model_id directory will be loaded. Same as `prepare_model`, this interface can be called repeatedly.
   - Parameters:
     - model: An instance of `torch.nn.Module` or `SwiftModel`, the model to be loaded
     - model_id: `str` type, the tuner checkpoint to be loaded, can be a ModelScope hub id or a local directory produced by training  
@@ -288,38 +286,38 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
 The following lists the interfaces that users may call. Other internal interfaces or interfaces not recommended for use can be viewed through the `make docs` command to generate the API Doc documentation.
 
 - `SwiftModel.create_optimizer_param_groups(self, **defaults)`
-  - Interface function: Create parameter groups based on the loaded tuners, currently only effective for the `LoRA+` algorithm  
+  - Explain: Create parameter groups based on the loaded tuners, currently only effective for the `LoRA+` algorithm  
   - Parameters:
     - defaults: Default parameters for `optimizer_groups`, such as `lr` and `weight_decay`
   - Return value: 
     - The created `optimizer_groups`
 
 - `SwiftModel.add_weighted_adapter(self, ...)` 
-  - Interface function: Merge existing LoRA tuners into one
+  - Explain: Merge existing LoRA tuners into one
   - Parameters:
     - This interface is a transparent pass-through of PeftModel.add_weighted_adapter, parameters can refer to: [add_weighted_adapter documentation](https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraModel.add_weighted_adapter)
 
 - `SwiftModel.save_pretrained(self, save_directory, safe_serialization, adapter_name)`  
-  - Interface function: Store tuner weights
+  - Explain: Store tuner weights
   - Parameters:
     - save_directory: Storage directory
     - safe_serialization: Whether to use safe_tensors, default is False 
     - adapter_name: The adapter tuner to store, if not passed, all tuners will be stored by default
 - `SwiftModel.set_active_adapters(self, adapter_names, offload=None)`
-  - Interface function: Set the currently active adapters, adapters not in the list will be deactivated
+  - Explain: Set the currently active adapters, adapters not in the list will be deactivated
     - In `inference`, the environment variable `USE_UNIQUE_THREAD=0/1` is supported, default value is `1`. If `0`, set_active_adapters only takes effect for the current thread. In this case, the tuners activated by this thread are used by default, and tuners in different threads do not interfere with each other.
   - Parameters:
     - adapter_names: Activated tuners
     - offload: How to handle deactivated adapters, default is `None` which means leave them in GPU memory. Both `cpu` and `meta` are supported, indicating offloading to cpu and meta devices to reduce GPU memory consumption. When `USE_UNIQUE_THREAD=0`, do not pass a value to offload to avoid affecting other threads.
   - Return value: None
 - `SwiftModel.activate_adapter(self, adapter_name)`
-  - Interface function: Activate a tuner
+  - Explain: Activate a tuner
     - In `inference`, the environment variable `USE_UNIQUE_THREAD=0/1` is supported, default value is `1`. If `0`, activate_adapter only takes effect for the current thread. In this case, the tuners activated by this thread are used by default, and tuners in different threads do not interfere with each other.
   - Parameters: 
     - adapter_name: The name of the tuner to activate
   - Return value: None
 - `SwiftModel.deactivate_adapter(self, adapter_name, offload)`
-  - Interface function: Deactivate a tuner
+  - Explain: Deactivate a tuner
     - When the environment variable `USE_UNIQUE_THREAD=0`, do not call this interface
   - Parameters:
     - adapter_name: The name of the tuner to deactivate
@@ -328,7 +326,7 @@ The following lists the interfaces that users may call. Other internal interface
 
 - `SwiftModel.get_trainable_parameters(self)`
 
-  - Interface function: Return training parameter information
+  - Explain: Return training parameter information
 
   - Parameters: None
 

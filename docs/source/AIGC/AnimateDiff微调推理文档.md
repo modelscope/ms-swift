@@ -22,13 +22,13 @@ Prompt:masterpiece, bestquality, highlydetailed, ultradetailed, girl, walking, o
 
 
 
-![image.png](../resources/1.gif)
+![image.png](../../resources/1.gif)
 
 ```text
 Prompt: masterpiece, bestquality, highlydetailed, ultradetailed, beautiful house, mountain, snow top
 ```
 
-![image.png](../resources/2.gif)
+![image.png](../../resources/2.gif)
 
 2.5M子数据集训练的生成效果仍存在效果不稳定的情况，开发者使用10M数据集效果会更稳定。
 

@@ -25,7 +25,7 @@ pip install -e .[all]
 
 ## Notebook Environment
 
-The vast majority of models supported by Swift for training can be used on `A10` GPUs. Users can use the free GPU resources officially provided by ModelScope:
+Most of the models supported by Swift for training can be used on `A10` GPUs. Users can use the free GPU resources officially provided by ModelScope:
 
 1. Go to the official [ModelScope](https://www.modelscope.cn) website and log in
 2. Click on `My Notebook` on the left and start a free GPU instance

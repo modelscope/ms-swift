@@ -170,7 +170,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 ```
 效果如下:
 
-![效果](../resources/app.png)
+![效果](../../resources/app.png)
 
 
 ### 自我认知微调
@@ -252,7 +252,7 @@ swift sft \
 swift web-ui
 ```
 
-![web-ui](../resources/web-ui.png)
+![web-ui](../../resources/web-ui.png)
 
 ### 微调后推理
 随后我们验证模型微调后的效果.
@@ -302,7 +302,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 ```
 效果如下:
 
-![效果](../resources/app2.png)
+![效果](../../resources/app2.png)
 
 ### 量化
 接下来, 我们介绍如何对微调后的模型进行**awq-int4量化**. 整个量化过程大概需要**20分钟**.
