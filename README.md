@@ -376,16 +376,24 @@ swift deploy --model_type qwen1half-7b-chat --infer_backend vllm --max_model_len
 
 ### Supported Hardware
 
-| Hardware Environment       | Notes                                    |
-|----------------------------|------------------------------------------ |
-| CPU                        |                                          |
-| RTX 20/30/40 series, etc.  | After 30 series, BF16 and FlashAttn can be used |
-| Computing cards A10/A100, etc. | Support BF16 and FlashAttn            |
-| Huawei Ascend NPU          |                                          |
+| Hardware Environment           | Notes                                           |
+|--------------------------------|-------------------------------------------------|
+| CPU                            |                                                 |
+| RTX 20/30/40 series, etc.      | After 30 series, BF16 and FlashAttn can be used |
+| Computing cards T4/V100, etc.  | BF16 and FlashAttn not supported                |
+| Computing cards A10/A100, etc. | Support BF16 and FlashAttn                      |
+| Huawei Ascend NPU              |                                                 |
 
 ### Benchmark
 
 ## 📃 Documentation
+
+### Documentation Compiling
+
+```shell
+make docs
+# Check docs/build/html/index.html in web-browser
+```
 
 ### Usage Documentation
 
