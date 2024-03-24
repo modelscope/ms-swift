@@ -365,12 +365,12 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 模型类型                                            | 模型介绍                                                     | 语言      | 模型大小                  | 模型类型                                |
 | --------------------------------------------------- | ------------------------------------------------------------ | --------- | ------------------------- | --------------------------------------- |
-| Qwen<br>Qwen1.5                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-72B,包含量化版本     | base模型<br>chat模型                       |
+| Qwen<br>Qwen1.5                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-72B<br>包含量化版本     | base模型<br>chat模型                       |
 | ChatGLM2<br>ChatGLM3<br>Codegeex2                         | [智谱ChatGLM系列模型](https://github.com/THUDM/)             | 中文<br>英文 | 6B                        | base模型<br>chat模型<br>代码模型       |
-| Baichuan<br>Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文<br>英文 | 7B-13B,包含量化版本         | base模型<br>chat模型           |
+| Baichuan<br>Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文<br>英文 | 7B-13B<br>包含量化版本         | base模型<br>chat模型           |
 | Yuan2                                               | [浪潮源系列模型](https://github.com/IEIT-Yuan)               | 中文<br>英文 | 2B-102B                   | instruct模型             |
 | XVerse                                              | [元象系列模型](https://github.com/xverse-ai)                 | 中文<br>英文 | 7B-65B                    | base模型<br>chat模型<br>长文本模型         |
-| LLaMA2                                              | [LLaMA2系列模型](https://github.com/facebookresearch/llama)  | 英文      | 7B-70B,包含量化版本      | base模型<br>chat模型                       |
+| LLaMA2                                              | [LLaMA2系列模型](https://github.com/facebookresearch/llama)  | 英文      | 7B-70B<br>包含量化版本      | base模型<br>chat模型                       |
 | Mistral<br>Mixtral                                 | [Mistral系列模型](https://github.com/mistralai/mistral-src)  | 英文      | 7B | base模型<br>instruct模型<br>MoE模型                   |
 | YI                                                  | [01AI的YI系列模型](https://github.com/01-ai)                 | 中文<br>英文 | 6B-34B                    | base模型<br>chat模型<br>长文本模型               |
 | InternLM<br>InternLM2<br>InternLM2-Math                   | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 1.8B-20B                  | base模型<br>chat模型<br>数学模型              |
@@ -388,20 +388,20 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | SeqGPT                                              | [通义实验室自研的文本理解模型，用于信息抽取和文本分类](https://github.com/Alibaba-NLP/SeqGPT) | 中文      | 560M                      | 语义理解模型                            |
 | SUS                                                 | [南方科技大学基于YI Fine-Tune的模型](https://github.com/SUSTech-IDEA/SUS-Chat) | 中文<br>英文 | 34B                       | chat模型                                |
 | Tongyi-Finance                                      | [通义金融系列模型](https://github.com/QwenLM/Qwen)           | 中文<br>英文 | 14B                       | base模型<br>chat模型<br>金融模型               |
-| CodeFuse-CodeLLaMA/CodeFuse-Codegeex2/CodeFuse-Qwen | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)       | 中文<br>英文 | 6B-34B                    | chat模型<br>代码模型                            |
+| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)       | 中文<br>英文 | 6B-34B                    | chat模型<br>代码模型                            |
 | phi2                           | 微软PHI2模型                                                 | 英文      | 3B                        | base模型<br>代码模型                               |
 
 #### 多模态大模型
 
 | 模型类型        | 模型介绍                                                     | 语言      | 模型大小         | 模型类型          |
 | --------------- | ------------------------------------------------------------ | --------- | ---------------- | ----------------- |
-| Qwen-VL         | [通义千问视觉模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B，包含量化版本 | base模型<br>chat模型 |
+| Qwen-VL         | [通义千问视觉模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B<br>包含量化版本 | base模型<br>chat模型 |
 | Qwen-Audio      | [通义千问语音模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B               | base模型<br>chat模型 |
 | YI-VL           | [01AI的YI系列视觉模型](https://github.com/01-ai)             | 中文<br>英文 | 6B-34B           | chat模型          |
 | XComposer2      | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 7B               | chat模型          |
 | DeepSeek-VL     | [幻方系列视觉模型](https://github.com/deepseek-ai)           | 中文<br>英文 | 1.3B-7B          | chat模型          |
 | MiniCPM-V      | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B               | chat模型          |
-| CogVLM/CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
+| CogVLM<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
 | Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B               | chat模型 |
 
 #### 扩散模型
