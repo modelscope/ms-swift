@@ -1,7 +1,7 @@
 # Experimental environment: 2 * A100
 # 2 * 60GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=1 \
 python llm_sft.py \
     --model_id_or_path AI-ModelScope/mistral-7B-v0.2 \
     --model_revision master \

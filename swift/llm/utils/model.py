@@ -1185,7 +1185,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True)
 @register_model(
     ModelType.mistral_7b_v2,
-    'AI-ModelScope/mistral-7B-v0.2',
+    'AI-ModelScope/Mistral-7B-v0.2-hf',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     requires=['transformers>=4.34'],
