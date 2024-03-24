@@ -28,7 +28,7 @@
 - `--dataset`: Datasets to use for training, default is `[]`. Available datasets can be found in [Supported Datasets](Supported-models-datasets.md#Datasets). To use multiple datasets for training, separate them with ',' or ' ', e.g. `--dataset alpaca-en,alpaca-zh` or `--dataset alpaca-en alpaca-zh`.
 - `--dataset_seed`: Seed for dataset processing, default is `42`. Exists as random_state, does not affect global seed.
 - `--dataset_test_ratio`: Ratio for splitting subdataset into train and validation sets, default is `0.01`. If the subdataset is already split into train and validation, this parameter has no effect.
-- `--train_dataset_sample`: Sampling of training set, default is `20000`, to speed up training. This avoids long epoch times when dataset is too large. If set to `-1`, use the full training set.
+- `--train_dataset_sample`: The number of samples for training set, default is `-1`, which means using the entire training set for training.
 - `--val_dataset_sample`: Sampling of validation set, default is `None`, automatically selects appropriate dataset size for validation. If set to `-1`, use the full validation set.
 - `--system`: System used in dialogue template, default is `None`, i.e. use the model's default system. If set to '', no system is used.
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
