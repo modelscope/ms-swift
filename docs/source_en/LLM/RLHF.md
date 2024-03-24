@@ -1,4 +1,4 @@
-```markdown
+
 # LLM Human Alignment Training Documentation
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -7,8 +7,6 @@
 ## Environment Preparation
 GPU devices: A10, 3090, V100, A100 are all acceptable. For GPUs with memory <=24G, at least a dual-card environment is required. Since human alignment training loads two models on one card, it occupies more memory than fine-tuning due to an additional inference model's memory consumption.
 ```bash
-# Set global pip mirror (to speed up downloads)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
@@ -71,7 +69,7 @@ torchrun \
     --logging_steps  10 \
 ```
 
-### sh Script
+### Shell Script
 
 The sh script can be viewed [here](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/dpo).
 
@@ -95,4 +93,4 @@ bash scripts/dpo/lora_ddp_mp/dpo.sh
 bash scripts/dpo/lora_ddp_mp/infer.sh
 ```
 
-Since DPO training will result in a complete model or adapter weights, the steps for LoRA merging and inference are the same as for fine-tuning, so please refer to the corresponding steps in the [Fine-tuning Documentation](LLM-fine-tuning-documentation.md#merge-lora).
+Since DPO training will result in a complete model or adapter weights, the steps for LoRA merging and inference are the same as for fine-tuning, so please refer to the corresponding steps in the [Fine-tuning Documentation](LLM-fine-tuning.md#merge-lora).

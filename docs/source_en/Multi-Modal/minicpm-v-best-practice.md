@@ -1,5 +1,3 @@
-Here is the English translation of the Chinese text:
-
 # MiniCPM-V Best Practices
 
 ## Table of Contents
@@ -132,7 +130,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-mini-en-2 \
 ```
 
-[Custom datasets](../LLM/customization-and-extensions.md#-recommend-command-line-parameters) support json and jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json and jsonl formats. Here is an example of a custom dataset:
 
 (Supports multi-turn conversations, but the total round of conversations can only contain one image. Supports local path or URL input.)
 

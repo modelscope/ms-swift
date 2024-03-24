@@ -1,5 +1,3 @@
-Here is the translation of the provided text, without any summary:
-
 # Agent Fine-tuning Best Practices
 
 Train your own Agent with consumer-grade GPUs!
@@ -17,8 +15,6 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 ## Environment Setup
 
 ```bash
-# Set pip global mirror (speed up download)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift 
 git clone https://github.com/modelscope/swift.git
 cd swift
@@ -213,11 +209,11 @@ We evaluate general knowledge and Agent. A simple evaluation result is listed be
 
 > How to make West Lake vinegar fish  
 
-![image-20240201122323540](resources/image-20240201122323540.png)
+![image-20240201122323540](../../resources/image-20240201122323540.png)
 
 > What is the difference between COVID-19 and the common cold
 
-![image-20240201122441874](resources/image-20240201122441874.png)
+![image-20240201122441874](../../resources/image-20240201122441874.png)
 
 #### Agent Capability
 
@@ -245,11 +241,11 @@ Final Answer: the final answer to the original input question
 Begin!
 ```
 
-![image-20240201122625473](resources/image-20240201122625473.png)
+![image-20240201122625473](../../resources/image-20240201122625473.png)
 
-![image-20240201122725477](resources/image-20240201122725477.png)
+![image-20240201122725477](../../resources/image-20240201122725477.png)
 
-![image-20240201131811038](resources/image-20240201131811038.png)
+![image-20240201131811038](../../resources/image-20240201131811038.png)
 
 It can be seen that after manually inputting the Observation, the model's answer is not correct.
 
@@ -259,25 +255,25 @@ It can be seen that after manually inputting the Observation, the model's answer
 
 > How to make West Lake vinegar fish
 
-![image-20240201132124061](resources/image-20240201132124061.png)
+![image-20240201132124061](../../resources/image-20240201132124061.png)
 
-![image-20240201132139698](resources/image-20240201132139698.png)
+![image-20240201132139698](../../resources/image-20240201132139698.png)
 
 > What is the difference between COVID-19 and the common cold
 > 
-![image-20240201132308260](resources/image-20240201132308260.png)
+![image-20240201132308260](../../resources/image-20240201132308260.png)
 
 #### Agent Capability  
 
-![image-20240201132421298](resources/image-20240201132421298.png)
+![image-20240201132421298](../../resources/image-20240201132421298.png)
 
-![image-20240201132454465](resources/image-20240201132454465.png)
+![image-20240201132454465](../../resources/image-20240201132454465.png)
 
 It can be seen that after training, the model can correctly call the API and give the final answer.
 
 #### Self-recognition
 
-![image-20240201133359457](resources/image-20240201133359457.png)
+![image-20240201133359457](../../resources/image-20240201133359457.png)
 
 ### Using Agent in the Command Line
 
@@ -295,9 +291,12 @@ After running the command, change the system field:
 ```shell
 # Single line system
 <<< reset-system
-<<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!```
+<<< Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!
+```
 
-If you need to input in multiple lines, you can use the following command (multi-line information ends with #):```shell  
+If you need to input in multiple lines, you can use the following command (multi-line information ends with #):
+
+```shell  
 # Multi-line system
 <<< multi-line  
 <<<[M] reset-system#
@@ -322,7 +321,8 @@ Final Answer: the final answer to the original input question
 Begin!#
 ```
 
-Next, you can perform Agent question-answering (note that when using multi-line mode input, add an extra # at the end of the line):
+Next, you can perform Agent question-answering (note that when using multi-line mode input, add an extra **#** at the end of the line):
+
 ```shell
 <<< The input image is /tmp/1.jpg, please help determine if there are any fire points in the image
 Thought: I need to use the fire\_recognition API to analyze the input image and determine if there are any signs of fire.

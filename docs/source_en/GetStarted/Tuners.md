@@ -109,7 +109,7 @@ from swift import Swift, LoRAConfig
 from swift.llm import get_template, TemplateType
 import torch
 
-# æèµ·æ¨¡å
+# load model
 model = AutoModelForCausalLM.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16, device_map='auto', trust_remote_code=True)
 lora_config = LoRAConfig(
                 r=16,
@@ -186,7 +186,7 @@ from modelscope import AutoTokenizer
 from swift import Swift
 from swift.llm import get_template, TemplateType, to_device
 
-# æèµ·æ¨¡å
+# load model
 model = AutoModelForCausalLM.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16,
                                              device_map='auto', trust_remote_code=True)
 model = Swift.from_pretrained(model, 'output/checkpoint-xxx')

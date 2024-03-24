@@ -1,5 +1,3 @@
-Translation:
-
 # LLM Quantization Documentation
 Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration.
 
@@ -12,8 +10,6 @@ Swift supports using AWQ and GPTQ techniques to quantize models. These two quant
 ## Environment Preparation 
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
-# Set pip global mirror (speeds up downloads)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift 
 pip install ms-swift[llm] -U
 

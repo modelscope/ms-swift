@@ -1,5 +1,3 @@
-Here's the English translation of the text:
-
 # Interface Training and Inference
 
 Currently, SWIFT supports interface-based training and inference, with parameters consistent with script-based training. After installing SWIFT, use the following command:

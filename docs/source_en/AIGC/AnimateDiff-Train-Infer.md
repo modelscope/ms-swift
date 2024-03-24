@@ -20,13 +20,13 @@ Full parameter fine-tuning can reproduce the effect of the [officially provided 
 Prompt:masterpiece, bestquality, highlydetailed, ultradetailed, girl, walking, on the street, flowers
 ```
 
-![image.png](resources/1.gif)
+![image.png](../../resources/1.gif)
 
 ```text
 Prompt: masterpiece, bestquality, highlydetailed, ultradetailed, beautiful house, mountain, snow top```
 ```
 
-![image.png](resources/2.gif)
+![image.png](../../resources/2.gif)
 
 The generation effect of training with the 2.5M subset still has unstable results. Developers using the 10M dataset will have more stable effects.
 

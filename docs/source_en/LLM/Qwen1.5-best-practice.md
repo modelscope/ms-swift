@@ -1,5 +1,3 @@
-Here is the translation:
-
 # Qwen1.5 Full Process Best Practices
 
 This introduces how to perform inference, self-cognition fine-tuning, quantization, and deployment on **Qwen1.5-7B-Chat** and **Qwen1.5-72B-Chat**, corresponding to **low-resource and high-resource** environments respectively.
@@ -170,7 +168,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 ```
 The effect is as follows:
 
-![Effect][]
+![Effect](../../resources/app.png)
 
 ### Self-Cognition Fine-tuning
 Next, we perform self-cognition fine-tuning on the model to train your own large model in **ten minutes**. For example, we want the model to think of itself as "Xiao Huang" instead of "Tongyi Qianwen"; trained by "ModelScope", not "Alibaba Cloud".
@@ -251,7 +249,7 @@ If you want to use **the interface to train**, you can enter the following comma
 swift web-ui
 ```
 
-![web-ui][]
+![web-ui](../../resources/web-ui.png)
 
 ### Post-Tuning Inference
 Then we verify the effect after model fine-tuning.
@@ -304,7 +302,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 
 The effect is as follows:
 
-![Effect][]
+![Effect](../../resources/app2.png)
 
 ### Quantization
 Next, we introduce how to perform **awq-int4 quantization** on the fine-tuned model. The entire quantization process takes about **20 minutes**.

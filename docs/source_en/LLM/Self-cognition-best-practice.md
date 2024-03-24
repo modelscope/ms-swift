@@ -62,7 +62,7 @@ If you can't sleep at night, you can try the following methods:
 5. Drink milk before bed: Milk contains tryptophan, which can help the body produce melatonin and aid sleep.
 """
 ```
-If you want to perform single-sample inference, you can refer to [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md#qwen-7b-chat)
+If you want to perform single-sample inference, you can refer to [LLM Inference Documentation](LLM-inference.md#qwen-7b-chat)
 
 Using CLI:
 ```bash
@@ -170,7 +170,7 @@ If you can't sleep at night, try the following methods:
 5. Drink milk before bed: Milk contains tryptophan which helps produce melatonin and can aid in sleep.
 """
 ```
-If you want to perform single-sample inference, you can refer to [LLM Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md#qwen-7b-chat)
+If you want to perform single-sample inference, you can refer to [LLM Inference Documentation](LLM-inference#qwen-7b-chat)
 
 Using CLI:
 ```bash

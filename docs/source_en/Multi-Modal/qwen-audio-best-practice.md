@@ -1,5 +1,3 @@
-Here is the English translation of the content from the URL 魔搭社区 (https://modelscope.cn/models/qwen/Qwen-Audio-Chat/summary):
-
 # Qwen-Audio Best Practices 
 
 ## Table of Contents
@@ -132,7 +130,7 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --deepspeed default-zero2
 ```
 
-[Custom datasets](../LLM/Customization_and_Extension.md#-Recommended-command-line-parameter-form) supports json, jsonl styles, the following is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  supports json, jsonl styles, the following is an example of a custom dataset:
 
 (Supports multi-turn conversations, supports each turn of conversation containing multiple or no audio segments, supports passing local paths or URLs)
 

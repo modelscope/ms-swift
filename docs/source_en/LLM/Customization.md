@@ -1,5 +1,3 @@
-Here is the translation of the content into English:
-
 # Customization and Extension
 ## Table of Contents
 - [Custom Datasets](#custom-datasets) 
@@ -9,10 +7,10 @@ Here is the translation of the content into English:
 ## Custom Datasets
 We support two methods for **custom datasets**:
 
-1. [Recommended] In the form of **command line arguments**: More convenient to support local custom datasets.
+1. [Recommended]  **Command line arguments**: More convenient to support local custom datasets.
 2. By **registering datasets**: More flexible, can further extend and develop swift, but requires some programming skills. Method 1 internally leverages method 2.
 
-### 📌 [Recommended] In the form of command line arguments 
+### 📌 [Recommended] Command line arguments 
 You need to additionally specify in the sft.sh script:
 
 ```bash

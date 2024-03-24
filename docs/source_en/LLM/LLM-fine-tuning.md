@@ -11,133 +11,6 @@
 ## Environment Preparation
 GPU devices: A10, 3090, V100, A100 are all suitable.
 ```bash
-# Set global pip mirror (for faster download)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-# Install ms-swift
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .[llm]
-
-# If you want to use deepspeed.
-pip install deepspeed -U
-
-# If you want to use qlora training based on auto_gptq. (Recommended, better than bnb)
-# Models supporting auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/supported-models-and-datasets.md#models`
-# auto_gptq and cuda version are correlated, please choose the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`
-pip install auto_gptq -U
-
-# If you want to use bnb-based qlora training.
-pip install bitsandbytes -U
-
-# Environment alignment (usually not necessary to run. If you encounter errors, you can run the following code, the repository is tested with the latest environment)
-pip install -r requirements/framework.txt  -U
-pip install -r requirements/llm.txt  -U
-```
-
-## Fine-tuning
-If you want to fine-tune and infer using the interface, you can check [Interface Training and Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/interface-training-and-inference.md).
-
-### Using Python
-```python
-# Experimental environment: A10, 3090, V100, ...
-# 20GB GPU memory
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-import torch
-
-from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora
-)
-
-model_type = ModelType.qwen_7b_chat
-sft_args = SftArguments(
-    model_type=model_type,
-    train_dataset_sample=2000,
-    dataset=[DatasetName.blossom_math_zh],
-    output_dir='output')
-result = sft_main(sft_args)
-best_model_checkpoint = result['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
-torch.cuda.empty_cache()
-
-infer_args = InferArguments(
-    ckpt_dir=best_model_checkpoint,
-    load_dataset_config=True,
-    val_dataset_sample=10)
-# merge_lora(infer_args, device_map='cpu')
-result = infer_main(infer_args)
-torch.cuda.empty_cache()
-
-app_ui_main(infer_args)
-```
-
-### Using CLI
-```bash
-# Experimental environment: A10, 3090, V100, ...
-# 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-
-# Using your own dataset
-CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --custom_train_dataset_path chatml.jsonl \
-    --output_dir output \
-
-# Using DDP
-# Experimental environment: 2 * 3090
-# 2 * 23GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=2 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-
-# Multi-node multi-card
-# node0
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NNODES=2 \
-NODE_RANK=0 \
-MASTER_ADDR=127.0.0.1 \
-NPROC_PER_NODE=4 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-# node1
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NNODES=2 \
-NODE_RANK=1 \
-MASTER_ADDR=xxx.xxx.xxx.xxx \
-NPROC_PER_NODE=4 \
-swift sft \
-    --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
-    --output_dir output \
-```
-
-### More sh scripts
-
-More sh scripts can be found [here](https://github.com# LLM Fine-Tuning Documentation
-## Contents
-- [Environment Preparation](#environment-preparation)
-- [Fine-Tuning](#fine-tuning)
-- [DPO](#dpo)
-- [Merge LoRA](#merge-lora)
-- [Quantization](#quantization)
-- [Inference](#inference)
-- [Web-UI](#web-ui)
-
-## Environment Preparation
-GPU devices: A10, 3090, V100, A100 are all suitable.
-```bash
-# Set pip global mirror (for faster downloads)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
@@ -160,7 +33,7 @@ pip install -r requirements/llm.txt -U
 ```
 
 ## Fine-Tuning
-If you want to fine-tune and infer using the interface, you can check [Interface Training and Inference Documentation](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/interface-training-and-inference.md).
+If you want to fine-tune and infer using the interface, you can check [Web-ui Documentation](../GetStarted/Web-ui.md).
 
 ### Using Python
 ```python
@@ -290,7 +163,7 @@ If you want to **customize scripts**, you can refer to the following scripts for
 - qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
 
 ## DPO
-If you want to use DPO for human-aligned fine-tuning, you can check the [Human-Aligned Fine-Tuning Documentation](LLM-human-aligned-training-documentation.md).
+If you want to use DPO for human-aligned fine-tuning, you can check the [Human-Aligned Fine-Tuning Documentation](RLHF.md).
 
 ## Merge LoRA
 Tip: **Currently**, merging LoRA is not supported for bnb and auto_gptq quantized models, as this would result in significant accuracy loss.
@@ -302,19 +175,19 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 ## Quantization
 
-For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization-documentation.md#post-fine-tuning-model)
+For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization.md#post-fine-tuning-model)
 
 ## Inference
 If you want to use VLLM for accelerated inference, you can check [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md)
 
 ### Original Model
-**Single sample inference** can be checked in [LLM Inference Documentation](LLM-inference-documentation.md)
+**Single sample inference** can be checked in [LLM Inference Documentation](LLM-inference.md)
 
 Using **Dataset** for evaluation:
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
 ```
-### Post Fine-tuned Model
+### Fine-tuned Model
 **Single sample inference**:
 
 Inference using LoRA **incremental** weights:
@@ -397,9 +270,9 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 If you want to deploy VLLM and provide **API** interface, you can check [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md)
 
 ### Original Model
-Using the original model's web-ui can be viewed in [LLM Inference Documentation](LLM-inference-documentation.mdWeb-UI)
+Using the original model's web-ui can be viewed in [LLM Inference Documentation](LLM-inference.md#Web-UI)
 
-### Post Fine-tuned Model
+### Fine-tuned Model
 ```bash
 # Directly use app-ui
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx'

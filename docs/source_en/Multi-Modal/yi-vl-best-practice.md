@@ -150,7 +150,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-mini-en-2 \
 ```
 
-[Custom datasets](../LLM/Customization_and_Extension.md#-recommended-command-line-parameter-form) support json, jsonl format, here is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl format, here is an example of a custom dataset:
 
 (Multi-turn dialogue is supported, each turn must include an image, which can be passed as a local path or URL)
 

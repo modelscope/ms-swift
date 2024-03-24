@@ -24,7 +24,7 @@ pip install -r requirements/llm.txt -U
 ```
 
 ## Inference Acceleration
-vllm does not support bnb quantized models. The models supported by vllm can be found in [Supported Models](支持的模型和数据集.md#模型).
+vllm does not support bnb quantized models. The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
 
 ### qwen-7b-chat
 ```python
@@ -172,7 +172,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat-int4 --infer_b
 
 **Single sample inference**:
 
-For models fine-tuned using LoRA, you need to first [merge-lora](LLM微调文档.md#merge-lora) to generate a complete checkpoint directory.
+For models fine-tuned using LoRA, you need to first [merge-lora](LLM-fine-tuning.md#merge-lora) to generate a complete checkpoint directory.
 
 Models fine-tuned with full parameters can seamlessly use VLLM for inference acceleration.  
 ```python
@@ -237,7 +237,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 ## Deployment
 Swift uses VLLM as the inference backend and is compatible with the OpenAI API style.
 
-For server deployment command line arguments, refer to: [deploy command line arguments](命令行参数.md#deploy-命令行参数).
+For server deployment command line arguments, refer to: [deploy command line arguments](command-line-parameters.md#deploy-Parameters).
 
 For OpenAI API arguments on the client side, refer to: https://platform.openai.com/docs/api-reference/introduction.
 

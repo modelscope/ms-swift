@@ -1,5 +1,3 @@
-Here is the translation of the provided text into English:
-
 # Benchmark 
 ## Table of Contents
 - [Parameter Settings](#parameter-settings)
@@ -417,7 +415,7 @@ swift sft \
     --max_length {MAX_LENGTH} \
     --sft_type full \
     ...
-``` 
+```
 
 <table>
     <tr>

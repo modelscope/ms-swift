@@ -1,5 +1,3 @@
-Here is the English translation of the Chinese content:
-
 # Internlm-Xcomposer2 Best Practices
 
 ## Table of Contents
@@ -135,7 +133,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-mini-en \
 ```
 
-[Custom datasets](../LLM/Customization_and_Extension.md#-Recommended-Command-Line-Parameters) support json and jsonl formats. Here's an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json and jsonl formats. Here's an example of a custom dataset:
 
 (Supports multi-turn conversations, each turn can contain multiple images or no images, supports passing local paths or URLs. This model does not support merge-lora)
 

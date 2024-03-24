@@ -150,7 +150,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --sft_type full \
 ```
 
-[Custom datasets](../LLM/customization-and-extension.md#recommended-command-line-parameter-form) support json and jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json and jsonl formats. Here is an example of a custom dataset:
 
 (Supports multi-turn dialogues, where each turn can contain multiple images or no images, and supports passing in local paths or URLs)
 

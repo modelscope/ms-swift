@@ -1,5 +1,3 @@
-Here is the English translation of the text:
-
 # Deepseek-VL Best Practices
 
 ## Table of Contents
@@ -164,7 +162,7 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --deepspeed default-zero2
 ```
 
-[Custom dataset](../LLM/Customization and Extension.md#-Recommended form of command line parameters) supports json, jsonl styles. The following is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles. The following is an example of a custom dataset:
 
 (Supports multi-turn conversations, each turn must include an image, and supports passing local paths or URLs)
 

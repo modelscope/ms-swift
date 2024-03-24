@@ -1,5 +1,5 @@
 # LLM Inference Documentation
-If you want to use vllm for inference acceleration, you can check out [VLLM Inference Acceleration and Deployment](VLLM Inference Acceleration and Deployment.md#Inference Acceleration)
+If you want to use vllm for inference acceleration, you can check out [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md#Inference Acceleration)
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)
@@ -9,8 +9,6 @@ If you want to use vllm for inference acceleration, you can check out [VLLM Infe
 ## Environment Preparation
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
-# Set global pip mirror (for faster downloads)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift 
 pip install ms-swift[llm] -U
 
@@ -396,7 +394,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat
 ```
 
 ### Fine-tuned Models
-If you want to perform inference using fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM Fine-tuning Documentation.md#Fine-tuned Models)
+If you want to perform inference using fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM-fine-tuning.md#Fine-tuned Model)
 
 
 ## Web-UI
@@ -446,4 +444,4 @@ app_ui_main(app_ui_args)
 ```
 
 ### Fine-tuned Models
-To use the web-ui with fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM Fine-tuning Documentation.md#Fine-tuned Models-1)
+To use the web-ui with fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM-fine-tuning#Fine-tuned Model)
