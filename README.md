@@ -152,7 +152,7 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 
 This section introduces basic usage, see the [Documentation](#-documentation) section for more ways to use.
 
-### web-ui
+### Web-UI
 
 ```shell
 swift web-ui
@@ -366,12 +366,12 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | Model Type                                     | Model Introduction                                                     | Language           | Model Size                             | Model Type                                 |
 |------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
-| Qwen<br>Qwen1.5                                   | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-72B, including quantized versions | base model<br>chat model                      |
+| Qwen<br>Qwen1.5                                   | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-72B<br>quantized versions | base model<br>chat model                      |
 | ChatGLM2<br>ChatGLM3<br>Codegeex2                    | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B                                     | base model<br>chat model<br>code model  |
-| Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B, including quantized versions             | base model<br>chat model                       |
+| Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>quantized versions             | base model<br>chat model                       |
 | Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
 | XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model               |
-| LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B, including quantized versions   | base model<br>chat model                       |
+| LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B<br>quantized versions   | base model<br>chat model                       |
 | Mistral<br>Mixtral                            | [Mistral series models](https://github.com/mistralai/mistral-src)       | English            | 7B     | base model<br>instruct model<br>MoE model                     |
 | YI                                             | [01AI's YI series models](https://github.com/01-ai)                     | Chinese<br>English    | 6B-34B                                 | base model<br>chat model<br>long text model            |
 | InternLM<br>InternLM2<br>InternLM2-Math              | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM) | Chinese<br>English | 1.8B-20B                            | base model<br>chat model<br>math model            |
@@ -396,7 +396,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | Model Type       | Model Introduction                                                     | Language           | Model Size        | Model Type         |
 |------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese<br>English    | 7B, including quantized versions | base model<br>chat model |
+| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese<br>English    | 7B<br>quantized versions | base model<br>chat model |
 | Qwen-Audio       | [Tongyi Qwen speech model](https://github.com/QwenLM)               | Chinese<br>English    | 7B                | base model<br>chat model |
 | YI-VL            | [01AI's YI series vision models](https://github.com/01-ai)             | Chinese<br>English    | 6B-34B            | chat model         |
 | XComposer2       | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B              | chat model         |
@@ -472,12 +472,12 @@ make docs
 
 | Document Name                                                |
 | ------------------------------------------------------------ |
-| [Using web-ui](docs/source_en/GetStarted/Web-ui.md)          |
-| [Using tuners](docs/source_en/GetStarted/Tuners.md)          |
+| [Using Web-UI](docs/source_en/GetStarted/Web-ui.md)          |
+| [Using Tuners](docs/source_en/GetStarted/Tuners.md)          |
 | [LLM Fine-tuning](docs/source_en/LLM/LLM-fine-tuning.md)     |
 | [LLM Inference](docs/source_en/LLM/LLM-inference.md)         |
 | [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
-| [LLM Inference Acceleration and Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
+| [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
 | [DPO Human Alignment Training](docs/source_en/LLM/RLHF.md)   |
 | [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
 

@@ -154,7 +154,7 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 
 本章节介绍基本使用，更丰富的使用方式请查看[文档部分](#-文档)。
 
-### web-ui
+### Web-UI
 
 ```shell
 swift web-ui
@@ -472,12 +472,12 @@ make docs
 
 | 文档名称                                                     |
 | ------------------------------------------------------------ |
-| [使用web-ui](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md) |
-| [使用tuners](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E4%BD%BF%E7%94%A8tuners.md) |
+| [使用Web-UI](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md) |
+| [使用Tuners](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E4%BD%BF%E7%94%A8tuners.md) |
 | [LLM微调](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md) |
 | [LLM推理](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
 | [LLM量化](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md) |
-| [LLM推理加速和部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md) |
+| [LLM部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md) |
 | [DPO人类对齐训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) |
 | [AnimateDiff训练](https://github.com/modelscope/swift/blob/main/docs/source/AIGC/AnimateDiff%E5%BE%AE%E8%B0%83%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
 
