@@ -68,7 +68,7 @@ The name field represents the prompt of the short video, and contentUrl represen
 To perform inference using full parameters:
 ```shell
 # This file is in swift/examples/pytorch/animatediff/scripts/full
-# Experimental environment: A100 
+# Experimental environment: A100
 # 18GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
@@ -89,7 +89,7 @@ Full parameter training will train the entire Motion-Adapter structure from scra
 ```shell
 # This file is in swift/examples/pytorch/animatediff/scripts/lora
 # Experimental environment: A100
-# 20GB GPU memory  
+# 20GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python animatediff_sft.py \
@@ -169,7 +169,7 @@ save_steps: Optional[int] = None # save step interval.
 dataloader_num_workers: int = 1 # Number of dataloader workers.
 
 push_to_hub: bool = False # Whether to push to modelhub.
-# 'user_name/repo_name' or 'repo_name'  
+# 'user_name/repo_name' or 'repo_name'
 hub_model_id: Optional[str] = None # modelhub id.
 hub_private_repo: bool = False
 push_hub_strategy: str = field( # Push strategy, push the last one or push each one.
@@ -205,7 +205,7 @@ mixed_precision: bool = True # Mixed precision training.
 
 enable_xformers_memory_efficient_attention: bool = True # Use xformers.
 
-num_inference_steps: int = 25 #  
+num_inference_steps: int = 25 #
 guidance_scale: float = 8.
 sample_size: int = 256
 sample_stride: int = 4 # Maximum length of training videos in seconds.
@@ -256,7 +256,7 @@ output_path: str = './generated' # The output directory for gifs.
 enable_xformers_memory_efficient_attention: bool = True # Use xformers.
 
 num_inference_steps: int = 25 #
-guidance_scale: float = 8. 
+guidance_scale: float = 8.
 sample_size: int = 256
 sample_stride: int = 4 # Maximum length of training videos in seconds.
 sample_n_frames: int = 16 # Frames per second.
@@ -266,7 +266,7 @@ motion_max_seq_length: int = 32 # motion adapter parameter.
 num_train_timesteps: int = 1000 # Inference pipeline parameter.
 beta_start: int = 0.00085 # Inference pipeline parameter.
 beta_end: int = 0.012 # Inference pipeline parameter.
-beta_schedule: str = 'linear' # Inference pipeline parameter.  
+beta_schedule: str = 'linear' # Inference pipeline parameter.
 steps_offset: int = 1 # Inference pipeline parameter.
 clip_sample: bool = False # Inference pipeline parameter.
 ```

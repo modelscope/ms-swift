@@ -2,15 +2,15 @@
 Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration.
 
 ## Table of Contents
-- [Environment Preparation](#environment-preparation) 
+- [Environment Preparation](#environment-preparation)
 - [Original Model](#original-model)
 - [Fine-tuned Model](#fine-tuned-model)
 - [Pushing Models](#pushing-models)
 
-## Environment Preparation 
+## Environment Preparation
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
-# Install ms-swift 
+# Install ms-swift
 pip install ms-swift[llm] -U
 
 # Using AWQ quantization:
@@ -18,19 +18,19 @@ pip install ms-swift[llm] -U
 pip install autoawq -U
 
 # Using GPTQ quantization:
-# Auto_GPTQ and CUDA versions have a corresponding relationship, please select the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation` 
+# Auto_GPTQ and CUDA versions have a corresponding relationship, please select the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`
 pip install auto_gptq -U
 
 # Environment alignment (usually not needed. If you encounter errors, you can run the code below, the repository uses the latest environment for testing)
 pip install -r requirements/framework.txt -U
-pip install -r requirements/llm.txt -U  
+pip install -r requirements/llm.txt -U
 ```
 
 ## Original Model
 Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 ```bash
 # AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 12GB)
-# If OOM occurs during quantization, you can appropriately reduce `--quant_n_samples` (default 256) and `--quant_seqlen` (default 2048). 
+# If OOM occurs during quantization, you can appropriately reduce `--quant_n_samples` (default 256) and `--quant_seqlen` (default 2048).
 # GPTQ-INT4 quantization (takes about 15 minutes using A100, memory usage: 6GB)
 
 # AWQ: Use `ms-bench-mini` as the quantization dataset
@@ -38,7 +38,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method awq
 
-# GPTQ: Use `ms-bench-mini` as the quantization dataset 
+# GPTQ: Use `ms-bench-mini` as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method gptq
@@ -55,7 +55,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model_type qwen1half-7b-chat \
     --model_id_or_path qwen1half-7b-chat-awq-int4
-# GPTQ  
+# GPTQ
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model_type qwen1half-7b-chat \
     --model_id_or_path qwen1half-7b-chat-gptq-int4
@@ -82,7 +82,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --merge_lora true --quant_bits 4 \
     --dataset ms-bench-mini --quant_method awq
 
-# Use the dataset from fine-tuning as the quantization dataset  
+# Use the dataset from fine-tuning as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4 \
@@ -90,7 +90,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```
 
 **Inference using quantized model**
-```shell 
+```shell
 # AWQ/GPTQ quantized models support VLLM inference acceleration. They also support model deployment.
 CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
 ```
@@ -100,7 +100,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/c
 Server:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4' 
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
 ```
 
 Testing:
@@ -108,7 +108,7 @@ Testing:
 curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
-"model": "qwen1half-4b-chat",  
+"model": "qwen1half-4b-chat",
 "messages": [{"role": "user", "content": "How to fall asleep at night?"}],
 "max_tokens": 256,
 "temperature": 0

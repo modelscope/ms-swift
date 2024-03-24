@@ -15,7 +15,7 @@ Currently, Res-Tuning is provided as a pluggable tuner algorithm component in [S
 ### Supported Components
 
 - [x] Res-Adapter
-- [x] Res-Tuning-Bypass 
+- [x] Res-Tuning-Bypass
 - [ ] Res-Prefix
 - [ ] Res-Prompt
 
@@ -37,7 +37,7 @@ config = ResTuningConfig(
 )
 ```
 - dims: The dimensions of the hidden states.
-- root_modules: The root module to be replaced.  
+- root_modules: The root module to be replaced.
 - stem_modules: The stem modules to be replaced.
 - target_modules: The target module to be replaced.
 - tuner_cfg: The configuration of the tuning module.

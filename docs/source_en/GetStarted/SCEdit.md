@@ -17,6 +17,6 @@ To perform the training task using SCEdit and reproduce the above results:
 
 ```shell
 # First, follow the installation steps in the section below
-cd examples/pytorch/multi_modal/notebook  
+cd examples/pytorch/multi_modal/notebook
 python text_to_image_synthesis.py
 ```

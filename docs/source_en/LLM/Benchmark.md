@@ -1,19 +1,19 @@
-# Benchmark 
+# Benchmark
 ## Table of Contents
 - [Parameter Settings](#parameter-settings)
-- [Quantization](#quantization) 
+- [Quantization](#quantization)
 - [Model Type & Max Length](#model-type--max-length)
 - [Batch Size](#batch-size)
-- [Use Flash Attn & Gradient Checkpointing](#use-flash-attn--gradient-checkpointing) 
+- [Use Flash Attn & Gradient Checkpointing](#use-flash-attn--gradient-checkpointing)
 - [LoRA Rank & LoRA Target Modules](#lora-rank--lora-target-modules)
 - [Gradient Accumulation Steps](#gradient-accumulation-steps)
 
 ## Parameter Settings
 Experimental environment:
-- A100 
+- A100
 - CUDA 11.8
 - python 3.10
-- torch 2.1.1  
+- torch 2.1.1
 - flash_attn 2.3.4
 - xformers 0.0.23
 - auto_gptq 0.5.1
@@ -29,7 +29,7 @@ The following are the same command line settings for all experiments:
     --preprocess_num_proc 4 \
 ```
 
-If the following parameters are not specified, the following default values are used:  
+If the following parameters are not specified, the following default values are used:
 ```bash
     --max_length 2048 \
     --batch_size 1 \
@@ -49,7 +49,7 @@ The experimental script can be found in `scripts/benchmark/test_memory_time/`.
 The test script is:
 ```bash
 swift sft \
-    --model_type {MODEL_TYPE} \  
+    --model_type {MODEL_TYPE} \
     --quantization_bit {QUANTIZATION_BIT} \
     --sft_type lora \
     ...
@@ -135,7 +135,7 @@ swift sft \
     --model_type {MODEL_TYPE} \
     --max_length {MAX_LENGTH} \
     --sft_type lora \
-    ...  
+    ...
 ```
 
 <table>
@@ -451,7 +451,7 @@ swift sft \
         <td>38.93</td>
     </tr>
     <tr>
-        <td rowspan="5">qwen-7b-chat</td>  
+        <td rowspan="5">qwen-7b-chat</td>
         <td>512</td>
         <td>5.96</td>
         <td>73.37</td>
@@ -545,7 +545,7 @@ swift sft \
     </tr>
 </table>
 
-## Use Flash Attn & Gradient Checkpointing 
+## Use Flash Attn & Gradient Checkpointing
 The test script is:
 ```bash
 swift sft \
@@ -593,7 +593,7 @@ swift sft \
 
 
 ## LoRA Rank & LoRA Target Modules
-The test script is: 
+The test script is:
 ```bash
 swift sft \
     --lora_rank {LORA_RANK} \
@@ -644,9 +644,9 @@ swift sft \
 </table>
 
 
-## Gradient Accumulation Steps 
+## Gradient Accumulation Steps
 The test script is:
-```bash  
+```bash
 swift sft \
     --gradient_accumulation_steps {GRADIENT_ACCUMULATION_STEPS} \
     --model_type qwen-7b-chat \

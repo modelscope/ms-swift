@@ -16,21 +16,21 @@
     ```python
     def load(file, file_format=None, **kwargs):
         """Load data from json/yaml/pickle files.
-    
+
         This method provides a unified api for loading data from serialized files.
-    
+
         Args:
             file (str or :obj:`Path` or file-like object): Filename or a file-like
                 object.
             file_format (str, optional): If not specified, the file format will be
                 inferred from the file extension, otherwise use the specified one.
                 Currently supported formats include "json", "yaml/yml".
-    
+
         Examples:
             >>> load('/path/of/your/file')  # file is stored in disk
             >>> load('https://path/of/your/file')  # file is stored on internet
             >>> load('oss://path/of/your/file')  # file is stored in petrel
-    
+
         Returns:
             The content from the file.
         """

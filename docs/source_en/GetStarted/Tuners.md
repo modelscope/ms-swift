@@ -3,7 +3,7 @@
 "Tuner" refers to additional structures attached to a model to reduce the number of training parameters or improve training accuracy. Currently, SWIFT supports the following tuners:
 
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
-2. LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf) 
+2. LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)
 3. LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf)
 4. SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
 5. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
@@ -13,7 +13,7 @@
 9. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
 10. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
 11. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
-12. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >  
+12. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
 13. Tuners provided by [PEFT](https://github.com/huggingface/peft), such as IA3, AdaLoRA, etc.
 
 ## Using in Training
@@ -37,7 +37,7 @@ Multiple tuners can also be used simultaneously:
 
 ```python
 from modelscope import Model
-from swift import Swift, LoRAConfig, AdapterConfig 
+from swift import Swift, LoRAConfig, AdapterConfig
 import torch
 model = Model.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16, device_map='auto')
 lora_config = LoRAConfig(
@@ -49,11 +49,11 @@ adapter_config = AdapterConfig(
                 dim=model.config.hidden_size,
                 target_modules=['mlp'],
                 method_name='forward',
-                hidden_pos=0, 
+                hidden_pos=0,
                 adapter_length=32,
             )
 model = Swift.prepare_model(model, {'first_tuner': lora_config, 'second_tuner': adapter_config})
-# use model to do other things  
+# use model to do other things
 ```
 
 When using multiple tuners, the second parameter should be a Dict where the key is the tuner name and the value is the tuner configuration.
@@ -76,7 +76,7 @@ to store the model checkpoint. The model checkpoint file will only include the w
 >
 > ​               |-- adapter_model.bin
 >
-> ​     |-- second_tuner 
+> ​     |-- second_tuner
 >
 > ​               |-- adapter_config.json
 >
@@ -100,7 +100,7 @@ If only a single config is passed in, the default name `default` will be used:
 
 ### Complete Training Code
 
-```python 
+```python
 # A100 18G memory
 from swift import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from modelscope import MsDataset, AutoTokenizer
@@ -163,11 +163,11 @@ trainer = Seq2SeqTrainer(
 trainer.train()
 ```
 
-## Using in Inference 
+## Using in Inference
 
 Use `Swift.from_pretrained()` to load the stored checkpoint:
 
-```python  
+```python
 from modelscope import Model
 from swift import Swift
 import torch
@@ -234,7 +234,7 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
   - Return value: An instance of `SwiftModel` or `PeftModel`
 - `Swift.merge_and_unload(model)`
   - Explain: Merge the LoRA weights back into the original model and completely unload the LoRA part
-  - Parameters: 
+  - Parameters:
     - model: An instance of `SwiftModel` or `PeftModel`, the model instance with LoRA loaded
   - Return value: None
 
@@ -249,7 +249,7 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
 
 - `Swift.unmerge(model)`
 
-  - Explain: Split the LoRA weights from the original model weights back into the LoRA structure 
+  - Explain: Split the LoRA weights from the original model weights back into the LoRA structure
 
   - Parameters:
     - model: An instance of `SwiftModel` or `PeftModel`, the model instance with LoRA loaded
@@ -257,13 +257,13 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
   - Return value: None
 
 - `Swift.save_to_peft_format(ckpt_dir, output_dir)`
-  
+
   - Explain: Convert the stored LoRA checkpoint to a Peft compatible format. The main changes are:
-    
+
     - `default` will be split from the corresponding `default` folder into the output_dir root directory
-    - The `{tuner_name}.` field in weights will be removed, for example `model.layer.0.self.in_proj.lora_A.default.weight` will become `model.layer.0.self.in_proj.lora_A.weight`  
+    - The `{tuner_name}.` field in weights will be removed, for example `model.layer.0.self.in_proj.lora_A.default.weight` will become `model.layer.0.self.in_proj.lora_A.weight`
     - The prefix `basemodel.model` will be added to the keys in weights
-    
+
     - Note: Only LoRA can be converted, other types of tuners cannot be converted due to Peft itself not supporting them. Additionally, when there are extra parameters like `dtype` set in LoRAConfig, it does not support conversion to Peft format. In this case, you can manually delete the corresponding fields in adapter_config.json
 
   - Parameters:
@@ -277,7 +277,7 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
   - Explain: Load tuners from the stored weights directory onto the model. If adapter_name is not passed, all tuners under the model_id directory will be loaded. Same as `prepare_model`, this interface can be called repeatedly.
   - Parameters:
     - model: An instance of `torch.nn.Module` or `SwiftModel`, the model to be loaded
-    - model_id: `str` type, the tuner checkpoint to be loaded, can be a ModelScope hub id or a local directory produced by training  
+    - model_id: `str` type, the tuner checkpoint to be loaded, can be a ModelScope hub id or a local directory produced by training
     - adapter_name: `str` or `List[str]` or `Dict[str, str]` type or `None`, the tuner name in the tuner directory to be loaded. If `None`, all named tuners will be loaded. If `str` or `List[str]`, only certain specific tuners will be loaded. If `Dict`, the tuner indicated by `key` will be loaded and renamed to `value`.
     - revision: If model_id is a ModelScope id, revision can specify the corresponding version number
 
@@ -286,22 +286,22 @@ print(tokenizer.decode(generate_ids, **tokenizer_kwargs))
 The following lists the interfaces that users may call. Other internal interfaces or interfaces not recommended for use can be viewed through the `make docs` command to generate the API Doc documentation.
 
 - `SwiftModel.create_optimizer_param_groups(self, **defaults)`
-  - Explain: Create parameter groups based on the loaded tuners, currently only effective for the `LoRA+` algorithm  
+  - Explain: Create parameter groups based on the loaded tuners, currently only effective for the `LoRA+` algorithm
   - Parameters:
     - defaults: Default parameters for `optimizer_groups`, such as `lr` and `weight_decay`
-  - Return value: 
+  - Return value:
     - The created `optimizer_groups`
 
-- `SwiftModel.add_weighted_adapter(self, ...)` 
+- `SwiftModel.add_weighted_adapter(self, ...)`
   - Explain: Merge existing LoRA tuners into one
   - Parameters:
     - This interface is a transparent pass-through of PeftModel.add_weighted_adapter, parameters can refer to: [add_weighted_adapter documentation](https://huggingface.co/docs/peft/main/en/package_reference/lora#peft.LoraModel.add_weighted_adapter)
 
-- `SwiftModel.save_pretrained(self, save_directory, safe_serialization, adapter_name)`  
+- `SwiftModel.save_pretrained(self, save_directory, safe_serialization, adapter_name)`
   - Explain: Store tuner weights
   - Parameters:
     - save_directory: Storage directory
-    - safe_serialization: Whether to use safe_tensors, default is False 
+    - safe_serialization: Whether to use safe_tensors, default is False
     - adapter_name: The adapter tuner to store, if not passed, all tuners will be stored by default
 - `SwiftModel.set_active_adapters(self, adapter_names, offload=None)`
   - Explain: Set the currently active adapters, adapters not in the list will be deactivated
@@ -313,7 +313,7 @@ The following lists the interfaces that users may call. Other internal interface
 - `SwiftModel.activate_adapter(self, adapter_name)`
   - Explain: Activate a tuner
     - In `inference`, the environment variable `USE_UNIQUE_THREAD=0/1` is supported, default value is `1`. If `0`, activate_adapter only takes effect for the current thread. In this case, the tuners activated by this thread are used by default, and tuners in different threads do not interfere with each other.
-  - Parameters: 
+  - Parameters:
     - adapter_name: The name of the tuner to activate
   - Return value: None
 - `SwiftModel.deactivate_adapter(self, adapter_name, offload)`
@@ -331,6 +331,6 @@ The following lists the interfaces that users may call. Other internal interface
   - Parameters: None
 
   - Return value: Training parameter information, format is as follows:
-    ```text  
+    ```text
     trainable params: 100M || all params: 1000M || trainable%: 10.00% || cuda memory: 10GiB.
     ```

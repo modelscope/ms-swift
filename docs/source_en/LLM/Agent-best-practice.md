@@ -6,7 +6,7 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 
 ## Table of Contents
 
-- [Environment Setup](#Environment-Setup)  
+- [Environment Setup](#Environment-Setup)
 - [Data Preparation](#Data-Preparation)
 - [Fine-tuning](#Fine-tuning)
 - [Inference](#Inference)
@@ -15,13 +15,13 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 ## Environment Setup
 
 ```bash
-# Install ms-swift 
+# Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
 # Align environment (usually don't need to run. If you get errors, you can run the code below, the repo tests with the latest environment)
-pip install -r requirements/framework.txt  -U  
+pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
 
@@ -38,11 +38,11 @@ The data format of this dataset is as follows:
 {
 	"id": "MS_Agent_Bench_126374",
 	"conversations": [{
-		"from": "system", 
+		"from": "system",
 		"value": "Answer the following questions as best you can. You have access to the following APIs:\n1. hm_recipe_recommend: Call this tool to interact with the hmreciperecommend API. What is the hmreciperecommend API useful for? . Parameters: [{\"name\": \"keywords_dict\", \"description\": \"盒马推荐菜谱关键词字典。\", \"required\": \"True\"}]\n\n2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{\"name\": \"sku_code_list\", \"description\": \"盒马商品的编码列表\", \"required\": \"True\"}]\n\n3. hm_product_info: Call this tool to interact with the hmproductinfo API. What is the hmproductinfo API useful for? . Parameters: [{\"name\": \"sku_code_list\", \"description\": \"盒马商品的编码列表\", \"required\": \"True\"}, {\"name\": \"sku_name_list\", \"description\": \"盒马商品的名称列表\", \"required\": \"True\"}, {\"name\": \"property_list\", \"description\": \"盒马商品的属性列表\", \"required\": \"True\"}]\n\n4. hm_product_recommend: Call this tool to interact with the hmproductrecommend API. What is the hmproductrecommend API useful for? . Parameters: [{\"name\": \"keywords_dict\", \"description\": \"盒马推荐商品关键词字典。\", \"required\": \"True\"}]\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[hm_recipe_recommend, hm_product_marketing, hm_product_info, hm_product_recommend]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!"
 	}, {
 		"from": "user",
-		"value": "你好，请问你们有哪些手机可以推荐？"  
+		"value": "你好，请问你们有哪些手机可以推荐？"
 	}, {
 		"from": "assistant",
 		"value": "Action: hm_product_recommend\nAction Input: {'keywords_dict': {'商品类目': '手机'}}\nObservation: [{'sku_code': '10518244314', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '10222726664', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '18227073452', 'product_name': '华为畅享 20 Pro 5G手机 128GB', 'bussiness_type': '标品', 'product_price': '2699', 'product_description': '拥有4000mAh的电池容量和优秀的相机而价格非常亲民'}]\nThought: I now know the final answer\nFinal Answer: 您好，我们有以下几款手机供您选择：1.小米11 Ultra 5G手机 256GB：价格为5999元，拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统；2. vivo X60 Pro 5G手机 256GB：售价为4498元，搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足；3. 华为畅享 20 Pro 5G手机 128GB：价格亲民，只需2699元即可拥有优秀的相机和4000mAh的电池容量。这些手机都具有不同的特点和功能，您可以根据自己的需求进行选择。如果您有其他问题或需求，请随时告诉我。"
@@ -51,7 +51,7 @@ The data format of this dataset is as follows:
 		"value": "我想买一款拍照好的手机，有推荐吗？"
 	}, {
 		"from": "assistant",
-		"value": "Action: hm_product_recommend\nAction Input: {'keywords_dict': {'商品类目': '手机', '适用场景': '拍照'}}\nObservation: [{'sku_code': '15956662254', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '19424216918', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '14347982715', 'product_name': 'OPPO Ace2 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '3999', 'product_description': '拍照实力十足，支持65W超级闪充'}]\nThought: I now know the final answer\nFinal Answer: 如果您想要一款拍照表现出色的手机，我为您推荐以下几款产品：1.小米11 Ultra 5G手机 256GB：价格为5999元，配备了高品质相机系统，可以拍摄出色的照片；2. vivo X60 Pro 5G手机 256GB：售价为4498元，相机系统由ZEISS联合调校，拍照实力十足；3. OPPO Ace2 5G手机 256GB：价格为3999元，不仅拍照实力十足，还支持65W超级闪充，让你的手机充电更加便捷。这些手机都有不同的特点和功能，您可以根据自己的需求进行选择。如果您还有其他问题或需求，请随时告诉我。"  
+		"value": "Action: hm_product_recommend\nAction Input: {'keywords_dict': {'商品类目': '手机', '适用场景': '拍照'}}\nObservation: [{'sku_code': '15956662254', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '19424216918', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '14347982715', 'product_name': 'OPPO Ace2 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '3999', 'product_description': '拍照实力十足，支持65W超级闪充'}]\nThought: I now know the final answer\nFinal Answer: 如果您想要一款拍照表现出色的手机，我为您推荐以下几款产品：1.小米11 Ultra 5G手机 256GB：价格为5999元，配备了高品质相机系统，可以拍摄出色的照片；2. vivo X60 Pro 5G手机 256GB：售价为4498元，相机系统由ZEISS联合调校，拍照实力十足；3. OPPO Ace2 5G手机 256GB：价格为3999元，不仅拍照实力十足，还支持65W超级闪充，让你的手机充电更加便捷。这些手机都有不同的特点和功能，您可以根据自己的需求进行选择。如果您还有其他问题或需求，请随时告诉我。"
 	}, {
 		"from": "user",
 		"value": "小米11 Ultra拍照性能怎么样？"
@@ -64,11 +64,11 @@ The data format of this dataset is as follows:
 
 The specific format of the system field in the Agent dataset is as follows (convert the \\" character to " and \n to newline):
 
-```text 
+```text
 Answer the following questions as best you can. You have access to the following APIs:
 1. hm_recipe_recommend: Call this tool to interact with the hmreciperecommend API. What is the hmreciperecommend API useful for? . Parameters: [{"name": "keywords_dict", "description": "盒马推荐菜谱关键词字典。", "required": "True"}]
 
-2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}]  
+2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}]
 
 3. hm_product_info: Call this tool to interact with the hmproductinfo API. What is the hmproductinfo API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}, {"name": "sku_name_list", "description": "盒马商品的名称列表", "required": "True"}, {"name": "property_list", "description": "盒马商品的属性列表", "required": "True"}]
 
@@ -76,7 +76,7 @@ Answer the following questions as best you can. You have access to the following
 
 Use the following format:
 
-Thought: you should always think about what to do  
+Thought: you should always think about what to do
 Action: the action to take, should be one of the above tools[hm_recipe_recommend, hm_product_marketing, hm_product_info, hm_product_recommend]
 Action Input: the input to the action
 Observation: the result of the action
@@ -89,7 +89,7 @@ Begin!
 API format:
 
 ```text
-Answer the following questions as best you can. You have access to the following APIs:  
+Answer the following questions as best you can. You have access to the following APIs:
 Number: API Name: API Function API Parameters
 
 ...
@@ -97,12 +97,12 @@ Number: API Name: API Function API Parameters
 Use the following format:
 
 Thought: you should always think about what to do
-Action: the action to take, should be one of the above tools[API Name List]  
+Action: the action to take, should be one of the above tools[API Name List]
 Action Input: the input to the action
-Observation: the result of the action  
+Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
-Final Answer: the final answer to the original input question  
+Final Answer: the final answer to the original input question
 Begin!
 ```
 
@@ -112,12 +112,12 @@ The structure of the response of calling API in the Agent dataset is as follows:
 Action: hm_product_recommend
 Action Input: {'keywords_dict': {'商品类目': '手机', '适用场景': '拍照'}}
 Observation: [{'sku_code': '15956662254', 'product_name': '小米11 Ultra 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '5999', 'product_description': '拥有120Hz高刷新率和骁龙888处理器，还配备了高品质相机系统'}, {'sku_code': '19424216918', 'product_name': 'vivo X60 Pro 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '4498', 'product_description': '搭载Exynos 1080处理器与ZEISS联合调校的相机系统，拍照实力十足'}, {'sku_code': '14347982715', 'product_name': 'OPPO Ace2 5G手机 256GB', 'bussiness_type': '标品', 'product_price': '3999', 'product_description': '拍照实力十足，支持65W超级闪充'}]
-Thought: I now know the final answer  
+Thought: I now know the final answer
 Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐以下几款产品：1.小米11 Ultra 5G手机 256GB：价格为5999元，配备了高品质相机系统，可以拍摄出色的照片；2. vivo X60 Pro 5G手机 256GB：售价为4498元，相机系统由ZEISS联合调校，拍照实力十足；3. OPPO Ace2 5G手机 256GB：价格为3999元，不仅拍照实力十足，还支持65W超级闪充，让你的手机充电更加便捷。这些手机都有不同的特点和功能，您可以根据自己的需求进行选择。如果您还有其他问题或需求，请随时告诉我。
 ```
 
 - Action: The actual API name called
-- Action Input: The actual input parameters  
+- Action Input: The actual input parameters
 - Observation: This part is the actual calling result, which does not participate in the loss during training, and needs to be filled into the model after external calling during inference
 - Thought: Model's thinking output
 - Final Answer: Model's final answer
@@ -130,7 +130,7 @@ In Agent training, in order to avoid severe knowledge forgetting after training,
 | -------- | -------- |
 | ms-agent | 30000 (full dataset) |
 | ms-bench | 60000 (sampled) |
-| self-recognition | 3000 (repeatedly sampled) | 
+| self-recognition | 3000 (repeatedly sampled) |
 
 We also support using your own Agent dataset. The dataset format needs to meet the requirements of [custom dataset](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86). More specifically, the Agent's response/system should conform to the above Action/Action Input/Observation format.
 
@@ -139,7 +139,7 @@ We added **MLP** and **Embedder** to lora_target_modules. You can add lora to al
 The fine-tuning used the qwen-7b-chat model, with the following hyperparameters:
 
 | Hyperparameter | Value |
-| -------- | -------- | 
+| -------- | -------- |
 | LR | 5e-5 |
 | Epoch | 2 |
 | lora_rank | 8 |
@@ -194,7 +194,7 @@ torchrun \
 In the official experiment, the training process used an 8-GPU hardware environment, with **training time of 3 hours**.
 
 > [!NOTE]
-> 
+>
 > 1. This training can also run on a consumer-grade single GPU (corresponding to **22G of video memory occupied**), users can change the DDP command to a single-card command.
 >
 > 2. The forgetting problem of LoRA training is not serious, the proportion of the ms-bench dataset can be appropriately lowered to improve training speed.
@@ -207,7 +207,7 @@ We evaluate general knowledge and Agent. A simple evaluation result is listed be
 
 #### General Knowledge
 
-> How to make West Lake vinegar fish  
+> How to make West Lake vinegar fish
 
 ![image-20240201122323540](../../resources/image-20240201122323540.png)
 
@@ -217,7 +217,7 @@ We evaluate general knowledge and Agent. A simple evaluation result is listed be
 
 #### Agent Capability
 
-We use a fire alarm scenario as a test case:  
+We use a fire alarm scenario as a test case:
 
 ```text
 Answer the following questions as best you can. You have access to the following APIs:
@@ -231,7 +231,7 @@ Answer the following questions as best you can. You have access to the following
 
 Use the following format:
 
-Thought: you should always think about what to do  
+Thought: you should always think about what to do
 Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
 Action Input: the input to the action
 Observation: the result of the action
@@ -260,10 +260,10 @@ It can be seen that after manually inputting the Observation, the model's answer
 ![image-20240201132139698](../../resources/image-20240201132139698.png)
 
 > What is the difference between COVID-19 and the common cold
-> 
+>
 ![image-20240201132308260](../../resources/image-20240201132308260.png)
 
-#### Agent Capability  
+#### Agent Capability
 
 ![image-20240201132421298](../../resources/image-20240201132421298.png)
 
@@ -282,9 +282,9 @@ Currently, Agent inference support in the command line needs to specify `--eval_
 ```shell
 # Use the trained model
 swift infer --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --eval_human true --stop_words Observation: --infer_backend pt
-# The original model such as qwn-7b-chat or chatglm3-6b-32k can also be used to run agent  
+# The original model such as qwn-7b-chat or chatglm3-6b-32k can also be used to run agent
 # swift infer --model_type qwen-7b-chat --eval_human true --stop_words Observation: --infer_backend pt
-# swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt  
+# swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
 ```
 
 After running the command, change the system field:
@@ -296,16 +296,16 @@ After running the command, change the system field:
 
 If you need to input in multiple lines, you can use the following command (multi-line information ends with #):
 
-```shell  
+```shell
 # Multi-line system
-<<< multi-line  
+<<< multi-line
 <<<[M] reset-system#
 <<<[MS] Answer the following questions as best you can. You have access to the following APIs:
 1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
 
 2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
 
-3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []  
+3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
 
 4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
 
@@ -313,7 +313,7 @@ Use the following format:
 
 Thought: you should always think about what to do
 Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
-Action Input: the input to the action  
+Action Input: the input to the action
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
@@ -332,7 +332,7 @@ Action: Use the fire\_recognition API to analyze the input image.
 Action Input: /tmp/1.jpg
 
 Observation:
-<<< [{'coordinate': [101.1, 200.9], 'on_fire': True}]  
+<<< [{'coordinate': [101.1, 200.9], 'on_fire': True}]
 Thought: The fire\_recognition API has returned a result indicating that there is fire in the input image.
 
 Final Answer: There is fire in the input image.
@@ -346,7 +346,7 @@ Since deployment does not support history management, the splicing of Agent's AP
 
 Server side:
 ```shell
-# Use the trained model  
+# Use the trained model
 swift deploy --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --stop_words Observation:
 # The original model such as qwen-7b-chat or chatglm3-6b-32k can also be used to run agent
 # swift deploy --model_type qwn-7b-chat --stop_words Observation:
@@ -358,7 +358,7 @@ Client side:
 from openai import OpenAI
 client = OpenAI(
     api_key='EMPTY',
-    base_url='http://localhost:8000/v1',  
+    base_url='http://localhost:8000/v1',
 )
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
@@ -374,16 +374,16 @@ system = """Answer the following questions as best you can. You have access to t
 
 Use the following format:
 
-Thought: you should always think about what to do  
+Thought: you should always think about what to do
 Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
 Action Input: the input to the action
-Observation: the result of the action  
+Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 Begin!"""
 messages = [{
-    'role': 'system', 
+    'role': 'system',
     'content': system
 }, {
     'role': 'user',
@@ -397,7 +397,7 @@ resp = client.chat.completions.create(
 response = resp.choices[0].message.content
 print(f'response: {response}')
 
-# # Streaming  
+# # Streaming
 messages.append({'role': 'assistant', 'content': response + "\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"})
 print(messages)
 stream_resp = client.chat.completions.create(
@@ -407,7 +407,7 @@ stream_resp = client.chat.completions.create(
     stream=True,
     seed=42)
 
-print('response: ', end='')  
+print('response: ', end='')
 for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
@@ -415,7 +415,7 @@ print()
 # model_type: qwen-7b-chat
 # response: Thought: I need to check if there is fire in the image
 # Action: Use fire\_recognition API
-# Action Input: /tmp/1.jpg  
+# Action Input: /tmp/1.jpg
 # Observation:
 # [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/1.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
 # response:

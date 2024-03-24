@@ -1,6 +1,6 @@
 # Customization and Extension
 ## Table of Contents
-- [Custom Datasets](#custom-datasets) 
+- [Custom Datasets](#custom-datasets)
 - [Custom Models](#custom-models)
 - [Custom Dialogue Templates](#custom-dialogue-templates)
 
@@ -10,11 +10,11 @@ We support two methods for **custom datasets**:
 1. [Recommended]  **Command line arguments**: More convenient to support local custom datasets.
 2. By **registering datasets**: More flexible, can further extend and develop swift, but requires some programming skills. Method 1 internally leverages method 2.
 
-### 📌 [Recommended] Command line arguments 
+### 📌 [Recommended] Command line arguments
 You need to additionally specify in the sft.sh script:
 
 ```bash
---custom_train_dataset_path xxx.jsonl \ 
+--custom_train_dataset_path xxx.jsonl \
 --custom_val_dataset_path yyy.jsonl \
 ```
 
@@ -34,14 +34,14 @@ Pre-Training
 
 ```csv
 response
-11111 
+11111
 aaaaa
 AAAAA
 ```
 
 ```jsonl
 {"response": "11111"}
-{"response": "aaaaa"} 
+{"response": "aaaaa"}
 {"response": "AAAAA"}
 ```
 
@@ -51,7 +51,7 @@ Single-Round Dialogue
 query,response
 11111,22222
 aaaaa,bbbbb
-AAAAA,BBBBB  
+AAAAA,BBBBB
 ```
 
 ```jsonl
@@ -77,16 +77,16 @@ Multi-Round Dialogue
 **Format 2:**
 
 ```jsonl
-{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]} 
+{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
-{"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]} 
+{"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
 
 **Format 3:**
 
 ```jsonl
 {"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
-{"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]} 
+{"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```
 
@@ -103,7 +103,7 @@ AAAAA,BBBBB,CCCCC
 
 ```jsonl
 {"query": "11111", "response": "22222", "rejected_response": "33333"}
-{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc"} 
+{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc"}
 {"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC"}
 ```
 
@@ -114,7 +114,7 @@ The following is an example of **registering datasets**. The complete py file ca
 ```python
 from typing import Optional, Tuple
 
-from datasets import Dataset as HfDataset  
+from datasets import Dataset as HfDataset
 from modelscope import MsDataset
 
 from swift.llm import get_dataset, register_dataset
@@ -129,7 +129,7 @@ class CustomDatasetName:
 def _preprocess_stsb(dataset: HfDataset) -> HfDataset:
     prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
 Sentence 1: {text1}
-Sentence 2: {text2}  
+Sentence 2: {text2}
 Similarity score: """
     query = []
     response = []
@@ -140,7 +140,7 @@ Similarity score: """
 
 
 @register_dataset(
-    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')  
+    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
 def get_stsb_dataset(dataset_id_or_path: str,
                      **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_dict = MsDataset.load(dataset_id_or_path)
@@ -152,9 +152,9 @@ def get_stsb_dataset(dataset_id_or_path: str,
 
 if __name__ == '__main__':
     # test dataset
-    train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en], 
+    train_dataset, val_dataset = get_dataset([CustomDatasetName.stsb_en],
                                              check_dataset_strategy='warning')
-    print(f'train_dataset: {train_dataset}')  
+    print(f'train_dataset: {train_dataset}')
     print(f'val_dataset: {val_dataset}')
 
 ```
@@ -180,7 +180,7 @@ from typing import Any, Dict
 
 from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from torch import dtype as Dtype  
+from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
 from swift.llm import LoRATM, TemplateType, get_model_tokenizer, register_model
@@ -201,11 +201,11 @@ class CustomTemplateType:
 
 @register_model(CustomModelType.tigerbot_7b,
                 'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
-                TemplateType.default_generation) 
+                TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b,
                 'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
                 TemplateType.default_generation)
-@register_model(CustomModelType.tigerbot_13b_chat, 
+@register_model(CustomModelType.tigerbot_13b_chat,
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
@@ -216,7 +216,7 @@ def get_tigerbot_model_tokenizer(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if use_flash_attn:
         require_version('transformers>=4.34')
-        logger.info('Setting use_flash_attention_2: True') 
+        logger.info('Setting use_flash_attention_2: True')
         model_kwargs['use_flash_attention_2'] = True
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
@@ -240,7 +240,7 @@ if __name__ == '__main__':
     # test model base
     model, tokenizer = get_model_tokenizer(
         CustomModelType.tigerbot_7b, use_flash_attn=False)
-    print(model.__class__.__name__)  
+    print(model.__class__.__name__)
     # test model chat
     model, tokenizer = get_model_tokenizer(
         CustomModelType.tigerbot_13b_chat, use_flash_attn=False)
@@ -253,7 +253,7 @@ if __name__ == '__main__':
 - `model_id_or_path`: Required field. Represents the `model_id` of the model in ModelScope Hub, or the local model directory `model_dir`.
 - `lora_target_modules`: Default is `None`. Represents the default lora_target_modules to use when `--lora_target_modules DEFAULT` or `--lora_target_modules AUTO` is specified in the sh script, or when `--lora_target_modules` is not specified.
 - `template`: Default is `TemplateType.default`. Represents the default dialogue template to use when `--template_type AUTO` is specified in the sh script, or when `--template_type` is not specified.
-- `get_function`: Default value is `None`. The function to get model and tokenizer. If passed `None`, the decorator approach will be used to register the model. If passed a function, the normal approach will be used to register. 
+- `get_function`: Default value is `None`. The function to get model and tokenizer. If passed `None`, the decorator approach will be used to register the model. If passed a function, the normal approach will be used to register.
 - `requires`: Default is `[]`. Represents the dependencies required by the model that differ from other models. This parameter generally does not need to be set.
 - `torch_dtype`: Default is `None`. Represents the recommended torch_dtype for the model to use. This parameter generally does not need to be set.
 - `use_hf`: Default is `False`, i.e. set to modelscope hub. If you want to use huggingface hub, you can set it to True.
@@ -261,13 +261,13 @@ if __name__ == '__main__':
 - `ignore_file_pattern`: Default is `None`. Represents the regular pattern of file names to be ignored when downloading, this parameter will be passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter generally does not need to be set.
 - `**kwargs`: Other parameters used to annotate model capabilities. This parameter generally does not need to be set.
 
-## Custom Dialogue Templates 
+## Custom Dialogue Templates
 The following is an example of **custom models**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom).
 
 ```python
-from swift.llm import (Template, ModelType, dataset_map,  
+from swift.llm import (Template, ModelType, dataset_map,
                        get_model_tokenizer, get_template, get_dataset,
-                       print_example, register_template, DatasetName)  
+                       print_example, register_template, DatasetName)
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -280,7 +280,7 @@ class CustomTemplateType:
 # Ref: https://github.com/TigerResearch/TigerBot/blob/main/infer.py
 register_template(
     CustomTemplateType.tigerbot,
-    Template(['{{SYSTEM}}'], ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [], 
+    Template(['{{SYSTEM}}'], ['\n\n### Instruction:\n{{QUERY}}\n\n### Response:\n'], [],
              [['eos_token_id']]))
 
 if __name__ == '__main__':

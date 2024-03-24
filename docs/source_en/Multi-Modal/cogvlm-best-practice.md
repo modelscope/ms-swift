@@ -1,7 +1,7 @@
 # CogVLM Best Practices
 
 ## Table of Contents
-- [Environment Setup](#environment-setup) 
+- [Environment Setup](#environment-setup)
 - [Inference](#inference)
 - [Fine-tuning](#fine-tuning)
 - [Inference After Fine-tuning](#inference-after-fine-tuning)
@@ -15,7 +15,7 @@ pip install ms-swift[llm] -U
 
 Inference with [cogvlm-17b-instruct](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary):
 ```shell
-# Experimental environment: A100 
+# Experimental environment: A100
 # 38GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-instruct
 ```
@@ -25,20 +25,20 @@ Output: (supports passing local path or URL)
 """
 <<< Describe this image.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This image showcases a close-up of a young kitten. The kitten has a mix of white and gray fur, with striking blue eyes. The fur appears soft and fluffy, and the kitten seems to be in a relaxed position, possibly resting or lounging. 
+This image showcases a close-up of a young kitten. The kitten has a mix of white and gray fur, with striking blue eyes. The fur appears soft and fluffy, and the kitten seems to be in a relaxed position, possibly resting or lounging.
 --------------------------------------------------
 <<< How many sheep are in the picture?
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png 
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
 <<< What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
 The calculation result is '1452+45304=146544'.
---------------------------------------------------  
+--------------------------------------------------
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
 In a realm where night and day intertwine,
-A boat floats gently, on water so fine. 
+A boat floats gently, on water so fine.
 Glowing orbs dance, in the starry sky,
 While the forest whispers, secrets it holds.
 A journey of wonder, in the embrace of the night,
@@ -56,7 +56,7 @@ animal:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png" width="250" style="display: inline-block;">
 
-math: 
+math:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png" width="250" style="display: inline-block;">
 
@@ -74,7 +74,7 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType,
     get_default_template_type, inference_stream
 )
-from swift.utils import seed_everything 
+from swift.utils import seed_everything
 import torch
 
 model_type = ModelType.cogvlm_17b_instruct
@@ -90,7 +90,7 @@ seed_everything(42)
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = 'How far is it from each city?'
 response, _ = inference(model, template, query, images=images)
-print(f'query: {query}')  
+print(f'query: {query}')
 print(f'response: {response}')
 
 # Streaming
@@ -107,7 +107,7 @@ print()
 """
 query: How far is it from each city?
 response: From Mata, it is 14 km; from Yangjiang, it is 62 km; and from Guangzhou, it is 293 km.
-query: Which city is the farthest? 
+query: Which city is the farthest?
 response: Guangzhou is the farthest city with a distance of 293 km.
 """
 ```
@@ -125,10 +125,10 @@ Fine-tuning multimodal large models usually uses **custom datasets**. Here is a 
 (By default, lora fine-tuning is performed on the qkv of the language and vision models. If you want to fine-tune all linears, you can specify `--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A100
-# 50GB GPU memory  
+# 50GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type cogvlm-17b-instruct \
-    --dataset coco-mini-en-2 \ 
+    --dataset coco-mini-en-2 \
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
@@ -136,7 +136,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 (Only single-turn dialogues are supported, and one image must be included, supporting passing local path or URL)
 
 ```jsonl
-{"query": "55555", "response": "66666", "images": ["image_path"]}  
+{"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "images": ["image_path"]}
 {"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```

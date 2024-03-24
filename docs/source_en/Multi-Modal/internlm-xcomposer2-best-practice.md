@@ -1,7 +1,7 @@
 # Internlm-Xcomposer2 Best Practices
 
 ## Table of Contents
-- [Environment Preparation](#environment-preparation)  
+- [Environment Preparation](#environment-preparation)
 - [Inference](#inference)
 - [Fine-tuning](#fine-tuning)
 - [Inference After Fine-tuning](#inference-after-fine-tuning)
@@ -15,7 +15,7 @@ pip install ms-swift[llm] -U
 
 Inference for [internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary):
 ```shell
-# Experimental environment: A10, 3090, V100, ...  
+# Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type internlm-xcomposer2-7b-chat
 ```
@@ -24,11 +24,11 @@ Output: (supports passing local path or URL)
 ```python
 """
 <<< Who are you?
- I am your assistant, a language-based artificial intelligence model that can answer your questions.  
+ I am your assistant, a language-based artificial intelligence model that can answer your questions.
 --------------------------------------------------
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What's the difference between these two images?
  These two images are different. The first one is a picture of sheep, and the second one is a picture of a cat.
---------------------------------------------------  
+--------------------------------------------------
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>How many sheep are there in the picture?
  There are 4 sheep in the picture
 --------------------------------------------------
@@ -51,13 +51,13 @@ Sample images are as follows:
 
 cat:
 
-<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png" width="250" style="display: inline-block;"> 
+<img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png" width="250" style="display: inline-block;">
 
 animal:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png" width="250" style="display: inline-block;">
 
-math:  
+math:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png" width="250" style="display: inline-block;">
 
@@ -73,7 +73,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, 
+    get_model_tokenizer, get_template, inference, ModelType,
     get_default_template_type, inference_stream
 )
 from swift.utils import seed_everything
@@ -86,7 +86,7 @@ print(f'template_type: {template_type}')
 model, tokenizer = get_model_tokenizer(model_type, torch.float16,
                                        model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 256
-template = get_template(template_type, tokenizer)  
+template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 query = """<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it to each city?"""
@@ -104,10 +104,10 @@ for response, history in gen:
     print(delta, end='', flush=True)
     print_idx = len(response)
 print()
-print(f'history: {history}')  
+print(f'history: {history}')
 """
 query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it to each city?
-response:  The distance from Ma'anshan to Yangjiang is 62 kilometers, and the distance from Guangzhou to Guangzhou is 293 kilometers. 
+response:  The distance from Ma'anshan to Yangjiang is 62 kilometers, and the distance from Guangzhou to Guangzhou is 293 kilometers.
 query: Which city is the farthest?
 response: The farthest city is Guangzhou, with a distance of 293 kilometers from Guangzhou.
 history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it to each city?', ' The distance from Ma'anshan to Yangjiang is 62 kilometers, and the distance from Guangzhou to Guangzhou is 293 kilometers.'], ['Which city is the farthest?', ' The farthest city is Guangzhou, with a distance of 293 kilometers from Guangzhou.']]
@@ -127,7 +127,7 @@ Fine-tuning of multimodal large models usually uses **custom datasets**. Here's 
 (By default, only the qkv part of the LLM is fine-tuned using Lora. `--lora_target_modules ALL` is not supported. Full-parameter fine-tuning is supported.)
 ```shell
 # Experimental environment: A10, 3090, V100, ...
-# 21GB GPU memory  
+# 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type internlm-xcomposer2-7b-chat \
     --dataset coco-mini-en \
@@ -140,20 +140,20 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```json
 [
     {"conversations": [
-        {"from": "user", "value": "<img>img_path</img>11111"}, 
+        {"from": "user", "value": "<img>img_path</img>11111"},
         {"from": "assistant", "value": "22222"}
     ]},
     {"conversations": [
         {"from": "user", "value": "<img>img_path</img><img>img_path2</img><img>img_path3</img>aaaaa"},
         {"from": "assistant", "value": "bbbbb"},
-        {"from": "user", "value": "<img>img_path</img>ccccc"}, 
+        {"from": "user", "value": "<img>img_path</img>ccccc"},
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [
         {"from": "user", "value": "AAAAA"},
         {"from": "assistant", "value": "BBBBB"},
         {"from": "user", "value": "CCCCC"},
-        {"from": "assistant", "value": "DDDDD"}  
+        {"from": "assistant", "value": "DDDDD"}
     ]}
 ]
 ```
@@ -163,5 +163,5 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/internlm-xcomposer2-7b-chat/vx-xxx/checkpoint-xxx \
-    --load_dataset_config true \  
+    --load_dataset_config true \
 ```

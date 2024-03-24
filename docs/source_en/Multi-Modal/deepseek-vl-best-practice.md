@@ -1,14 +1,14 @@
 # Deepseek-VL Best Practices
 
 ## Table of Contents
-- [Environment Preparation](#environment-preparation) 
+- [Environment Preparation](#environment-preparation)
 - [Inference](#inference)
 - [Fine-tuning](#fine-tuning)
 - [Inference After Fine-tuning](#inference-after-fine-tuning)
 
 ## Environment Preparation
 ```shell
-pip install ms-swift[llm] -U 
+pip install ms-swift[llm] -U
 ```
 
 ## Inference
@@ -20,19 +20,19 @@ Inference for [deepseek-vl-7b-chat](https://www.modelscope.cn/models/deepseek-ai
 # 30GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-7b-chat
 
-# If you want to run it on 3090, you can infer the 1.3b model 
+# If you want to run it on 3090, you can infer the 1.3b model
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
 ```
 
 7b model effect demonstration: (supports passing local paths or URLs)
-```python 
+```python
 """
 <<< Describe this kind of picture
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 This picture captures the charming scene of a little kitten with its eyes wide open, full of curiosity. The kitten's fur is a mix of white and gray, giving it an almost ethereal appearance. Its ears are pointed and alertly pointing upward, while its nose is a soft pink. The kitten's eyes are a striking blue, full of innocence and curiosity. The kitten is comfortably sitting on a piece of white fabric, beautifully contrasting with its gray and white fur. The background is blurred, focusing people's attention on the kitten's face, highlighting the fine details of its features. This picture exudes a sense of warmth and softness, capturing the purity and charm of the kitten.
---------------------------------------------------  
+--------------------------------------------------
 <<< How many sheep are there in the picture?
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png 
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
 <<< What is the calculation result
@@ -55,7 +55,7 @@ One boat, one person, talking about the stars.
 
 Sample images are as follows:
 
-cat: 
+cat:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png" width="250" style="display: inline-block;">
 
@@ -67,7 +67,7 @@ math:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png" width="250" style="display: inline-block;">
 
-poem:  
+poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
@@ -85,7 +85,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.deepseek_vl_7b_chat  
+model_type = ModelType.deepseek_vl_7b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -96,15 +96,15 @@ template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = 'How far from each city?'  
+query = 'How far from each city?'
 response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
-# Streaming  
+# Streaming
 query = 'Which city is the farthest?'
 images = images * 2
-gen = inference_stream(model, template, query, history, images=images) 
+gen = inference_stream(model, template, query, history, images=images)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, history in gen:
@@ -112,16 +112,16 @@ for response, history in gen:
     print(delta, end='', flush=True)
     print_idx = len(response)
 print()
-print(f'history: {history}')  
+print(f'history: {history}')
 """
 query: How far from each city?
 response: This sign shows the distances from the current location to the following cities:
 
 - Mata: 14 kilometers
-- Yangjiang: 62 kilometers  
+- Yangjiang: 62 kilometers
 - Guangzhou: 293 kilometers
 
-This information is provided based on the sign in the image.  
+This information is provided based on the sign in the image.
 query: Which city is the farthest?
 response: The farthest city is Guangzhou. According to the sign, the distance from the current location to Guangzhou is 293 kilometers.
 history: [['How far from each city?', 'This sign shows the distances from the current location to the following cities:\n\n- Mata: 14 kilometers\n- Yangjiang: 62 kilometers\n- Guangzhou: 293 kilometers\n\nThis information is provided based on the sign in the image.'], ['Which city is the farthest?', 'The farthest city is Guangzhou. According to the sign, the distance from the current location to Guangzhou is 293 kilometers.']]
@@ -141,9 +141,9 @@ Multi-modal large model fine-tuning usually uses **custom datasets**. Here is a 
 LoRA fine-tuning:
 
 (By default, only lora fine-tuning is performed on the qkv part of the LLM. If you want to fine-tune all linear parts including the vision model, you can specify `--lora_target_modules ALL`)
-```shell  
+```shell
 # Experimental environment: A10, 3090, V100
-# 20GB GPU memory  
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \
@@ -151,12 +151,12 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 Full parameter fine-tuning:
 ```shell
-# Experimental environment: 4 * A100  
+# Experimental environment: 4 * A100
 # 4 * 70GB GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \
-    --train_dataset_sample -1 \  
+    --train_dataset_sample -1 \
     --sft_type full \
     --use_flash_attn true \
     --deepspeed default-zero2
@@ -167,7 +167,7 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 (Supports multi-turn conversations, each turn must include an image, and supports passing local paths or URLs)
 
 ```jsonl
-{"query": "55555", "response": "66666", "images": ["image_path"]} 
+{"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path", "image_path2", "image_path3"]}
 ```
@@ -181,13 +181,13 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --load_dataset_config true \
 ```
 
-**merge-lora** and inference:  
+**merge-lora** and inference:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/deepseek-vl-7b-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
-CUDA_VISIBLE_DEVICES=0 swift infer \  
+CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/deepseek-vl-7b-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```

@@ -84,8 +84,8 @@ root_doc = 'index'
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = [
-    'build', 'source_en/.ipynb_checkpoints', 'source_en/api/generated', 'Thumbs.db',
-    '.DS_Store'
+    'build', 'source_en/.ipynb_checkpoints', 'source_en/api/generated',
+    'Thumbs.db', '.DS_Store'
 ]
 # A list of glob-style patterns [1] that are used to find source files.
 # They are matched against the source file names relative to the source directory,
