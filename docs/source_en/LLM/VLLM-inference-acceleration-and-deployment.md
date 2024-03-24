@@ -237,7 +237,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 ## Deployment
 Swift uses VLLM as the inference backend and is compatible with the OpenAI API style.
 
-For server deployment command line arguments, refer to: [deploy command line arguments](command-line-parameters.md#deploy-Parameters).
+For server deployment command line arguments, refer to: [deploy command line arguments](Command-line-parameters.md#deploy-Parameters).
 
 For OpenAI API arguments on the client side, refer to: https://platform.openai.com/docs/api-reference/introduction.
 

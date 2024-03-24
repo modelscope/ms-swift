@@ -29,6 +29,6 @@
 
 ### 🐔References！
 1. [Customization for models and datasets](Customization.md)
-2. [Command Line Parameters](command-line-parameters.md)
+2. [Command Line Parameters](Command-line-parameters.md)
 3. [Supported models and datasets](Supported-models-datasets.md)
 4. [Benchmark](Benchmark.md)

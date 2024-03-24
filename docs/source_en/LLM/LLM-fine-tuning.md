@@ -139,7 +139,7 @@ cd examples/pytorch/llm
 - If you are using older GPUs like **V100**, you need to set `--dtype AUTO` or `--dtype fp16`, as they do not support bf16.
 - If your machine has high-performance graphics cards like A100 and the model supports flash-attn, it is recommended to install [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will speed up training and inference as well as reduce memory usage (A10, 3090, V100, etc. graphics cards do not support training with flash-attn). Models that support flash-attn can be viewed in [LLM Supported Models](supported-models-and-datasets.md#models)
 - If you are doing **second pre-training** or **multi-turn dialogue**, you can refer to [Customization and Extension](customization-and-extension.md#ways-to-register-datasets)
-- If you need to train **offline**, please use `--model_id_or_path <model_dir>` and set `--check_model_is_latest false`. For specific parameter meanings, please check [Command-line Parameters](command-line-parameters.md).
+- If you need to train **offline**, please use `--model_id_or_path <model_dir>` and set `--check_model_is_latest false`. For specific parameter meanings, please check [Command-line Parameters](Command-line-parameters.md).
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora true`. **It is not recommended to merge** for models trained with qlora, as this will result in precision loss. Therefore **it is not recommended to fine-tune** with qlora, as the deployment ecology is not good.
 
