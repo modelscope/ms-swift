@@ -72,6 +72,7 @@ class Experiment:
         self.args = _json['args']
         self.record = _json['record']
         self.env = _json['env']
+        self.create_time = _json['create_time']
 
     @property
     def priority(self):
@@ -111,13 +112,16 @@ class ExpManager:
 
         if exp.do_eval:
             runtime = self._build_eval_cmd(exp)
+            exp.runtime = runtime
             envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
             logger.info(
                 f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
             )
+            os.makedirs('exp', exist_ok=True)
+            log_file = os.path.join('exp', f'{exp.name}.eval.log')
             exp.handler = subprocess.Popen(
-                runtime['running_cmd'] + f' > {exp.name}.eval.log',
+                runtime['running_cmd'] + f' > {log_file} 2>&1',
                 env=envs,
                 shell=True)
             self.exps.append(exp)
@@ -137,8 +141,11 @@ class ExpManager:
             logger.info(
                 f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
             )
+            os.makedirs('exp', exist_ok=True)
+            log_file = os.path.join('exp', f'{exp.name}.{exp.cmd}.log')
             exp.handler = subprocess.Popen(
-                runtime['running_cmd'], env=envs, shell=True)
+                runtime['running_cmd'] + f' > {log_file} 2>&1', 
+                env=envs, shell=True)
             self.exps.append(exp)
 
     def _build_eval_cmd(self, exp: Experiment):
@@ -153,7 +160,7 @@ class ExpManager:
 
         best_model_checkpoint = exp.record.get('best_model_checkpoint')
         eval_dataset = exp.eval_dataset
-        cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --eval_dataset {" ".join(eval_dataset)}'
+        cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
         return {
             'running_cmd': cmd,
             'gpu': allocated,

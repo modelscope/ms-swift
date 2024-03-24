@@ -754,6 +754,8 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
+    name: Optional[str] = None
+
     eval_dataset: List[str] = field(
         default_factory=lambda:
         ['mmlu', 'ceval', 'gsm8k', 'arc', 'bbh'])

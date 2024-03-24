@@ -206,8 +206,6 @@ class EvalModel(CustomModel):
 
 def run_eval_single_model(args: EvalArguments,
                           model_name,
-                          dataset,
-                          model_args,
                           record=None):
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
@@ -228,17 +226,12 @@ def run_eval_single_model(args: EvalArguments,
 
 def llm_eval(args: EvalArguments) -> None:
     dtypes = {value: key for key, value in dtype_mapping.items()}
-    for ds in args.eval_dataset:
-        run_eval_single_model(
-            args,
-            args.model_type or args.model_id_or_path or args.ckpt_dir,
-            ds,
-            model_args={
-                'device_map':
-                'auto',
-                'precision':
-                dtypes[args.dtype] if args.dtype != 'AUTO' else dtypes['fp16'],
-            })
+    model_name = args.model_type
+    if args.name:
+        model_name += f'-{args.name}'
+    run_eval_single_model(
+        args,
+        model_name)
 
 
 eval_main = get_main(EvalArguments, llm_eval)
