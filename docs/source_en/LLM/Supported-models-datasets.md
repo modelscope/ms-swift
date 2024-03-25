@@ -1,0 +1,280 @@
+# Supported models and datasets
+## Table of Contents
+- [Models](#Models)
+- [Datasets](#Datasets)
+
+## Models
+The table below introcudes all models supported by SWIFT:
+- Model List: The model_type information registered in SWIFT.
+- Default Lora Target Modules: Default lora_target_modules used by the model.
+- Default Template: Default template used by the model.
+- Support Flash Attn: Whether the model supports [flash attention](https://github.com/Dao-AILab/flash-attention) to accelerate sft and infer.
+- Support VLLM: Whether the model supports [vllm](https://github.com/vllm-project/vllm) to accelerate infer and deployment.
+- Requires: The extra requirements used by the model.
+
+| Model Type | Model ID | Default Lora Target Modules | Default Template | Support Flash Attn | Support VLLM | Requires | Tags |
+| ---------  | -------- | --------------------------- | ---------------- | ------------------ | ------------ | -------- | ---- |
+|qwen-1_8b|[qwen/Qwen-1_8B](https://modelscope.cn/models/qwen/Qwen-1_8B/summary)|c_attn|default-generation|&#x2714;|&#x2714;||-|
+|qwen-1_8b-chat|[qwen/Qwen-1_8B-Chat](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;||-|
+|qwen-1_8b-chat-int4|[qwen/Qwen-1_8B-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5|-|
+|qwen-1_8b-chat-int8|[qwen/Qwen-1_8B-Chat-Int8](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat-Int8/summary)|c_attn|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5|-|
+|qwen-7b|[qwen/Qwen-7B](https://modelscope.cn/models/qwen/Qwen-7B/summary)|c_attn|default-generation|&#x2714;|&#x2714;||-|
+|qwen-7b-chat|[qwen/Qwen-7B-Chat](https://modelscope.cn/models/qwen/Qwen-7B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;||-|
+|qwen-7b-chat-int4|[qwen/Qwen-7B-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5|-|
+|qwen-7b-chat-int8|[qwen/Qwen-7B-Chat-Int8](https://modelscope.cn/models/qwen/Qwen-7B-Chat-Int8/summary)|c_attn|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5|-|
+|qwen-14b|[qwen/Qwen-14B](https://modelscope.cn/models/qwen/Qwen-14B/summary)|c_attn|default-generation|&#x2714;|&#x2714;||-|
+|qwen-14b-chat|[qwen/Qwen-14B-Chat](https://modelscope.cn/models/qwen/Qwen-14B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;||-|
+|qwen-14b-chat-int4|[qwen/Qwen-14B-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5|-|
+|qwen-14b-chat-int8|[qwen/Qwen-14B-Chat-Int8](https://modelscope.cn/models/qwen/Qwen-14B-Chat-Int8/summary)|c_attn|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5|-|
+|qwen-72b|[qwen/Qwen-72B](https://modelscope.cn/models/qwen/Qwen-72B/summary)|c_attn|default-generation|&#x2714;|&#x2714;||-|
+|qwen-72b-chat|[qwen/Qwen-72B-Chat](https://modelscope.cn/models/qwen/Qwen-72B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;||-|
+|qwen-72b-chat-int4|[qwen/Qwen-72B-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-72B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5|-|
+|qwen-72b-chat-int8|[qwen/Qwen-72B-Chat-Int8](https://modelscope.cn/models/qwen/Qwen-72B-Chat-Int8/summary)|c_attn|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5|-|
+|qwen1half-0_5b|[qwen/Qwen1.5-0.5B](https://modelscope.cn/models/qwen/Qwen1.5-0.5B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-1_8b|[qwen/Qwen1.5-1.8B](https://modelscope.cn/models/qwen/Qwen1.5-1.8B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-4b|[qwen/Qwen1.5-4B](https://modelscope.cn/models/qwen/Qwen1.5-4B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-7b|[qwen/Qwen1.5-7B](https://modelscope.cn/models/qwen/Qwen1.5-7B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-14b|[qwen/Qwen1.5-14B](https://modelscope.cn/models/qwen/Qwen1.5-14B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-72b|[qwen/Qwen1.5-72B](https://modelscope.cn/models/qwen/Qwen1.5-72B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-0_5b-chat|[qwen/Qwen1.5-0.5B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-1_8b-chat|[qwen/Qwen1.5-1.8B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-4b-chat|[qwen/Qwen1.5-4B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-7b-chat|[qwen/Qwen1.5-7B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-14b-chat|[qwen/Qwen1.5-14B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-72b-chat|[qwen/Qwen1.5-72B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-0_5b-chat-int4|[qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-1_8b-chat-int4|[qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-4b-chat-int4|[qwen/Qwen1.5-4B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-7b-chat-int4|[qwen/Qwen1.5-7B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-14b-chat-int4|[qwen/Qwen1.5-14B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-72b-chat-int4|[qwen/Qwen1.5-72B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-0_5b-chat-int8|[qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-1_8b-chat-int8|[qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-4b-chat-int8|[qwen/Qwen1.5-4B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-7b-chat-int8|[qwen/Qwen1.5-7B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-14b-chat-int8|[qwen/Qwen1.5-14B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-72b-chat-int8|[qwen/Qwen1.5-72B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-0_5b-chat-awq|[qwen/Qwen1.5-0.5B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|qwen1half-1_8b-chat-awq|[qwen/Qwen1.5-1.8B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|qwen1half-4b-chat-awq|[qwen/Qwen1.5-4B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|qwen1half-7b-chat-awq|[qwen/Qwen1.5-7B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|qwen1half-14b-chat-awq|[qwen/Qwen1.5-14B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|qwen1half-72b-chat-awq|[qwen/Qwen1.5-72B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|qwen-vl|[qwen/Qwen-VL](https://modelscope.cn/models/qwen/Qwen-VL/summary)|c_attn|default-generation|&#x2714;|&#x2718;||multi-modal, vision|
+|qwen-vl-chat|[qwen/Qwen-VL-Chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary)|c_attn|qwen|&#x2714;|&#x2718;||multi-modal, vision|
+|qwen-vl-chat-int4|[qwen/Qwen-VL-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5|multi-modal, vision|
+|qwen-audio|[qwen/Qwen-Audio](https://modelscope.cn/models/qwen/Qwen-Audio/summary)|c_attn|qwen-audio-generation|&#x2714;|&#x2718;||multi-modal, audio|
+|qwen-audio-chat|[qwen/Qwen-Audio-Chat](https://modelscope.cn/models/qwen/Qwen-Audio-Chat/summary)|c_attn|qwen-audio|&#x2714;|&#x2718;||multi-modal, audio|
+|chatglm2-6b|[ZhipuAI/chatglm2-6b](https://modelscope.cn/models/ZhipuAI/chatglm2-6b/summary)|query_key_value|chatglm2|&#x2718;|&#x2714;||-|
+|chatglm2-6b-32k|[ZhipuAI/chatglm2-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm2-6b-32k/summary)|query_key_value|chatglm2|&#x2718;|&#x2714;||-|
+|chatglm3-6b-base|[ZhipuAI/chatglm3-6b-base](https://modelscope.cn/models/ZhipuAI/chatglm3-6b-base/summary)|query_key_value|chatglm-generation|&#x2718;|&#x2714;||-|
+|chatglm3-6b|[ZhipuAI/chatglm3-6b](https://modelscope.cn/models/ZhipuAI/chatglm3-6b/summary)|query_key_value|chatglm3|&#x2718;|&#x2714;||-|
+|chatglm3-6b-32k|[ZhipuAI/chatglm3-6b-32k](https://modelscope.cn/models/ZhipuAI/chatglm3-6b-32k/summary)|query_key_value|chatglm3|&#x2718;|&#x2714;||-|
+|codegeex2-6b|[ZhipuAI/codegeex2-6b](https://modelscope.cn/models/ZhipuAI/codegeex2-6b/summary)|query_key_value|chatglm-generation|&#x2718;|&#x2714;|transformers<4.34|coding|
+|llama2-7b|[modelscope/Llama-2-7b-ms](https://modelscope.cn/models/modelscope/Llama-2-7b-ms/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|llama2-7b-chat|[modelscope/Llama-2-7b-chat-ms](https://modelscope.cn/models/modelscope/Llama-2-7b-chat-ms/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;||-|
+|llama2-13b|[modelscope/Llama-2-13b-ms](https://modelscope.cn/models/modelscope/Llama-2-13b-ms/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|llama2-13b-chat|[modelscope/Llama-2-13b-chat-ms](https://modelscope.cn/models/modelscope/Llama-2-13b-chat-ms/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;||-|
+|llama2-70b|[modelscope/Llama-2-70b-ms](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|llama2-70b-chat|[modelscope/Llama-2-70b-chat-ms](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;||-|
+|llama2-7b-aqlm-2bit-1x16|[AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf](https://modelscope.cn/models/AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2718;|transformers>=4.38, aqlm, torch>=2.2.0|-|
+|yi-6b|[01ai/Yi-6B](https://modelscope.cn/models/01ai/Yi-6B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
+|yi-6b-200k|[01ai/Yi-6B-200K](https://modelscope.cn/models/01ai/Yi-6B-200K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
+|yi-6b-chat|[01ai/Yi-6B-Chat](https://modelscope.cn/models/01ai/Yi-6B-Chat/summary)|q_proj, k_proj, v_proj|yi|&#x2714;|&#x2714;||-|
+|yi-9b|[01ai/Yi-9B](https://modelscope.cn/models/01ai/Yi-9B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
+|yi-34b|[01ai/Yi-34B](https://modelscope.cn/models/01ai/Yi-34B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
+|yi-34b-200k|[01ai/Yi-34B-200K](https://modelscope.cn/models/01ai/Yi-34B-200K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
+|yi-34b-chat|[01ai/Yi-34B-Chat](https://modelscope.cn/models/01ai/Yi-34B-Chat/summary)|q_proj, k_proj, v_proj|yi|&#x2714;|&#x2714;||-|
+|yi-vl-6b-chat|[01ai/Yi-VL-6B](https://modelscope.cn/models/01ai/Yi-VL-6B/summary)|q_proj, k_proj, v_proj|yi-vl|&#x2718;|&#x2718;|transformers>=4.34|multi-modal, vision|
+|yi-vl-34b-chat|[01ai/Yi-VL-34B](https://modelscope.cn/models/01ai/Yi-VL-34B/summary)|q_proj, k_proj, v_proj|yi-vl|&#x2718;|&#x2718;|transformers>=4.34|multi-modal, vision|
+|internlm-7b|[Shanghai_AI_Laboratory/internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2714;||-|
+|internlm-7b-chat|[Shanghai_AI_Laboratory/internlm-chat-7b-v1_1](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary)|q_proj, k_proj, v_proj|internlm|&#x2718;|&#x2714;||-|
+|internlm-7b-chat-8k|[Shanghai_AI_Laboratory/internlm-chat-7b-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary)|q_proj, k_proj, v_proj|internlm|&#x2718;|&#x2714;||-|
+|internlm-20b|[Shanghai_AI_Laboratory/internlm-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-20b/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2714;||-|
+|internlm-20b-chat|[Shanghai_AI_Laboratory/internlm-chat-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-20b/summary)|q_proj, k_proj, v_proj|internlm|&#x2718;|&#x2714;||-|
+|internlm2-1_8b|[Shanghai_AI_Laboratory/internlm2-1_8b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-1_8b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||-|
+|internlm2-1_8b-sft-chat|[Shanghai_AI_Laboratory/internlm2-chat-1_8b-sft](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-chat-1_8b-sft/summary)|wqkv|internlm2|&#x2714;|&#x2714;||-|
+|internlm2-1_8b-chat|[Shanghai_AI_Laboratory/internlm2-chat-1_8b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-chat-1_8b/summary)|wqkv|internlm2|&#x2714;|&#x2714;||-|
+|internlm2-7b-base|[Shanghai_AI_Laboratory/internlm2-base-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-base-7b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||-|
+|internlm2-7b|[Shanghai_AI_Laboratory/internlm2-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-7b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||-|
+|internlm2-7b-sft-chat|[Shanghai_AI_Laboratory/internlm2-chat-7b-sft](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-chat-7b-sft/summary)|wqkv|internlm2|&#x2714;|&#x2714;||-|
+|internlm2-7b-chat|[Shanghai_AI_Laboratory/internlm2-chat-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-chat-7b/summary)|wqkv|internlm2|&#x2714;|&#x2714;||-|
+|internlm2-20b-base|[Shanghai_AI_Laboratory/internlm2-base-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-base-20b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||-|
+|internlm2-20b|[Shanghai_AI_Laboratory/internlm2-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-20b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||-|
+|internlm2-20b-sft-chat|[Shanghai_AI_Laboratory/internlm2-chat-20b-sft](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-chat-20b-sft/summary)|wqkv|internlm2|&#x2714;|&#x2714;||-|
+|internlm2-20b-chat|[Shanghai_AI_Laboratory/internlm2-chat-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-chat-20b/summary)|wqkv|internlm2|&#x2714;|&#x2714;||-|
+|internlm2-math-7b|[Shanghai_AI_Laboratory/internlm2-math-base-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-math-base-7b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||math|
+|internlm2-math-7b-chat|[Shanghai_AI_Laboratory/internlm2-math-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-math-7b/summary)|wqkv|internlm2|&#x2714;|&#x2714;||math|
+|internlm2-math-20b|[Shanghai_AI_Laboratory/internlm2-math-base-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-math-base-20b/summary)|wqkv|default-generation-bos|&#x2714;|&#x2714;||math|
+|internlm2-math-20b-chat|[Shanghai_AI_Laboratory/internlm2-math-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-math-20b/summary)|wqkv|internlm2|&#x2714;|&#x2714;||math|
+|internlm-xcomposer2-7b-chat|[Shanghai_AI_Laboratory/internlm-xcomposer2-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary)|wqkv|internlm-xcomposer2|&#x2714;|&#x2718;||multi-modal, vision|
+|deepseek-7b|[deepseek-ai/deepseek-llm-7b-base](https://modelscope.cn/models/deepseek-ai/deepseek-llm-7b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|deepseek-7b-chat|[deepseek-ai/deepseek-llm-7b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-llm-7b-chat/summary)|q_proj, k_proj, v_proj|deepseek|&#x2714;|&#x2714;||-|
+|deepseek-moe-16b|[deepseek-ai/deepseek-moe-16b-base](https://modelscope.cn/models/deepseek-ai/deepseek-moe-16b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|deepseek-moe-16b-chat|[deepseek-ai/deepseek-moe-16b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-moe-16b-chat/summary)|q_proj, k_proj, v_proj|deepseek|&#x2714;|&#x2714;||-|
+|deepseek-67b|[deepseek-ai/deepseek-llm-67b-base](https://modelscope.cn/models/deepseek-ai/deepseek-llm-67b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|deepseek-67b-chat|[deepseek-ai/deepseek-llm-67b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-llm-67b-chat/summary)|q_proj, k_proj, v_proj|deepseek|&#x2714;|&#x2714;||-|
+|deepseek-coder-1_3b|[deepseek-ai/deepseek-coder-1.3b-base](https://modelscope.cn/models/deepseek-ai/deepseek-coder-1.3b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||coding|
+|deepseek-coder-1_3b-instruct|[deepseek-ai/deepseek-coder-1.3b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-coder-1.3b-instruct/summary)|q_proj, k_proj, v_proj|deepseek-coder|&#x2714;|&#x2714;||coding|
+|deepseek-coder-6_7b|[deepseek-ai/deepseek-coder-6.7b-base](https://modelscope.cn/models/deepseek-ai/deepseek-coder-6.7b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||coding|
+|deepseek-coder-6_7b-instruct|[deepseek-ai/deepseek-coder-6.7b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-coder-6.7b-instruct/summary)|q_proj, k_proj, v_proj|deepseek-coder|&#x2714;|&#x2714;||coding|
+|deepseek-coder-33b|[deepseek-ai/deepseek-coder-33b-base](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||coding|
+|deepseek-coder-33b-instruct|[deepseek-ai/deepseek-coder-33b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-instruct/summary)|q_proj, k_proj, v_proj|deepseek-coder|&#x2714;|&#x2714;||coding|
+|deepseek-math-7b|[deepseek-ai/deepseek-math-7b-base](https://modelscope.cn/models/deepseek-ai/deepseek-math-7b-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||math|
+|deepseek-math-7b-instruct|[deepseek-ai/deepseek-math-7b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-math-7b-instruct/summary)|q_proj, k_proj, v_proj|deepseek|&#x2714;|&#x2714;||math|
+|deepseek-math-7b-chat|[deepseek-ai/deepseek-math-7b-rl](https://modelscope.cn/models/deepseek-ai/deepseek-math-7b-rl/summary)|q_proj, k_proj, v_proj|deepseek|&#x2714;|&#x2714;||math|
+|deepseek-vl-1_3b-chat|[deepseek-ai/deepseek-vl-1.3b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-vl-1.3b-chat/summary)|q_proj, k_proj, v_proj|deepseek-vl|&#x2714;|&#x2718;||multi-modal, vision|
+|deepseek-vl-7b-chat|[deepseek-ai/deepseek-vl-7b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-vl-7b-chat/summary)|q_proj, k_proj, v_proj|deepseek-vl|&#x2714;|&#x2718;||multi-modal, vision|
+|gemma-2b|[AI-ModelScope/gemma-2b](https://modelscope.cn/models/AI-ModelScope/gemma-2b/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.38|-|
+|gemma-7b|[AI-ModelScope/gemma-7b](https://modelscope.cn/models/AI-ModelScope/gemma-7b/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.38|-|
+|gemma-2b-instruct|[AI-ModelScope/gemma-2b-it](https://modelscope.cn/models/AI-ModelScope/gemma-2b-it/summary)|q_proj, k_proj, v_proj|gemma|&#x2714;|&#x2714;|transformers>=4.38|-|
+|gemma-7b-instruct|[AI-ModelScope/gemma-7b-it](https://modelscope.cn/models/AI-ModelScope/gemma-7b-it/summary)|q_proj, k_proj, v_proj|gemma|&#x2714;|&#x2714;|transformers>=4.38|-|
+|minicpm-2b-sft-chat|[OpenBMB/MiniCPM-2B-sft-fp32](https://modelscope.cn/models/OpenBMB/MiniCPM-2B-sft-fp32/summary)|q_proj, k_proj, v_proj|minicpm|&#x2714;|&#x2718;||-|
+|minicpm-2b-chat|[OpenBMB/MiniCPM-2B-dpo-fp32](https://modelscope.cn/models/OpenBMB/MiniCPM-2B-dpo-fp32/summary)|q_proj, k_proj, v_proj|minicpm|&#x2714;|&#x2718;||-|
+|minicpm-v-3b-chat|[OpenBMB/MiniCPM-V](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary)|q_proj, k_proj, v_proj|minicpm-v|&#x2714;|&#x2718;||-|
+|openbuddy-llama2-13b-chat|[OpenBuddy/openbuddy-llama2-13b-v8.1-fp16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
+|openbuddy-llama-65b-chat|[OpenBuddy/openbuddy-llama-65b-v8-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
+|openbuddy-llama2-70b-chat|[OpenBuddy/openbuddy-llama2-70b-v10.1-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
+|openbuddy-mistral-7b-chat|[OpenBuddy/openbuddy-mistral-7b-v17.1-32k](https://modelscope.cn/models/OpenBuddy/openbuddy-mistral-7b-v17.1-32k/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|transformers>=4.34|-|
+|openbuddy-zephyr-7b-chat|[OpenBuddy/openbuddy-zephyr-7b-v14.1](https://modelscope.cn/models/OpenBuddy/openbuddy-zephyr-7b-v14.1/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|transformers>=4.34|-|
+|openbuddy-deepseek-67b-chat|[OpenBuddy/openbuddy-deepseek-67b-v15.2](https://modelscope.cn/models/OpenBuddy/openbuddy-deepseek-67b-v15.2/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
+|openbuddy-mixtral-moe-7b-chat|[OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k](https://modelscope.cn/models/OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|transformers>=4.36|-|
+|mistral-7b|[AI-ModelScope/Mistral-7B-v0.1](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.34|-|
+|mistral-7b-instruct|[AI-ModelScope/Mistral-7B-Instruct-v0.1](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;|transformers>=4.34|-|
+|mistral-7b-instruct-v2|[AI-ModelScope/Mistral-7B-Instruct-v0.2](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.2/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;|transformers>=4.34|-|
+|mixtral-moe-7b|[AI-ModelScope/Mixtral-8x7B-v0.1](https://modelscope.cn/models/AI-ModelScope/Mixtral-8x7B-v0.1/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.36|-|
+|mixtral-moe-7b-instruct|[AI-ModelScope/Mixtral-8x7B-Instruct-v0.1](https://modelscope.cn/models/AI-ModelScope/Mixtral-8x7B-Instruct-v0.1/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;|transformers>=4.36|-|
+|mixtral-moe-7b-aqlm-2bit-1x16|[AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf](https://modelscope.cn/models/AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2718;|transformers>=4.38, aqlm, torch>=2.2.0|-|
+|baichuan-7b|[baichuan-inc/baichuan-7B](https://modelscope.cn/models/baichuan-inc/baichuan-7B/summary)|W_pack|default-generation|&#x2718;|&#x2714;|transformers<4.34|-|
+|baichuan-13b|[baichuan-inc/Baichuan-13B-Base](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary)|W_pack|default-generation|&#x2718;|&#x2714;|transformers<4.34|-|
+|baichuan-13b-chat|[baichuan-inc/Baichuan-13B-Chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary)|W_pack|baichuan|&#x2718;|&#x2714;|transformers<4.34|-|
+|baichuan2-7b|[baichuan-inc/Baichuan2-7B-Base](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Base/summary)|W_pack|default-generation|&#x2718;|&#x2714;||-|
+|baichuan2-7b-chat|[baichuan-inc/Baichuan2-7B-Chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat/summary)|W_pack|baichuan|&#x2718;|&#x2714;||-|
+|baichuan2-7b-chat-int4|[baichuan-inc/Baichuan2-7B-Chat-4bits](https://modelscope.cn/models/baichuan-inc/Baichuan2-7B-Chat-4bits/summary)|W_pack|baichuan|&#x2718;|&#x2718;|bitsandbytes<0.41.2, accelerate<0.26|-|
+|baichuan2-13b|[baichuan-inc/Baichuan2-13B-Base](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary)|W_pack|default-generation|&#x2718;|&#x2714;||-|
+|baichuan2-13b-chat|[baichuan-inc/Baichuan2-13B-Chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary)|W_pack|baichuan|&#x2718;|&#x2714;||-|
+|baichuan2-13b-chat-int4|[baichuan-inc/Baichuan2-13B-Chat-4bits](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat-4bits/summary)|W_pack|baichuan|&#x2718;|&#x2718;|bitsandbytes<0.41.2, accelerate<0.26|-|
+|yuan2-2b-instruct|[YuanLLM/Yuan2.0-2B-hf](https://modelscope.cn/models/YuanLLM/Yuan2.0-2B-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|
+|yuan2-2b-janus-instruct|[YuanLLM/Yuan2-2B-Janus-hf](https://modelscope.cn/models/YuanLLM/Yuan2-2B-Janus-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|
+|yuan2-51b-instruct|[YuanLLM/Yuan2.0-51B-hf](https://modelscope.cn/models/YuanLLM/Yuan2.0-51B-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|
+|yuan2-102b-instruct|[YuanLLM/Yuan2.0-102B-hf](https://modelscope.cn/models/YuanLLM/Yuan2.0-102B-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|
+|xverse-7b|[xverse/XVERSE-7B](https://modelscope.cn/models/xverse/XVERSE-7B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|xverse-7b-chat|[xverse/XVERSE-7B-Chat](https://modelscope.cn/models/xverse/XVERSE-7B-Chat/summary)|q_proj, k_proj, v_proj|xverse|&#x2718;|&#x2718;||-|
+|xverse-13b|[xverse/XVERSE-13B](https://modelscope.cn/models/xverse/XVERSE-13B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|xverse-13b-chat|[xverse/XVERSE-13B-Chat](https://modelscope.cn/models/xverse/XVERSE-13B-Chat/summary)|q_proj, k_proj, v_proj|xverse|&#x2718;|&#x2718;||-|
+|xverse-65b|[xverse/XVERSE-65B](https://modelscope.cn/models/xverse/XVERSE-65B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|xverse-65b-v2|[xverse/XVERSE-65B-2](https://modelscope.cn/models/xverse/XVERSE-65B-2/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|xverse-65b-chat|[xverse/XVERSE-65B-Chat](https://modelscope.cn/models/xverse/XVERSE-65B-Chat/summary)|q_proj, k_proj, v_proj|xverse|&#x2718;|&#x2718;||-|
+|xverse-13b-256k|[xverse/XVERSE-13B-256K](https://modelscope.cn/models/xverse/XVERSE-13B-256K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|orion-14b|[OrionStarAI/Orion-14B-Base](https://modelscope.cn/models/OrionStarAI/Orion-14B-Base/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2718;||-|
+|orion-14b-chat|[OrionStarAI/Orion-14B-Chat](https://modelscope.cn/models/OrionStarAI/Orion-14B-Chat/summary)|q_proj, k_proj, v_proj|orion|&#x2714;|&#x2718;||-|
+|bluelm-7b|[vivo-ai/BlueLM-7B-Base](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2718;||-|
+|bluelm-7b-32k|[vivo-ai/BlueLM-7B-Base-32K](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base-32K/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2718;||-|
+|bluelm-7b-chat|[vivo-ai/BlueLM-7B-Chat](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat/summary)|q_proj, k_proj, v_proj|bluelm|&#x2718;|&#x2718;||-|
+|bluelm-7b-chat-32k|[vivo-ai/BlueLM-7B-Chat-32K](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat-32K/summary)|q_proj, k_proj, v_proj|bluelm|&#x2718;|&#x2718;||-|
+|ziya2-13b|[Fengshenbang/Ziya2-13B-Base](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
+|ziya2-13b-chat|[Fengshenbang/Ziya2-13B-Chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)|q_proj, k_proj, v_proj|ziya|&#x2714;|&#x2714;||-|
+|skywork-13b|[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2718;||-|
+|skywork-13b-chat|[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)|q_proj, k_proj, v_proj|skywork|&#x2718;|&#x2718;||-|
+|zephyr-7b-beta-chat|[modelscope/zephyr-7b-beta](https://modelscope.cn/models/modelscope/zephyr-7b-beta/summary)|q_proj, k_proj, v_proj|zephyr|&#x2714;|&#x2714;|transformers>=4.34|-|
+|polylm-13b|[damo/nlp_polylm_13b_text_generation](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary)|c_attn|default-generation|&#x2718;|&#x2718;||-|
+|seqgpt-560m|[damo/nlp_seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)|query_key_value|default-generation|&#x2718;|&#x2714;||-|
+|sus-34b-chat|[SUSTC/SUS-Chat-34B](https://modelscope.cn/models/SUSTC/SUS-Chat-34B/summary)|q_proj, k_proj, v_proj|sus|&#x2714;|&#x2714;||-|
+|tongyi-finance-14b|[TongyiFinance/Tongyi-Finance-14B](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary)|c_attn|default-generation|&#x2714;|&#x2714;||financial|
+|tongyi-finance-14b-chat|[TongyiFinance/Tongyi-Finance-14B-Chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;||financial|
+|tongyi-finance-14b-chat-int4|[TongyiFinance/Tongyi-Finance-14B-Chat-Int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5|financial|
+|codefuse-codellama-34b-chat|[codefuse-ai/CodeFuse-CodeLlama-34B](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeLlama-34B/summary)|q_proj, k_proj, v_proj|codefuse-codellama|&#x2714;|&#x2714;||coding|
+|codefuse-codegeex2-6b-chat|[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeGeeX2-6B/summary)|query_key_value|codefuse|&#x2718;|&#x2714;|transformers<4.34|coding|
+|codefuse-qwen-14b-chat|[codefuse-ai/CodeFuse-QWen-14B](https://modelscope.cn/models/codefuse-ai/CodeFuse-QWen-14B/summary)|c_attn|codefuse|&#x2714;|&#x2714;||coding|
+|phi2-3b|[AI-ModelScope/phi-2](https://modelscope.cn/models/AI-ModelScope/phi-2/summary)|Wqkv|default-generation|&#x2714;|&#x2714;||coding|
+|cogvlm-17b-instruct|[ZhipuAI/cogvlm-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary)|vision_expert_query_key_value, vision_expert_dense, language_expert_query_key_value, language_expert_dense|cogvlm-instruct|&#x2718;|&#x2718;||multi-modal, vision|
+|cogagent-18b-chat|[ZhipuAI/cogagent-chat](https://modelscope.cn/models/ZhipuAI/cogagent-chat/summary)|vision_expert_query_key_value, vision_expert_dense, language_expert_query_key_value, language_expert_dense, query, key_value, dense|cogagent-chat|&#x2718;|&#x2718;||multi-modal, vision|
+|cogagent-18b-instruct|[ZhipuAI/cogagent-vqa](https://modelscope.cn/models/ZhipuAI/cogagent-vqa/summary)|vision_expert_query_key_value, vision_expert_dense, language_expert_query_key_value, language_expert_dense, query, key_value, dense|cogagent-instruct|&#x2718;|&#x2718;||multi-modal, vision|
+|mamba-130m|[AI-ModelScope/mamba-130m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-130m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+|mamba-370m|[AI-ModelScope/mamba-370m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-370m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+|mamba-390m|[AI-ModelScope/mamba-390m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-390m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+|mamba-790m|[AI-ModelScope/mamba-790m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-790m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+|mamba-1.4b|[AI-ModelScope/mamba-1.4b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-1.4b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+|mamba-2.8b|[AI-ModelScope/mamba-2.8b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-2.8b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+
+
+## 数据集
+The table below introduces the datasets supported by SWIFT:
+- Dataset Name: The dataset name registered in SWIFT.
+- Dataset ID: The dataset id in [ModelScope](https://www.modelscope.cn/my/overview).
+- Size: The data row count of the dataset.
+- Statistic: Dataset statistics. We use the number of tokens for statistics, which helps adjust the max_length hyperparameter. We concatenate the training and validation sets of the dataset and then compute the statistics. We use qwen's tokenizer to tokenize the dataset. Different tokenizers produce different statistics. If you want to obtain token statistics for tokenizers of other models, you can use the script to get them yourself.
+
+| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags |
+| ------------ | ---------- | ---------- | -------- | ----------------- | ---- |
+|🔥ms-bench|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|316228|0|345.0±441.3, min=22, max=30960|chat, general, multi-round|
+|🔥ms-bench-mini|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|19492|0|353.9±439.4, min=29, max=12078|chat, general, multi-round|
+|🔥alpaca-en|[AI-ModelScope/alpaca-gpt4-data-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)|52002|0|176.2±125.8, min=26, max=740|chat, general|
+|🔥alpaca-zh|[AI-ModelScope/alpaca-gpt4-data-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)|48818|0|162.1±93.9, min=26, max=856|chat, general|
+|multi-alpaca-all|[damo/nlp_polylm_multialpaca_sft](https://modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary)|131867|0|112.9±50.6, min=26, max=1226|chat, general, multilingual|
+|instinwild-en|[wyj123456/instinwild](https://modelscope.cn/datasets/wyj123456/instinwild/summary)|52191|0|160.2±69.7, min=33, max=763|chat, general|
+|instinwild-zh|[wyj123456/instinwild](https://modelscope.cn/datasets/wyj123456/instinwild/summary)|51504|0|130.3±45.1, min=28, max=1434|chat, general|
+|cot-en|[YorickHe/CoT](https://modelscope.cn/datasets/YorickHe/CoT/summary)|74771|0|122.7±64.8, min=51, max=8320|chat, general|
+|cot-zh|[YorickHe/CoT_zh](https://modelscope.cn/datasets/YorickHe/CoT_zh/summary)|74771|0|117.5±70.8, min=43, max=9636|chat, general|
+|firefly-all-zh|[wyj123456/firefly](https://modelscope.cn/datasets/wyj123456/firefly/summary)|1649399|0|178.1±260.4, min=26, max=12516|chat, general|
+|instruct-en|[wyj123456/instruct](https://modelscope.cn/datasets/wyj123456/instruct/summary)|888970|0|268.9±331.2, min=26, max=7252|chat, general|
+|gpt4all-en|[wyj123456/GPT4all](https://modelscope.cn/datasets/wyj123456/GPT4all/summary)|806199|0|302.5±384.1, min=27, max=7391|chat, general|
+|sharegpt-en|[huangjintao/sharegpt](https://modelscope.cn/datasets/huangjintao/sharegpt/summary)|99799|0|1045.7±431.9, min=22, max=7907|chat, general, multi-round|
+|sharegpt-zh|[huangjintao/sharegpt](https://modelscope.cn/datasets/huangjintao/sharegpt/summary)|135399|0|806.3±771.7, min=21, max=65318|chat, general, multi-round|
+|tulu-v2-sft-mixture|[AI-ModelScope/tulu-v2-sft-mixture](https://modelscope.cn/datasets/AI-ModelScope/tulu-v2-sft-mixture/summary)|326154|0|867.8±996.4, min=22, max=12111|chat, multilingual, general, multi-round|
+|wikipedia-zh|[AI-ModelScope/wikipedia-cn-20230720-filtered](https://modelscope.cn/datasets/AI-ModelScope/wikipedia-cn-20230720-filtered/summary)|254547|0|568.4±713.2, min=37, max=78678|text-generation, general, pretrained|
+|open-orca|[AI-ModelScope/OpenOrca](https://modelscope.cn/datasets/AI-ModelScope/OpenOrca/summary)|3239027|0|360.4±402.9, min=27, max=8672|chat, multilingual, general|
+|open-orca-gpt4|[AI-ModelScope/OpenOrca](https://modelscope.cn/datasets/AI-ModelScope/OpenOrca/summary)|994896|0|382.3±417.4, min=31, max=8740|chat, multilingual, general|
+|sharegpt-gpt4|[AI-ModelScope/sharegpt_gpt4](https://modelscope.cn/datasets/AI-ModelScope/sharegpt_gpt4/summary)|103063|0|1286.2±2089.4, min=22, max=221080|chat, multilingual, general, multi-round|
+|🔥sharegpt-gpt4-mini|[AI-ModelScope/sharegpt_gpt4](https://modelscope.cn/datasets/AI-ModelScope/sharegpt_gpt4/summary)|6205|0|3511.6±6068.5, min=33, max=116018|chat, multilingual, general, multi-round, gpt4|
+|🔥ms-agent|[iic/ms_agent](https://modelscope.cn/datasets/iic/ms_agent/summary)|30000|0|647.7±217.1, min=199, max=2722|chat, agent, multi-round|
+|damo-agent-zh|[damo/MSAgent-Bench](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)|422115|161|965.7±440.9, min=321, max=31535|chat, agent, multi-round|
+|damo-agent-mini-zh|[damo/MSAgent-Bench](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)|39964|152|1230.9±350.1, min=558, max=4982|chat, agent, multi-round|
+|agent-instruct-all-en|[huangjintao/AgentInstruct_copy](https://modelscope.cn/datasets/huangjintao/AgentInstruct_copy/summary)|1866|0|1144.3±635.5, min=206, max=6412|chat, agent, multi-round|
+|code-alpaca-en|[wyj123456/code_alpaca_en](https://modelscope.cn/datasets/wyj123456/code_alpaca_en/summary)|20016|0|100.1±60.1, min=29, max=1776|chat, coding|
+|🔥leetcode-python-en|[AI-ModelScope/leetcode-solutions-python](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)|2359|0|723.8±233.5, min=259, max=2117|chat, coding|
+|🔥codefuse-python-en|[codefuse-ai/CodeExercise-Python-27k](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary)|27224|0|483.6±193.9, min=45, max=3082|chat, coding|
+|🔥codefuse-evol-instruction-zh|[codefuse-ai/Evol-instruction-66k](https://modelscope.cn/datasets/codefuse-ai/Evol-instruction-66k/summary)|66862|0|439.6±206.3, min=37, max=2983|chat, coding|
+|medical-en|[huangjintao/medical_zh](https://modelscope.cn/datasets/huangjintao/medical_zh/summary)|117117|500|257.4±89.1, min=36, max=2564|chat, medical|
+|medical-zh|[huangjintao/medical_zh](https://modelscope.cn/datasets/huangjintao/medical_zh/summary)|1950472|500|167.2±219.7, min=26, max=27351|chat, medical|
+|medical-mini-zh|[huangjintao/medical_zh](https://modelscope.cn/datasets/huangjintao/medical_zh/summary)|50000|500|168.1±220.8, min=26, max=12320|chat, medical|
+|🔥disc-med-sft-zh|[AI-ModelScope/DISC-Med-SFT](https://modelscope.cn/datasets/AI-ModelScope/DISC-Med-SFT/summary)|441767|0|354.1±193.1, min=25, max=2231|chat, medical|
+|lawyer-llama-zh|[AI-ModelScope/lawyer_llama_data](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary)|21476|0|194.4±91.7, min=27, max=924|chat, law|
+|tigerbot-law-zh|[AI-ModelScope/tigerbot-law-plugin](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)|55895|0|109.9±126.4, min=37, max=18878|text-generation, law, pretrained|
+|🔥disc-law-sft-zh|[AI-ModelScope/DISC-Law-SFT](https://modelscope.cn/datasets/AI-ModelScope/DISC-Law-SFT/summary)|166758|0|533.7±495.4, min=30, max=15169|chat, law|
+|🔥blossom-math-zh|[AI-ModelScope/blossom-math-v2](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary)|10000|0|169.3±58.7, min=35, max=563|chat, math|
+|school-math-zh|[AI-ModelScope/school_math_0.25M](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)|248480|0|157.6±72.1, min=33, max=3450|chat, math|
+|open-platypus-en|[AI-ModelScope/Open-Platypus](https://modelscope.cn/datasets/AI-ModelScope/Open-Platypus/summary)|24926|0|367.9±254.8, min=30, max=3951|chat, math|
+|text2sql-en|[AI-ModelScope/texttosqlv2_25000_v2](https://modelscope.cn/datasets/AI-ModelScope/texttosqlv2_25000_v2/summary)|25000|0|274.6±326.4, min=38, max=1975|chat, sql|
+|🔥sql-create-context-en|[AI-ModelScope/sql-create-context](https://modelscope.cn/datasets/AI-ModelScope/sql-create-context/summary)|78577|0|80.2±17.8, min=36, max=456|chat, sql|
+|🔥advertise-gen-zh|[lvjianjin/AdvertiseGen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen/summary)|97484|915|131.6±21.7, min=52, max=242|text-generation|
+|🔥dureader-robust-zh|[modelscope/DuReader_robust-QG](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary)|15937|1962|242.1±137.4, min=61, max=1417|text-generation|
+|cmnli-zh|[clue](https://modelscope.cn/datasets/clue/summary)|391783|12241|83.6±16.6, min=52, max=200|text-generation, classification|
+|🔥cmnli-mini-zh|[clue](https://modelscope.cn/datasets/clue/summary)|20000|200|82.9±16.3, min=52, max=188|text-generation, classification|
+|🔥jd-sentiment-zh|[DAMO_NLP/jd](https://modelscope.cn/datasets/DAMO_NLP/jd/summary)|45012|4988|67.0±83.2, min=40, max=4040|text-generation, classification|
+|🔥hc3-zh|[simpleai/HC3-Chinese](https://modelscope.cn/datasets/simpleai/HC3-Chinese/summary)|39781|0|177.8±81.5, min=58, max=3052|text-generation, classification|
+|🔥hc3-en|[simpleai/HC3](https://modelscope.cn/datasets/simpleai/HC3/summary)|11021|0|299.3±138.7, min=66, max=2268|text-generation, classification|
+|finance-en|[wyj123456/finance_en](https://modelscope.cn/datasets/wyj123456/finance_en/summary)|68911|0|135.6±134.3, min=26, max=3525|chat, financial|
+|poetry-zh|[modelscope/chinese-poetry-collection](https://modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary)|388599|1710|55.2±9.4, min=23, max=83|text-generation, poetry|
+|webnovel-zh|[AI-ModelScope/webnovel_cn](https://modelscope.cn/datasets/AI-ModelScope/webnovel_cn/summary)|50000|0|1478.9±11526.1, min=100, max=490484|chat, novel|
+|generated-chat-zh|[AI-ModelScope/generated_chat_0.4M](https://modelscope.cn/datasets/AI-ModelScope/generated_chat_0.4M/summary)|396004|0|273.3±52.0, min=32, max=873|chat, character-dialogue|
+|cls-fudan-news-zh|[damo/zh_cls_fudan-news](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary)|4959|0|3234.4±2547.5, min=91, max=19548|chat, classification|
+|ner-jave-zh|[damo/zh_ner-JAVE](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)|1266|0|118.3±45.5, min=44, max=223|chat, ner|
+|coco-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|414113|40504|298.8±2.8, min=294, max=351|chat, multi-modal, vision|
+|🔥coco-mini-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|20000|200|298.8±2.8, min=294, max=339|chat, multi-modal, vision|
+|🔥coco-mini-en-2|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|20000|200|36.8±2.8, min=32, max=77|chat, multi-modal, vision|
+|capcha-images|[AI-ModelScope/captcha-images](https://modelscope.cn/datasets/AI-ModelScope/captcha-images/summary)|6000|2000|29.0±0.0, min=29, max=29|chat, multi-modal, vision|
+|aishell1-zh|[speech_asr/speech_asr_aishell1_trainsets](https://modelscope.cn/datasets/speech_asr/speech_asr_aishell1_trainsets/summary)|134424|7176|152.2±36.8, min=63, max=419|chat, multi-modal, audio|
+|🔥aishell1-mini-zh|[speech_asr/speech_asr_aishell1_trainsets](https://modelscope.cn/datasets/speech_asr/speech_asr_aishell1_trainsets/summary)|14326|200|152.0±35.5, min=74, max=359|chat, multi-modal, audio|
+|hh-rlhf-harmless-base|[AI-ModelScope/hh-rlhf](https://modelscope.cn/datasets/AI-ModelScope/hh-rlhf/summary)|42462|2308|167.2±123.1, min=22, max=986|rlhf, dpo, pairwise|
+|hh-rlhf-helpful-base|[AI-ModelScope/hh-rlhf](https://modelscope.cn/datasets/AI-ModelScope/hh-rlhf/summary)|43777|2348|201.9±135.2, min=25, max=1070|rlhf, dpo, pairwise|
+|hh-rlhf-helpful-online|[AI-ModelScope/hh-rlhf](https://modelscope.cn/datasets/AI-ModelScope/hh-rlhf/summary)|10150|1137|401.5±278.7, min=32, max=1987|rlhf, dpo, pairwise|
+|hh-rlhf-helpful-rejection-sampled|[AI-ModelScope/hh-rlhf](https://modelscope.cn/datasets/AI-ModelScope/hh-rlhf/summary)|52413|2749|247.0±152.6, min=26, max=1300|rlhf, dpo, pairwise|
+|hh-rlhf-red-team-attempts|[AI-ModelScope/hh-rlhf](https://modelscope.cn/datasets/AI-ModelScope/hh-rlhf/summary)|52413|2749|247.0±152.6, min=26, max=1300|rlhf, dpo, pairwise|
+|🔥hh-rlhf-cn|[AI-ModelScope/hh_rlhf_cn](https://modelscope.cn/datasets/AI-ModelScope/hh_rlhf_cn/summary)|172085|9292|172.8±124.0, min=22, max=1638|rlhf, dpo, pairwise|
+|hh-rlhf-cn-harmless-base-cn|[AI-ModelScope/hh_rlhf_cn](https://modelscope.cn/datasets/AI-ModelScope/hh_rlhf_cn/summary)|42394|2304|143.9±109.4, min=24, max=3078|rlhf, dpo, pairwise|
+|hh-rlhf-cn-helpful-base-cn|[AI-ModelScope/hh_rlhf_cn](https://modelscope.cn/datasets/AI-ModelScope/hh_rlhf_cn/summary)|43722|2346|176.8±120.0, min=26, max=1420|rlhf, dpo, pairwise|
+|hh-rlhf-cn-harmless-base-en|[AI-ModelScope/hh_rlhf_cn](https://modelscope.cn/datasets/AI-ModelScope/hh_rlhf_cn/summary)|42394|2304|167.5±123.2, min=22, max=986|rlhf, dpo, pairwise|
+|hh-rlhf-cn-helpful-base-en|[AI-ModelScope/hh_rlhf_cn](https://modelscope.cn/datasets/AI-ModelScope/hh_rlhf_cn/summary)|43722|2346|202.2±135.3, min=25, max=1070|rlhf, dpo, pairwise|
+|stack-exchange-paired|[AI-ModelScope/stack-exchange-paired](https://modelscope.cn/datasets/AI-ModelScope/stack-exchange-paired/summary)|4483004|0|534.5±594.6, min=31, max=56588|hfrl, dpo, pairwise|
+|pileval|[huangjintao/pile-val-backup](https://modelscope.cn/datasets/huangjintao/pile-val-backup/summary)|214670|0|1612.3±8856.2, min=11, max=1208955|text-generation, awq|

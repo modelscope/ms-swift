@@ -211,11 +211,11 @@ torchrun \
 
 > 西湖醋鱼怎么做
 
-![image-20240201122323540](resources/image-20240201122323540.png)
+![image-20240201122323540](../../resources/image-20240201122323540.png)
 
 > 新冠和普通感冒有什么区别
 
-![image-20240201122441874](resources/image-20240201122441874.png)
+![image-20240201122441874](../../resources/image-20240201122441874.png)
 
 #### Agent能力
 
@@ -243,11 +243,11 @@ Final Answer: the final answer to the original input question
 Begin!
 ```
 
-![image-20240201122625473](resources/image-20240201122625473.png)
+![image-20240201122625473](../../resources/image-20240201122625473.png)
 
-![image-20240201122725477](resources/image-20240201122725477.png)
+![image-20240201122725477](../../resources/image-20240201122725477.png)
 
-![image-20240201131811038](resources/image-20240201131811038.png)
+![image-20240201131811038](../../resources/image-20240201131811038.png)
 
 可以看到，人工输入Observation后模型答案并不正确。
 
@@ -257,25 +257,25 @@ Begin!
 
 > 西湖醋鱼怎么做
 
-![image-20240201132124061](resources/image-20240201132124061.png)
+![image-20240201132124061](../../resources/image-20240201132124061.png)
 
-![image-20240201132139698](resources/image-20240201132139698.png)
+![image-20240201132139698](../../resources/image-20240201132139698.png)
 
 > 新冠和普通感冒有什么区别
 
-![image-20240201132308260](resources/image-20240201132308260.png)
+![image-20240201132308260](../../resources/image-20240201132308260.png)
 
 #### Agent能力
 
-![image-20240201132421298](resources/image-20240201132421298.png)
+![image-20240201132421298](../../resources/image-20240201132421298.png)
 
-![image-20240201132454465](resources/image-20240201132454465.png)
+![image-20240201132454465](../../resources/image-20240201132454465.png)
 
 可以看到，训练后模型可以正确调用API并给出最终答案。
 
 #### 自我认知
 
-![image-20240201133359457](resources/image-20240201133359457.png)
+![image-20240201133359457](../../resources/image-20240201133359457.png)
 
 ### 在命令行中使用Agent
 

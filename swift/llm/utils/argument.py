@@ -76,7 +76,7 @@ class SftArguments:
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    train_dataset_sample: int = 20000  # -1: all dataset
+    train_dataset_sample: int = -1  # -1: all dataset
     train_dataset_mix_ratio: float = 0.
     train_dataset_mix_ds: List[str] = field(
         default_factory=lambda: ['ms-bench'])

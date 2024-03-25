@@ -27,7 +27,7 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 推理加速
-vllm不支持bnb量化的模型. vllm支持的模型可以查看[支持的模型](./支持的模型和数据集.md#模型).
+vllm不支持bnb量化的模型. vllm支持的模型可以查看[支持的模型](支持的模型和数据集.md#模型).
 
 ### qwen-7b-chat
 ```python
@@ -175,7 +175,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat-int4 --infer_b
 
 **单样本推理**:
 
-使用LoRA进行微调的模型你需要先[merge-lora](./LLM微调文档.md#merge-lora), 产生完整的checkpoint目录.
+使用LoRA进行微调的模型你需要先[merge-lora](LLM微调文档.md#merge-lora), 产生完整的checkpoint目录.
 
 使用全参数微调的模型可以无缝使用VLLM进行推理加速.
 ```python
