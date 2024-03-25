@@ -2662,7 +2662,7 @@ def get_model_tokenizer_llava(model_dir: str,
 
 @register_model(
     ModelType.telechat_12b,
-    'TeleAI/telechat-12B',
+    'TeleAI/TeleChat-12B',
     LoRATM.telechat,
     TemplateType.telechat,
     torch_dtype=torch.float16,
