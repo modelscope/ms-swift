@@ -5,9 +5,9 @@ CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
   --model_type telechat-12b \
   --dataset dureader-robust-zh \
-  --batch_size 4 \
+  --batch_size 1 \
   --max_length 1024 \
-  --gradient_accumulation_steps 2 \
+  --gradient_accumulation_steps 16 \
   --learning_rate 5e-5 \
   --use_flash_attn true \
   --eval_steps 1000 \
