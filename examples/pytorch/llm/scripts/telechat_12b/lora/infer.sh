@@ -1,8 +1,9 @@
-# Experiment env: A10, RTX3090/4090, A100
+# Experiment env: A100
+# 1 * 26GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=1 \
+CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
-    --ckpt_dir "/mnt/workspace/hujinghan.hjh/hjh/swift/examples/pytorch/llm/output/telechat-12b/v5-20240323-220717/checkpoint-3984" \
+    --ckpt_dir "output/telechat-12b/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
     --max_length 2048 \
     --use_flash_attn true \
