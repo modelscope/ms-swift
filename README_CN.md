@@ -40,6 +40,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 🔥2024.03.09: 支持TeleChat-12b模型的训练和推理, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/telechat_12b/lora/sft.sh)来开始训练！.
 - 🔥2024.03.20: 支持**llava**系列的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.03.12: 支持**deepseek-vl**系列推理和微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/deepseek-vl最佳实践.md).
 - 🔥2024.03.11: 支持[GaLore](https://arxiv.org/abs/2403.03507), 用于在全参数训练中有效减小显存占用至原来的1/2.
