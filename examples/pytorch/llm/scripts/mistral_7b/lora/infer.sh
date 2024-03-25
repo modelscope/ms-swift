@@ -1,7 +1,7 @@
 # Experimental environment: A100
-# 2 * 45GB GPU memory
+# 16GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \
     --ckpt_dir "output/mistral-7B-v0.2/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
