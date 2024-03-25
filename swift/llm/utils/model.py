@@ -472,11 +472,11 @@ def get_model_grok_1(model_dir: str,
                      model_config=None,
                      tokenizer=None,
                      **kwargs):
-    if torch_dtype is not None:
-        model_config.torch_dtype = torch_dtype
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
+    if torch_dtype is not None:
+        model_config.torch_dtype = torch_dtype
     model = None
     if load_model:
         model = AutoModelForCausalLM.from_pretrained(
@@ -494,6 +494,9 @@ def get_model_grok_1(model_dir: str,
         model_dir = snapshot_download('AI-ModelScope/grok-1-tokenizer')
         tokenizer_file = os.path.join(model_dir, 'tokenizer.model')
         tokenizer = SentencePieceProcessor(model_file=tokenizer_file)
+
+        class GrokTokenizer:
+
     return model, tokenizer
 
 
