@@ -1,5 +1,5 @@
 # Experimental environment: A100
-# 32GB GPU memory
+# 19GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
