@@ -3,28 +3,29 @@
 
 import os.path
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Optional
 
 import peft
 import torch
-import torch.nn.functional as F
-from peft.utils.other import transpose
-
-from swift import get_logger
-
-logger = get_logger()
-dispatchers = []
 import torch.nn
+import torch.nn.functional as F
 from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
-                  LoKrConfig, OFTConfig, PeftConfig, PeftModel,
+                  LoKrConfig, LoraModel, OFTConfig, PeftConfig, PeftModel,
                   PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification,
                   PeftModelForTokenClassification, PrefixTuningConfig,
                   PromptEncoderConfig, PromptLearningConfig,
                   PromptTuningConfig, get_peft_config, get_peft_model,
-                  get_peft_model_state_dict, LoraModel)
+                  get_peft_model_state_dict)
+from peft.utils.other import transpose
+from transformers import Trainer
 
+from swift import get_logger
 from swift.hub.snapshot_download import snapshot_download
+
+logger = get_logger()
+dispatchers = []
 
 
 @dataclass
@@ -57,9 +58,7 @@ def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
     return result_dora
 
 
-def _create_and_replace_hook(
-    self, *args, **kwargs
-):
+def _create_and_replace_hook(self, *args, **kwargs):
     target = None
     if 'target' in kwargs:
         target = kwargs['target']
@@ -94,25 +93,30 @@ def _convert_dtype(target: torch.nn.Module, lora_dtype: str):
             target.lora_embedding_B.to(torch_dtype)
 
 
-def create_optimizer_param_groups(self, **defaults):
+def create_optimizer_param_groups(self: PeftModel, **defaults):
     all_param_names = set()
+    params = []
     param_groups = []
-    for output in self.adapters.values():
-        if output.optimizer_group_callback:
-            param_names, param_group = output.optimizer_group_callback(
-                self.model, **defaults)
-            if param_names and all_param_names & param_names:
-                raise ValueError(
-                    'Cannot set one parameter to different param groups')
-            if param_names and param_group:
-                all_param_names.update(param_names)
-                param_groups.append(param_group)
+    if isinstance(self.peft_config,
+                  LoraConfig) and self.peft_config.lr_ratio is not None:
+        for name, param in self.base_model.named_parameters():
+            if 'lora_B' in name or 'lora_embedding_B' in name:
+                params.append(param)
+                all_param_names.add(name)
+        if params:
+            assert 'lr' in defaults
+            param_groups.append({
+                'params':
+                params,
+                'lr':
+                defaults['lr'] * self.peft_config.lr_ratio
+            })
 
-    decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
+    decay_parameters = Trainer.get_decay_parameter_names(None, self.base_model)
     param_groups.extend([
         {
             'params': [
-                p for n, p in self.model.named_parameters()
+                p for n, p in self.base_model.named_parameters()
                 if (n in decay_parameters and n not in all_param_names
                     and p.requires_grad)
             ],
@@ -121,7 +125,7 @@ def create_optimizer_param_groups(self, **defaults):
         },
         {
             'params': [
-                p for n, p in self.model.named_parameters()
+                p for n, p in self.base_model.named_parameters()
                 if (n not in decay_parameters and n not in all_param_names
                     and p.requires_grad)
             ],
@@ -154,7 +158,20 @@ def hot_patch_peft_module():
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init
 
+    # Support LoRA+
+    PeftModel.create_optimizer_param_groups = create_optimizer_param_groups
 
+    # Compatible with SwiftModel
+    def dummy_function(*args, **kwargs):
+        logger.warn(
+            f'The function {kwargs["func"]} has no effects, consider using other functions.'
+        )
+
+    PeftModel.activate_adapter = PeftModel.set_adapter
+    PeftModel.deactivate_adapter = partial(
+        dummy_function, func='deactivate_adapter')
+    PeftModel.set_active_adapters = partial(
+        dummy_function, func='set_active_adapters')
 
 
 def get_wrapped_class(module_class):
@@ -191,6 +208,7 @@ def wrap_module(module):
     return get_wrapped_class(module)
 
 
+hot_patch_peft_module()
 PeftModel = wrap_module(PeftModel)
 PeftConfig = wrap_module(PeftConfig)
 PeftModelForSeq2SeqLM = wrap_module(PeftModelForSeq2SeqLM)
