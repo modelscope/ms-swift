@@ -1,7 +1,7 @@
-# Experimental environment: 2 * A100
-# 2 * 60GB GPU memory
+# Experimental environment: A100
+# 32GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=1 \
+CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_id_or_path AI-ModelScope/Mistral-7B-v0.2-hf \
     --model_revision master \
