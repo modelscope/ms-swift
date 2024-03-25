@@ -263,6 +263,8 @@ class ModelType:
     mamba_790m = 'mamba-790m'
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
+    # grok-1
+    grok_1 = 'grok-1'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -295,30 +297,31 @@ class LoRATM(NamedTuple):
     phi = ['Wqkv']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
+    grok_1 = ['q_proj', 'k_proj', 'v_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
-                                                PreTrainedTokenizerBase]]
+PreTrainedTokenizerBase]]
 
 
 def register_model(
-    model_type: str,
-    model_id_or_path: Optional[str],
-    lora_target_modules: Optional[List[str]] = None,
-    template: str = TemplateType.default,
-    get_function: Optional[GetModelTokenizerFunction] = None,
-    *,
-    requires: Optional[List[str]] = None,
-    torch_dtype: Optional[Dtype] = None,
-    use_hf: bool = False,
-    revision: Optional[str] = None,
-    ignore_file_pattern: Optional[List[str]] = None,
-    function_kwargs: Optional[Dict[str, Any]] = None,
-    exists_ok: bool = False,
-    eos_token: Optional[str] = None,
-    **kwargs
+        model_type: str,
+        model_id_or_path: Optional[str],
+        lora_target_modules: Optional[List[str]] = None,
+        template: str = TemplateType.default,
+        get_function: Optional[GetModelTokenizerFunction] = None,
+        *,
+        requires: Optional[List[str]] = None,
+        torch_dtype: Optional[Dtype] = None,
+        use_hf: bool = False,
+        revision: Optional[str] = None,
+        ignore_file_pattern: Optional[List[str]] = None,
+        function_kwargs: Optional[Dict[str, Any]] = None,
+        exists_ok: bool = False,
+        eos_token: Optional[str] = None,
+        **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
-                       GetModelTokenizerFunction]]:
+GetModelTokenizerFunction]]:
     if not exists_ok and model_type in MODEL_MAPPING:
         raise ValueError(
             f'The `{model_type}` has already been registered in the MODEL_MAPPING.'
@@ -452,6 +455,45 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.grok_1,
+    'colossalai/grok-1-pytorch',
+    LoRATM.baichuan,
+    TemplateType.default_generation,
+    requires=['sentencepiece'],
+    support_vllm=False)
+def get_model_grok_1(model_dir: str,
+                     torch_dtype: Optional[Dtype],
+                     model_kwargs: Dict[str, Any],
+                     load_model: bool = True,
+                     model_config=None,
+                     tokenizer=None,
+                     **kwargs):
+    if torch_dtype is not None:
+        model_config.torch_dtype = torch_dtype
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    model = None
+    if load_model:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir,
+            config=model_config,
+            trust_remote_code=True,
+            torch_dtype=torch_dtype,
+            **model_kwargs
+        )
+    if tokenizer is None:
+        from sentencepiece import SentencePieceProcessor
+        from swift import snapshot_download
+        logger.info('[NOTE]: Will automatically download tokenizer.model file from modelscope website, '
+                    'please make sure your server can reach the internet.')
+        model_dir = snapshot_download('AI-ModelScope/grok-1-tokenizer')
+        tokenizer_file = os.path.join(model_dir, 'tokenizer.model')
+        tokenizer = SentencePieceProcessor(model_file=tokenizer_file)
     return model, tokenizer
 
 
@@ -1696,12 +1738,12 @@ def _git_clone_github(github_url: str,
 
 
 def __prepare_inputs_embeds(
-    self,
-    input_ids: torch.LongTensor,
-    pixel_values: torch.FloatTensor,
-    images_seq_mask: torch.LongTensor,
-    images_emb_mask: torch.LongTensor,
-    **kwargs,
+        self,
+        input_ids: torch.LongTensor,
+        pixel_values: torch.FloatTensor,
+        images_seq_mask: torch.LongTensor,
+        images_emb_mask: torch.LongTensor,
+        **kwargs,
 ):
     # for patching deepseek-vl
     from einops import rearrange
@@ -2250,7 +2292,6 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-
     logger.info('use gptq, ignore bnb arguments')
     bits = kwargs.pop('bits')
     if version.parse(transformers.__version__) >= version.parse('4.35'):
