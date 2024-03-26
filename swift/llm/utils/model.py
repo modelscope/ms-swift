@@ -425,6 +425,13 @@ GetModelTokenizerFunction]]:
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
+@register_model(
+    ModelType.grok_1,
+    'AI-ModelScope/keyfan-grok-1-hf',
+    LoRATM.grok_1,
+    TemplateType.default_generation,
+    requires=['transformers'],
+    support_vllm=False)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
@@ -455,48 +462,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 **model_kwargs)
-    return model, tokenizer
-
-
-@register_model(
-    ModelType.grok_1,
-    'colossalai/grok-1-pytorch',
-    LoRATM.baichuan,
-    TemplateType.default_generation,
-    requires=['sentencepiece'],
-    support_vllm=False)
-def get_model_grok_1(model_dir: str,
-                     torch_dtype: Optional[Dtype],
-                     model_kwargs: Dict[str, Any],
-                     load_model: bool = True,
-                     model_config=None,
-                     tokenizer=None,
-                     **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(
-            model_dir, trust_remote_code=True)
-    if torch_dtype is not None:
-        model_config.torch_dtype = torch_dtype
-    model = None
-    if load_model:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_dir,
-            config=model_config,
-            trust_remote_code=True,
-            torch_dtype=torch_dtype,
-            **model_kwargs
-        )
-    if tokenizer is None:
-        from sentencepiece import SentencePieceProcessor
-        from swift import snapshot_download
-        logger.info('[NOTE]: Will automatically download tokenizer.model file from modelscope website, '
-                    'please make sure your server can reach the internet.')
-        model_dir = snapshot_download('AI-ModelScope/grok-1-tokenizer')
-        tokenizer_file = os.path.join(model_dir, 'tokenizer.model')
-        tokenizer = SentencePieceProcessor(model_file=tokenizer_file)
-
-        class GrokTokenizer:
-
     return model, tokenizer
 
 
