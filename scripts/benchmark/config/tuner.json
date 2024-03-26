@@ -1,8 +1,8 @@
 {
     "cmd": "sft",
     "requirements":{
-        "gpu": "2",
-        "ddp": "2"
+        "gpu": "1",
+        "ddp": "1"
     },
     "eval_requirements": {
       "gpu": "1"
@@ -90,8 +90,8 @@
       {
         "name": "full",
         "requirements":{
-          "gpu": "4",
-          "ddp": "2"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full"
@@ -100,8 +100,8 @@
       {
         "name": "full+galore128",
         "requirements":{
-          "gpu": "4",
-          "ddp": "4"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full",
@@ -115,8 +115,8 @@
       {
         "name": "full+galore64",
         "requirements":{
-          "gpu": "4",
-          "ddp": "4"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full",
@@ -130,8 +130,8 @@
       {
         "name": "full+galore32",
         "requirements":{
-          "gpu": "4",
-          "ddp": "4"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full",
@@ -145,8 +145,8 @@
       {
         "name": "full+galore_emb",
         "requirements":{
-          "gpu": "4",
-          "ddp": "4"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full",
@@ -160,8 +160,8 @@
       {
         "name": "full+galore_perparam",
         "requirements":{
-          "gpu": "4",
-          "ddp": "4"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full",
@@ -210,8 +210,8 @@
         "name": "full+no_mix",
         "info": "全参无混合数据集",
         "requirements":{
-          "gpu": "4",
-          "ddp": "2"
+          "gpu": "1",
+          "ddp": "1"
         },
         "args": {
           "sft_type": "full",

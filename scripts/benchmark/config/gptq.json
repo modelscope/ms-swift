@@ -1,8 +1,8 @@
 {
     "cmd": "sft",
     "requirements":{
-        "gpu": "2",
-        "ddp": "2"
+        "gpu": "1",
+        "ddp": "1"
     },
     "eval_requirements": {
       "gpu": "1"
@@ -36,13 +36,6 @@
     "experiment": [
       {
         "name": "qwen1half-7b-chat-int8"
-      },
-      {
-        "name": "qwen1half-7b-chat-int8-qa-lora",
-        "args": {
-          "sft_type": "qalora",
-          "learning_rate": 2e-5
-        }
       }
     ]
 }

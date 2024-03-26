@@ -1,7 +1,7 @@
 {
     "cmd": "export",
     "args": {
-      "model_type": "qwen1half-7b-chat",
+      "model_type": "qwen-7b-chat",
       "quant_bits": 4
     },
     "requirements":{

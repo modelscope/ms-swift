@@ -1,8 +1,8 @@
 {
     "cmd": "sft",
     "requirements":{
-        "gpu": "2",
-        "ddp": "2"
+        "gpu": "1",
+        "ddp": "1"
     },
     "eval_requirements": {
       "gpu": "1"
