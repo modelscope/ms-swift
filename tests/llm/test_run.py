@@ -182,12 +182,17 @@ class TestRun(unittest.TestCase):
             'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl',
             'swift_pre.csv', 'swift_single.jsonl'
         ]
+        mixture_dataset = val_dataset_fnames
         folder = os.path.join(os.path.dirname(__file__), 'data')
         sft_args = SftArguments(
             model_type='qwen-7b-chat',
             custom_train_dataset_path=[
                 os.path.join(folder, fname) for fname in train_dataset_fnames
             ],
+            train_dataset_mix_ds=[
+                os.path.join(folder, fname) for fname in mixture_dataset
+            ],
+            train_dataset_mix_ratio=0.1,
             check_dataset_strategy='warning')
         torch.cuda.empty_cache()
         best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']

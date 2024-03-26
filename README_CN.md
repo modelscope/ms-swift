@@ -2,15 +2,15 @@
 
 <p align="center">
     <br>
-    <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
+    <img src="resources/banner.png"/>
     <br>
 <p>
-
 <p align="center">
-<a href="https://modelscope.cn/home">魔搭社区</a>
+<a href="https://modelscope.cn/home">魔搭社区官网</a>
 <br>
-        中文&nbsp ｜ &nbsp<a href="README.md">English</a>&nbsp ｜ &nbsp<a href="https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E5%BF%AB%E9%80%9F%E4%BD%BF%E7%94%A8.md">文档</a>
+        中文&nbsp ｜ &nbsp<a href="README.md">English</a>&nbsp
 </p>
+
 
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
@@ -25,43 +25,22 @@
 ##  📖 目录
 - [简介](#-简介)
 - [新闻](#-新闻)
-- 🔥[大模型训练推理](#-大模型训练推理)
-- 🔥[SCEdit](#-SCEdit)
-- [安装](#-安装)
+- [安装](#-%EF%B8%8F-安装)
 - [快速开始](#-快速开始)
-- [了解更多](#-了解更多)
-- [License](#license)
+- [文档](#-文档)
+- [License](#-license)
+- [引用](#-引用)
 - [联系我们](#-联系我们)
 
 ## 📝 简介
-SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展的轻量级一站式训练、推理深度学习框架。它集成了各种高效的微调方法，如LoRA、QLoRA、阿里云自研的ResTuning-Bypass等，以及开箱即用的训练推理脚本，使开发者可以在单张商业级显卡上微调推理LLM&AIGC模型。此外，SWIFT与[PEFT](https://github.com/huggingface/peft)完全兼容，使开发者可以在ModelScope模型体系中使用PEFT的能力。
+SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
 
-目前支持的方法：
+为方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。
 
-1. 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
-2. 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)
-3. 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf)
-4. 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
-5. 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
-6. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
-7. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
-8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
-10. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-11. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
-12. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
-13. [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等
-
-主要能力：
-1. 可以通过model-id使SWIFT或PEFT的方法使用ModelScope Hub中的模型
-2. 在单次训练或推理中可以使用多个tuners
-3. 支持调用`activate_adapter`或`deactivate_adapter`或`set_active_adapters`来使部分tuner激活或失活，用户可以在推理时同时加载多个独立的tuners在不同线程中并行使用。
-4. 支持通过脚本方式和命令行方式开启训练和推理，同时支持Web-UI方式进行推理。
-5. 支持模型训练后的部署链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/部署指南.md)。
-
-用户可以查看 [SWIFT官方文档](docs/source/GetStarted/快速使用.md) 来了解详细信息。
+此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 🔥2024.03.20: 支持**llava**系列的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.03.12: 支持**deepseek-vl**系列推理和微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/deepseek-vl最佳实践.md).
 - 🔥2024.03.11: 支持[GaLore](https://arxiv.org/abs/2403.03507), 用于在全参数训练中有效减小显存占用至原来的1/2.
 - 🔥2024.03.10: Qwen1.5-7B-Chat与Qwen1.5-72B-Chat从微调到部署[全流程最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md).
@@ -71,6 +50,8 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 🔥2024.02.29: 支持[LLaMA PRO](https://arxiv.org/pdf/2401.02415.pdf), 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/llamapro/sft.sh)即可开始训练.
 - 🔥2024.02.29: 支持[LoRA+](https://arxiv.org/pdf/2402.12354.pdf), 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/lorap/sft.sh)即可开始训练.
 - 2024.02.25: 支持`swift export`, 对模型进行**AWQ/GPTQ**量化导出, 以及推送ModelScope Hub. 具体可以查看文档: [LLM量化文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md).
+<details><summary>更多</summary>
+
 - 2024.02.22: 支持gemma系列: gemma-2b, [gemma-2b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/gemma_2b_instruct), gemma-7b, gemma-7b-instruct.
 - 2024.02.16: 支持deepseek-math系列: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
 - 🔥2024.02.05: 支持**Qwen1.5**系列模型, 支持的所有Qwen1.5系列模型请查看[模型列表](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B). 提供了[qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8)微调的脚本.
@@ -81,8 +62,6 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 🔥2024.02.01: 支持在DPO训练中增加SFT loss来减少KL散度loss造成的生成重复问题.
 - 2024.02.01: 支持在训练中使用AdaLoRA和IA3两个adapter.
 - 2024.02.01: 支持在AnimateDiff训练中使用`--merge_lora`参数.
-<details><summary>更多</summary>
-
 - 2024.01.30: 支持[internlm-xcomposer2-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm_xcomposer2_7b_chat).
 - 🔥2024.01.30: 支持[ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), 只需要指定`--deepspeed default-zero3`即可.
 - 2024.01.29: 支持internlm2-math系列: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
@@ -115,7 +94,7 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.11.16: 支持更多模型的**flash attn**支持: qwen系列, qwen-vl系列, llama系列, openbuddy系列, mistral系列, yi系列, ziya系列. 请使用`use_flash_attn`参数.
 - 🔥 2023.11.11: 支持**NEFTune**, 使用`Swift.prepare_model(model, NEFTuneConfig())`即可开启.
 - 🔥 2023.11.11: 支持**命令行**训练推理和**Web-UI**推理, 详情可以查看下方的`使用Swift CLI运行`章节.
-- 🔥 2023.11.11: 支持模型训练后的**部署**链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](./docs/source/GetStarted/部署指南.md).
+- 🔥 2023.11.11: 支持模型训练后的**部署**链路(vllm/chatglm.cpp/xinference)，详情可以查看[官方文档](docs/source/GetStarted/zh/部署指南.md).
 - 🔥 2023.11.10: 支持**bluelm**系列模型: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. 对应的sh脚本可以查看[bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
 - 🔥 2023.11.08: 支持**xverse-65b**模型的训练和推理流程，脚本在[xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).
 - 🔥 2023.11.07: 支持**yi-6b**, **yi-34b**模型的训练和推理流程，脚本在[yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).
@@ -135,188 +114,6 @@ SWIFT（Scalable lightWeight Infrastructure for Fine-Tuning）是一个可扩展
 - 2023.09.03: 支持**baichuan2**系列: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 </details>
 
-
-## ✨ 大模型训练推理
-如果想要了解更多大模型或者多模态大模型的**最佳实践**, 或者对大模型进行推理, 微调, 量化, 部署的**教程**, 可以查看[LLM系列文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
-
-
-### WEB UI训练推理
-
-安装SWIFT之后，用如下方式启动界面训练推理：
-
-```shell
-swift web-ui
-```
-
-> 支持的环境变量：
->
-> WEBUI_SHARE=1 控制gradio是否是share状态
-> SWIFT_UI_LANG=en/zh 控制web-ui界面语言
-> WEBUI_SERVER server_name参数， web-ui host ip，0.0.0.0代表所有ip均可访问，127.0.0.1代表只允许本机访问
-> WEBUI_PORT web-ui的端口号
-
-下面是一个web-ui的简单视频介绍：
-
-
-
-[![Watch the video](docs/source/cources/resources/20240119160942.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4)
-
-
-### 快速开始
-你可以通过运行以下代码来测试环境是否安装正确.
-```python
-# pip install ms-swift[llm] -U
-
-# Experimental environment: A10, 3090, V100, ...
-# 8GB GPU memory
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-import torch
-
-from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora
-)
-
-model_type = ModelType.qwen1half_0_5b
-sft_args = SftArguments(
-    model_type=model_type,
-    train_dataset_sample=2000,
-    dataset=[DatasetName.jd_sentiment_zh],
-    output_dir='output')
-result = sft_main(sft_args)
-best_model_checkpoint = result['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
-torch.cuda.empty_cache()
-
-infer_args = InferArguments(
-    ckpt_dir=best_model_checkpoint,
-    load_dataset_config=True,
-    val_dataset_sample=10)
-merge_lora(infer_args, device_map='cpu')
-result = infer_main(infer_args)
-torch.cuda.empty_cache()
-
-app_ui_main(infer_args)
-```
-
-### 训练脚本
-你可以参考以下脚本来自定义属于你的训练脚本.
-
-- full: [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat/full) (A100), [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_mp) (2\*A100)
-- full+ddp+zero2: [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_ddp_zero2) (4\*A100)
-- full+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3) (4\*A100)
-- lora: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora) (3090), [baichuan2-13b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/baichuan2_13b_chat/lora_mp) (2\*3090), [yi-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat/lora) (A100), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_mp) (2\*A100)
-- lora+ddp: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora_ddp) (2\*3090)
-- lora+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/lora_ddp_zero3) (4\*3090), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_ddp_zero3) (4\*A100)
-- qlora(gptq-int4): [qwen-7b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat_int4/qlora) (3090)
-- qlora(gptq-int8): [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8/qlora) (3090)
-- qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
-
-
-### 特性
-- 支持的SFT方法: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), [longlora](https://arxiv.org/abs/2309.12307), [qalora](https://arxiv.org/abs/2309.14717), 全参数微调, 部分参数微调.
-- 支持的特性: 模型量化, DDP, 模型并行, gradient checkpointing, 支持推送ModelScope Hub, 自定义数据集, 多模态和Agent SFT, 多轮对话, DPO, 自我认知微调, ...
-- 支持的模型: [[详细信息]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B)
-  - 多模态:
-    - [qwen-vl](https://github.com/QwenLM/Qwen-VL) 系列: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
-    - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) 系列: qwen-audio, qwen-audio-chat.
-    - [deepseek-vl](https://github.com/deepseek-ai/DeepSeek-VL) 系列: deepseek-vl-1_3b-chat, deepseek-vl-7b-chat.
-    - [yi-vl](https://github.com/01-ai/Yi) 系列: yi-vl-6b-chat, yi-vl-34b-chat.
-    - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) 系列: internlm-xcomposer2-7b-chat.
-    - [minicpm-v](https://github.com/OpenBMB/MiniCPM) 系列: minicpm-v-3b-chat.
-    - [cogvlm](https://github.com/THUDM/CogVLM) 系列: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
-  - 通用:
-    - [qwen](https://github.com/QwenLM/Qwen) 系列:
-      - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.
-      - qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8.
-      - qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8.
-      - qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
-    - [qwen1.5](https://github.com/QwenLM/Qwen1.5) 系列:
-      - qwen1half-0_5b, qwen1half-0_5b-chat, qwen1half-0_5b-chat-int4, qwen1half-0_5b-chat-int8, qwen1half-0_5b-chat-awq.
-      - qwen1half-1_8b, qwen1half-1_8b-chat, qwen1half-1_8b-chat-int4, qwen1half-1_8b-chat-int8, qwen1half-1_8b-chat-awq.
-      - qwen1half-4b, qwen1half-4b-chat, qwen1half-4b-chat-int4, qwen1half-4b-chat-int8, qwen1half-4b-chat-awq.
-      - qwen1half-7b, qwen1half-7b-chat, qwen1half-7b-chat-int4, qwen1half-7b-chat-int8, qwen1half-7b-chat-awq.
-      - qwen1half-14b, qwen1half-14b-chat, qwen1half-14b-chat-int4, qwen1half-14b-chat-int8, qwen1half-14b-chat-awq.
-      - qwen1half-72b, qwen1half-72b-chat, qwen1half-72b-chat-int4, qwen1half-72b-chat-int8, qwen1half-72b-chat-awq.
-    - [chatglm](https://github.com/THUDM/ChatGLM-6B) 系列: chatglm2-6b, chatglm2-6b-32k, chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
-    - [llama](https://github.com/facebookresearch/llama) 系列: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat.
-    - [yi](https://github.com/01-ai/Yi) 系列: yi-6b, yi-6b-200k, yi-6b-chat, yi-9b, yi-34b, yi-34b-200k, yi-34b-chat.
-    - [internlm](https://github.com/InternLM/InternLM) 系列:
-      - internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat.
-      - internlm2-1_8b, internlm2-1_8b-sft-chat, internlm2-1_8b-chat, internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
-    - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) 系列: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
-    - [gemma](https://github.com/google/gemma_pytorch) 系列: gemma-2b, gemma-2b-instruct, gemma-7b, gemma-7b-instruct.
-    - [minicpm](https://github.com/OpenBMB/mlc-MiniCPM) 系列: minicpm-2b-sft-chat, minicpm-2b-chat.
-    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) 系列: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat, openbuddy-mixtral-moe-7b-chat.
-    - [mistral](https://github.com/mistralai/mistral-src) 系列: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
-    - [mixtral](https://github.com/mistralai/mistral-src) 系列: mixtral-moe-7b, mixtral-moe-7b-instruct.
-    - [baichuan](https://github.com/baichuan-inc/Baichuan2) 系列: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4.
-    - [yuan](https://github.com/IEIT-Yuan/Yuan-2.0) 系列: yuan2-2b-instruct, yuan2-2b-janus-instruct, yuan2-51b-instruct, yuan2-102b-instruct.
-    - [xverse](https://github.com/xverse-ai/XVERSE-13B) 系列: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat, xverse-65b, xverse-65b-v2, xverse-65b-chat, xverse-13b-256k.
-    - [orion](https://github.com/OrionStarAI/OrionStar-Yi-34B-Chat) 系列: orion-14b, orion-14b-chat.
-    - [bluelm](https://github.com/vivo-ai-lab/BlueLM) 系列: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k.
-    - [zephyr](https://github.com/huggingface/alignment-handbook) 系列: zephyr-7b-beta-chat.
-    - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) 系列: ziya2-13b, ziya2-13b-chat.
-    - [skywork](https://github.com/SkyworkAI/Skywork) 系列: skywork-13b, skywork-13b-chat.
-    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat).
-  - 金融:
-    - [tongyi-finance](https://github.com/QwenLM/Qwen) 系列: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
-  - 代码:
-    - [codefuse](https://github.com/codefuse-ai) 系列: codefuse-codellama-34b-chat, codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
-    - [deepseek-coder](https://github.com/deepseek-ai/DeepSeek-Coder) 系列: deepseek-coder-1_3b, deepseek-coder-1_3b-instruct, deepseek-coder-6_7b, deepseek-coder-6_7b-instruct, deepseek-coder-33b, deepseek-coder-33b-instruct.
-    - [codegeex2](https://github.com/THUDM/CodeGeeX2) 系列: codegeex2-6b.
-    - [phi](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/) 系列: phi2-3b.
-  - 数学:
-    - [internlm2-math](https://github.com/InternLM/InternLM-Math) 系列: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
-    - [deepseek-math](https://github.com/deepseek-ai/DeepSeek-Math) 系列: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
-- 支持的数据集: [[详细信息]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
-  - NLP:
-    - 通用: 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini.
-    - Agent: 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en.
-    - RLHF: 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en.
-    - 代码: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
-    - 医疗: medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.
-    - 法律: lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.
-    - 数学: 🔥blossom-math-zh, school-math-zh, open-platypus-en.
-    - SQL: text2sql-en, 🔥sql-create-context-en.
-    - 文本生成: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
-    - 分类: cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.
-    - AWQ: pileval.
-    - 其他: finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.
-  - 多模态:
-    - 视觉: coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.
-    - 音频: aishell1-zh, 🔥aishell1-mini-zh.
-  - 自定义数据集
-- 支持的对话模板:
-  - 文本生成: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
-  - 对话: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, minicpm, minicpm-v, gemma, chatml.
-
-
-## 🔥SCEdit
-
-SCEdit由阿里巴巴通义实验室视觉智能团队(Alibaba TongYi Vision Intelligence Lab)所提出，是一个高效的生成式微调框架。该框架不仅支持文生图下游任务的微调能力，**相比LoRA节省30%-50%的训练显存开销**，实现快速迁移到特定的生成场景中；而且还可以**直接扩展到可控图像生成任务中，仅需ControlNet条件生成7.9%的参数量并节省30%的显存开销**，支持边缘图、深度图、分割图、姿态、颜色图、图像补全等条件生成任务。
-
-我们使用了[风格迁移数据集](https://modelscope.cn/datasets/damo/style_custom_dataset/dataPeview)中的3D风格数据进行了训练，并使用相同的`Prompt: A boy in a camouflage jacket with a scarf`进行测试，具体的定性和定量的结果如下：
-
-| Method    | bs   | ep   | Target Module | Param. (M)    | Mem. (MiB) | 3D style                                                     |
-| --------- | ---- | ---- | ------------- | ------------- | ---------- | ------------------------------------------------------------ |
-| LoRA/r=64 | 1    | 50   | q/k/v/out/mlp | 23.94 (2.20%) | 8440MiB    | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665229562-0f33bbb0-c492-41b4-9f37-3ae720dca80d.png" alt="img" style="zoom:20%;" /> |
-| SCEdit    | 1    | 50   | up_blocks     | 19.68 (1.81%) | 7556MiB    | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665933913-74b98741-3b57-46a4-9871-539df3a0112c.png" alt="img" style="zoom:20%;" /> |
-| LoRA/r=64 | 10   | 100  | q/k/v/out/mlp | 23.94 (2.20%) | 26300MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750608529-de20d0e7-bf9c-4928-8e59-73cc54f2c8d7.png" alt="img" style="zoom:20%;" /> |
-| SCEdit    | 10   | 100  | up_blocks     | 19.68 (1.81%) | 18634MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703663033092-94492e44-341f-4259-9df4-13c168e3b5d6.png" alt="img" style="zoom:20%;" /> |
-| LoRA/r=64 | 30   | 200  | q/k/v/out/mlp | 23.94 (2.20%) | 69554MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750626635-2e368d7b-5e99-4a06-b189-8615f302bcd7.png" alt="img" style="zoom:20%;" /> |
-| SCEdit    | 30   | 200  | up_blocks     | 19.68 (1.81%) | 43350MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703662246942-1102b1f4-93ab-4653-b943-3302f2a5259e.png" alt="img" style="zoom:20%;" /> |
-
-使用SCEdit执行训练任务并复现上述结果：
-
-```shell
-# 先执行下面章节的安装步骤
-cd examples/pytorch/multi_modal/notebook
-python text_to_image_synthesis.py
-```
-
 ## 🛠️ 安装
 
 SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
@@ -330,7 +127,7 @@ pip install ms-swift[all] -U
 pip install ms-swift[llm] -U
 # 仅使用AIGC
 pip install ms-swift[aigc] -U
-# 仅使用adapters
+# 仅使用Adapters
 pip install ms-swift -U
 ```
 
@@ -342,158 +139,396 @@ cd swift
 pip install -e .[llm]
 ```
 
-SWIFT依赖torch>=1.13。
+SWIFT依赖torch>=1.13，建议torch>=2.0.0。
 
 - 方法3：在我们的Docker镜像中使用SWIFT
 
 ```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
+# China-Hangzhou image
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
+# US-west image
+docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
 ```
 
 ## 🚀 快速开始
 
-SWIFT支持多个tuners，包括由[PEFT](https://github.com/huggingface/peft)提供的tuners。要使用这些tuners，只需调用:
-```python
-from swift import Swift, LoRAConfig
-config = LoRAConfig(...)
-model = Swift.prepare_model(model, config, extra_state_keys=['...'])
-```
-上面的代码片段随机初始化了tuner。输入model是torch.nn.Module的一个实例，config是SwiftConfig或PeftConfig的子类实例。extra_state_keys是要训练并存储在输出目录中的额外模块权重（如linear head）。
+本章节介绍基本使用，更丰富的使用方式请查看[文档部分](#-文档)。
 
-您可以通过以下方式组合多个tuners：
-```python
-from swift import Swift, LoRAConfig, PromptConfig
-model = Swift.prepare_model(model, {'lora': LoRAConfig(...), 'prompt': PromptConfig(...)})
+### Web-UI
+
+```shell
+swift web-ui
 ```
 
-在微调之后，您可以调用save_pretrained和push_to_hub方法：
+### 训练
 
-```python
-from swift import push_to_hub
-model.save_pretrained('some-output-folder')
-push_to_hub('my-group/some-repo-id-modelscope', 'some-output-folder', token='some-ms-token')
-```
-假设`my-group/some-repo-id-modelscope`是Hub中的model-id，而`some-ms-token`是用于上传的令牌。
+#### 训练脚本
+你可以参考以下脚本来自定义属于你的训练脚本.
 
-使用model-id进行后续推理：
+- full: [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat/full) (A100), [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_mp) (2\*A100)
+- full+ddp+zero2: [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_ddp_zero2) (4\*A100)
+- full+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3) (4\*A100)
+- lora: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora) (3090), [baichuan2-13b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/baichuan2_13b_chat/lora_mp) (2\*3090), [yi-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat/lora) (A100), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_mp) (2\*A100)
+- lora+ddp: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora_ddp) (2\*3090)
+- lora+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/lora_ddp_zero3) (4\*3090), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_ddp_zero3) (4\*A100)
+- qlora(gptq-int4): [qwen-14b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat_int4/qlora) (3090), [qwen1half-72b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_72b_chat_int4/qlora) (A100)
+- qlora(gptq-int8): [qwen-14b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat_int8/qlora) (3090)
+- qlora(bnb-int4): [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/qlora) (3090), [llama2-70b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/llama2_70b_chat/qlora_mp) (2 \* 3090)
 
-```python
-from swift import Swift
-model = Swift.from_pretrained(model, 'my-group/some-repo-id-modelscope')
-```
+#### 支持的训练过程
 
-下面是一个可运行的示例：
-
-```python
-import os
-import tempfile
-
-# 请通过`pip install modelscope`安装modelscope
-from modelscope import Model
-
-from swift import LoRAConfig, SwiftModel, Swift, push_to_hub
-
-tmp_dir = tempfile.TemporaryDirectory().name
-if not os.path.exists(tmp_dir):
-    os.makedirs(tmp_dir)
+| 训练过程 | 训练方式                               |
+| -------- |------------------------------------|
+| 预训练   | 文本生成                               |
+| 微调     | 单轮/多轮<br>Agent训练/自我认知<br>多模态视觉/多模态语音 |
+| 人类对齐 | DPO                                |
+| 文生图   | DreamBooth等                        |
+| 文生视频 | -                                  |
 
 
-model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto')
-lora_config = LoRAConfig(target_modules=['q_proj', 'k_proj', 'v_proj'])
-model: SwiftModel = Swift.prepare_model(model, lora_config)
-# 在这里进行一些微调操作
-model.save_pretrained(tmp_dir)
+#### 单卡训练
 
-push_to_hub('my-group/swift_llama2', output_dir=tmp_dir)
-model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto')
-model = SwiftModel.from_pretrained(model, 'my-group/swift_llama2', device_map='auto')
-```
+通过如下命令启动单卡微调：
 
-这是一个使用transformers库实例化模型，并使用SWIFT进行高效微调的示例。
-
-```python
-from swift import Swift, LoRAConfig, AdapterConfig, PromptConfig
-from transformers import AutoModelForImageClassification
-
-# 初始vit模型
-model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
-
-# 初始化LoRA tuner配置
-lora_config = LoRAConfig(
-    r=10,  # LoRA模块的rank
-    target_modules=['query', 'key', 'value'],  # 将要被替换的模块的模块名后缀
-    merge_weights=False  # 是否合并权重
-)
-
-# 初始化adapter tuner配置
-adapter_config = AdapterConfig(
-    dim=768,  # hidden states的维度
-    hidden_pos=0,  # 要传递到adapter的hidden state的位置
-    target_modules=r'.*attention.output.dense$',  # 要使用正则表达式替换的模块
-    adapter_length=10  # adapter长度
-)
-
-# 初始化prompt tuner配置
-prompt_config = PromptConfig(
-    dim=768,  # hidden states的维度
-    target_modules=r'.*layer\.\d+$',  # 要使用正则表达式替换的模块
-    embedding_pos=0,    # embedding张量的位置
-    prompt_length=10,   # 提示符token的长度
-    attach_front=False  # 是否将提示符附加在embedding前面
-)
-
-# 使用swift创建模型。在实践中，您可以使用其中任何一个调谐器或它们的组合。
-model = Swift.prepare_model(model, {"lora_tuner": lora_config, "adapter_tuner": adapter_config, "prompt_tuner": prompt_config})
-
-# 获取模型的可训练参数。
-model.get_trainable_parameters()
-# 'trainable params: 838,776 || all params: 87,406,432 || trainable%: 0.9596273189597764'
+LoRA:
+```shell
+# 实验环境: A100
+# 显存需求: 20GB
+# 运行时长: 3.1小时
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
-可以在SWIFT中使用PEFT提供的功能：
-
-```python
-from swift import LoraConfig, Swift
-from peft import TaskType
-lora_config = LoraConfig(target_modules=['query', 'key', 'value'], task_type=TaskType.CAUSAL_LM)
-model_wrapped = Swift.prepare_model(model, lora_config)
-
-# 或者使用from_pretrained从modelscope hub中加载权重。
-model_wrapped = Swift.from_pretrained(model, 'some-id-in-the-modelscope-modelhub')
+全参数:
+```shell
+# 实验环境: A100
+# 显存需求: 80GB
+# 运行时长: 2.5小时
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type full \
+    --output_dir output \
+    --eval_steps 500 \
 ```
 
-Swift tuners和Peft tuners之间的保存策略略有不同。可以通过以下方式为Swift tuners命名：
+#### 模型并行训练
 
-```python
-model = Swift.prepare_model(model, {'default': LoRAConfig(...)})
-model.save_pretrained('./output')
+```shell
+# 实验环境: 2 * A100
+# 显存需求: 10GB + 13GB
+# 运行时长: 3.4小时
+CUDA_VISIBLE_DEVICES=0,1 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
-在output目录中将会得到以下类似的目录结构：
+#### 数据并行训练
 
-```text
-output
-    |-- default
-        |-- adapter_config.json
-        |-- adapter_model.bin
-    |-- adapter_config.json
-    |-- adapter_model.bin
+```shell
+# 实验环境: 4 * A100
+# 显存需求: 4 * 30GB
+# 运行时长: 0.8小时
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
-存储在output目录中的config/weights是extra_state_keys的配置和权重。这与Peft不同，Peft存储了`default` tuner的config/weights。
+模型并行与数据并行结合:
+```shell
+# 实验环境: 4 * A100
+# 显存需求: 2*14GB + 2*18GB
+# 运行时长: 1.7小时
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+```
 
-## 🔍 了解更多
+#### Deepspeed训练
 
-- [ModelScope库](https://github.com/modelscope/modelscope/)
+ZeRO2:
+```shell
+# 实验环境: 4 * A100
+# 显存需求: 4 * 21GB
+# 运行时长: 0.9小时
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed default-zero2 \
+```
 
-  ModelScope库是ModelScope项目的模型库，包含了各模态热门的深度学习模型。
+ZeRO3:
+```shell
+# 实验环境: 4 * A100
+# 显存需求: 4 * 19GB
+# 运行时长: 3.2小时
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed default-zero3 \
+```
 
-- [将自己的模型贡献给ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
+### 推理
+原始模型:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat \
+    --infer_backend vllm --max_model_len 8192
+```
 
-## License
+LoRA微调后:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
+    --merge_lora true --infer_backend vllm --max_model_len 8192
+```
 
-本项目使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。
+### 评测
 
+```shell
+# Debugging, on line soon:>
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
+```
+
+### 导出
+
+原始模型:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat \
+    --quant_bits 4 --quant_method awq
+```
+
+LoRA微调后:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
+    --quant_method awq --quant_bits 4 \
+    --merge_lora true \
+```
+
+### 部署
+
+原始模型:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat \
+    --infer_backend vllm --max_model_len 8192
+```
+
+LoRA微调后:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift deploy \
+    --ckpt_dir xxx/checkpoint-xxx --merge_lora true \
+    --infer_backend vllm --max_model_len 8192
+```
+
+### 支持的模型
+
+#### 大语言模型
+
+| 模型类型                                            | 模型介绍                                                     | 语言      | 模型大小                  | 模型类型                                |
+| --------------------------------------------------- | ------------------------------------------------------------ | --------- | ------------------------- | --------------------------------------- |
+| Qwen<br>Qwen1.5                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-72B<br>包含量化版本     | base模型<br>chat模型                       |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2                         | [智谱ChatGLM系列模型](https://github.com/THUDM/)             | 中文<br>英文 | 6B                        | base模型<br>chat模型<br>代码模型       |
+| Baichuan<br>Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文<br>英文 | 7B-13B<br>包含量化版本         | base模型<br>chat模型           |
+| Yuan2                                               | [浪潮源系列模型](https://github.com/IEIT-Yuan)               | 中文<br>英文 | 2B-102B                   | instruct模型             |
+| XVerse                                              | [元象系列模型](https://github.com/xverse-ai)                 | 中文<br>英文 | 7B-65B                    | base模型<br>chat模型<br>长文本模型         |
+| LLaMA2                                              | [LLaMA2系列模型](https://github.com/facebookresearch/llama)  | 英文      | 7B-70B<br>包含量化版本      | base模型<br>chat模型                       |
+| Mistral<br>Mixtral                                 | [Mistral系列模型](https://github.com/mistralai/mistral-src)  | 英文      | 7B | base模型<br>instruct模型<br>MoE模型                   |
+| YI                                                  | [01AI的YI系列模型](https://github.com/01-ai)                 | 中文<br>英文 | 6B-34B                    | base模型<br>chat模型<br>长文本模型               |
+| InternLM<br>InternLM2<br>InternLM2-Math                   | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 1.8B-20B                  | base模型<br>chat模型<br>数学模型              |
+| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math               | [幻方系列模型](https://github.com/deepseek-ai)               | 中文<br>英文 | 1.3B-67B                  | base模型<br>chat模型<br>MoE模型<br>代码模型<br>数学模型 |
+| MAMBA                                               | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)   | 英文      | 130M-2.8B                 | base模型                                |
+| Gemma                                               | [Google Gemma系列模型](https://github.com/google/gemma_pytorch) | 英文      | 2B-7B                     | base模型<br>instruct模型                       |
+| MiniCPM                                             | [OpenBmB MiniCPM系列模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 2B-3B                     | chat模型                                |
+| OpenBuddy                                           | [OpenBuddy系列模型](https://github.com/OpenBuddy/OpenBuddy)  | 中文<br>英文 | 7B-67B                    | base模型<br>chat模型                       |
+| Orion                                               | [猎户星空系列模型](https://github.com/OrionStarAI)           | 中文<br>英文 | 14B                       | base模型<br>chat模型                       |
+| BlueLM                                              | [VIVO蓝心大模型](https://github.com/vivo-ai-lab/BlueLM)      | 中文<br>英文 | 7B                        | base模型<br>chat模型                       |
+| Ziya2                                               | [封神榜系列模型](https://github.com/IDEA-CCNL/Fengshenbang-LM) | 中文<br>英文 | 13B                       | base模型<br>chat模型                       |
+| Skywork                                             | [昆仑天工系列模型](https://github.com/SkyworkAI/Skywork)     | 中文<br>英文 | 13B                       | base模型<br>chat模型                       |
+| Zephyr                                | 基于Mistral的zephyr系列模型                     | 英文      | 7B                        | chat模型                                |
+| PolyLM                                              | [通义实验室自研的PolyLM系列模型](https://github.com/DAMO-NLP-MT/PolyLM) | 多语种    | 13B                       | base模型                                |
+| SeqGPT                                              | [通义实验室自研的文本理解模型，用于信息抽取和文本分类](https://github.com/Alibaba-NLP/SeqGPT) | 中文      | 560M                      | 语义理解模型                            |
+| SUS                                                 | [南方科技大学基于YI Fine-Tune的模型](https://github.com/SUSTech-IDEA/SUS-Chat) | 中文<br>英文 | 34B                       | chat模型                                |
+| Tongyi-Finance                                      | [通义金融系列模型](https://github.com/QwenLM/Qwen)           | 中文<br>英文 | 14B                       | base模型<br>chat模型<br>金融模型               |
+| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)       | 中文<br>英文 | 6B-34B                    | chat模型<br>代码模型                            |
+| phi2                           | 微软PHI2模型                                                 | 英文      | 3B                        | base模型<br>代码模型                               |
+
+#### 多模态大模型
+
+| 模型类型        | 模型介绍                                                     | 语言      | 模型大小         | 模型类型          |
+| --------------- | ------------------------------------------------------------ | --------- | ---------------- | ----------------- |
+| Qwen-VL         | [通义千问视觉模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B<br>包含量化版本 | base模型<br>chat模型 |
+| Qwen-Audio      | [通义千问语音模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B               | base模型<br>chat模型 |
+| YI-VL           | [01AI的YI系列视觉模型](https://github.com/01-ai)             | 中文<br>英文 | 6B-34B           | chat模型          |
+| XComposer2      | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 7B               | chat模型          |
+| DeepSeek-VL     | [幻方系列视觉模型](https://github.com/deepseek-ai)           | 中文<br>英文 | 1.3B-7B          | chat模型          |
+| MiniCPM-V      | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B               | chat模型          |
+| CogVLM<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
+| Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B               | chat模型 |
+
+#### 扩散模型
+
+| 模型类型         | 模型介绍                                                     | 语言 | 模型类型 |
+| ---------------- | ------------------------------------------------------------ | ---- | -------- |
+| AnimateDiff      | [AnimateDiff动画模型](https://github.com/guoyww/AnimateDiff) | 英文 | 文生视频 |
+| SD1.5/SD2.0/SDXL | [StabilityAI系列扩散模型](https://github.com/Stability-AI)   | 英文 | 文生图   |
+
+### 支持的开源数据集
+
+| 数据集类型 | 训练任务 | 文档                                                         |
+| ---------- | :------- | ------------------------------------------------------------ |
+| 通用       | 微调     | 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini. |
+| Agent      | 微调     | 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en. |
+| 通用       | 人类对齐 | 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en. |
+| 代码       | 微调     | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh. |
+| 医疗       | 微调     | medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.   |
+| 法律       | 微调     | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.          |
+| 数学       | 微调     | 🔥blossom-math-zh, school-math-zh, open-platypus-en.          |
+| SQL        | 微调     | text2sql-en, 🔥sql-create-context-en.                         |
+| 文本生成   | 微调     | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                      |
+| 分类       | 微调     | cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
+| 量化辅助   | 量化     | pileval.                                                     |
+| 其他       | 微调     | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh. |
+| 视觉       | 微调     | coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.       |
+| 音频       | 微调     | aishell1-zh, 🔥aishell1-mini-zh.                              |
+
+### 支持的技术
+
+| 技术名称                                                     |
+| ------------------------------------------------------------ |
+| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685) |
+| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf) |
+| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf) |
+| 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  \|  [Project Page](https://scedit.github.io/) > |
+| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914) |
+| QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717) |
+| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307) |
+| ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317) |
+| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751) |
+| Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119) |
+| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503) |
+| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \|  [Project Page](https://res-tuning.github.io/)  \|  [Usage](docs/source/GetStarted/ResTuning.md) > |
+| [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等 |
+
+### 支持的硬件
+
+| 硬件环境              | 备注                      |
+|-------------------|-------------------------|
+| CPU               |                         |
+| RTX20系列/30系列/40系列等 | 30序列之后可使用BF16和FlashAttn |
+| 计算卡系列 T4/V100等    | 不支持BF16和FlashAttn       |
+| 计算卡系列 A10/A100等   | 支持BF16和FlashAttn        |
+| 华为昇腾NPU           |                         |
+
+
+## 📃文档
+
+### 文档编译
+
+```shell
+make docs
+# 浏览器查看docs/build/html/index.html
+```
+
+### 用户指南
+
+| 文档名称                                                     |
+| ------------------------------------------------------------ |
+| [使用Web-UI](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md) |
+| [使用Tuners](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E4%BD%BF%E7%94%A8tuners.md) |
+| [LLM微调](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md) |
+| [LLM推理](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
+| [LLM量化](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md) |
+| [LLM部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md) |
+| [DPO人类对齐训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) |
+| [AnimateDiff训练](https://github.com/modelscope/swift/blob/main/docs/source/AIGC/AnimateDiff%E5%BE%AE%E8%B0%83%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
+
+
+### 参考文档
+| 文档名称                                                     |
+| ------------------------------------------------------------ |
+| [命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md) |
+| [自定义新模型和数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md) |
+| [支持的模型和数据集列表](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md) |
+| [运行速度与显存Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
+
+
+### 最佳实践
+| 最佳实践名称                                                   |
+| ------------------------------------------------------------ |
+| [Agent微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Agent%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [自我认知微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+|  [Qwen1.5最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [多模态模型训练最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
+
+### 深度学习教程
+
+| 教程名称                                                     |
+| ------------------------------------------------------------ |
+| [深度学习入门](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/A.%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E5%85%A5%E9%97%A8%E4%BB%8B%E7%BB%8D.md) |
+| [大模型基础知识](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/B.%E9%AD%94%E6%90%AD%E7%A4%BE%E5%8C%BA%E5%92%8CLLM%E5%A4%A7%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86.md) |
+| [提示词工程](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/C.%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%B7%A5%E7%A8%8B-prompt%20engineering.md) |
+| [Transformer结构介绍](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/D.Transformer%E7%BB%93%E6%9E%84.md) |
+| [训练技术选型](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/E.%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B.md) |
+| [数据预处理](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/F.%E6%95%B0%E6%8D%AE%E9%A2%84%E5%A4%84%E7%90%86.md) |
+| [量化](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/G.%E9%87%8F%E5%8C%96.md) |
+| [训练](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/H.%E8%AE%AD%E7%BB%83.md) |
+| [推理](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/I.LLM%E5%92%8C%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A8%A1%E5%9E%8B%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86%E5%AE%9E%E8%B7%B5.md) |
+| [部署](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/J.%E9%83%A8%E7%BD%B2.md) |
+| [评估](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/K.%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%87%AA%E5%8A%A8%E8%AF%84%E4%BC%B0%E7%90%86%E8%AE%BA%E5%92%8C%E5%AE%9E%E6%88%98--LLM%20Automatic%20Evaluation.md) |
+
+## 🏛 License
+
+本框架使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。模型和数据集请查看原资源页面并遵守对应License。
+
+## 📎 引用
+
+```bibtex
+@Misc{swift,
+  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
+  author = {The ModelScope Team},
+  howpublished = {\url{https://github.com/modelscope/swift}},
+  year = {2024}
+}
+```
 
 ## ☎ 联系我们
 

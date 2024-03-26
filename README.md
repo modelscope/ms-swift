@@ -2,15 +2,14 @@
 
 <p align="center">
     <br>
-    <img src="https://modelscope.oss-cn-beijing.aliyuncs.com/modelscope.gif" width="400"/>
+    <img src="resources/banner.png"/>
     <br>
 <p>
 <p align="center">
-<a href="https://modelscope.cn/home">ModelScope Community</a>
+<a href="https://modelscope.cn/home">ModelScope Community Website</a>
 <br>
-        <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish&nbsp ｜ &nbsp<a href="https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E5%BF%AB%E9%80%9F%E4%BD%BF%E7%94%A8.md">Docs</a>
+        <a href="README_CN.md">中文</a> &nbsp ｜ &nbsp English &nbsp
 </p>
-
 
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
@@ -25,183 +24,143 @@
 ## 📖 Table of Contents
 - [Introduction](#-introduction)
 - [News](#-news)
-- 🔥[LLM Training and Inference](#-llm-training-and-inference)
-- 🔥[SCEdit Tuner](#-SCEdit)
-- [Installation](#-installation)
+- [Installation](#%EF%B8%8F-installation)
 - [Getting Started](#-getting-started)
-- [Learn More](#-learn-more)
-- [License](#license)
+- [Documentation](#-documentation)
+- [License](#-License)
+- [Citation](#-citation)
 - [Contact Us](#-contact-us)
 
 ## 📝 Introduction
-SWIFT (Scalable lightWeight Infrastructure for Fine-Tuning) is an extensible framework designed to facilitate lightweight model fine-tuning and inference. It integrates implementations for various efficient fine-tuning methods,  by embracing approaches that is parameter-efficient, memory-efficient, and time-efficient. SWIFT integrates seamlessly into ModelScope ecosystem and offers the capabilities to finetune various models, with a primary emphasis on LLMs and vision models. Additionally, SWIFT is fully compatible with [PEFT](https://github.com/huggingface/peft), enabling users to  leverage the familiar Peft interface to finetune ModelScope models.
+SWIFT supports training, inference, evaluation and deployment of nearly **200 LLMs and MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
-Currently supported approaches (and counting):
+To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
 
-1. 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
-2. 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)
-3. 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf)
-4. 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
-5. 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
-6. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
-7. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
-8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
-10. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-11. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
-12. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
-13. All tuners offered on [PEFT](https://github.com/huggingface/peft), like IA3, AdaLoRA
-
-Key features:
-
-1. By integrating the ModelScope library, models can be readily obtained via a model-id.
-2. Tuners provided by SWIFT can be combined to allow exploration of multiple tuners on a model for best result.
-3. Support calling `activate_adapter` or `deactivate_adapter` or `set_active_adapters`  to activate/deactivate tuners. User can inference with one model and multiple tuners in different threads independently.
-4. Support training and inference with scripts/CLI，meanwhile support inference with Web-UI.
-5. Support model deployment(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/部署指南.md) for details.
-
-Users can check the [documentation of SWIFT](docs/source/GetStarted/快速使用.md) to get detail tutorials.
-
+Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 ## 🎉 News
-- 🔥2024.03.12: Supports inference and fine-tuning for the **deepseek-vl** series. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/deepseek-vl最佳实践.md).
-- 🔥2024.03.11: Support [GaLore](https://arxiv.org/abs/2403.03507), which can efficiently reduce the memory usage(almost half of the original memory) when training the full model.
-- 🔥2024.03.10: For the end-to-end best practice of fine-tuning to deployment of Qwen1.5-7B-Chat and Qwen1.5-72B-Chat, you can refer to the [Qwen1.5 Full Workflow Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md).
-- 🔥2024.03.09: Support training and inference of MAMBA series, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mamba-1.4b/lora/sft.sh) to begin.
-- 2024.03.09: Support training and inference of AQLM quantized models, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama2_7b_aqlm_2bit_1x16/lora/sft.sh) to begin.
-- 2024.03.06: Support training and inference of AWQ quantized models, use [this Qwen1.5-AWQ script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh) to begin, support training and inference of [yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3).
-- 🔥2024.02.29: Support [LLaMA PRO](https://arxiv.org/pdf/2401.02415.pdf), use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/llamapro/sft.sh) to begin.
-- 🔥2024.02.29: Support [LoRA+](https://arxiv.org/pdf/2402.12354.pdf), use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/lorap/sft.sh) to begin.
-- 2024.02.25: Support `swift export` to export models for **AWQ/GPTQ** quantization and push to ModelScope Hub. For more details, please refer to the document: [LLM Quantization Document](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md).
-- 2024.02.22: Support gemma series: gemma-2b, [gemma-2b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/gemma_2b_instruct), gemma-7b, gemma-7b-instruct.
-- 2024.02.16: Support deepseek-math series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
-- 🔥2024.02.05: Support **Qwen1.5** series, To view all supported Qwen1.5 models please check [Model List](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B). The [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8) fine-tuned scripts are provided.
-- 2024.02.05: Support the training of **SDXL**, **SD**, **ControlNet**, or techniques like **DreamBooth**, you can check the [training scripts](https://github.com/modelscope/swift/tree/main/examples/pytorch/sdxl/scripts) for details.
-- 2024.02.01: Support minicpm series: [minicpm-2b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/minicpm_2b_sft_chat), minicpm-2b-chat.
-- 🔥2024.02.01: Support dataset mixture to reduce **Catastrophic Forgetting**. Use `--train_dataset_mix_ratio 2.0` to train! We also provide a common knowledge dataset [ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary).
-- 🔥2024.02.01: Support Agent training! Agent training algorithm comes from this [paper](https://arxiv.org/pdf/2309.00986.pdf). We also introduce the [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary) dataset. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to begin an agent training!
-- 🔥2024.02.01: Support SFT loss to DPO training to reduce the repeat generation problem caused by the KL-divergence loss.
-- 2024.02.01: Support AdaLoRA and IA3 adapter in SFT.
-- 2024.02.01: Support `--merge_lora` in AnimateDiff training.
+- 🔥2024.03.20: Supports inference and fine-tuning for the **llava** series. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
+- 🔥2024.03.12: Support inference and fine-tuning for **deepseek-vl** series. Best practices can be found [here](docs/source_en/Multi-Modal/deepseek-vl-best-practice.md).
+- 🔥2024.03.11: Support [GaLore](https://arxiv.org/abs/2403.03507) for effectively reducing memory usage to 1/2 of the original in full-parameter training.
+- 🔥2024.03.10: [End-to-end best practices](docs/source_en/LLM/Qwen1.5-best-practice.md) from fine-tuning to deployment for Qwen1.5-7B-Chat and Qwen1.5-72B-Chat.
+- 🔥2024.03.09: Support training and inference of MAMBA model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mamba-1.4b/lora/sft.sh) to start training!
+- 2024.03.09: Support training and inference of AQLM quantized model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama2_7b_aqlm_2bit_1x16/lora/sft.sh) to start training!
+- 2024.03.06: Support training and inference of AWQ quantized model, use [this Qwen1.5-AWQ model script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh) to start training, and support training and inference of [yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3).
+- 🔥2024.02.29: Support [LLaMA PRO](https://arxiv.org/pdf/2401.02415.pdf), simply use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/llamapro/sft.sh) to start training.
+- 🔥2024.02.29: Support [LoRA+](https://arxiv.org/pdf/2402.12354.pdf), simply use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/lorap/sft.sh) to start training.
+- 2024.02.25: Support `swift export` to quantize models using **AWQ/GPTQ** and push to ModelScope Hub. See documentation: [LLM Quantization](docs/source_en/LLM/LLM-quantization.md).
 <details><summary>More</summary>
 
+- 2024.02.22: Support gemma series: gemma-2b, [gemma-2b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/gemma_2b_instruct), gemma-7b, gemma-7b-instruct.
+- 2024.02.16: Support deepseek-math series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
+- 🔥2024.02.05: Support **Qwen1.5** series models, see [model list](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B) for all supported Qwen1.5 models. Provide fine-tuning scripts for [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8).
+- 2024.02.05: Support training of diffusion models such as **SDXL**, **SD**, **ControlNet**, as well as **DreamBooth** training. See corresponding [training scripts](https://github.com/modelscope/swift/tree/main/examples/pytorch/sdxl/scripts) for details.
+- 2024.02.01: Support minicpm series: [minicpm-2b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/minicpm_2b_sft_chat), minicpm-2b-chat.
+- 🔥2024.02.01: Support dataset mixing to reduce **catastrophic forgetting**. Use `--train_dataset_mix_ratio 2.0` to enable training! We also open sourced the general knowledge dataset [ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary).
+- 🔥2024.02.01: Support Agent training! Agent training algorithm is derived from this [paper](https://arxiv.org/pdf/2309.00986.pdf). We also added [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary), a high-quality agent dataset. Use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh) to start Agent training!
+- 🔥2024.02.01: Support adding SFT loss in DPO training to reduce repetitive generation caused by KL divergence loss.
+- 2024.02.01: Support using AdaLoRA and IA3 adapters in training.
+- 2024.02.01: Support `--merge_lora` parameter in AnimateDiff training.
 - 2024.01.30: Support [internlm-xcomposer2-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm_xcomposer2_7b_chat).
-- 🔥2024.01.30: Support [ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), just need to specify `--deepspeed default-zero3`.
+- 🔥2024.01.30: Support [ZeRO-3](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/full_ddp_zero3/), simply specify `--deepspeed default-zero3`.
 - 2024.01.29: Support internlm2-math series: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
 - 🔥2024.01.26: Support [yi-vl-6b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_vl_6b_chat), yi-vl-34b-chat.
 - 2024.01.24: Support codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
 - 2024.01.23: Support orion series: orion-14b, [orion-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/orion_14b_chat).
 - 2024.01.20: Support [xverse-13b-256k](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_13b_256k), xverse-65b-v2, xverse-65b-chat.
-- 🔥2024.01.17: Support **internlm2** series: internlm2-7b-base, internlm2-7b, [internlm2-7b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm2_7b_sft_chat), internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
-- 2024.1.15: Support yuan series: yuan2-2b-instruct, [yuan2-2b-janus-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yuan2_2b_janus_instruct), yuan2-51b-instruct, yuan2-102b-instruct.
+- 🔥2024.01.17: Support internlm2 series: internlm2-7b-base, internlm2-7b, [internlm2-7b-sft-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/internlm2_7b_sft_chat), internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
+- 2024.01.15: Support yuan series: yuan2-2b-instruct, [yuan2-2b-janus-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yuan2_2b_janus_instruct), yuan2-51b-instruct, yuan2-102b-instruct.
 - 🔥2024.01.12: Support **deepseek-moe** series: deepseek-moe-16b, [deepseek-moe-16b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/deepseek_moe_16b_chat).
-- 🔥2024.01.04: Support for **VLLM deployment**, compatible with the **OpenAI API** style. For more details, please refer to [VLLM Inference Acceleration and Deployment](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#部署)
-- 2024.01.04: Update [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) to facilitate viewing the training speed and GPU memory required for different models.
-- 🔥 2023.12.29: Support web-ui for training and inference, use `swift web-ui` after the installation of ms-swift.
-- 🔥 2023.12.29: Support DPO RLHF(Reinforcement Learning from Human Feedback) and three datasets: AI-ModelScope/stack-exchange-paired and AI-ModelScope/hh-rlhf and AI-ModelScope/hh_rlhf_cn for this task. Check [this documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) to start training!
-- 🔥 2023.12.28: Support SCEdit! This framework can easily reduce memory usage in training and inference, and replace ControlNet for controllable image generating scenarios, view the following chapter for details.
+- 🔥2024.01.04: Support **VLLM deployment**, compatible with **OpenAI API** style, see [VLLM Inference Acceleration and Deployment](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM推理加速与部署.md#部署) for details.
+- 2024.01.04: Update [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) for convenient viewing of training speed and memory usage of different models.
+- 🔥2023.12.29: Support web-ui for sft training and inference, use `swift web-ui` after installing ms-swift to start.
+- 🔥2023.12.29: Support DPO RLHF (Reinforcement Learning from Human Feedback) and three datasets for this task: AI-ModelScope/stack-exchange-paired, AI-ModelScope/hh-rlhf and AI-ModelScope/hh_rlhf_cn. See [documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) to start training!
+- 🔥2023.12.28: Support SCEdit! This tuner can significantly reduce memory usage in U-Net and support low-memory controllable image generation (replacing ControlNet), read the section below to learn more.
 - 2023.12.23: Support [codegeex2-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codegeex2_6b).
 - 2023.12.19: Support [phi2-3b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/phi2_3b).
-- 2023.12.18: Support for VLLM for inference acceleration.
+- 2023.12.18: Support VLLM for inference acceleration.
 - 2023.12.15: Support deepseek, deepseek-coder series: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, openbuddy-deepseek-67b-chat, deepseek-coder-1_3b, deepseek-coder-1_3b-instruct, deepseek-coder-6_7b, deepseek-coder-6_7b-instruct, deepseek-coder-33b, deepseek-coder-33b-instruct.
-- 2023.12.13: Support mistral-7b-instruct-v2, [mixtral-moe-7b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/mixtral_moe_7b), [mixtral-moe-7b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/mixtral_moe_7b_instruct).
-- 2023.12.09: Support the `freeze_parameters` parameter as a compromise between LoRA and full parameter. Corresponding shell scripts can be found at [full_freeze_ddp](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_freeze_ddp). Support `disable_tqdm`, `lazy_tokenize`, `preprocess_num_proc` parameters, for details please refer to [Command-Line parameters](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md).
+- 2023.12.13: Support mistral-7b-instruct-v2, [mixtral-moe-7b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/mixtral_7b_moe), [mixtral-moe-7b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/mixtral_7b_moe_instruct).
+- 2023.12.09: Support `freeze_parameters` parameter as a compromise between lora and full-parameter training. Corresponding sh can be found in [full_freeze_ddp](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_freeze_ddp). Support `disable_tqdm`, `lazy_tokenize`, `preprocess_num_proc` parameters, see [command line arguments](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.md) for details.
 - 2023.12.08: Support [sus-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/sus_34b_chat), support yi-6b-200k, yi-34b-200k.
 - 2023.12.07: Support [Multi-Node DDP training](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.md#%E4%BD%BF%E7%94%A8cli).
-- 2023.12.04: Supported models: zephyr-7b-beta-chat, openbuddy-zephyr-7b-chat. Supported datasets: hc3-zh, hc3-en.
-- 🔥 2023.12.02: [Best Practice for Self-cognition Fine-tuning](https://github.com/modelscope/swift/blob/main/docs/source/LLM/自我认知微调最佳实践.md), **10 minutes for self-cognition fine-tuning for LLM**, creating a LLM that is specific to oneself.
-- 🔥 2023.11.30: Support for training and inference of the **qwen-1_8b**, **qwen-72b**, and **qwen-audio** model series. The corresponding shell scripts can be viewed at [qwen_1_8b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_1_8b_chat), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat), [qwen_audio_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_audio_chat).
-- 🔥 2023.11.29: Support the training and inference for **AnimateDiff**
-- 🔥 2023.11.24: Support for **yi-34b-chat**, **codefuse-codellama-34b-chat**: The corresponding shell script can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
-- 🔥 2023.11.18: Support for **tongyi-finance-14b** series models: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4. The corresponding shell script can be found in [tongyi_finance_14b_chat_int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4).
-- 2023.11.16: Added support for more models in **flash attn**: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series. Please use the `use_flash_attn` parameter.
-- 🔥 2023.11.11: **NEFTune** Supported, Use is with `Swift.prepare_model(model, NEFTuneConfig())`
-- 🔥 2023.11.11: Support training and inference with **CLI**, and inference with **Web-UI**. Check the [Run using Swift CLI](https://github.com/modelscope/swift/tree/main#run-using-swift-cli) chapter for details.
-- 🔥 2023.11.11: Support model **deployment**(vllm/chatglm.cpp/xinference)，Check [Official documentation](./docs/source/GetStarted/部署指南.md) for details.
-- 🔥 2023.11.10: Support for **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. The corresponding shell script can be found in [bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
-- 🔥 2023.11.08: Support the finetuning of **xverse-65b** model, scripts can be found at: [xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).
-- 🔥 2023.11.07: Support the finetuning of **yi-6b**, **yi-34b** model, scripts can be found at: [yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).
-- 🔥 2023.10.30: Support **QA-LoRA** and **LongLoRA** to decrease memory usage in training.
-- 🔥 2023.10.30: Support **ROME**(Rank One Model Editing) to add/modify knowledges, training is not needed!
-- 2023.10.30: Support for **skywork-13b** series models: skywork-13b, skywork-13b-chat. The corresponding shell script can be found in [skywork_13b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/skywork_13b).
-- 🔥 2023.10.27: Support for **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. The corresponding shell script can be found in [chatglm3_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b).
-- 🔥 2023.10.17: Supported **int4**, **int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
-- 2023.10.15: Supported **ziya2-13b** model series: ziya2-13b, ziya2-13b-chat.
-- 2023.10.12: Supported **mistral-7b** model series: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-instruct.
-- 🔥 2023.10.07: Supported **DeepSpeed ZeRO-2**, enabling LoRA (not just QLoRA) to run DDP on 2*A10.
-- 2023.10.04: Supported datasets in the fields of mathematics, law, SQL, and coding: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
-- 🔥 2023.09.25: Supported **qwen-14b** model series: qwen-14b, qwen-14b-chat.
-- 2023.09.18: Supported **internlm-20b** model series: internlm-20b, internlm-20b-chat.
-- 2023.09.12: Supported training with **MP+DDP** to accelerate full-parameter fine-tuning speed.
-- 2023.09.05: Supported **openbuddy-llama2-70b-chat** model.
-- 2023.09.03: Supported **baichuan2** model series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
+- 2023.12.05: Support models: zephyr-7b-beta-chat, openbuddy-zephyr-7b-chat. Support datasets: hc3-zh, hc3-en.
+- 🔥2023.12.02: [Self-cognition fine-tuning best practices](docs/source_en/LLM/Self-cognition-best-practice.md), **10 minutes to fine-tune a large model for self-cognition**, create your own unique large model.
+- 🔥2023.11.30: Support training and inference of **qwen-1_8b**, **qwen-72b**, **qwen-audio** series models. Corresponding sh scripts can be found in [qwen_1_8b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_1_8b_chat), [qwen_72b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat), [qwen_audio_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_audio_chat)
+- 🔥2023.11.29: Support training and inference of **AnimateDiff**
+- 🔥2023.11.24: Support **yi-34b-chat**, **codefuse-codellama-34b-chat** models. Corresponding sh scripts can be found in [yi_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat), [codefuse_codellama_34b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codefuse_codellama_34b_chat).
+- 🔥2023.11.18: Support **tongyi-finance-14b** series models: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4. Corresponding sh scripts can be found in [tongyi_finance_14b_chat_int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4).
+- 2023.11.16: Support **flash attn** for more models: qwen series, qwen-vl series, llama series, openbuddy series, mistral series, yi series, ziya series. Please use `use_flash_attn` parameter.
+- 🔥2023.11.11: Support **NEFTune**, simply use `Swift.prepare_model(model, NEFTuneConfig())` to enable.
+- 🔥2023.11.11: Support training and inference by **command line** and inference by **Web-UI**, see `Usage with Swift CLI` section below for details.
+- 🔥2023.11.10: Support **bluelm** series models: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k. Corresponding sh scripts can be found in [bluelm_7b_chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/bluelm_7b_chat).
+- 🔥2023.11.08: Support training and inference of **xverse-65b** model, script at [xverse_65b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/xverse_65b).
+- 🔥2023.11.07: Support training and inference of **yi-6b**, **yi-34b** models, scripts at [yi_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_6b), [yi_34b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b).
+- 🔥2023.10.30: Support two new tuners: **QA-LoRA** and **LongLoRA**.
+- 🔥2023.10.30: Support editing models using **ROME** (Rank One Model Editing) to infuse new knowledge into models without training!
+- 2023.10.30: Support **skywork-13b** series models: skywork-13b, skywork-13b-chat. Corresponding sh scripts can be found in [skywork_13b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/skywork_13b).
+- 🔥2023.10.27: Support **chatglm3** series models: chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k. Corresponding sh scripts can be found in [chatglm3_6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b).
+- 🔥2023.10.17: Support SFT of **int4**, **int8** models: qwen-7b-chat-int4, qwen-14b-chat-int4, qwen-vl-chat-int4, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4, qwen-7b-chat-int8, qwen-14b-chat-int8.
+- 2023.10.15: Support **ziya2-13b** series models: ziya2-13b, ziya2-13b-chat.
+- 2023.10.12: Support **mistral-7b** series models: openbuddy-mistral-7b-chat, mistral-7b, mistral-7b-instruct.
+- 🔥2023.10.07: Support **DeepSpeed ZeRO-2**, enabling lora (not just qlora) to run DDP on dual A10 cards.
+- 2023.10.04: Support more math, law, SQL, code domain datasets: blossom-math-zh, school-math-zh, text2sql-en, sql-create-context-en, lawyer-llama-zh, tigerbot-law-zh, leetcode-python-en.
+- 🔥2023.09.25: Support **qwen-14b** series: qwen-14b, qwen-14b-chat.
+- 2023.09.18: Support **internlm-20b** series: internlm-20b, internlm-20b-chat.
+- 2023.09.12: Support **MP+DDP** to accelerate full-parameter training.
+- 2023.09.05: Support **openbuddy-llama2-70b-chat**.
+- 2023.09.03: Support **baichuan2** series: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 </details>
 
+## 🛠️ Installation
 
-## ✨ LLM Training and Inference
-If you want to learn more about **best practices** for LLM or multimodal LLM, or if you are interested in **tutorials** on inference, fine-tuning, quantization, and deployment of LLM, you can refer to the [LLM series documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/index.md).
+SWIFT runs in the Python environment. Please ensure your Python version is higher than 3.8.
 
-
-### WEB UI training and inference
-
-After installation, you can use web-ui training/inference like:
+- Method 1: Install SWIFT using pip command:
 
 ```shell
-SWIFT_UI_LANG=en swift web-ui
+# Full capabilities
+pip install ms-swift[all] -U
+# LLM only
+pip install ms-swift[llm] -U
+# AIGC only
+pip install ms-swift[aigc] -U
+# Adapters only
+pip install ms-swift -U
 ```
 
-> Supported environment variables:
->
-> WEBUI_SHARE=1 Share the gradio or not
-> SWIFT_UI_LANG=en/zh The language of radio
-> WEBUI_SERVER server_name， web-ui host ip，0.0.0.0 means all routes are allowed，127.0.0.1 means only localhost can visit the web
-> WEBUI_PORT The port of web-ui
+- Method 2: Install SWIFT through source code (convenient for running training and inference scripts), please run the following commands:
 
-Here is a simple introduction of web-ui:
-
-[![Watch the video](docs/source/cources/resources/20240119160942.jpg)](https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/SWIFT%E8%A7%86%E9%A2%91_%E8%B0%83%E6%95%B4%E5%B0%81%E9%9D%A2.mp4)
-
-
-### Quick Start
-You can test if the environment is installed correctly by running the following code.
-```python
-# pip install ms-swift[llm] -U
-
-# Experimental environment: A10, 3090, V100, ...
-# 8GB GPU memory
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-import torch
-
-from swift.llm import (
-    DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora
-)
-
-model_type = ModelType.qwen1half_0_5b
-sft_args = SftArguments(
-    model_type=model_type,
-    train_dataset_sample=2000,
-    dataset=[DatasetName.jd_sentiment_zh],
-    output_dir='output')
-result = sft_main(sft_args)
-best_model_checkpoint = result['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
-torch.cuda.empty_cache()
-
-infer_args = InferArguments(
-    ckpt_dir=best_model_checkpoint,
-    load_dataset_config=True,
-    val_dataset_sample=10)
-merge_lora(infer_args, device_map='cpu')
-result = infer_main(infer_args)
-torch.cuda.empty_cache()
-
-app_ui_main(infer_args)
+```shell
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e .[llm]
 ```
 
-### Training Scripts
+SWIFT depends on torch>=1.13, recommend torch>=2.0.0.
+
+- Method 3: Use SWIFT in our Docker image
+
+```shell
+# China-Hangzhou image
+docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
+# US-west image
+docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
+```
+
+## 🚀 Getting Started
+
+This section introduces basic usage, see the [Documentation](#-documentation) section for more ways to use.
+
+### Web-UI
+
+```shell
+swift web-ui
+```
+
+### Training
+
+#### Training Scripts
 You can refer to the following scripts to customize your own training script.
 
 - full: [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat/full) (A100), [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/full_mp) (2\*A100)
@@ -215,301 +174,369 @@ You can refer to the following scripts to customize your own training script.
 - qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
 
 
-### Features
-- Supported SFT Methods: [lora](https://arxiv.org/abs/2106.09685), [qlora](https://arxiv.org/abs/2305.14314), [longlora](https://arxiv.org/abs/2309.12307), [qalora](https://arxiv.org/abs/2309.14717), full parameter fine-tuning, partial parameter fine-tuning.
-- Supported Features: quantization, DDP, model parallelism, gradient checkpointing, pushing to modelscope hub, custom datasets, multimodal and agent SFT, mutli-round chat, DPO, self-cognition fine-tuning, ...
-- Supported Models: [[Detailed Info]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B)
-  - Multi-Modal:
-    - [qwen-vl](https://github.com/QwenLM/Qwen-VL) series: qwen-vl, qwen-vl-chat, qwen-vl-chat-int4.
-    - [qwen-audio](https://github.com/QwenLM/Qwen-Audio) series: qwen-audio, qwen-audio-chat.
-    - [deepseek-vl](https://github.com/deepseek-ai/DeepSeek-VL) series: deepseek-vl-1_3b-chat, deepseek-vl-7b-chat.
-    - [yi-vl](https://github.com/01-ai/Yi) series: yi-vl-6b-chat, yi-vl-34b-chat.
-    - [internlm-xcomposer2](https://github.com/InternLM/InternLM-XComposer) series: internlm-xcomposer2-7b-chat.
-    - [minicpm-v](https://github.com/OpenBMB/MiniCPM) series: minicpm-v-3b-chat.
-    - [cogvlm](https://github.com/THUDM/CogVLM) series: cogvlm-17b-instruct, cogagent-18b-chat, cogagent-18b-instruct.
-  - General:
-    - [qwen](https://github.com/QwenLM/Qwen) series:
-      - qwen-1_8b, qwen-1_8b-chat, qwen-1_8b-chat-int4, qwen-1_8b-chat-int8.
-      - qwen-7b, qwen-7b-chat, qwen-7b-chat-int4, qwen-7b-chat-int8.
-      - qwen-14b, qwen-14b-chat, qwen-14b-chat-int4, qwen-14b-chat-int8.
-      - qwen-72b, qwen-72b-chat, qwen-72b-chat-int4, qwen-72b-chat-int8.
-    - [qwen1.5](https://github.com/QwenLM/Qwen1.5) series:
-      - qwen1half-0_5b, qwen1half-0_5b-chat, qwen1half-0_5b-chat-int4, qwen1half-0_5b-chat-int8, qwen1half-0_5b-chat-awq.
-      - qwen1half-1_8b, qwen1half-1_8b-chat, qwen1half-1_8b-chat-int4, qwen1half-1_8b-chat-int8, qwen1half-1_8b-chat-awq.
-      - qwen1half-4b, qwen1half-4b-chat, qwen1half-4b-chat-int4, qwen1half-4b-chat-int8, qwen1half-4b-chat-awq.
-      - qwen1half-7b, qwen1half-7b-chat, qwen1half-7b-chat-int4, qwen1half-7b-chat-int8, qwen1half-7b-chat-awq.
-      - qwen1half-14b, qwen1half-14b-chat, qwen1half-14b-chat-int4, qwen1half-14b-chat-int8, qwen1half-14b-chat-awq.
-      - qwen1half-72b, qwen1half-72b-chat, qwen1half-72b-chat-int4, qwen1half-72b-chat-int8, qwen1half-72b-chat-awq.
-    - [chatglm](https://github.com/THUDM/ChatGLM-6B) series: chatglm2-6b, chatglm2-6b-32k, chatglm3-6b-base, chatglm3-6b, chatglm3-6b-32k.
-    - [llama](https://github.com/facebookresearch/llama) series: llama2-7b, llama2-7b-chat, llama2-13b, llama2-13b-chat, llama2-70b, llama2-70b-chat.
-    - [yi](https://github.com/01-ai/Yi) series: yi-6b, yi-6b-200k, yi-6b-chat, yi-9b, yi-34b, yi-34b-200k, yi-34b-chat.
-    - [internlm](https://github.com/InternLM/InternLM) series:
-      - internlm-7b, internlm-7b-chat, internlm-7b-chat-8k, internlm-20b, internlm-20b-chat.
-      - internlm2-1_8b, internlm2-1_8b-sft-chat, internlm2-1_8b-chat, internlm2-7b-base, internlm2-7b, internlm2-7b-sft-chat, internlm2-7b-chat, internlm2-20b-base, internlm2-20b, internlm2-20b-sft-chat, internlm2-20b-chat.
-    - [deepseek](https://github.com/deepseek-ai/deepseek-LLM) series: deepseek-7b, deepseek-7b-chat, deepseek-67b, deepseek-67b-chat, deepseek-moe-16b, deepseek-moe-16b-chat.
-    - [gemma](https://github.com/google/gemma_pytorch) series: gemma-2b, gemma-2b-instruct, gemma-7b, gemma-7b-instruct.
-    - [minicpm](https://github.com/OpenBMB/mlc-MiniCPM) series: minicpm-2b-sft-chat, minicpm-2b-chat.
-    - [openbuddy](https://github.com/OpenBuddy/OpenBuddy) series: openbuddy-llama2-13b-chat, openbuddy-llama-65b-chat, openbuddy-llama2-70b-chat, openbuddy-mistral-7b-chat, openbuddy-zephyr-7b-chat, openbuddy-deepseek-67b-chat, openbuddy-mixtral-moe-7b-chat.
-    - [mistral](https://github.com/mistralai/mistral-src) series: mistral-7b, mistral-7b-instruct, mistral-7b-instruct-v2.
-    - [mixtral](https://github.com/mistralai/mistral-src) series: mixtral-moe-7b, mixtral-moe-7b-instruct.
-    - [baichuan](https://github.com/baichuan-inc/Baichuan2) series: baichuan-7b, baichuan-13b, baichuan-13b-chat, baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat, baichuan2-7b-chat-int4, baichuan2-13b-chat-int4.
-    - [yuan](https://github.com/IEIT-Yuan/Yuan-2.0) series: yuan2-2b-instruct, yuan2-2b-janus-instruct, yuan2-51b-instruct, yuan2-102b-instruct.
-    - [xverse](https://github.com/xverse-ai/XVERSE-13B) series: xverse-7b, xverse-7b-chat, xverse-13b, xverse-13b-chat, xverse-65b, xverse-65b-v2, xverse-65b-chat, xverse-13b-256k.
-    - [orion](https://github.com/OrionStarAI/OrionStar-Yi-34B-Chat) series: orion-14b, orion-14b-chat.
-    - [bluelm](https://github.com/vivo-ai-lab/BlueLM) series: bluelm-7b, bluelm-7b-chat, bluelm-7b-32k, bluelm-7b-chat-32k.
-    - [zephyr](https://github.com/huggingface/alignment-handbook) series: zephyr-7b-beta-chat.
-    - [ziya](https://github.com/IDEA-CCNL/Fengshenbang-LM) series: ziya2-13b, ziya2-13b-chat.
-    - [skywork](https://github.com/SkyworkAI/Skywork) series: skywork-13b, skywork-13b-chat.
-    - other: [polylm-13b](https://github.com/DAMO-NLP-MT/PolyLM), [seqgpt-560m](https://github.com/Alibaba-NLP/SeqGPT), [sus-34b-chat](https://github.com/SUSTech-IDEA/SUS-Chat).
-  - Financial:
-    - [tongyi-finance](https://github.com/QwenLM/Qwen) series: tongyi-finance-14b, tongyi-finance-14b-chat, tongyi-finance-14b-chat-int4.
-  - Coding:
-    - [codefuse](https://github.com/codefuse-ai) series: codefuse-codellama-34b-chat, codefuse-codegeex2-6b-chat, codefuse-qwen-14b-chat.
-    - [deepseek-coder](https://github.com/deepseek-ai/DeepSeek-Coder) series: deepseek-coder-1_3b, deepseek-coder-1_3b-instruct, deepseek-coder-6_7b, deepseek-coder-6_7b-instruct, deepseek-coder-33b, deepseek-coder-33b-instruct.
-    - [codegeex2](https://github.com/THUDM/CodeGeeX2) series: codegeex2-6b.
-    - [phi](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/) series: phi2-3b.
-  - Math:
-    - [internlm2-math](https://github.com/InternLM/InternLM-Math) series: internlm2-math-7b, internlm2-math-7b-chat, internlm2-math-20b, internlm2-math-20b-chat.
-    - [deepseek-math](https://github.com/deepseek-ai/DeepSeek-Math) series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
-- Supported Datasets: [[Detailed Info]](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%95%B0%E6%8D%AE%E9%9B%86)
-  - NLP:
-    - General: 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini.
-    - Agent: 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en.
-    - RLHF: 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en.
-    - Coding: code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.
-    - Medical: medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.
-    - Law: lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.
-    - Math: 🔥blossom-math-zh, school-math-zh, open-platypus-en.
-    - SQL: text2sql-en, 🔥sql-create-context-en.
-    - Text Generation: 🔥advertise-gen-zh, 🔥dureader-robust-zh.
-    - Classification: cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.
-    - AWQ: pileval.
-    - Other: finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.
-  - Multi-Modal:
-    - Vision: coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.
-    - Audio: aishell1-zh, 🔥aishell1-mini-zh.
-  - Custom Dataset
-- Supported Templates:
-  - Text Generation: default-generation, default-generation-bos, chatglm-generation, qwen-audio-generation.
-  - Chat: default, qwen, qwen-audio, baichuan, chatglm2, chatglm3, llama, openbuddy, internlm, internlm2, internlm-xcomposer2, yi, yi-vl, yuan, xverse, ziya, skywork, bluelm, zephyr, sus, deepseek, deepseek-coder, codefuse-codellama, codefuse, cogvlm-instruct, cogagent-chat, cogagent-instruct, orion, minicpm, minicpm-v, gemma, chatml.
+#### Supported Training Processes
+
+| Training Process | Training Method                                                               |
+|------------------|-------------------------------------------------------------------------------|
+| Pretraining      | Text Generation                                                               |
+| Fine-tuning      | Single-turn/Multi-turn<br>Agent Training/Self-cognition<br>Multi-modal Vision/Multi-modal Speech|
+| Human Alignment  | DPO                                                                           |
+| Text-to-Image    | DreamBooth, etc.                                                              |
+| Text-to-Video    | -                                                                             |
+
+#### Single GPU Training
+
+Start single GPU fine-tuning with the following command:
+
+LoRA:
+```shell
+# Experimental Environment: A100
+# GPU Memory Requirement: 20GB
+# Runtime: 3.1 hours
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --eval_steps 200 \
+```
+
+Full-parameter:
+```shell
+# Experimental Environment: A100
+# GPU Memory Requirement: 80GB
+# Runtime: 2.5 hours
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type full \
+    --output_dir output \
+    --eval_steps 500 \
+```
 
 
-## 🔥SCEdit
+#### Model Parallel Training
 
-SCEdit is an efficient generative fine-tuning framework proposed by Alibaba TongYi Vision Intelligence Lab. This framework enhances the fine-tuning capabilities for text-to-image generation downstream tasks and enables quick adaptation to specific generative scenarios, **saving 30%-50% of training memory costs compared to LoRA**. Furthermore, it can be directly extended to controllable image generation tasks, **requiring only 7.9% of the parameters that ControlNet needs for conditional generation and saving 30% of memory usage**. It supports various conditional generation tasks including edge maps, depth maps, segmentation maps, poses, color maps, and image completion.
-
-We using 3D style data from the [style transfer dataset](https://modelscope.cn/datasets/damo/style_custom_dataset/dataPeview) for training, and testing with the same `Prompt: A boy in a camouflage jacket with a scarf`. The qualitative and quantitative results are as follows:
-
-| Method    | bs   | ep   | Target Module | Param. (M)    | Mem. (MiB) | 3D style                                                     |
-| --------- | ---- | ---- | ------------- | ------------- | ---------- | ------------------------------------------------------------ |
-| LoRA/r=64 | 1    | 50   | q/k/v/out/mlp | 23.94 (2.20%) | 8440MiB    | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665229562-0f33bbb0-c492-41b4-9f37-3ae720dca80d.png" alt="img" style="zoom:20%;" /> |
-| SCEdit    | 1    | 50   | up_blocks     | 19.68 (1.81%) | 7556MiB    | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703665933913-74b98741-3b57-46a4-9871-539df3a0112c.png" alt="img" style="zoom:20%;" /> |
-| LoRA/r=64 | 10   | 100  | q/k/v/out/mlp | 23.94 (2.20%) | 26300MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750608529-de20d0e7-bf9c-4928-8e59-73cc54f2c8d7.png" alt="img" style="zoom:20%;" /> |
-| SCEdit    | 10   | 100  | up_blocks     | 19.68 (1.81%) | 18634MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703663033092-94492e44-341f-4259-9df4-13c168e3b5d6.png" alt="img" style="zoom:20%;" /> |
-| LoRA/r=64 | 30   | 200  | q/k/v/out/mlp | 23.94 (2.20%) | 69554MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703750626635-2e368d7b-5e99-4a06-b189-8615f302bcd7.png" alt="img" style="zoom:20%;" /> |
-| SCEdit    | 30   | 200  | up_blocks     | 19.68 (1.81%) | 43350MiB   | <img src="https://intranetproxy.alipay.com/skylark/lark/0/2023/png/167218/1703662246942-1102b1f4-93ab-4653-b943-3302f2a5259e.png" alt="img" style="zoom:20%;" /> |
-
-The benchmark listed above can be reproduced by：
 
 ```shell
-# Install swift by the next chapter
-cd examples/pytorch/multi_modal/notebook
-python text_to_image_synthesis.py
+# Experimental Environment: 2 * A100
+# GPU Memory Requirement: 10GB + 13GB
+# Runtime: 3.4 hours
+CUDA_VISIBLE_DEVICES=0,1 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
-
-## 🛠️ Installation
-
-SWIFT is running in Python environment. Please make sure your python version is higher than 3.8.
-
-- Install SWIFT by the `pip` command:
+#### Data Parallel Training
 
 ```shell
-# full ability
-pip install ms-swift[all] -U
-# only use llm
-pip install ms-swift[llm] -U
-# only use aigc
-pip install ms-swift[aigc] -U
-# only use adapters
-pip install ms-swift -U
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 30GB
+# Runtime: 0.8 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
-- Install SWIFT by source code(for running sft/infer examples), please run:
+Combining Model Parallelism and Data Parallelism:
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 2*14GB + 2*18GB
+# Runtime: 1.7 hours
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+```
+
+#### Deepspeed Training
+
+ZeRO2:
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 21GB
+# Runtime: 0.9 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed default-zero2 \
+```
+
+ZeRO3:
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 19GB
+# Runtime: 3.2 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_type qwen1half-7b-chat \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed default-zero3 \
+```
+
+### Inference
+Original model:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
+# use VLLM
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat \
+    --infer_backend vllm --max_model_len 8192
+```
+
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+# use VLLM
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
+    --merge_lora true --infer_backend vllm --max_model_len 8192
+```
+
+### Evaluation
 
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .[llm]
+# Debugging, on line soon:>
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
 ```
 
-SWIFT requires torch>=1.13.
+### Export
 
-- Use SWIFT in our docker image:
+Original model:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat \
+    --quant_bits 4 --quant_method awq
+```
+
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
+    --quant_method awq --quant_bits 4 \
+    --merge_lora true \
+```
+
+### Deployment
+
+Original model:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat \
+    --infer_backend vllm --max_model_len 8192
+```
+
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx
+# 使用VLLM加速
+CUDA_VISIBLE_DEVICES=0 swift deploy \
+    --ckpt_dir xxx/checkpoint-xxx --merge_lora true \
+    --infer_backend vllm --max_model_len 8192
+```
+
+### Supported Models
+
+#### LLMs
+
+| Model Type                                     | Model Introduction                                                     | Language           | Model Size                             | Model Type                                 |
+|------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
+| Qwen<br>Qwen1.5                                   | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-72B<br>including quantized versions | base model<br>chat model                      |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2                    | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B                                     | base model<br>chat model<br>code model  |
+| Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
+| Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
+| XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model               |
+| LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B<br>including quantized versions   | base model<br>chat model                       |
+| Mistral<br>Mixtral                            | [Mistral series models](https://github.com/mistralai/mistral-src)       | English            | 7B     | base model<br>instruct model<br>MoE model                     |
+| YI                                             | [01AI's YI series models](https://github.com/01-ai)                     | Chinese<br>English    | 6B-34B                                 | base model<br>chat model<br>long text model            |
+| InternLM<br>InternLM2<br>InternLM2-Math              | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM) | Chinese<br>English | 1.8B-20B                            | base model<br>chat model<br>math model            |
+| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math          | [DeepSeek series models](https://github.com/deepseek-ai)       | Chinese<br>English    | 1.3B-67B                               | base model<br>chat model<br>MoE model<br>code model<br>math model |
+| MAMBA                                          | [MAMBA temporal convolution model](https://github.com/state-spaces/mamba) | English          | 130M-2.8B                              | base model                                 |
+| Gemma                                          | [Google Gemma series models](https://github.com/google/gemma_pytorch)   | English            | 2B-7B                                  | base model<br>instruct model                       |
+| MiniCPM                                        | [OpenBmB MiniCPM series models](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 2B-3B                                  | chat model                                 |
+| OpenBuddy                                      | [OpenBuddy series models](https://github.com/OpenBuddy/OpenBuddy)       | Chinese<br>English    | 7B-67B                                 | base model<br>chat model                       |
+| Orion                                          | [OrionStar AI series models](https://github.com/OrionStarAI)            | Chinese<br>English    | 14B                                    | base model<br>chat model                       |
+| BlueLM                                         | [VIVO BlueLM large model](https://github.com/vivo-ai-lab/BlueLM)        | Chinese<br>English    | 7B                                     | base model<br>chat model                       |
+| Ziya2                                          | [Fengshenbang series models](https://github.com/IDEA-CCNL/Fengshenbang-LM) | Chinese<br>English  | 13B                                    | base model<br>chat model                       |
+| Skywork                                        | [Skywork series models](https://github.com/SkyworkAI/Skywork) | Chinese<br>English    | 13B                                    | base model<br>chat model                       |
+| Zephyr                                         | Zephyr series models based on Mistral                                  | English            | 7B                                     | chat model                                 |
+| PolyLM                                         | [Tongyi Lab self-developed PolyLM series models](https://github.com/DAMO-NLP-MT/PolyLM) | Multilingual | 13B                                 | base model                                 |
+| SeqGPT                                         | [Tongyi Lab self-developed text understanding model for information extraction and text classification](https://github.com/Alibaba-NLP/SeqGPT) | Chinese | 560M                               | semantic understanding model                |
+| SUS                                            | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat) | Chinese<br>English | 34B                              | chat model                                 |
+| Tongyi-Finance                                 | [Tongyi finance series models](https://github.com/QwenLM/Qwen)          | Chinese<br>English    | 14B                                    | base model<br>chat model<br>financial model        |
+| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese<br>English    | 6B-34B                                 | chat model<br>code model                      |
+| phi2                                           | Microsoft's PHI2 model                                                 | English            | 3B                                     | base model<br>code model                          |
+
+#### MLLMs
+
+| Model Type       | Model Introduction                                                     | Language           | Model Size        | Model Type         |
+|------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
+| Qwen-VL          | [Tongyi Qwen vision model](https://github.com/QwenLM)               | Chinese<br>English    | 7B<br>including quantized versions | base model<br>chat model |
+| Qwen-Audio       | [Tongyi Qwen speech model](https://github.com/QwenLM)               | Chinese<br>English    | 7B                | base model<br>chat model |
+| YI-VL            | [01AI's YI series vision models](https://github.com/01-ai)             | Chinese<br>English    | 6B-34B            | chat model         |
+| XComposer2       | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B              | chat model         |
+| DeepSeek-VL      | [DeepSeek series vision models](https://github.com/deepseek-ai) | Chinese<br>English    | 1.3B-7B           | chat model         |
+| MiniCPM-V       | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 3B                | chat model         |
+| CogVLM<br>CogAgent  | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)   | English    | 17B-18B           | chat model         |
+| Llava      | [Llava series models](https://github.com/haotian-liu/LLaVA)                | English | 7B               | chat model |
+
+#### Diffusion Models
+
+| Model Type          | Model Introduction                                                    | Language | Model Type        |
+|---------------------|----------------------------------------------------------------------|----------|------------------ |
+| AnimateDiff         | [AnimateDiff animation model](https://github.com/guoyww/AnimateDiff) | English  | text-to-video     |
+| SD1.5/SD2.0/SDXL    | [StabilityAI series diffusion models](https://github.com/Stability-AI) | English | text-to-image    |
+
+### Supported Open Source Datasets
+
+| Dataset Type | Training Task  | Documentation                                                 |
+|--------------|:---------------|--------------------------------------------------------------- |
+| General      | Fine-tuning    | 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini. |
+| Agent        | Fine-tuning    | 🔥ms-agent, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en. |
+| General      | Human Alignment | 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en. |
+| Code         | Fine-tuning    | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh. |
+| Medical      | Fine-tuning    | medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.   |
+| Legal        | Fine-tuning    | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.          |
+| Math         | Fine-tuning    | 🔥blossom-math-zh, school-math-zh, open-platypus-en.          |
+| SQL          | Fine-tuning    | text2sql-en, 🔥sql-create-context-en.                         |
+| Text Generation | Fine-tuning | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                     |
+| Classification | Fine-tuning  | cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
+| Quantization Assist | Quantization | pileval.                                                  |
+| Other        | Fine-tuning    | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh. |
+| Vision       | Fine-tuning    | coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.       |
+| Audio        | Fine-tuning    | aishell1-zh, 🔥aishell1-mini-zh.                              |
+
+### Supported Technologies
+
+| Technology Name                                               |
+|--------------------------------------------------------------- |
+| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685) |
+| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf) |
+| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf) |
+| 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  \|  [Project Page](https://scedit.github.io/) > |
+| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914) |
+| QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717) |
+| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307) |
+| ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317) |
+| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751) |
+| Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119) |
+| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503) |
+| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \|  [Project Page](https://res-tuning.github.io/)  \|  [Usage](docs/source/GetStarted/ResTuning.md) > |
+| Tuners provided by [PEFT](https://github.com/huggingface/peft), such as IA3, AdaLoRA, etc. |
+
+### Supported Hardware
+
+| Hardware Environment           | Notes                                           |
+|--------------------------------|-------------------------------------------------|
+| CPU                            |                                                 |
+| RTX 20/30/40 series, etc.      | After 30 series, BF16 and FlashAttn can be used |
+| Computing cards T4/V100, etc.  | BF16 and FlashAttn not supported                |
+| Computing cards A10/A100, etc. | Support BF16 and FlashAttn                      |
+| Huawei Ascend NPU              |                                                 |
+
+## 📃 Documentation
+
+### Documentation Compiling
 
 ```shell
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu20.04-cuda11.8.0-py38-torch2.0.1-tf2.13.0-1.9.1
+make docs
+# Check docs/build/html/index.html in web-browser
 ```
 
-## 🚀 Getting Started
+### User Guide
 
-SWIFT supports multiple tuners, as well as tuners provided by [PEFT](https://github.com/huggingface/peft). To use these tuners, simply call:
+| Document Name                                                |
+| ------------------------------------------------------------ |
+| [Using Web-UI](docs/source_en/GetStarted/Web-ui.md)          |
+| [Using Tuners](docs/source_en/GetStarted/Tuners.md)          |
+| [LLM Fine-tuning](docs/source_en/LLM/LLM-fine-tuning.md)     |
+| [LLM Inference](docs/source_en/LLM/LLM-inference.md)         |
+| [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
+| [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
+| [DPO Human Alignment Training](docs/source_en/LLM/RLHF.md)   |
+| [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
 
-```python
-from swift import Swift, LoRAConfig
-config = LoRAConfig(...)
-model = Swift.prepare_model(model, config, extra_state_keys=['...'])
+### Reference Documentation
+| Document Name                                                |
+| ------------------------------------------------------------ |
+| [Command Line Arguments](docs/source_en/LLM/Command-line-parameters.md) |
+| [Customizing New Models and Datasets](docs/source_en/LLM/Customization.md) |
+| [Supported Models and Datasets List](docs/source_en/LLM/Supported-models-datasets.md) |
+| [Runtime Speed and Memory Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) |
+
+
+### Best Practices
+
+| Best Practices Name                                                |
+| ------------------------------------------------------------ |
+| [Agent Fine-Tuning Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Agent%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [Self-Cognition Fine-Tuning Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E6%88%91%E8%AE%A4%E7%9F%A5%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+|  [Qwen1.5 Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+|  [Multi-Modal Model Training Best Practice](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
+
+### Deep Learning Tutorials
+
+| Tutorial Name                                                |
+|-------------------------------------------------------------- |
+| [Introduction to Deep Learning](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/A.%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E5%85%A5%E9%97%A8%E4%BB%8B%E7%BB%8D.md) |
+| [Large Model Basics](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/B.%E9%AD%94%E6%90%AD%E7%A4%BE%E5%8C%BA%E5%92%8CLLM%E5%A4%A7%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86.md) |
+| [Prompt Engineering](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/C.%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%B7%A5%E7%A8%8B-prompt%20engineering.md) |
+| [Transformer Architecture Introduction](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/D.Transformer%E7%BB%93%E6%9E%84.md) |
+| [Training Technique Selection](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/E.%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B.md) |
+| [Data Preprocessing](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/F.%E6%95%B0%E6%8D%AE%E9%A2%84%E5%A4%84%E7%90%86.md) |
+| [Quantization](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/G.%E9%87%8F%E5%8C%96.md) |
+| [Training](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/H.%E8%AE%AD%E7%BB%83.md) |
+| [Inference](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/I.LLM%E5%92%8C%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A8%A1%E5%9E%8B%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86%E5%AE%9E%E8%B7%B5.md) |
+| [Deployment](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/J.%E9%83%A8%E7%BD%B2.md) |
+| [Evaluation](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/K.%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%87%AA%E5%8A%A8%E8%AF%84%E4%BC%B0%E7%90%86%E8%AE%BA%E5%92%8C%E5%AE%9E%E6%88%98--LLM%20Automatic%20Evaluation.md) |
+
+## 🏛 License
+
+This framework is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE). For models and datasets, please refer to the original resource page and follow the corresponding License.
+
+## 📎 Citation
+
+```bibtex
+@Misc{swift,
+  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
+  author = {The ModelScope Team},
+  howpublished = {\url{https://github.com/modelscope/swift}},
+  year = {2024}
+}
 ```
-
-The code snippet above initialized the tuner randomly. The input model is an instance of `torch.nn.Module`, the config is a subclass instance of `SwiftConfig` or `PeftConfig`. extra_state_keys is
-the extra module weights(like the linear head) to be trained and stored in the output dir.
-
-You may combine multiple tuners by:
-
-```python
-from swift import Swift, LoRAConfig, PromptConfig
-model = Swift.prepare_model(model, {'lora': LoRAConfig(...), 'prompt': PromptConfig(...)})
-```
-
-Call `save_pretrained` and `push_to_hub` after finetuning:
-
-```python
-from swift import push_to_hub
-model.save_pretrained('some-output-folder')
-push_to_hub('my-group/some-repo-id-modelscope', 'some-output-folder', token='some-ms-token')
-```
-Assume `my-group/some-repo-id-modelscope` is the model-id in the hub, and `some-ms-token` is the token for uploading.
-
-Using the model-id to do later inference:
-
-```python
-from swift import Swift
-model = Swift.from_pretrained(model, 'my-group/some-repo-id-modelscope')
-```
-
-Here shows a runnable example:
-
-```python
-import os
-import tempfile
-
-# Please install modelscope by `pip install modelscope`
-from modelscope import Model
-
-from swift import LoRAConfig, SwiftModel, Swift, push_to_hub
-
-tmp_dir = tempfile.TemporaryDirectory().name
-if not os.path.exists(tmp_dir):
-    os.makedirs(tmp_dir)
-
-
-model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto')
-lora_config = LoRAConfig(target_modules=['q_proj', 'k_proj', 'v_proj'])
-model: SwiftModel = Swift.prepare_model(model, lora_config)
-# Do some finetuning here
-model.save_pretrained(tmp_dir)
-
-push_to_hub('my-group/swift_llama2', output_dir=tmp_dir)
-model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto')
-model = SwiftModel.from_pretrained(model, 'my-group/swift_llama2', device_map='auto')
-```
-
-This is a example that uses transformers for model creation uses SWIFT for efficient tuning.
-
-```python
-from swift import Swift, LoRAConfig, AdapterConfig, PromptConfig
-from transformers import AutoModelForImageClassification
-
-# init vit model
-model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
-
-# init lora tuner config
-lora_config = LoRAConfig(
-    r=10,  # the rank of the LoRA module
-    target_modules=['query', 'key', 'value'],  # the modules to be replaced with the end of the module name
-    merge_weights=False  # whether to merge weights
-)
-
-# init adapter tuner config
-adapter_config = AdapterConfig(
-    dim=768,  # the dimension of the hidden states
-    hidden_pos=0,  # the position of the hidden state to passed into the adapter
-    target_modules=r'.*attention.output.dense$',  # the modules to be replaced with regular expression
-    adapter_length=10  # the length of the adapter length
-)
-
-# init prompt tuner config
-prompt_config = PromptConfig(
-    dim=768,  # the dimension of the hidden states
-    target_modules=r'.*layer\.\d+$',  # the modules to be replaced with regular expression
-    embedding_pos=0,    # the position of the embedding tensor
-    prompt_length=10,   # the length of the prompt tokens
-    attach_front=False  # Whether prompt is attached in front of the embedding
-)
-
-# create model with swift. In practice, you can use any of these tuners or a combination of them.
-model = Swift.prepare_model(model, {"lora_tuner": lora_config, "adapter_tuner": adapter_config, "prompt_tuner": prompt_config})
-
-# get the trainable parameters of model
-model.get_trainable_parameters()
-# 'trainable params: 838,776 || all params: 87,406,432 || trainable%: 0.9596273189597764'
-```
-
-You can use the features offered by Peft in SWIFT:
-
-```python
-from swift import LoraConfig, Swift
-from peft import TaskType
-lora_config = LoraConfig(target_modules=['query', 'key', 'value'], task_type=TaskType.CAUSAL_LM)
-model_wrapped = Swift.prepare_model(model, lora_config)
-
-# or call from_pretrained to load weights in the modelhub
-model_wrapped = Swift.from_pretrained(model, 'some-id-in-the-modelscope-modelhub')
-```
-
-
-The saving strategy between Swift tuners and Peft tuners are slightly different. You can name a tuner by:
-
-```python
-model = Swift.prepare_model(model, {'default': LoRAConfig(...)})
-model.save_pretrained('./output')
-```
-
-In the output dir, you will have a dir structure like this:
-
-```text
-output
-    |-- default
-        |-- adapter_config.json
-        |-- adapter_model.bin
-    |-- adapter_config.json
-    |-- adapter_model.bin
-```
-
-The config/weights stored in the output dir is the config of `extra_state_keys` and the weights of it. This is different from PEFT, which stores the weights and config of the `default` tuner.
-
-
-## 🔍 Learn More
-
-- [ModelScope library](https://github.com/modelscope/modelscope/)
-
-  ModelScope Library is the model library of ModelScope project, which contains a large number of popular models.
-
-- [Contribute your own model to ModelScope](https://modelscope.cn/docs/ModelScope%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E6%B5%81%E7%A8%8B%E6%A6%82%E8%A7%88)
-
-
-## License
-
-This project is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE).
-
 
 ## ☎ Contact Us
-You can contact and communicate with us by joining our WeChat Group:
+
+You can contact us and communicate with us by adding our WeChat group:
 
 <p align="left">
 <img src="asset/wechat.png" width="250" style="display: inline-block;">
 </p>
-
 
 ## Star History
 

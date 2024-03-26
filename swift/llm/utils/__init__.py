@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import (AppUIArguments, DeployArguments, DPOArguments,
                        EvalArguments, ExportArguments, InferArguments,
-                       RomeArguments, SftArguments, is_adapter)
+                       RomeArguments, SftArguments, is_adapter, swift_to_peft_format)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, add_self_cognition_dataset, get_dataset,
@@ -42,6 +42,10 @@ try:
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine,
                                  inference_stream_vllm, inference_vllm,
                                  prepare_vllm_engine_template)
+        try:
+            from .vllm_utils import LoRARequest
+        except ImportError:
+            pass
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()

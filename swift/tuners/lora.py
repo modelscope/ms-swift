@@ -5,9 +5,7 @@ from dataclasses import asdict, dataclass, field
 
 import torch
 from packaging import version
-from peft.tuners.lora import LoraLayer
 
-from swift import LoraConfig
 from .lora_layers import *  # noqa
 from .utils import SwiftAdapter, SwiftConfig, SwiftOutput, set_adapter
 
@@ -85,6 +83,8 @@ class LoRA(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
+        assert version.parse(peft.__version__) < version.parse('0.10.0'), 'The swift LoRA adapter only supports peft<0.10.0'
+
         if config.use_qa_lora:
             auto_gptq_config = get_quantization_config(model, method='gptq')
             if auto_gptq_config:

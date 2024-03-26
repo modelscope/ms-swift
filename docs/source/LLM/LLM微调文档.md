@@ -135,13 +135,13 @@ cd examples/pytorch/llm
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
 - 如果你想要使用量化参数`--quantization_bit 4`, 你需要先安装[bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`. 这会减少显存消耗, 但通常会降低训练速度.
 - 如果你想要使用基于**auto_gptq**的量化, 你需要先安装对应cuda版本的[auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
-  > 使用auto_gptq的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
+  > 使用auto_gptq的模型可以查看[LLM支持的模型](支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
-- 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](./自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
+- 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
-- 如果你的机器是A100等高性能显卡, 且模型支持flash-attn, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](./支持的模型和数据集.md#模型)
-- 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](./自定义与拓展.md#注册数据集的方式)
-- 如果你需要**断网**进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](./命令行参数.md).
+- 如果你的机器是A100等高性能显卡, 且模型支持flash-attn, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](支持的模型和数据集.md#模型)
+- 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](自定义与拓展.md#注册数据集的方式)
+- 如果你需要**断网**进行训练, 请使用`--model_id_or_path <model_dir>`和设置`--check_model_is_latest false`. 具体参数含义请查看[命令行参数](命令行参数.md).
 - 如果你想在训练时, 将权重push到ModelScope Hub中, 你需要设置`--push_to_hub true`.
 - 如果你想要在推理时, 合并LoRA权重并保存，你需要设置`--merge_lora true`. **不推荐对qlora训练的模型进行merge**, 这会存在精度损失. 因此**不建议使用qlora进行微调**, 部署生态不好.
 
@@ -160,13 +160,13 @@ cd examples/pytorch/llm
 - lora: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora) (3090), [baichuan2-13b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/baichuan2_13b_chat/lora_mp) (2\*3090), [yi-34b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/yi_34b_chat/lora) (A100), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_mp) (2\*A100)
 - lora+ddp: [chatglm3-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/chatglm3_6b/lora_ddp) (2\*3090)
 - lora+ddp+zero3: [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/lora_ddp_zero3) (4\*3090), [qwen-72b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_72b_chat/lora_ddp_zero3) (4\*A100)
-- qlora(gptq-int4): [qwen-7b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat_int4/qlora) (3090)
-- qlora(gptq-int8): [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8/qlora) (3090)
-- qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
+- qlora(gptq-int4): [qwen-14b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat_int4/qlora) (3090), [qwen1half-72b-chat-int4](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_72b_chat_int4/qlora) (A100)
+- qlora(gptq-int8): [qwen-14b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat_int8/qlora) (3090)
+- qlora(bnb-int4): [qwen-14b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_14b_chat/qlora) (3090), [llama2-70b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/llama2_70b_chat/qlora_mp) (2 \* 3090)
 
 
 ## DPO
-如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](./LLM人类对齐训练文档.md).
+如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](LLM人类对齐训练文档.md).
 
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
@@ -181,10 +181,10 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档.md#微调后模型)
 
 ## 推理
-如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#微调后的模型)
+如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md调后的模型)
 
 ### 原始模型
-**单样本推理**可以查看[LLM推理文档](./LLM推理文档.md#-推理)
+**单样本推理**可以查看[LLM推理文档](LLM推理文档.md推理)
 
 使用**数据集**评估:
 ```bash
@@ -270,10 +270,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
-如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#部署)
+如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md署)
 
 ### 原始模型
-使用原始模型的web-ui可以查看[LLM推理文档](./LLM推理文档.md#-Web-UI)
+使用原始模型的web-ui可以查看[LLM推理文档](LLM推理文档.mdWeb-UI)
 
 ### 微调后模型
 ```bash

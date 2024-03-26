@@ -1,5 +1,9 @@
 # Agent微调最佳实践
 
+用消费级显卡训练属于自己的Agent！
+
+SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent场景的训练，并将[loss-scale技术](https://arxiv.org/pdf/2309.00986.pdf)应用到agent训练中，使中小模型API Call能力更稳定，并支持使用单张商业级显卡进行Agent推理和部署，可以直接在生产场景中全链路闭环落地使用。
+
 ## 目录
 
 - [环境安装](#环境安装)
@@ -27,8 +31,8 @@ pip install -r requirements/llm.txt  -U
 
 为训练Agent能力，魔搭官方提供了两个开源数据集：
 
-- 魔搭通用问答知识数据集 该数据集包含了38万条通用知识多轮对话数据
-- 魔搭通用Agent训练数据集 该数据集包含了3万条Agent格式的API调用数据
+- [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
+- [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
 
 该数据集数据格式如下：
 
@@ -149,7 +153,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 运行命令和其他超参数如下:
 
 ```shell
-# Experimental environment: A100
+# Experimental environment: 8GPU
 nproc_per_node=8
 
 PYTHONPATH=../../.. \
@@ -167,7 +171,7 @@ torchrun \
     --train_dataset_mix_ratio 2.0 \
     --train_dataset_sample -1 \
     --num_train_epochs 2 \
-    --max_length 2048 \
+    --max_length 1500 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -178,7 +182,7 @@ torchrun \
     --model_author 陶白白 \
     --gradient_checkpointing true \
     --batch_size 2 \
-    --weight_decay 0.01 \
+    --weight_decay 0.1 \
     --learning_rate 5e-5 \
     --gradient_accumulation_steps $(expr 32 / $nproc_per_node) \
     --max_grad_norm 0.5 \
@@ -189,7 +193,13 @@ torchrun \
     --logging_steps 10
 ```
 
-训练过程使用了8*A100硬件环境，训练时长3小时。该训练使用单卡也可以运行，用户可以将DDP改为单卡命令即可。
+在官方实验中，训练过程使用了8GPU硬件环境，**训练时长3小时**。
+
+> [!NOTE]
+>
+> 1. 该训练使用消费级单显卡也可以运行（对应**占用显存22G**），用户将DDP命令改为单卡命令即可
+>
+> 2. LoRA训练的遗忘问题并不严重，可以适当调低ms-bench数据集的比例，提高训练速度
 
 ## 推理
 
@@ -201,11 +211,11 @@ torchrun \
 
 > 西湖醋鱼怎么做
 
-![image-20240201122323540](resources/image-20240201122323540.png)
+![image-20240201122323540](../../resources/image-20240201122323540.png)
 
 > 新冠和普通感冒有什么区别
 
-![image-20240201122441874](resources/image-20240201122441874.png)
+![image-20240201122441874](../../resources/image-20240201122441874.png)
 
 #### Agent能力
 
@@ -233,11 +243,11 @@ Final Answer: the final answer to the original input question
 Begin!
 ```
 
-![image-20240201122625473](resources/image-20240201122625473.png)
+![image-20240201122625473](../../resources/image-20240201122625473.png)
 
-![image-20240201122725477](resources/image-20240201122725477.png)
+![image-20240201122725477](../../resources/image-20240201122725477.png)
 
-![image-20240201131811038](resources/image-20240201131811038.png)
+![image-20240201131811038](../../resources/image-20240201131811038.png)
 
 可以看到，人工输入Observation后模型答案并不正确。
 
@@ -247,32 +257,36 @@ Begin!
 
 > 西湖醋鱼怎么做
 
-![image-20240201132124061](resources/image-20240201132124061.png)
+![image-20240201132124061](../../resources/image-20240201132124061.png)
 
-![image-20240201132139698](resources/image-20240201132139698.png)
+![image-20240201132139698](../../resources/image-20240201132139698.png)
 
 > 新冠和普通感冒有什么区别
 
-![image-20240201132308260](resources/image-20240201132308260.png)
+![image-20240201132308260](../../resources/image-20240201132308260.png)
 
 #### Agent能力
 
-![image-20240201132421298](resources/image-20240201132421298.png)
+![image-20240201132421298](../../resources/image-20240201132421298.png)
 
-![image-20240201132454465](resources/image-20240201132454465.png)
+![image-20240201132454465](../../resources/image-20240201132454465.png)
 
 可以看到，训练后模型可以正确调用API并给出最终答案。
 
 #### 自我认知
 
-![image-20240201133359457](resources/image-20240201133359457.png)
+![image-20240201133359457](../../resources/image-20240201133359457.png)
 
 ### 在命令行中使用Agent
 
 目前命令行的Agent推理支持需要指定`--eval_human true`，因为该参数为false的时候会读取数据集内容，此时无法手动传入`Observation:`后面的API调用结果。
 
 ```shell
-swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
+# 使用训练后的模型
+swift infer --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --eval_human true --stop_words Observation: --infer_backend pt
+# 也可以使用原始模型，如qwn-7b-chat或chatglm3-6b-32k等运行agent
+# swift infer --model_type qwen-7b-chat --eval_human true --stop_words Observation: --infer_backend pt
+# swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observation: --infer_backend pt
 ```
 
 运行命令后，改变system字段：
@@ -287,7 +301,7 @@ swift infer --model_type chatglm3-6b-32k --eval_human true --stop_words Observat
 
 ```shell
 # 多行system
-<<< multi-line#
+<<< multi-line
 <<<[M] reset-system#
 <<<[MS] Answer the following questions as best you can. You have access to the following APIs:
 1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]
@@ -310,7 +324,7 @@ Final Answer: the final answer to the original input question
 Begin!#
 ```
 
-下面就可以进行Agent问答：
+下面就可以进行Agent问答(注意如果使用多行模式输入行尾额外增加#号)：
 
 ```shell
 <<< 输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点
@@ -336,7 +350,11 @@ Final Answer: There is fire in the input image.
 服务端：
 
 ```shell
-swift deploy --model_type chatglm3-6b-32k --stop_words Observation:
+# 使用训练后的模型
+swift deploy --ckpt_dir output/qwen-7b-chat/vx-xxx/checkpoint-xxx --stop_words Observation:
+# 也可以使用原始模型，如qwen-7b-chat或chatglm3-6b-32k等运行agent
+# swift deploy --model_type qwn-7b-chat --stop_words Observation:
+# swift deploy --model_type chatglm3-6b-32k --stop_words Observation:
 ```
 
 客户端：
@@ -399,12 +417,12 @@ for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
 ## Output:
-# model_type: chatglm3-6b-32k
+# model_type: qwen-7b-chat
 # response: Thought: I need to check if there is fire in the image
 # Action: Use fire\_recognition API
-# Action Input: /tmp/2.jpg
+# Action Input: /tmp/1.jpg
 # Observation:
-# [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/2.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/2.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
+# [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/1.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
 # response:
 # Final Answer: There is fire in the image at coordinates [101.1, 200.9]
 ```
@@ -417,3 +435,5 @@ print()
 
 1. 训练从LoRA变为全参数训练，知识遗忘问题会更加严重，数据集混合比例需要实际测试调整
 2. 部分模型可能在训练后仍然调用效果不佳，可以测试该模型本身预训练能力是否扎实
+3. Agent训练集格式、语种有细节改变后，对应推理阶段的格式也需要相应调整，否则可能效果不佳
+4. 重要位置的`\n`等特殊字符比较重要，请注意推理和训练格式统一

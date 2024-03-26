@@ -78,16 +78,15 @@ def prepare_model(model, args: SftArguments):
                 'loftq_config': args.lora_loftq_config,
                 'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
+                'lr_ratio': args.lora_lr_ratio,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
-                    lora_kwargs['lr_ratio'] = args.lora_lr_ratio
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
-                    assert args.lora_lr_ratio is None, 'Please use tuner_backend="swift" to use LoRA+'
                     lora_config = LoraConfig(
-                        task_type='CAUSAL_LM', **lora_kwargs)
+                        task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
             elif args.sft_type == 'longlora':
