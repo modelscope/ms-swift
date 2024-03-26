@@ -19,7 +19,7 @@ from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template
-from .utils import _is_chinese_char
+from .utils import _get_safe_print_idx
 
 try:
     from vllm.lora.request import LoRARequest
@@ -275,13 +275,9 @@ def inference_stream_vllm(
             i = int(output.request_id)
             request = request_list[i]
             response = tokenizer.decode(output.outputs[0].token_ids, True)
-            if output.finished or response.endswith(
-                    '\n') or len(response) > 0 and _is_chinese_char(
-                        ord(response[-1])):
-                print_idx_list[i] = len(response)
-            else:
-                print_idx_list[i] = max(
-                    response.rfind(' ') + 1, print_idx_list[i])
+            print_idx_list[i] = _get_safe_print_idx(response,
+                                                    print_idx_list[i],
+                                                    output.finished)
             # avoid printing incomplete words
             safe_response = response[:print_idx_list[i]]
             query = request['query']
