@@ -618,7 +618,7 @@ class SwiftMixin:
                 return super().create_optimizer()
 
             decay_parameters = self.get_decay_parameter_names(opt_model)
-            if isinstance(self.model, SwiftModel):
+            if hasattr(self.model, 'create_optimizer_param_groups'):
                 # Lora+ parameter groups (or a default one)
                 optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
                     lr=self.args.learning_rate,

@@ -97,8 +97,8 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
     all_param_names = set()
     params = []
     param_groups = []
-    if isinstance(self.peft_config,
-                  LoraConfig) and self.peft_config.lr_ratio is not None:
+    if isinstance(self.peft_config[self.active_adapter],
+                  LoraConfig) and self.peft_config[self.active_adapter].lr_ratio is not None:
         for name, param in self.base_model.named_parameters():
             if 'lora_B' in name or 'lora_embedding_B' in name:
                 params.append(param)
@@ -109,7 +109,7 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
                 'params':
                 params,
                 'lr':
-                defaults['lr'] * self.peft_config.lr_ratio
+                defaults['lr'] * self.peft_config[self.active_adapter].lr_ratio
             })
 
     decay_parameters = Trainer.get_decay_parameter_names(None, self.base_model)
@@ -153,7 +153,7 @@ def hot_patch_peft_module():
 
         for module in model.modules():
             if isinstance(module, LoraLayer):
-                _convert_dtype(module, config.lora_dtype)
+                _convert_dtype(module, config[self.active_adapter].lora_dtype)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init
