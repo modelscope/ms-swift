@@ -46,11 +46,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 self.model, 'get_trainable_parameters') else None,
         }
 
-    def train(self, *args, **kwargs):
-        super().train(*args, **kwargs)
+    def train(self, *args, **kwargs) -> torch.Tensor:
+        res = super().train(*args, **kwargs)
         for i in range(torch.cuda.device_count()):
             self.perf['memory'][
                 f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
+        return res
 
     def concat_template(self, feature):
         query: Optional[str] = feature.get('query', None)

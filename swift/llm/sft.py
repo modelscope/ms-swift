@@ -250,6 +250,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             trainer.push_to_hub()
     run_info = {
         'memory': trainer.perf['memory'],
+        'gen_time': trainer.perf['gen_time'],
+        'gen_len': trainer.perf['gen_len'],
         'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
