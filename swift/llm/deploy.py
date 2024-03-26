@@ -22,6 +22,7 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     CompletionStreamResponse, DeltaMessage, DeployArguments,
                     Model, ModelList, UsageInfo, inference, inference_stream,
                     messages_to_history, random_uuid)
+from .utils.utils import _get_safe_print_idx
 
 logger = get_logger()
 
@@ -241,8 +242,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 choices = []
                 for output in result.outputs:
                     text = template.tokenizer.decode(output.token_ids, True)
-                    delta_text = text[print_idx_list[output.index]:]
-                    print_idx_list[output.index] += len(delta_text)
+                    new_print_idx = _get_safe_print_idx(
+                        text, print_idx_list[output.index], output.finished())
+                    delta_text = text[print_idx_list[output.
+                                                     index]:new_print_idx]
+                    print_idx_list[output.index] = new_print_idx
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
                         delta=DeltaMessage(
@@ -259,8 +263,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 choices = []
                 for output in result.outputs:
                     text = template.tokenizer.decode(output.token_ids, True)
-                    delta_text = text[print_idx_list[output.index]:]
-                    print_idx_list[output.index] += len(delta_text)
+                    new_print_idx = _get_safe_print_idx(
+                        text, print_idx_list[output.index], output.finished())
+                    delta_text = text[print_idx_list[output.
+                                                     index]:new_print_idx]
+                    print_idx_list[output.index] = new_print_idx
                     choice = CompletionResponseStreamChoice(
                         index=output.index,
                         text=delta_text,
