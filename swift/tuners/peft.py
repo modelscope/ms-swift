@@ -3,7 +3,7 @@
 
 import os.path
 from dataclasses import dataclass, field
-from functools import partial
+from functools import partial, reduce
 from typing import Dict, Optional
 
 import peft
@@ -18,6 +18,7 @@ from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
                   PromptEncoderConfig, PromptLearningConfig,
                   PromptTuningConfig, get_peft_config, get_peft_model,
                   get_peft_model_state_dict)
+from peft.tuners.lora import Embedding
 from peft.utils.other import transpose
 from transformers import Trainer
 
@@ -93,25 +94,42 @@ def _convert_dtype(target: torch.nn.Module, lora_dtype: str):
             target.lora_embedding_B.to(torch_dtype)
 
 
-def create_optimizer_param_groups(self: PeftModel, **defaults):
+def create_optimizer_param_groups(self: PeftModel, emb_lr=1e-6, **defaults):
     all_param_names = set()
-    params = []
+    lora_b_params = []
+    emb_params = []
     param_groups = []
+
+    def get_module(name):
+        parent_idx = 2 if 'lora' in name else 1
+        module_names = name.split(sep='.')[:-parent_idx]
+        module = reduce(getattr, module_names, self.base_model)
+        return module
+
     if isinstance(self.peft_config[self.active_adapter],
                   LoraConfig) and self.peft_config[
                       self.active_adapter].lr_ratio is not None:
         for name, param in self.base_model.named_parameters():
-            if 'lora_B' in name or 'lora_embedding_B' in name:
-                params.append(param)
+            if not param.requires_grad:
+                continue
+
+            module = get_module(name)
+            if isinstance(module, Embedding):
+                emb_params.append(param)
                 all_param_names.add(name)
-        if params:
+            elif 'lora_B' in name:
+                lora_b_params.append(param)
+                all_param_names.add(name)
+        if lora_b_params:
             assert 'lr' in defaults
             param_groups.append({
                 'params':
-                params,
+                lora_b_params,
                 'lr':
                 defaults['lr'] * self.peft_config[self.active_adapter].lr_ratio
             })
+        if emb_params:
+            param_groups.append({'params': emb_params, 'lr': emb_lr})
 
     decay_parameters = Trainer.get_decay_parameter_names(None, self.base_model)
     param_groups.extend([
