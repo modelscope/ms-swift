@@ -265,6 +265,7 @@ class ModelType:
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
     # teleAI
+    telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
 
     @classmethod
@@ -2668,7 +2669,12 @@ def get_model_tokenizer_llava(model_dir: str,
     _patch_llava(model)
     return model, tokenizer
 
-
+@register_model(
+    ModelType.telechat_7b,
+    'TeleAI/TeleChat-7B',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True)
 @register_model(
     ModelType.telechat_12b,
     'TeleAI/TeleChat-12B',
