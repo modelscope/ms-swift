@@ -71,11 +71,6 @@ def prepare_model(model, args: SftArguments):
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
                 'modules_to_save': args.lora_modules_to_save,
-                'layers_to_transform': args.lora_layers_to_transform,
-                'layers_pattern': args.lora_layers_pattern,
-                'rank_pattern': args.lora_rank_pattern,
-                'alpha_pattern': args.lora_alpha_pattern,
-                'loftq_config': args.lora_loftq_config,
                 'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
                 'lr_ratio': args.lora_lr_ratio,
@@ -86,7 +81,9 @@ def prepare_model(model, args: SftArguments):
                         lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
                     lora_config = LoraConfig(
-                        task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+                        task_type='CAUSAL_LM',
+                        lora_dtype=args.lora_dtype,
+                        **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
             elif args.sft_type == 'longlora':
@@ -99,17 +96,6 @@ def prepare_model(model, args: SftArguments):
                     **lora_kwargs)
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
-            elif args.sft_type == 'qalora':
-                assert args.tuner_backend == 'swift'
-                assert getattr(
-                    model, 'quantization_method',
-                    None) == 'gptq', 'qalora must be used with auto_gptq'
-                qalora_config = LoRAConfig(
-                    lora_dtype=args.lora_dtype,
-                    use_qa_lora=True,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, qalora_config)
-                logger.info(f'qalora_config: {qalora_config}')
             elif args.sft_type == 'adalora':
                 lora_kwargs['rank_pattern'] = None
                 adalora_config = AdaLoraConfig(

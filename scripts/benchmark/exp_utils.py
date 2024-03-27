@@ -144,8 +144,9 @@ class ExpManager:
             os.makedirs('exp', exist_ok=True)
             log_file = os.path.join('exp', f'{exp.name}.{exp.cmd}.log')
             exp.handler = subprocess.Popen(
-                runtime['running_cmd'] + f' > {log_file} 2>&1', 
-                env=envs, shell=True)
+                runtime['running_cmd'] + f' > {log_file} 2>&1',
+                env=envs,
+                shell=True)
             self.exps.append(exp)
 
     def _build_eval_cmd(self, exp: Experiment):

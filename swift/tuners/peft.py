@@ -4,7 +4,7 @@
 import os.path
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Optional
+from typing import Dict, Optional
 
 import peft
 import torch
@@ -98,7 +98,8 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
     params = []
     param_groups = []
     if isinstance(self.peft_config[self.active_adapter],
-                  LoraConfig) and self.peft_config[self.active_adapter].lr_ratio is not None:
+                  LoraConfig) and self.peft_config[
+                      self.active_adapter].lr_ratio is not None:
         for name, param in self.base_model.named_parameters():
             if 'lora_B' in name or 'lora_embedding_B' in name:
                 params.append(param)
@@ -148,7 +149,8 @@ def hot_patch_peft_module():
     LoraLayer._apply_dora = _apply_dora
 
     # Support type conversion
-    def init(self, model: torch.nn.Module, config: LoraConfig, adapter_name):
+    def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig],
+             adapter_name):
         self.__init_origin__(model, config, adapter_name)
 
         for module in model.modules():

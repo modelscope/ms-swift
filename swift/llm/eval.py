@@ -4,9 +4,7 @@ import time
 from typing import Any, Dict, List
 
 import json
-from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
-from llmuses.run import run_task
 from modelscope import GenerationConfig
 
 from swift.utils import get_logger, get_main
@@ -204,9 +202,8 @@ class EvalModel(CustomModel):
         return res_d
 
 
-def run_eval_single_model(args: EvalArguments,
-                          model_name,
-                          record=None):
+def run_eval_single_model(args: EvalArguments, model_name, record=None):
+    from llmuses.run import run_task
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
     eval_model = EvalModel(args, model_name, config=record or {})
@@ -225,13 +222,10 @@ def run_eval_single_model(args: EvalArguments,
 
 
 def llm_eval(args: EvalArguments) -> None:
-    dtypes = {value: key for key, value in dtype_mapping.items()}
     model_name = args.model_type
     if args.name:
         model_name += f'-{args.name}'
-    run_eval_single_model(
-        args,
-        model_name)
+    run_eval_single_model(args, model_name)
 
 
 eval_main = get_main(EvalArguments, llm_eval)
