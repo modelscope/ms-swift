@@ -2674,7 +2674,6 @@ def get_model_tokenizer_llava(model_dir: str,
     'TeleAI/TeleChat-12B',
     LoRATM.telechat,
     TemplateType.telechat,
-    torch_dtype=torch.float16,
     support_flash_attn=True)
 def get_model_tokenizer_telechat(model_dir: str,
                                  torch_dtype: Dtype,
