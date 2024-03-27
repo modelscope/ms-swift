@@ -265,10 +265,8 @@ class ModelType:
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
     # teleAI
-    telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
-    telechat_12b_int8 = 'telechat-12b-int8'
-    telechat_12b_int4 = 'telechat-12b-int4'
+
 
 
     @classmethod
@@ -1208,6 +1206,12 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
+@register_model(
+    ModelType.telechat_12b,
+    'TeleAI/TeleChat-12B',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -2689,67 +2693,8 @@ def get_model_tokenizer_telechat(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    # patch: telechat dtype bf16 bug
+    return get_model_tokenizer_with_flash_attn(model_dir,torch_dtype,model_kwargs,load_model,**kwargs)
 
-    model_config = AutoConfig.from_pretrained(
-        model_dir, trust_remote_code=True)
-    model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config.attn_implementation = 'flash_attention_2'
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        **kwargs)
-
-@register_model(
-    ModelType.telechat_12b_int4,
-    'TeleAI/TeleChat-12B',
-    LoRATM.telechat,
-    TemplateType.telechat,
-    requires=['auto_gptq==0.3'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
-    support_flash_attn=True)
-@register_model(
-    ModelType.telechat_12b_int8,
-    'TeleAI/TeleChat-12B-int8',
-    LoRATM.telechat,
-    TemplateType.telechat,
-    requires=['auto_gptq==0.3'],
-    torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
-    support_flash_attn=True)
-def get_model_tokenizer_telechat_intx(model_dir: str,
-                                  torch_dtype: Dtype,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-
-    logger.info('use gptq, ignore bnb arguments')
-    bits = kwargs.pop('bits')
-    if version.parse(transformers.__version__) >= version.parse('4.35'):
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, use_exllama=False)
-    else:
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, disable_exllama=True)
-    model_config = AutoConfig.from_pretrained(
-        model_dir, trust_remote_code=True)
-    model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config.attn_implementation = 'flash_attention_2'
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        **kwargs)
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
