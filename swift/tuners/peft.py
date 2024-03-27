@@ -95,10 +95,9 @@ def _convert_dtype(target: torch.nn.Module, lora_dtype: str):
 
 
 def create_optimizer_param_groups(self: PeftModel, emb_lr=1e-6, **defaults):
-    all_param_names = set()
-    lora_b_params = []
-    emb_params = []
-    param_groups = []
+    if not isinstance(self.peft_config[self.active_adapter],
+                  LoraConfig) or self.peft_config[self.active_adapter].lr_ratio is None:
+        return None
 
     def get_module(name):
         parent_idx = 2 if 'lora' in name else 1
@@ -106,53 +105,59 @@ def create_optimizer_param_groups(self: PeftModel, emb_lr=1e-6, **defaults):
         module = reduce(getattr, module_names, self.base_model)
         return module
 
-    if isinstance(self.peft_config[self.active_adapter],
-                  LoraConfig) and self.peft_config[
-                      self.active_adapter].lr_ratio is not None:
-        for name, param in self.base_model.named_parameters():
-            if not param.requires_grad:
-                continue
-
-            module = get_module(name)
-            if isinstance(module, Embedding):
-                emb_params.append(param)
-                all_param_names.add(name)
-            elif 'lora_B' in name:
-                lora_b_params.append(param)
-                all_param_names.add(name)
-        if lora_b_params:
-            assert 'lr' in defaults
-            param_groups.append({
-                'params':
-                lora_b_params,
-                'lr':
-                defaults['lr'] * self.peft_config[self.active_adapter].lr_ratio
-            })
-        if emb_params:
-            param_groups.append({'params': emb_params, 'lr': emb_lr})
+    param_groups = {
+        "groupA": {},
+        "groupB": {},
+        "groupB_no_decay": {},
+        "embedding": {},
+    }
 
     decay_parameters = Trainer.get_decay_parameter_names(None, self.base_model)
-    param_groups.extend([
-        {
-            'params': [
-                p for n, p in self.base_model.named_parameters()
-                if (n in decay_parameters and n not in all_param_names
-                    and p.requires_grad)
-            ],
-            'weight_decay':
-            defaults['weight_decay'],
-        },
-        {
-            'params': [
-                p for n, p in self.base_model.named_parameters()
-                if (n not in decay_parameters and n not in all_param_names
-                    and p.requires_grad)
-            ],
-            'weight_decay':
-            0.0,
-        },
-    ])
+    for name, param in self.base_model.named_parameters():
+        if not param.requires_grad:
+            continue
 
+        module = get_module(name)
+        if isinstance(module, Embedding):
+            param_groups["embedding"][name] = param
+        elif "lora_B" in name or param.ndim == 1:
+            if name in decay_parameters:
+                param_groups["groupB"][name] = param
+            else:
+                param_groups["groupB_no_decay"][name] = param
+        else:
+            param_groups["groupA"][name] = param
+
+    assigned_param_groups = ""
+    for group in param_groups:
+        assigned_param_groups += f"{group}\n {list(param_groups[group].keys())}\n\n"
+    logger.info(assigned_param_groups)
+
+    lr = defaults["lr"]
+    weight_decay = defaults.get("weight_decay", 0.0)
+
+    param_groups = [
+        {
+            "params": list(param_groups["groupA"].values()),
+            "weight_decay": weight_decay,
+            "lr": lr,
+        },
+        {
+            "params": list(param_groups["embedding"].values()),
+            "weight_decay": weight_decay,
+            "lr": emb_lr,
+        },
+        {
+            "params": list(param_groups["groupB"].values()),
+            "weight_decay": weight_decay,
+            "lr": lr * self.peft_config[self.active_adapter].lr_ratio,
+        },
+        {
+            "params": list(param_groups["groupB_no_decay"].values()),
+            "weight_decay": 0.0,
+            "lr": lr * self.peft_config[self.active_adapter].lr_ratio,
+        },
+    ]
     return param_groups
 
 
