@@ -2675,28 +2675,6 @@ def get_model_tokenizer_llava(model_dir: str,
     return model, tokenizer
 
 
-@register_model(
-    ModelType.telechat_7b,
-    'TeleAI/TeleChat-7B',
-    LoRATM.telechat,
-    TemplateType.telechat,
-    support_flash_attn=True)
-@register_model(
-    ModelType.telechat_12b,
-    'TeleAI/TeleChat-12B',
-    LoRATM.telechat,
-    TemplateType.telechat,
-    support_flash_attn=True)
-def get_model_tokenizer_telechat(model_dir: str,
-                                 torch_dtype: Dtype,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
-                                               model_kwargs, load_model,
-                                               **kwargs)
-
-
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
     if version.parse(transformers.__version__) >= version.parse('4.35'):
