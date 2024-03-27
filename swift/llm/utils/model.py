@@ -267,8 +267,6 @@ class ModelType:
     # teleAI
     telechat_12b = 'telechat-12b'
 
-
-
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -2676,6 +2674,7 @@ def get_model_tokenizer_llava(model_dir: str,
     _patch_llava(model)
     return model, tokenizer
 
+
 @register_model(
     ModelType.telechat_7b,
     'TeleAI/TeleChat-7B',
@@ -2693,7 +2692,9 @@ def get_model_tokenizer_telechat(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    return get_model_tokenizer_with_flash_attn(model_dir,torch_dtype,model_kwargs,load_model,**kwargs)
+    return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
+                                               model_kwargs, load_model,
+                                               **kwargs)
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
