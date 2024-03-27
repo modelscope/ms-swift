@@ -73,7 +73,7 @@ def prepare_model(model, args: SftArguments):
                 'modules_to_save': args.lora_modules_to_save,
                 'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
-                'lr_ratio': args.lora_lr_ratio,
+                'lorap_lr_ratio': args.lora_lr_ratio,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':

@@ -77,7 +77,7 @@ def _create_and_replace_hook(self, *args, **kwargs):
     return self._create_and_replace_origin(*args, **kwargs)
 
 
-def _convert_dtype(target: torch.nn.Module, lora_dtype: str):
+def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
     if lora_dtype == 'fp32':
         torch_dtype = torch.float32
     elif lora_dtype == 'fp16':
@@ -88,12 +88,12 @@ def _convert_dtype(target: torch.nn.Module, lora_dtype: str):
         torch_dtype = None
 
     if torch_dtype is not None:
-        if hasattr(target, 'lora_A'):
-            target.lora_A.to(torch_dtype)
-            target.lora_B.to(torch_dtype)
-        if hasattr(target, 'lora_embedding_A'):
-            target.lora_embedding_A.to(torch_dtype)
-            target.lora_embedding_B.to(torch_dtype)
+        if hasattr(target, 'lora_A') and adapter_name in target.lora_A:
+            target.lora_A[adapter_name].to(torch_dtype)
+            target.lora_B[adapter_name].to(torch_dtype)
+        if hasattr(target, 'lora_embedding_A') and adapter_name in target.lora_embedding_A:
+            target.lora_embedding_A[adapter_name].to(torch_dtype)
+            target.lora_embedding_B[adapter_name].to(torch_dtype)
 
 
 def create_optimizer_param_groups(self: PeftModel, **defaults):
@@ -172,10 +172,11 @@ def hot_patch_peft_module():
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig],
              adapter_name):
         self.__init_origin__(model, config, adapter_name)
-
-        for module in model.modules():
+        
+        active_config = config[self.active_adapter] if isinstance(config, dict) else config
+        for name, module in model.named_modules():
             if isinstance(module, LoraLayer):
-                _convert_dtype(module, config[self.active_adapter].lora_dtype)
+                _convert_dtype(module, self.active_adapter, active_config.lora_dtype)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init
