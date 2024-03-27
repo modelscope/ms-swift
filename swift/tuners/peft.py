@@ -38,9 +38,11 @@ class LoraConfig(peft.LoraConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
-    lr_ratio: float = field(
+    lorap_lr_ratio: float = field(
         default=2.0**4,
-        metadata={'help': 'The lora learning_rate ratio of lora_A to lora_B'})
+        metadata={'help': 'The lr ratio of lora_B in lora+'})
+
+    lorap_emb_lr: float = field(default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
 
 def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
@@ -94,9 +96,9 @@ def _convert_dtype(target: torch.nn.Module, lora_dtype: str):
             target.lora_embedding_B.to(torch_dtype)
 
 
-def create_optimizer_param_groups(self: PeftModel, emb_lr=1e-6, **defaults):
+def create_optimizer_param_groups(self: PeftModel, **defaults):
     if not isinstance(self.peft_config[self.active_adapter],
-                  LoraConfig) or self.peft_config[self.active_adapter].lr_ratio is None:
+                  LoraConfig) or self.peft_config[self.active_adapter].lorap_lr_ratio is None:
         return None
 
     def get_module(name):
@@ -128,11 +130,6 @@ def create_optimizer_param_groups(self: PeftModel, emb_lr=1e-6, **defaults):
         else:
             param_groups["groupA"][name] = param
 
-    assigned_param_groups = ""
-    for group in param_groups:
-        assigned_param_groups += f"{group}\n {list(param_groups[group].keys())}\n\n"
-    logger.info(assigned_param_groups)
-
     lr = defaults["lr"]
     weight_decay = defaults.get("weight_decay", 0.0)
 
@@ -145,17 +142,17 @@ def create_optimizer_param_groups(self: PeftModel, emb_lr=1e-6, **defaults):
         {
             "params": list(param_groups["embedding"].values()),
             "weight_decay": weight_decay,
-            "lr": emb_lr,
+            "lr": self.peft_config[self.active_adapter].lorap_emb_lr,
         },
         {
             "params": list(param_groups["groupB"].values()),
             "weight_decay": weight_decay,
-            "lr": lr * self.peft_config[self.active_adapter].lr_ratio,
+            "lr": lr * self.peft_config[self.active_adapter].lorap_lr_ratio,
         },
         {
             "params": list(param_groups["groupB_no_decay"].values()),
             "weight_decay": 0.0,
-            "lr": lr * self.peft_config[self.active_adapter].lr_ratio,
+            "lr": lr * self.peft_config[self.active_adapter].lorap_lr_ratio,
         },
     ]
     return param_groups

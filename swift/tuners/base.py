@@ -272,7 +272,7 @@ class SwiftModel(nn.Module):
                         'Cannot set one parameter to different param groups')
                 if param_names and param_group:
                     all_param_names.update(param_names)
-                    param_groups.append(param_group)
+                    param_groups.extend(param_group)
 
         decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
         param_groups.extend([
