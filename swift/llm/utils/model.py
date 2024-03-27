@@ -264,6 +264,8 @@ class ModelType:
     mamba_790m = 'mamba-790m'
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
+    # teleAI
+    telechat_12b = 'telechat-12b'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -296,6 +298,7 @@ class LoRATM(NamedTuple):
     phi = ['Wqkv']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
+    telechat = ['self_attention.key_value', 'self_attention.query']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -1201,6 +1204,12 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
+@register_model(
+    ModelType.telechat_12b,
+    'TeleAI/TeleChat-12B',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
