@@ -301,27 +301,27 @@ class LoRATM(NamedTuple):
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
-PreTrainedTokenizerBase]]
+                                                PreTrainedTokenizerBase]]
 
 
 def register_model(
-        model_type: str,
-        model_id_or_path: Optional[str],
-        lora_target_modules: Optional[List[str]] = None,
-        template: str = TemplateType.default,
-        get_function: Optional[GetModelTokenizerFunction] = None,
-        *,
-        requires: Optional[List[str]] = None,
-        torch_dtype: Optional[Dtype] = None,
-        use_hf: bool = False,
-        revision: Optional[str] = None,
-        ignore_file_pattern: Optional[List[str]] = None,
-        function_kwargs: Optional[Dict[str, Any]] = None,
-        exists_ok: bool = False,
-        eos_token: Optional[str] = None,
-        **kwargs
+    model_type: str,
+    model_id_or_path: Optional[str],
+    lora_target_modules: Optional[List[str]] = None,
+    template: str = TemplateType.default,
+    get_function: Optional[GetModelTokenizerFunction] = None,
+    *,
+    requires: Optional[List[str]] = None,
+    torch_dtype: Optional[Dtype] = None,
+    use_hf: bool = False,
+    revision: Optional[str] = None,
+    ignore_file_pattern: Optional[List[str]] = None,
+    function_kwargs: Optional[Dict[str, Any]] = None,
+    exists_ok: bool = False,
+    eos_token: Optional[str] = None,
+    **kwargs
 ) -> Optional[Callable[[GetModelTokenizerFunction],
-GetModelTokenizerFunction]]:
+                       GetModelTokenizerFunction]]:
     if not exists_ok and model_type in MODEL_MAPPING:
         raise ValueError(
             f'The `{model_type}` has already been registered in the MODEL_MAPPING.'
@@ -425,13 +425,6 @@ GetModelTokenizerFunction]]:
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
-@register_model(
-    ModelType.grok_1,
-    'AI-ModelScope/keyfan-grok-1-hf',
-    LoRATM.grok_1,
-    TemplateType.default_generation,
-    requires=['transformers'],
-    support_vllm=False)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
@@ -462,6 +455,47 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 **model_kwargs)
+    if model and hasattr(model, 'hf_device_map'):
+        logger.info(f'Model {model_dir} device_map: {model.hf_device_map}')
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.grok_1,
+    'colossalai/grok-1-pytorch',
+    LoRATM.grok_1,
+    TemplateType.default_generation,
+    support_vllm=False,
+    support_flash_attn=False)
+def get_model_tokenizer_grok(model_dir: str,
+                             torch_dtype: Optional[Dtype],
+                             model_kwargs: Dict[str, Any],
+                             load_model: bool = True,
+                             model_config=None,
+                             tokenizer=None,
+                             automodel_class=AutoModelForCausalLM,
+                             **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
+    if torch_dtype is not None:
+        model_config.torch_dtype = torch_dtype
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            'AI-ModelScope/grok-1-tokenizer', trust_remote_code=True)
+    eos_token = kwargs.get('eos_token')
+    if eos_token is not None:
+        tokenizer.eos_token = eos_token
+    model = None
+    if load_model:
+        model = automodel_class.from_pretrained(
+            model_dir,
+            config=model_config,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            **model_kwargs)
+    if model and hasattr(model, 'hf_device_map'):
+        logger.info(f'Model {model_dir} device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
@@ -1706,12 +1740,12 @@ def _git_clone_github(github_url: str,
 
 
 def __prepare_inputs_embeds(
-        self,
-        input_ids: torch.LongTensor,
-        pixel_values: torch.FloatTensor,
-        images_seq_mask: torch.LongTensor,
-        images_emb_mask: torch.LongTensor,
-        **kwargs,
+    self,
+    input_ids: torch.LongTensor,
+    pixel_values: torch.FloatTensor,
+    images_seq_mask: torch.LongTensor,
+    images_emb_mask: torch.LongTensor,
+    **kwargs,
 ):
     # for patching deepseek-vl
     from einops import rearrange
