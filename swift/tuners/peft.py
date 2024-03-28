@@ -45,7 +45,7 @@ class LoraConfig(peft.LoraConfig):
     lorap_emb_lr: float = field(
         default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
-    def to_dict(self) -> Dict:
+    def to_peft_config(self) -> Dict:
         _dict = asdict(self)
         _dict.pop('lora_dtype')
         _dict.pop('lorap_lr_ratio')
@@ -53,7 +53,7 @@ class LoraConfig(peft.LoraConfig):
         return _dict
 
     def save_pretrained(self, save_directory: str, **kwargs) -> None:
-        peft.LoraConfig(**self.to_dict()).save_pretrained(
+        peft.LoraConfig(**self.to_peft_config()).save_pretrained(
             save_directory, **kwargs)
         additional_args = {
             'lora_dtype': self.lora_dtype,
@@ -73,8 +73,9 @@ class LoraConfig(peft.LoraConfig):
             self = PeftConfigMixin.from_pretrained_origin(
                 pretrained_model_name_or_path, subfolder, **kwargs)
         else:
-            self = PeftConfigMixin.from_pretrained(
-                pretrained_model_name_or_path, subfolder, **kwargs)
+            self = super(LoraConfig,
+                         cls).from_pretrained(pretrained_model_name_or_path,
+                                              subfolder, **kwargs)
 
         if isinstance(self, peft.LoraConfig):
             self = LoraConfig(**self.to_dict())
@@ -330,6 +331,7 @@ def hot_patch_peft_module():
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups
 
+    PeftConfigMixin.from_pretrained_origin = PeftConfigMixin.from_pretrained
     PeftConfigMixin.from_pretrained = LoraConfig.from_pretrained
 
     # Compatible with SwiftModel

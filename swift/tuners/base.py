@@ -790,11 +790,8 @@ class Swift:
 
         if isinstance(config, (SwiftConfig, dict)):
             return SwiftModel(model, config, **kwargs)
-        elif isinstance(
-                config,
-                PeftConfig) or config.__class__.__name__ == 'PeftWrapper':
+        else:
             return get_peft_model(model, config, **kwargs)
-        raise ValueError(f'Unsupported swift config type: {config.__class__}')
 
     @staticmethod
     def merge_and_unload(model: Union[PeftModel, SwiftModel], **kwargs):
