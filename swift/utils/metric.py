@@ -4,6 +4,7 @@ from typing import Dict, Literal
 
 import jieba
 import numpy as np
+from modelscope.metrics.text_generation_metric import extend_recursion_limit
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge.rouge import Rouge
 from torch import Tensor
@@ -24,10 +25,7 @@ def compute_nlg_metrics(prediction, tokenizer):
             tokens = np.where(tokens != -100, tokens, tokenizer.pad_token_id)
         tokens = np.where(tokens < tokenizer.vocab_size, tokens,
                           tokenizer.pad_token_id)
-        return [
-            t
-            for t in tokenizer.batch_decode(tokens, skip_special_tokens=True)
-        ]
+        return [t for t in tokenizer.decode(tokens, skip_special_tokens=True)]
 
     for pred, label in zip(preds, labels):
         pred = ''.join(_decode(pred, False))
@@ -38,8 +36,10 @@ def compute_nlg_metrics(prediction, tokenizer):
         reference = list(jieba.cut(label))
         try:
             rouge = Rouge()
-            scores = rouge.get_scores(' '.join(hypothesis),
-                                      ' '.join(reference))
+            with extend_recursion_limit([' '.join(hypothesis)],
+                                        [' '.join(reference)]):
+                scores = rouge.get_scores(' '.join(hypothesis),
+                                          ' '.join(reference))
             result = scores[0]
 
             for k, v in result.items():
