@@ -45,16 +45,15 @@ class LoraConfig(peft.LoraConfig):
     lorap_emb_lr: float = field(
         default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
-    def to_peft_config(self) -> Dict:
+    def to_peft_config(self) -> peft.LoraConfig:
         _dict = asdict(self)
         _dict.pop('lora_dtype')
         _dict.pop('lorap_lr_ratio')
         _dict.pop('lorap_emb_lr')
-        return _dict
+        return peft.LoraConfig(**_dict)
 
     def save_pretrained(self, save_directory: str, **kwargs) -> None:
-        peft.LoraConfig(**self.to_peft_config()).save_pretrained(
-            save_directory, **kwargs)
+        self.to_peft_config().save_pretrained(save_directory, **kwargs)
         additional_args = {
             'lora_dtype': self.lora_dtype,
             'lorap_lr_ratio': self.lorap_lr_ratio,
@@ -317,13 +316,13 @@ def hot_patch_peft_module():
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig],
              adapter_name):
         self.__init_origin__(model, config, adapter_name)
-
         active_config = config[self.active_adapter] if isinstance(
             config, dict) else config
-        for name, module in model.named_modules():
-            if isinstance(module, LoraLayer):
-                _convert_dtype(module, self.active_adapter,
-                               active_config.lora_dtype)
+        if hasattr(active_config, 'lora_dtype'):
+            for name, module in model.named_modules():
+                if isinstance(module, LoraLayer):
+                    _convert_dtype(module, self.active_adapter,
+                                   active_config.lora_dtype)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init
