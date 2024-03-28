@@ -1204,12 +1204,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
-@register_model(
-    ModelType.telechat_12b,
-    'TeleAI/TeleChat-12B',
-    LoRATM.telechat,
-    TemplateType.telechat,
-    support_flash_attn=True)
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
                                         model_kwargs: Dict[str, Any],
@@ -2355,6 +2349,12 @@ def get_model_tokenizer_codellama(model_dir: str,
     support_vllm=True,
     support_gradient_checkpointing=False,
     tags=['coding'])
+@register_model(
+    ModelType.telechat_12b,
+    'TeleAI/TeleChat-12B',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True)
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
