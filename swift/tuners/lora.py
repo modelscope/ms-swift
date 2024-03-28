@@ -53,10 +53,10 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         })
 
     lorap_lr_ratio: float = field(
-        default=2.0**4,
-        metadata={'help': 'The lr ratio of lora_B in lora+'})
+        default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
 
-    lorap_emb_lr: float = field(default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
+    lorap_emb_lr: float = field(
+        default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
     def __post_init__(self):
         super().__post_init__()
@@ -117,10 +117,10 @@ class LoRA(SwiftAdapter):
 
             all_params = set()
             param_groups = {
-                "groupA": {},
-                "groupB": {},
-                "groupB_no_decay": {},
-                "embedding": {},
+                'groupA': {},
+                'groupB': {},
+                'groupB_no_decay': {},
+                'embedding': {},
             }
 
             decay_parameters = Trainer.get_decay_parameter_names(None, model)
@@ -129,39 +129,39 @@ class LoRA(SwiftAdapter):
                     continue
                 module = get_module(name)
                 if isinstance(module, Embedding):
-                    param_groups["embedding"][name] = param
-                elif "lora_B" in name or param.ndim == 1:
+                    param_groups['embedding'][name] = param
+                elif 'lora_B' in name or param.ndim == 1:
                     if name in decay_parameters:
-                        param_groups["groupB"][name] = param
+                        param_groups['groupB'][name] = param
                     else:
-                        param_groups["groupB_no_decay"][name] = param
+                        param_groups['groupB_no_decay'][name] = param
                 else:
-                    param_groups["groupA"][name] = param
+                    param_groups['groupA'][name] = param
                 all_params.add(name)
 
-            lr = defaults["lr"]
-            weight_decay = defaults.get("weight_decay", 0.0)
+            lr = defaults['lr']
+            weight_decay = defaults.get('weight_decay', 0.0)
 
             param_groups = [
                 {
-                    "params": list(param_groups["groupA"].values()),
-                    "weight_decay": weight_decay,
-                    "lr": lr,
+                    'params': list(param_groups['groupA'].values()),
+                    'weight_decay': weight_decay,
+                    'lr': lr,
                 },
                 {
-                    "params": list(param_groups["embedding"].values()),
-                    "weight_decay": weight_decay,
-                    "lr": config.lorap_emb_lr,
+                    'params': list(param_groups['embedding'].values()),
+                    'weight_decay': weight_decay,
+                    'lr': config.lorap_emb_lr,
                 },
                 {
-                    "params": list(param_groups["groupB"].values()),
-                    "weight_decay": weight_decay,
-                    "lr": lr * config.lorap_lr_ratio,
+                    'params': list(param_groups['groupB'].values()),
+                    'weight_decay': weight_decay,
+                    'lr': lr * config.lorap_lr_ratio,
                 },
                 {
-                    "params": list(param_groups["groupB_no_decay"].values()),
-                    "weight_decay": 0.0,
-                    "lr": lr * config.lorap_lr_ratio,
+                    'params': list(param_groups['groupB_no_decay'].values()),
+                    'weight_decay': 0.0,
+                    'lr': lr * config.lorap_lr_ratio,
                 },
             ]
             return all_params, param_groups
