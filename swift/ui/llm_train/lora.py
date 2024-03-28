@@ -47,6 +47,28 @@ class LoRA(BaseUI):
                 'en': 'The LoRA dropout'
             }
         },
+        'use_rslora': {
+            'label': {
+                'zh': '使用rslora',
+                'en': 'Use rslora'
+            }
+        },
+        'use_dora': {
+            'label': {
+                'zh': '使用dora',
+                'en': 'Use dora'
+            }
+        },
+        'lora_lr_ratio': {
+            'label': {
+                'zh': 'Lora+学习率倍率',
+                'en': 'The lr ratio of Lora+'
+            },
+            'info': {
+                'zh': '建议值16.0',
+                'en': 'Suggested value: 16.0'
+            }
+        },
     }
 
     @classmethod
@@ -72,6 +94,10 @@ class LoRA(BaseUI):
                         minimum=1,
                         maximum=512,
                         step=8)
+                    gr.Dropdown(elem_id='lora_dtype')
+                    gr.Textbox(elem_id='lora_lr_ratio')
+                    gr.Checkbox(elem_id='use_rslora')
+                    gr.Checkbox(elem_id='use_dora')
                     gr.Textbox(elem_id='lora_dropout_p')
 
             def update_lora(choice):
