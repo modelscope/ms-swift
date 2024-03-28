@@ -38,7 +38,7 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
 from transformers.generation.streamers import BaseStreamer
 
 from swift.hub import ModelScopeConfig
-from swift.tuners.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
                          is_local_master, is_master, stat_array, upper_bound)
 from .template import History, StopWords, StopWordsCriteria, Template
@@ -429,6 +429,19 @@ def _is_chinese_char(cp):
     return False
 
 
+def _get_safe_print_idx(response: str,
+                        print_idx: int,
+                        is_finished: bool = False) -> int:
+    if is_finished:
+        return len(response)
+    if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
+            ord(response[-1])):
+        print_idx = len(response)
+    else:
+        print_idx = max(response.rfind(' ') + 1, print_idx)
+    return print_idx
+
+
 def to_device(inputs: Any, device: Device) -> Any:
     if callable(getattr(inputs, 'to', None)):
         return inputs.to(device=device)
@@ -582,11 +595,7 @@ def inference_stream(model: PreTrainedModel,
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         if isinstance(template.suffix[-1], str):
             response = response[:-len(template.suffix[-1])]
-        if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
-                ord(response[-1])):
-            print_idx = len(response)
-        else:
-            print_idx = max(response.rfind(' ') + 1, print_idx)
+        print_idx = _get_safe_print_idx(response, print_idx)
         # avoid printing incomplete words
         if safe_response != response[:print_idx]:
             safe_response = response[:print_idx]

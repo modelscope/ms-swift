@@ -165,6 +165,36 @@ class LLMTrain(BaseUI):
                 'en':
                 'Use neftune to improve performance, normally the value should be 5 or 10'
             }
+        },
+        'use_galore': {
+            'label': {
+                'zh': '使用GaLore',
+                'en': 'Use GaLore'
+            },
+            'info': {
+                'zh':
+                '使用Galore来减少全参数训练的显存消耗',
+                'en':
+                'Use Galore to reduce GPU memory usage in full parameter training'
+            }
+        },
+        'galore_rank': {
+            'label': {
+                'zh': 'Galore的秩',
+                'en': 'The rank of Galore'
+            },
+        },
+        'galore_update_proj_gap': {
+            'label': {
+                'zh': 'Galore project matrix更新频率',
+                'en': 'The updating gap of the project matrix'
+            },
+        },
+        'galore_optim_per_parameter': {
+            'label': {
+                'zh': '为每个Galore Parameter创建单独的optimizer',
+                'en': 'Create unique optimizer for per Galore parameter'
+            },
         }
     }
 
@@ -195,6 +225,27 @@ class LLMTrain(BaseUI):
                         maximum=20.0,
                         step=0.5,
                         scale=4)
+                with gr.Row():
+                    gr.Dropdown(elem_id='sft_type', scale=4)
+                    gr.Textbox(elem_id='seed', scale=4)
+                    gr.Dropdown(elem_id='dtype', scale=4)
+                    gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
+                    gr.Textbox(elem_id='ddp_num', value='2', scale=4)
+                with gr.Row():
+                    gr.Checkbox(elem_id='use_galore', scale=4)
+                    gr.Slider(
+                        elem_id='galore_rank',
+                        minimum=8,
+                        maximum=256,
+                        step=8,
+                        scale=4)
+                    gr.Slider(
+                        elem_id='galore_update_proj_gap',
+                        minimum=10,
+                        maximum=1000,
+                        step=50,
+                        scale=4)
+                    gr.Checkbox(elem_id='galore_optim_per_parameter', scale=4)
                 with gr.Row():
                     gr.Dropdown(
                         elem_id='gpu_id',
