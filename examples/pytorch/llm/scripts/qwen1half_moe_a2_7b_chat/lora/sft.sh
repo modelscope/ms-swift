@@ -29,6 +29,3 @@ python llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --self_cognition_sample 1000 \
-    --model_name 卡卡罗特 \
-    --model_author 陶白白 \
