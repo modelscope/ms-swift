@@ -271,25 +271,32 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             origin_loader = self.original_get_train_dataloader(*args, **kwargs)
             length = len(origin_loader) // grad_acc_steps * grad_acc_steps
             origin_loader_type = type(origin_loader)
-            loader = type(origin_loader_type.__name__, (origin_loader_type, ),
-                          {'__len__': lambda _: length})(
-                              origin_loader.dataset)
+            loader = type(
+                origin_loader_type.__name__, (origin_loader_type, ), {
+                    '__len__': lambda _: length,
+                    '__iter__': __iter__,
+                    '__next__': __next__
+                })(
+                    origin_loader.dataset)
             loader.__dict__.update(origin_loader.__dict__)
-            loader._original_get_iterator = loader._get_iterator
-            loader._get_iterator = MethodType(_get_iterator, loader)
+            loader.__original_iter__ = origin_loader.__iter__
             return loader
 
-        def _get_iterator(self):
-            iterator = self._original_get_iterator()
-            iterator._valid_length = len(self)
-            iterator._original_next_data = iterator._next_data
-            iterator._next_data = MethodType(_next_data, iterator)
-            return iterator
+        def __iter__(self):
+            self._num_yielded = 0
+            if self._iterator is None:
+                self._iterator = self.__original_iter__()
+            return self
 
-        def _next_data(self):
-            if self._num_yielded >= self._valid_length:
+        def __next__(self):
+            if self._num_yielded >= len(self):
                 raise StopIteration
-            return self._original_next_data()
+            self._num_yielded += 1
+            try:
+                return next(self._iterator)
+            except StopIteration:
+                self._iterator = self.__original_iter__()
+            return next(self._iterator)
 
         grad_acc_steps = self.args.gradient_accumulation_steps
         if grad_acc_steps is None or grad_acc_steps <= 1:
