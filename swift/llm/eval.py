@@ -206,15 +206,24 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     from llmuses.run import run_task
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
-    eval_model = EvalModel(args, model_name, config=record or {})
+
     task_config: TaskConfig = TaskConfig()
-    task_config = task_config.load(
-        custom_model=eval_model, tasks=args.eval_dataset)
-    if args.eval_limit:
-        task_config.limit = args.eval_limit
+    if args.custom_eval_dataset:
+        assert args.custom_eval_name and args.custom_eval_pattern, 'Please pass eval name and ' \
+                                                                   'pattern when using custom_eval_dataset'
+        assert len(args.custom_eval_name) == len(args.custom_eval_pattern) == len(args.custom_eval_dataset)
+        for name, pattern, dataset in zip(args.custom_eval_name, args.custom_eval_pattern, args.custom_eval_dataset):
+            task_config.registry(name, pattern, dataset)
+    eval_model = EvalModel(args, model_name, config=record or {})
+
+    task_configs = task_config.load(
+        custom_model=eval_model, tasks=args.eval_dataset + (args.custom_eval_name or []))
+    for task_config in task_configs:
+        if args.eval_limit:
+            task_config.limit = args.eval_limit
     logger.warn('Eval does not support temperature/top_p/do_sample argument')
     logger.info(f'Eval task config: {task_config}')
-    run_task(task_cfg=task_config)
+    run_task(task_cfg=task_configs)
     final_report: List[dict] = Summarizer.get_report_from_cfg(
         task_cfg=task_config)
     print(f'Final report:{final_report}\n', flush=True)

@@ -774,6 +774,12 @@ class EvalArguments(InferArguments):
 
     eval_limit: Optional[int] = None
 
+    custom_eval_name: Optional[str] = None
+
+    custom_eval_pattern: Optional[str] = None
+
+    custom_eval_dataset: Optional[str] = None
+
 
 @dataclass
 class ExportArguments(InferArguments):
