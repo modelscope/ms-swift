@@ -111,6 +111,13 @@ class LoRAActivationMixin(ActivationMixin):
             )
         return super().merge(*args, **kwargs)
 
+    def to(self, *args, **kwargs):
+        if kwargs.get('device') == torch.device('meta'):
+            kwargs.pop('device')
+
+        args = [arg for arg in args if arg != torch.device('meta')]
+        return super().to(*args, **kwargs)
+
     def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
         """
         From LoraLayer._apply_dora, to support `weight.to(x.dtype)`
