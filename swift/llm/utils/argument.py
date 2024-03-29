@@ -770,7 +770,7 @@ class EvalArguments(InferArguments):
     name: Optional[str] = None
 
     eval_dataset: List[str] = field(
-        default_factory=lambda: ['mmlu', 'ceval', 'gsm8k', 'arc', 'bbh'])
+        default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
 
     eval_limit: Optional[int] = None
 

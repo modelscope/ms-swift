@@ -230,7 +230,6 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
 
 
 def llm_eval(args: EvalArguments) -> None:
-    args.eval_limit = 5
     model_name = args.model_type
     if args.name:
         model_name += f'-{args.name}'
