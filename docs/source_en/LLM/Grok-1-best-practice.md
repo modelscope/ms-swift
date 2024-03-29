@@ -1,14 +1,14 @@
-# Hands-on Training and Inference with Grok 300B 
+# Hands-on Training and Inference with Grok 300B
 
 This documentation introduces the process of finetuning and inferencing the Grok-MoE 300B model using an 8-GPU environment.
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
-- [Finetuning](#finetuning) 
+- [Finetuning](#finetuning)
 - [Inference](#inference)
 
 ## Environment Setup
-```shell 
+```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
@@ -19,14 +19,14 @@ pip install -e .[llm]
 ### Experiment Environment
 
 - GPU: 8 x A100 80G
-- Docker Image: ModelScope official image version 1.13.1  
+- Docker Image: ModelScope official image version 1.13.1
 - peft: 0.10.0
 
 ### Dataset Preparation
 
 Grok is a base model, so we used the [DuReader Question Generation dataset](https://www.modelscope.cn/datasets/modelscope/DuReader_robust-QG/summary) as the training set. This dataset contains around 15,000 examples. With a max-length of 512, there are about 10,000 training examples (average length 305±92 tokens).
 
-### Model Preparation  
+### Model Preparation
 
 For the Grok model, we used the version provided by [ColossalAI](https://www.modelscope.cn/models/colossalai/grok-1-pytorch/summary), and additionally prepared a [tokenizer conforming to the transformers standard](https://www.modelscope.cn/models/AI-ModelScope/grok-1-tokenizer/summary).
 
