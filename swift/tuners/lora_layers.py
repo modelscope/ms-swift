@@ -516,6 +516,7 @@ class Linear(LoRAActivationMixin, _Linear):
             for active_adapter in self.active_adapters:
                 self.lora_A[active_adapter].to(args[0].device)
                 self.lora_B[active_adapter].to(args[0].device)
+
         self.register_forward_pre_hook(device_hook)
 
 
@@ -733,16 +734,16 @@ class LoraModel(_LoraModel):
         # _mark_only_adapters_as_trainable
 
         # child layer wraps the original module, unpack it
-        if hasattr(child, "base_layer"):
+        if hasattr(child, 'base_layer'):
             child = child.base_layer
 
-        if not hasattr(new_module, "base_layer"):
+        if not hasattr(new_module, 'base_layer'):
             new_module.weight = child.weight
-            if hasattr(child, "bias"):
+            if hasattr(child, 'bias'):
                 new_module.bias = child.bias
 
-        if getattr(child, "state", None) is not None:
-            if hasattr(new_module, "base_layer"):
+        if getattr(child, 'state', None) is not None:
+            if hasattr(new_module, 'base_layer'):
                 new_module.base_layer.state = child.state
             else:
                 new_module.state = child.state
@@ -750,8 +751,9 @@ class LoraModel(_LoraModel):
 
         # dispatch to correct device
         for name, module in new_module.named_modules():
-            if (self.prefix in name) or ("ranknum" in name):
-                weight = child.qweight if hasattr(child, "qweight") else child.weight
+            if (self.prefix in name) or ('ranknum' in name):
+                weight = child.qweight if hasattr(child,
+                                                  'qweight') else child.weight
                 if weight.device != torch.device('meta'):
                     module.to(weight.device)
 
