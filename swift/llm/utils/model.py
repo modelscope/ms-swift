@@ -302,7 +302,7 @@ class LoRATM(NamedTuple):
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
     telechat = ['self_attention.key_value', 'self_attention.query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
-
+    dbrx = []
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
                                                 PreTrainedTokenizerBase]]
