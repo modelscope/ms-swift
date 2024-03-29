@@ -201,7 +201,7 @@ def prepare_model_template(
             model, args.ckpt_dir, inference_mode=True)
         if args.sft_type == 'adalora':
             model = model.to(model.dtype)
-    # Swift.merge_and_unload(model)
+
     logger.info(get_model_info(model))
     show_layers(model)
 
@@ -254,8 +254,6 @@ def llm_infer(args: InferArguments) -> None:
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
         model, template = prepare_model_template(args)
-        #device_map={'model.embed_tokens': 0, 'lm_head': 0, 'model.layers.0': 0, 'model.layers.1': 0, 'model.layers.2': 0, 'model.layers.3': 0, 'model.layers.4': 0, 'model.layers.5': 0, 'model.layers.6': 1, 'model.layers.7': 1, 'model.layers.8': 1, 'model.layers.9': 1, 'model.layers.10': 1, 'model.layers.11': 1, 'model.layers.12': 1, 'model.layers.13': 2, 'model.layers.14': 2, 'model.layers.15': 2, 'model.layers.16': 2, 'model.layers.17': 2, 'model.layers.18': 2, 'model.layers.19': 2, 'model.layers.20': 3, 'model.layers.21': 3, 'model.layers.22': 3, 'model.layers.23': 3, 'model.layers.24': 3, 'model.layers.25': 3, 'model.layers.26': 3, 'model.layers.27': 4, 'model.layers.28': 4, 'model.layers.29': 4, 'model.layers.30': 4, 'model.layers.31': 4, 'model.layers.32': 4, 'model.layers.33': 4, 'model.layers.34': 5, 'model.layers.35': 5, 'model.layers.36': 5, 'model.layers.37': 5, 'model.layers.38': 5, 'model.layers.39': 5, 'model.layers.40': 5, 'model.layers.41': 6, 'model.layers.42': 6, 'model.layers.43': 6, 'model.layers.44': 6, 'model.layers.45': 6, 'model.layers.46': 6, 'model.layers.47': 6, 'model.layers.48': 7, 'model.layers.49': 7, 'model.layers.50': 7, 'model.layers.51': 7, 'model.layers.52': 7, 'model.layers.53': 7, 'model.layers.54': 7, 'model.layers.55': 'cpu', 'model.layers.56': 'cpu', 'model.layers.57': 'cpu', 'model.layers.58': 'cpu', 'model.layers.59': 'cpu', 'model.layers.60': 'cpu', 'model.layers.61': 'cpu', 'model.layers.62': 'cpu', 'model.layers.63': 'cpu', 'model.norm': 'cpu'})
-        print(model.hf_device_map)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)
