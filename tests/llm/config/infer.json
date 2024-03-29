@@ -1,5 +1,0 @@
-{
-    "ckpt_dir": "/mnt/workspace/hujinghan.hjh/hjh/swift/output/pai_test/checkpoint-6",
-    "val_dataset_sample": 2,
-    "load_dataset_config": true
-}
