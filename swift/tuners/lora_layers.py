@@ -533,6 +533,72 @@ class Linear(LoRAActivationMixin, _Linear):
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
+        def device_hook(module, args):
+            for active_adapter in self.active_adapters:
+                self.lora_A[active_adapter].to(args[0].device)
+                self.lora_B[active_adapter].to(args[0].device)
+
+        self.register_forward_pre_hook(device_hook)
+
+    def update_layer(self,
+                     adapter_name,
+                     r,
+                     lora_alpha,
+                     lora_dropout,
+                     init_lora_weights,
+                     use_rslora,
+                     use_dora: bool = False):
+        # This code works for linear layers, override for other layer types
+        if r <= 0:
+            raise ValueError(
+                f'`r` should be a positive integer value but the value passed is {r}'
+            )
+
+        self.r[adapter_name] = r
+        self.lora_alpha[adapter_name] = lora_alpha
+        if lora_dropout > 0.0:
+            lora_dropout_layer = nn.Dropout(p=lora_dropout)
+        else:
+            lora_dropout_layer = nn.Identity()
+
+        self.lora_dropout.update(
+            nn.ModuleDict({adapter_name: lora_dropout_layer}))
+        # Actual trainable parameters
+        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
+        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=False)
+        if use_rslora:
+            self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
+        else:
+            self.scaling[adapter_name] = lora_alpha / r
+
+        if init_lora_weights == 'loftq':
+            self.loftq_init(adapter_name)
+        elif init_lora_weights:
+            self.reset_lora_parameters(adapter_name, init_lora_weights)
+
+        # check weight and qweight (for GPTQ)
+        for weight_name in ('weight', 'qweight'):
+            weight = getattr(self.get_base_layer(), weight_name, None)
+            if weight is not None:
+                if weight.device != torch.device('meta'):
+                    # the layer is already completely initialized, this is an update
+                    if weight.dtype.is_floating_point or weight.dtype.is_complex:
+                        self.to(weight.device, dtype=weight.dtype)
+                    else:
+                        self.to(weight.device)
+                    break
+                elif weight.dtype.is_floating_point or weight.dtype.is_complex:
+                    self.to(dtype=weight.dtype)
+                    break
+
+        if use_dora:
+            self.dora_init(adapter_name)
+            self.use_dora[adapter_name] = True
+        else:
+            self.use_dora[adapter_name] = False
+
+        self.set_adapter(self.active_adapters)
+
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
 
@@ -741,6 +807,35 @@ class LoraModel(_LoraModel):
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
                 self._convert_dtype(new_module, lora_config.lora_dtype)
+
+    def _replace_module(self, parent, child_name, new_module, child):
+        setattr(parent, child_name, new_module)
+        # It's not necessary to set requires_grad here, as that is handled by
+        # _mark_only_adapters_as_trainable
+
+        # child layer wraps the original module, unpack it
+        if hasattr(child, 'base_layer'):
+            child = child.base_layer
+
+        if not hasattr(new_module, 'base_layer'):
+            new_module.weight = child.weight
+            if hasattr(child, 'bias'):
+                new_module.bias = child.bias
+
+        if getattr(child, 'state', None) is not None:
+            if hasattr(new_module, 'base_layer'):
+                new_module.base_layer.state = child.state
+            else:
+                new_module.state = child.state
+            new_module.to(child.weight.device)
+
+        # dispatch to correct device
+        for name, module in new_module.named_modules():
+            if (self.prefix in name) or ('ranknum' in name):
+                weight = child.qweight if hasattr(child,
+                                                  'qweight') else child.weight
+                if weight.device != torch.device('meta'):
+                    module.to(weight.device)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
