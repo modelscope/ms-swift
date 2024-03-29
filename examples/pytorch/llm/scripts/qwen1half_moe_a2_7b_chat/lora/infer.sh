@@ -1,4 +1,5 @@
 # Experimental environment: A100
+# 36GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_infer.py \

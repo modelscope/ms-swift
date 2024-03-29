@@ -1,7 +1,7 @@
 # Experimental environment: A100
-# 30GB GPU memory
+# 42GB GPU memory
 PYTHONPATH=../../.. \
-CUDA_VISIBLE_DEVICES=1 \
+CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_type qwen1half-moe-a2_7b-chat \
     --sft_type lora \
