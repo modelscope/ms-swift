@@ -449,8 +449,9 @@ class SwiftModel(nn.Module):
         quantization_config = None
         if hasattr(self.base_model, 'config') and hasattr(
                 self.base_model.config, 'quantization_config'):
-            quantization_config = self.base_model.config.quantization_config.to_dict(
-            )
+            if hasattr(self.base_model.config.quantization_config, 'to_dict'):
+                quantization_config = self.base_model.config.quantization_config.to_dict(
+                )
         training_config_text = ''
         # Adds quantization information if it was used
         if quantization_config is not None:
