@@ -459,8 +459,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 **model_kwargs)
-    if model and hasattr(model, 'hf_device_map'):
-        logger.info(f'Model {model_dir} device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
@@ -498,8 +496,6 @@ def get_model_tokenizer_grok(model_dir: str,
             torch_dtype=torch_dtype,
             trust_remote_code=True,
             **model_kwargs)
-    if model and hasattr(model, 'hf_device_map'):
-        logger.info(f'Model {model_dir} device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
