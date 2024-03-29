@@ -111,13 +111,6 @@ class LoRAActivationMixin(ActivationMixin):
             )
         return super().merge(*args, **kwargs)
 
-    def to(self, *args, **kwargs):
-        if kwargs.get('device') == torch.device('meta'):
-            kwargs.pop('device')
-
-        args = [arg for arg in args if arg != torch.device('meta')]
-        return super().to(*args, **kwargs)
-
     def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
         """
         From LoraLayer._apply_dora, to support `weight.to(x.dtype)`
@@ -518,6 +511,65 @@ class Linear(LoRAActivationMixin, _Linear):
                 self.lora_B[active_adapter].to(args[0].device)
 
         self.register_forward_pre_hook(device_hook)
+
+    def update_layer(self,
+                     adapter_name,
+                     r,
+                     lora_alpha,
+                     lora_dropout,
+                     init_lora_weights,
+                     use_rslora,
+                     use_dora: bool = False):
+        # This code works for linear layers, override for other layer types
+        if r <= 0:
+            raise ValueError(
+                f'`r` should be a positive integer value but the value passed is {r}'
+            )
+
+        self.r[adapter_name] = r
+        self.lora_alpha[adapter_name] = lora_alpha
+        if lora_dropout > 0.0:
+            lora_dropout_layer = nn.Dropout(p=lora_dropout)
+        else:
+            lora_dropout_layer = nn.Identity()
+
+        self.lora_dropout.update(
+            nn.ModuleDict({adapter_name: lora_dropout_layer}))
+        # Actual trainable parameters
+        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
+        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=False)
+        if use_rslora:
+            self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
+        else:
+            self.scaling[adapter_name] = lora_alpha / r
+
+        if init_lora_weights == 'loftq':
+            self.loftq_init(adapter_name)
+        elif init_lora_weights:
+            self.reset_lora_parameters(adapter_name, init_lora_weights)
+
+        # check weight and qweight (for GPTQ)
+        for weight_name in ('weight', 'qweight'):
+            weight = getattr(self.get_base_layer(), weight_name, None)
+            if weight is not None:
+                if weight.device != torch.device('meta'):
+                    # the layer is already completely initialized, this is an update
+                    if weight.dtype.is_floating_point or weight.dtype.is_complex:
+                        self.to(weight.device, dtype=weight.dtype)
+                    else:
+                        self.to(weight.device)
+                    break
+                elif weight.dtype.is_floating_point or weight.dtype.is_complex:
+                    self.to(dtype=weight.dtype)
+                    break
+
+        if use_dora:
+            self.dora_init(adapter_name)
+            self.use_dora[adapter_name] = True
+        else:
+            self.use_dora[adapter_name] = False
+
+        self.set_adapter(self.active_adapters)
 
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
