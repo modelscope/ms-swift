@@ -268,6 +268,8 @@ class ModelType:
     telechat_12b = 'telechat-12b'
     # grok-1
     grok_1 = 'grok-1'
+    # dbrx
+    dbrx_instruct = 'dbrx-instruct'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -1239,6 +1241,15 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.mixtral_moe_7b_instruct,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
     LoRATM.llama2,
+    TemplateType.llama,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+@register_model(
+    ModelType.dbrx_instruct,
+    'AI-ModelScope/dbrx-instruct',
+    LoRATM.dbrx,
     TemplateType.llama,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
