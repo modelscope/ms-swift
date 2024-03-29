@@ -35,6 +35,7 @@ For the Grok model, we used the version provided by [ColossalAI](https://www.mod
 Since the Grok model is too large, device_map and deepspeed zero3 non-offload are unable to run training. Therefore, in this experiment, we used the LoRA + deepspeed zero3 offload mode to run the training. The complete training script is as follows:
 
 ```shell
+# cd examples/pytorch/llm first
 nproc_per_node=8
 
 PYTHONPATH=../../.. \
@@ -100,6 +101,7 @@ The SWIFT framework currently does not support deepspeed inference, so we still 
 The inference script is as follows:
 
 ```shell
+# cd examples/pytorch/llm first
 PYTHONPATH=../../.. \
 python llm_infer.py \
     --ckpt_dir output/grok-1/vx-xxx-xxx/checkpoint-xxx \

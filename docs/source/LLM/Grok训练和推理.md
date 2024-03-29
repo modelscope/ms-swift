@@ -37,6 +37,7 @@ Grok模型我们使用了[ColossalAI提供的版本](https://www.modelscope.cn/m
 由于Grok模型过大，device_map和deepspeed zero3非offload均无法运行训练，因此本次实验我们使用了LoRA+deepspeed zero3 offload模式运行训练。训练完整脚本如下：
 
 ```shell
+# cd examples/pytorch/llm first
 nproc_per_node=8
 
 PYTHONPATH=../../.. \
@@ -102,10 +103,11 @@ SWIFT框架目前并不支持deepspeed推理，因此我们仍然使用transform
 推理脚本如下：
 
 ```shell
+# cd examples/pytorch/llm first
 PYTHONPATH=../../.. \
 python llm_infer.py \
-	--ckpt_dir output/grok-1/vx-xxx-xxx/checkpoint-xxx \
-	--dtype bf16 \
+    --ckpt_dir output/grok-1/vx-xxx-xxx/checkpoint-xxx \
+    --dtype bf16 \
     --load_dataset_config true \
     --max_new_tokens 64 \
     --do_sample true \

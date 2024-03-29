@@ -266,7 +266,7 @@ class ModelType:
     mamba_2_8b = 'mamba-2.8b'
     # teleAI
     telechat_12b = 'telechat-12b'
-	# grok-1
+    # grok-1
     grok_1 = 'grok-1'
 
     @classmethod
@@ -301,7 +301,7 @@ class LoRATM(NamedTuple):
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
     telechat = ['self_attention.key_value', 'self_attention.query']
-	grok_1 = ['q_proj', 'k_proj', 'v_proj']
+    grok_1 = ['q_proj', 'k_proj', 'v_proj']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
