@@ -7,7 +7,7 @@
     "eval_requirements": {
       "gpu": "1"
     },
-    "eval_dataset": ["mmlu", "ceval", "gsm8k", "arc", "bbh"],
+    "eval_dataset": ["ceval", "gsm8k", "arc"],
     "args": {
       "model_type": "qwen-7b-chat",
       "dataset": "ms-agent",

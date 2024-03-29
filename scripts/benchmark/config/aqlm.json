@@ -7,7 +7,7 @@
     "eval_requirements": {
       "gpu": "1"
     },
-    "eval_dataset": ["mmlu", "ceval", "gsm8k", "arc", "bbh"],
+    "eval_dataset": ["ceval", "gsm8k", "arc"],
     "args": {
       "model_type": "llama2-7b-aqlm-2bit-1x16",
       "dataset": "dureader-robust-zh",
