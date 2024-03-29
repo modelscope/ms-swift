@@ -425,8 +425,10 @@ class SwiftMixin:
             for file in additional_files:
                 src_path = os.path.join(model_dir, file)
                 dst_path = os.path.join(output_dir, file)
-                if os.path.exists(src_path):
+                if os.path.isfile(src_path):
                     shutil.copy(src_path, dst_path)
+                elif os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
         self.state.last_model_checkpoint = os.path.join(
