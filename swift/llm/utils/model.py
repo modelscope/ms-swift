@@ -2373,6 +2373,7 @@ def get_model_tokenizer_phi(model_dir: str,
         model_config=model_config,
         **kwargs)
 
+
 @register_model(
     ModelType.telechat_7b,
     'TeleAI/TeleChat-7B',
@@ -2380,12 +2381,14 @@ def get_model_tokenizer_phi(model_dir: str,
     TemplateType.telechat,
     support_flash_attn=True)
 def get_model_tokenizer_telechat(model_dir: str,
-                            torch_dtype: Dtype,
-                            model_kwargs: Dict[str, Any],
-                            load_model: bool = True,
-                            **kwargs):
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
     if torch_dtype == torch.bfloat16:
-        logger.info("telechat-7b does not support the bfl16 dtype; the dtype is converted to fp16.")
+        logger.info(
+            'telechat-7b does not support the bfl16 dtype; the dtype is converted to fp16.'
+        )
         torch_dtype = torch.float16
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
@@ -2398,6 +2401,7 @@ def get_model_tokenizer_telechat(model_dir: str,
         load_model,
         model_config=model_config,
         **kwargs)
+
 
 @register_model(
     ModelType.deepseek_moe_16b_chat,
