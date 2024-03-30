@@ -91,6 +91,14 @@ class ExpManager:
 
     def __init__(self):
         self.exps = []
+    
+    def assert_gpu_not_overlap(self):
+        all_gpus = set()
+        for exp in self.exps:
+            gpus = exp.runtime['env']['CUDA_VISIBLE_DEVICES'].split(',')
+            if all_gpus & set(gpus):
+                raise ValueError(f'GPU overlap: {self.exps}!')
+            all_gpus.update(gpus)
 
     def run(self, exp: Experiment):
         if os.path.exists(
@@ -125,6 +133,7 @@ class ExpManager:
                 env=envs,
                 shell=True)
             self.exps.append(exp)
+            self.assert_gpu_not_overlap()
             return
 
         if any([exp.name == e.name for e in self.exps]):
@@ -148,6 +157,7 @@ class ExpManager:
                 env=envs,
                 shell=True)
             self.exps.append(exp)
+            self.assert_gpu_not_overlap()
 
     def _build_eval_cmd(self, exp: Experiment):
         gpu = exp.eval_requirements.get('gpu', None)
