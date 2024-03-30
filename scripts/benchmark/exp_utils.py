@@ -266,8 +266,8 @@ class ExpManager:
     @staticmethod
     def _get_metric(exp: Experiment):
         if exp.do_eval:
-            if os.path.isfile(f'{exp.name}.eval.log'):
-                with open(f'{exp.name}.eval.log', 'r') as f:
+            if os.path.isfile(os.path.join('exp', f'{exp.name}.eval.log')):
+                with open(os.path.join('exp', f'{exp.name}.eval.log'), 'r') as f:
                     for line in f.readlines():
                         if 'Final report:' in line:
                             return json.loads(

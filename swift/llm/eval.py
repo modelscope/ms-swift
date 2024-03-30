@@ -147,6 +147,7 @@ class EvalModel(CustomModel):
                 **config
             }, **kwargs)
         self.model_name = model_name
+        self.generation_info = {'time': 0, 'tokens': 0}
 
     def predict(self, prompt: str, **kwargs):
         if self.args.infer_backend == 'vllm':
@@ -175,13 +176,16 @@ class EvalModel(CustomModel):
             response = resp_list[0]['response']
             new_history = resp_list[0]['history']
         else:
+            generation_info = {}
             ts = time.time()
             response, new_history = inference(
                 self.model,
                 self.template,
                 prompt,
+                generation_info=generation_info,
                 generation_config=GenerationConfig(**kwargs['infer_cfg']))
-            print(time.time() - ts)
+            self.generation_info['time'] += time.time() - ts
+            self.generation_info['tokens'] += generation_info['num_generated_tokens']
 
         res_d: dict = {
             'choices': [{
@@ -218,6 +222,7 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     task_configs = TaskConfig.load(
         custom_model=eval_model, tasks=args.eval_dataset + (args.custom_eval_name or []))
     for task_config in task_configs:
+        task_config.use_cache = False
         if args.eval_limit:
             task_config.limit = args.eval_limit
     logger.warn('Eval does not support temperature/top_p/do_sample argument')
@@ -225,11 +230,16 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     run_task(task_cfg=task_configs)
     final_report: List[dict] = Summarizer.get_report_from_cfg(
         task_cfg=task_configs)
+    final_report = {
+        'report': final_report,
+        'generation_info': eval_model.generation_info,
+    }
     print(f'Final report:{final_report}\n', flush=True)
     return final_report
 
 
 def llm_eval(args: EvalArguments) -> None:
+    args.eval_limit = 2
     model_name = args.model_type
     if args.name:
         model_name += f'-{args.name}'
