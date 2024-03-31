@@ -268,6 +268,7 @@ class ModelType:
     mamba_1_4b = 'mamba-1.4b'
     mamba_2_8b = 'mamba-2.8b'
     # teleAI
+    telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
     # grok-1
     grok_1 = 'grok-1'
@@ -2438,6 +2439,35 @@ def get_model_tokenizer_phi(model_dir: str,
                             model_kwargs: Dict[str, Any],
                             load_model: bool = True,
                             **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    model_config.flash_attn = use_flash_attn
+    return get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
+
+
+@register_model(
+    ModelType.telechat_7b,
+    'TeleAI/TeleChat-7B',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True)
+def get_model_tokenizer_telechat(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    if torch_dtype == torch.bfloat16:
+        logger.info(
+            'telechat-7b does not support the bfl16 dtype; the dtype is converted to fp16.'
+        )
+        torch_dtype = torch.float16
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
