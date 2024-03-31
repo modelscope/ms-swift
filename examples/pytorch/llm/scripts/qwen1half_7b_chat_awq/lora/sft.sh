@@ -14,8 +14,7 @@ python llm_sft.py \
   --use_flash_attn true \
   --eval_steps 2000 \
   --save_steps 2000 \
-  --train_dataset_sample 100000 \
-  --val_dataset_sample 5000 \
+  --train_dataset_sample -1 \
   --num_train_epochs 1 \
   --check_dataset_strategy none \
   --gradient_checkpointing true \
