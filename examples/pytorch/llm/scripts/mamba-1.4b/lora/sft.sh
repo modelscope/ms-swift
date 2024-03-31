@@ -12,7 +12,7 @@ python llm_sft.py \
   --use_flash_attn true \
   --eval_steps 1000 \
   --save_steps 1000 \
-  --train_dataset_sample 100000 \
+  --train_dataset_sample -1 \
   --val_dataset_sample 3000 \
   --num_train_epochs 2 \
   --check_dataset_strategy none \

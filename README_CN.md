@@ -394,7 +394,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)       | 中文<br>英文 | 6B-34B                    | chat模型<br>代码模型                            |
 | phi2                           | 微软PHI2模型                                                 | 英文       | 3B                        | base模型<br>代码模型                            |
 | Grok | [X-ai](https://github.com/xai-org/grok-1) | 英文       | 300B | base模型                                    |
-| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | 中文<br>英文 | 12B | chat模型                                    |
+| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | 中文<br>英文 | 7B-12B | chat模型                                    |
 
 #### 多模态大模型
 
