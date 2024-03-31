@@ -395,7 +395,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese<br>English    | 6B-34B                                 | chat model<br>code model                      |
 | phi2                                           | Microsoft's PHI2 model                                                 | English            | 3B                                     | base model<br>code model                          |
 | Grok | [X-ai](https://github.com/xai-org/grok-1) | English | 300B | base model |
-| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 12B | chat model |
+| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 7B-12B | chat model |
 
 
 #### MLLMs
