@@ -22,13 +22,13 @@ Prompt:masterpiece, bestquality, highlydetailed, ultradetailed, girl, walking, o
 
 
 
-![image.png](./resources/1.gif)
+![image.png](../../resources/1.gif)
 
 ```text
 Prompt: masterpiece, bestquality, highlydetailed, ultradetailed, beautiful house, mountain, snow top
 ```
 
-![image.png](./resources/2.gif)
+![image.png](../../resources/2.gif)
 
 2.5M子数据集训练的生成效果仍存在效果不稳定的情况，开发者使用10M数据集效果会更稳定。
 
@@ -49,7 +49,7 @@ torchrun --nproc_per_node=4 animatediff_sft.py \
   --trainable_modules .*motion_modules.* \
   --batch_size 4 \
   --eval_steps 100 \
-  --gradient_accumulation_steps 16 \
+  --gradient_accumulation_steps 16
 ```
 
 我们使用了A100 * 4进行训练，共需要200GB显存，训练时长约40小时。数据格式如下：
@@ -78,7 +78,7 @@ python animatediff_infer.py \
   --model_id_or_path wyj123456/Realistic_Vision_V5.1_noVAE \
   --sft_type full \
   --ckpt_dir /output/path/like/checkpoints/iter-xxx \
-  --eval_human true  \
+  --eval_human true
 ```
 
 其中的--ckpt_dir 传入训练时输出的文件夹即可。
@@ -106,7 +106,7 @@ python animatediff_sft.py \
   --batch_size 1 \
   --eval_steps 200 \
   --dataset_sample_size 10000 \
-  --gradient_accumulation_steps 16 \
+  --gradient_accumulation_steps 16
 ```
 
 视频数据参数同上。
@@ -124,7 +124,7 @@ python animatediff_infer.py \
   --motion_adapter_id_or_path Shanghai_AI_Laboratory/animatediff-motion-adapter-v1-5-2 \
   --sft_type lora \
   --ckpt_dir /output/path/like/checkpoints/iter-xxx \
-  --eval_human true  \
+  --eval_human true
 ```
 
 其中的--ckpt_dir 传入训练时输出的文件夹即可。
@@ -176,7 +176,7 @@ dataloader_num_workers: int = 1 # dataloader workers数量
 push_to_hub: bool = False # 是否推送到modelhub
 # 'user_name/repo_name' or 'repo_name'
 hub_model_id: Optional[str] = None # modelhub id
-hub_private_repo: bool = True
+hub_private_repo: bool = False
 push_hub_strategy: str = field( # 推送策略，推送最后一个还是每个都推送
     default='push_best',
     metadata={'choices': ['push_last', 'all_checkpoints']})
@@ -244,13 +244,13 @@ sft_type: str = field(
     default='lora', metadata={'choices': ['lora', 'full']}) # 训练方式，支持lora和全参数
 
 ckpt_dir: Optional[str] = field(
-    default=None, metadata={'help': '/path/to/your/vx_xxx/checkpoint-xxx'}) # 训练的输出文件夹
+    default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'}) # 训练的输出文件夹
 eval_human: bool = False  # False: eval val_dataset # 是否使用人工输入评测
 
 seed: int = 42 # 随机种子
 
-merge_lora_and_save: bool = False # Merge lora into the MotionAdapter and save the model.
-replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora_and_save` is True.
+merge_lora: bool = False # Merge lora into the MotionAdapter and save the model.
+replace_if_exists: bool = False # Replace the files if the output merged dir exists when `merge_lora` is True.
 
 # other
 ignore_args_error: bool = False  # True: notebook compatibility

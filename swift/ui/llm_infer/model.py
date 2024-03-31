@@ -15,6 +15,9 @@ class Model(BaseUI):
 
     sub_ui = [Generate]
 
+    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get(
+        'MODELSCOPE_ENVIRONMENT') == 'studio'
+
     locale_dict = {
         'checkpoint': {
             'value': {
@@ -34,8 +37,8 @@ class Model(BaseUI):
         },
         'load_checkpoint': {
             'value': {
-                'zh': '加载模型',
-                'en': 'Load model'
+                'zh': '加载模型' if is_inference else '部署模型',
+                'en': 'Load model' if is_inference else 'Deploy model',
             }
         },
         'model_id_or_path': {
@@ -77,7 +80,13 @@ class Model(BaseUI):
                 'zh': '以json格式填入',
                 'en': 'Fill in with json format'
             }
-        }
+        },
+        'reset': {
+            'value': {
+                'zh': '恢复初始值',
+                'en': 'Reset to default'
+            },
+        },
     }
 
     @classmethod
@@ -98,6 +107,8 @@ class Model(BaseUI):
                 elem_id='template_type',
                 choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
                 scale=20)
+            reset_btn = gr.Button(elem_id='reset', scale=2)
+            model_state = gr.State({})
         with gr.Row():
             system = gr.Textbox(elem_id='system', lines=4, scale=20)
         Generate.build_ui(base_tab)
@@ -105,31 +116,37 @@ class Model(BaseUI):
             gr.Textbox(elem_id='more_params', lines=1, scale=20)
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 
-        def update_input_model(choice):
+        def update_input_model(choice, model_state=None):
             if choice == base_tab.locale('checkpoint', cls.lang)['value']:
-                model_id_or_path = None
+                if model_state and choice in model_state:
+                    model_id_or_path = model_state[choice]
+                else:
+                    model_id_or_path = None
                 default_system = None
                 template = None
             else:
-                model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
+                if model_state and choice in model_state:
+                    model_id_or_path = model_state[choice]
+                else:
+                    model_id_or_path = MODEL_MAPPING[choice][
+                        'model_id_or_path']
                 default_system = getattr(
                     TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
                     ['template'], 'default_system', None)
                 template = MODEL_MAPPING[choice]['template']
-            return model_id_or_path, default_system, template, gr.update(
-                interactive=choice == base_tab.locale('checkpoint',
-                                                      cls.lang)['value'])
+            return model_id_or_path, default_system, template
 
-        def update_model_id_or_path(model_type, path, system, template_type):
+        def update_model_id_or_path(model_type, path, system, template_type,
+                                    model_state):
             if not path or not os.path.exists(path):
-                return system, template_type
+                return system, template_type, model_state
             local_path = os.path.join(path, 'sft_args.json')
             if not os.path.exists(local_path):
                 default_system = getattr(
                     TEMPLATE_MAPPING[MODEL_MAPPING[model_type]['template']]
                     ['template'], 'default_system', None)
                 template = MODEL_MAPPING[model_type]['template']
-                return default_system, template
+                return default_system, template, model_state
 
             with open(local_path, 'r') as f:
                 sft_args = json.load(f)
@@ -137,16 +154,29 @@ class Model(BaseUI):
             system = getattr(
                 TEMPLATE_MAPPING[MODEL_MAPPING[base_model_type]['template']]
                 ['template'], 'default_system', None)
-            return sft_args['system'] or system, sft_args['template_type']
+            model_state[model_type] = path
+            return sft_args['system'] or system, sft_args[
+                'template_type'], model_state
 
         model_type.change(
             update_input_model,
-            inputs=[model_type],
-            outputs=[
-                model_id_or_path, system, template_type, model_id_or_path
-            ])
+            inputs=[model_type, model_state],
+            outputs=[model_id_or_path, system, template_type])
 
         model_id_or_path.change(
             update_model_id_or_path,
-            inputs=[model_type, model_id_or_path, system, template_type],
-            outputs=[system, template_type])
+            inputs=[
+                model_type, model_id_or_path, system, template_type,
+                model_state
+            ],
+            outputs=[system, template_type, model_state])
+
+        def reset(model_type):
+            model_id_or_path, default_system, template = update_input_model(
+                model_type)
+            return model_id_or_path, default_system, template, {}
+
+        reset_btn.click(
+            reset,
+            inputs=[model_type],
+            outputs=[model_id_or_path, system, template_type, model_state])

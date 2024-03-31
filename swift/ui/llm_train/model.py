@@ -7,7 +7,6 @@ from swift.ui.base import BaseUI
 
 
 class Model(BaseUI):
-
     group = 'llm_train'
 
     locale_dict = {
@@ -51,6 +50,12 @@ class Model(BaseUI):
                 'en': 'Choose the content of the system field'
             }
         },
+        'reset': {
+            'value': {
+                'zh': '恢复初始值',
+                'en': 'Reset to default'
+            },
+        },
     }
 
     @classmethod
@@ -65,25 +70,51 @@ class Model(BaseUI):
                 elem_id='model_id_or_path',
                 lines=1,
                 scale=20,
-                interactive=False)
+                interactive=True)
             template_type = gr.Dropdown(
                 elem_id='template_type',
                 choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
                 scale=20)
+            reset_btn = gr.Button(elem_id='reset', scale=2)
+            model_state = gr.State({})
         with gr.Row():
             system = gr.Textbox(elem_id='system', lines=1, scale=20)
 
-        def update_input_model(choice):
+        def update_input_model(choice, model_state=None):
             if choice is None:
                 return None, None, None
-            model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
+            if model_state and choice in model_state:
+                model_id_or_path = model_state[choice]
+            else:
+                model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
             default_system = getattr(
                 TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
                 ['template'], 'default_system', None)
             template = MODEL_MAPPING[choice]['template']
             return model_id_or_path, default_system, template
 
+        def update_model_id_or_path(model_type, model_id_or_path, model_state):
+            if model_type is None or isinstance(model_type, list):
+                return model_state
+            model_state[model_type] = model_id_or_path
+            return model_state
+
+        def reset(model_type):
+            model_id_or_path, default_system, template = update_input_model(
+                model_type)
+            return model_id_or_path, default_system, template, {}
+
         model_type.change(
             update_input_model,
-            inputs=[model_type],
+            inputs=[model_type, model_state],
             outputs=[model_id_or_path, system, template_type])
+
+        model_id_or_path.change(
+            update_model_id_or_path,
+            inputs=[model_type, model_id_or_path, model_state],
+            outputs=[model_state])
+
+        reset_btn.click(
+            reset,
+            inputs=[model_type],
+            outputs=[model_id_or_path, system, template_type, model_state])

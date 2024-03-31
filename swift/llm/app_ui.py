@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Tuple
 
-from swift.utils import get_main
+from swift.utils import get_logger, get_main
 from .infer import merge_lora, prepare_model_template
 from .utils import (AppUIArguments, History, inference_stream,
                     limit_history_length)
+
+logger = get_logger()
 
 
 def clear_session() -> History:
@@ -106,9 +108,10 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
 
 
 def llm_app_ui(args: AppUIArguments) -> None:
+    logger.info(f'args: {args}')
     args.eval_human = True
-    if args.merge_lora_and_save:
-        merge_lora(args, device_map='cpu')
+    if args.merge_lora:
+        merge_lora(args, device_map=args.merge_device_map)
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:

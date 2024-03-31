@@ -1,5 +1,3 @@
-from typing import Dict, List, Tuple
-
 from swift.llm import TemplateType
 
 if __name__ == '__main__':

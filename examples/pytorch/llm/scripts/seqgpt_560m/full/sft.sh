@@ -16,7 +16,7 @@ python llm_sft.py \
     --check_dataset_strategy warning \
     --gradient_checkpointing true \
     --batch_size 4 \
-    --weight_decay 0.01 \
+    --weight_decay 0.1 \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps 8 \
     --max_grad_norm 0.5 \
@@ -26,7 +26,3 @@ python llm_sft.py \
     --save_only_model false \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --push_to_hub false \
-    --hub_model_id seqgpt-560m-full \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \

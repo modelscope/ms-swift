@@ -25,6 +25,7 @@ from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import (_get_submodules, get_auto_gptq_quant_linear,
                         get_quantization_config)
+from peft.utils.other import transpose
 from transformers import Conv1D
 
 from swift import LoraConfig, get_logger
@@ -38,6 +39,12 @@ def is_auto_awq_available():
     return importlib.util.find_spec(
         'awq') is not None and importlib.util.find_spec(
             'peft.tuners.lora.awq') is not None
+
+
+def is_aqlm_available():
+    return importlib.util.find_spec(
+        'aqlm') is not None and importlib.util.find_spec(
+            'peft.tuners.lora.aqlm') is not None
 
 
 def is_auto_gptq_available():
@@ -103,6 +110,21 @@ class LoRAActivationMixin(ActivationMixin):
                 'please set `USE_UNIQUE_THREAD=1` in env variable to merge LoRA.'
             )
         return super().merge(*args, **kwargs)
+
+    def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
+        """
+        From LoraLayer._apply_dora, to support `weight.to(x.dtype)`
+        """
+        lora_weight = lora_B.weight @ lora_A.weight
+        magnitude = self.lora_magnitude_vector[active_adapter]
+        weight = self.get_base_layer().weight
+        weight_norm = self._get_weight_norm(weight, lora_weight, scaling)
+        weight_norm = weight_norm.detach()
+        mag_norm_scale = (magnitude / weight_norm).view(1, -1)
+        result_dora = (mag_norm_scale - 1) * (F.linear(
+            x, transpose(weight.to(x.dtype), self.fan_in_fan_out)
+        )) + mag_norm_scale * lora_B(lora_A(x)) * scaling
+        return result_dora
 
 
 if is_bnb_available():
@@ -190,6 +212,43 @@ if is_bnb_4bit_available():
         return new_module
 
     dispatchers.append(dispatch_bnb_4bit)
+
+if is_aqlm_available():
+    from peft.tuners.lora.aqlm import AqlmLoraLinear as _AqlmLoraLinear
+    from aqlm import QuantizedLinear
+
+    class AqlmLoraLinear(LoRAActivationMixin, _AqlmLoraLinear):
+
+        def __init__(
+            self,
+            *args,
+            module_key: str,
+            **kwargs,
+        ):
+            super(AqlmLoraLinear, self).__init__(module_key)
+            self.set_activation(args[1], True)
+            super(ActivationMixin, self).__init__(*args, **kwargs)
+
+    def dispatch_aqlm(
+        target: torch.nn.Module,
+        adapter_name: str,
+        **kwargs: Any,
+    ) -> Optional[torch.nn.Module]:
+        new_module = None
+
+        if isinstance(target, BaseTunerLayer):
+            target_base_layer = target.get_base_layer()
+        else:
+            target_base_layer = target
+
+        if is_aqlm_available() and isinstance(target_base_layer,
+                                              QuantizedLinear):
+            new_module = AqlmLoraLinear(target, adapter_name, **kwargs)
+            target.qweight = target_base_layer.codes
+
+        return new_module
+
+    dispatchers.append(dispatch_aqlm)
 
 if is_auto_awq_available():
     from peft.tuners.lora.awq import AwqLoraLinear as _AwqLoraLinear
@@ -446,6 +505,72 @@ class Linear(LoRAActivationMixin, _Linear):
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
+        def device_hook(module, args):
+            for active_adapter in self.active_adapters:
+                self.lora_A[active_adapter].to(args[0].device)
+                self.lora_B[active_adapter].to(args[0].device)
+
+        self.register_forward_pre_hook(device_hook)
+
+    def update_layer(self,
+                     adapter_name,
+                     r,
+                     lora_alpha,
+                     lora_dropout,
+                     init_lora_weights,
+                     use_rslora,
+                     use_dora: bool = False):
+        # This code works for linear layers, override for other layer types
+        if r <= 0:
+            raise ValueError(
+                f'`r` should be a positive integer value but the value passed is {r}'
+            )
+
+        self.r[adapter_name] = r
+        self.lora_alpha[adapter_name] = lora_alpha
+        if lora_dropout > 0.0:
+            lora_dropout_layer = nn.Dropout(p=lora_dropout)
+        else:
+            lora_dropout_layer = nn.Identity()
+
+        self.lora_dropout.update(
+            nn.ModuleDict({adapter_name: lora_dropout_layer}))
+        # Actual trainable parameters
+        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
+        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=False)
+        if use_rslora:
+            self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
+        else:
+            self.scaling[adapter_name] = lora_alpha / r
+
+        if init_lora_weights == 'loftq':
+            self.loftq_init(adapter_name)
+        elif init_lora_weights:
+            self.reset_lora_parameters(adapter_name, init_lora_weights)
+
+        # check weight and qweight (for GPTQ)
+        for weight_name in ('weight', 'qweight'):
+            weight = getattr(self.get_base_layer(), weight_name, None)
+            if weight is not None:
+                if weight.device != torch.device('meta'):
+                    # the layer is already completely initialized, this is an update
+                    if weight.dtype.is_floating_point or weight.dtype.is_complex:
+                        self.to(weight.device, dtype=weight.dtype)
+                    else:
+                        self.to(weight.device)
+                    break
+                elif weight.dtype.is_floating_point or weight.dtype.is_complex:
+                    self.to(dtype=weight.dtype)
+                    break
+
+        if use_dora:
+            self.dora_init(adapter_name)
+            self.use_dora[adapter_name] = True
+        else:
+            self.use_dora[adapter_name] = False
+
+        self.set_adapter(self.active_adapters)
+
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
 
@@ -610,11 +735,12 @@ class LoraModel(_LoraModel):
             'fan_in_fan_out': lora_config.fan_in_fan_out,
             'init_lora_weights': lora_config.init_lora_weights,
             'use_rslora': lora_config.use_rslora,
+            'use_dora': lora_config.use_dora,
             'loaded_in_8bit': getattr(self.model, 'is_loaded_in_8bit', False),
             'loaded_in_4bit': getattr(self.model, 'is_loaded_in_4bit', False),
         }
 
-        quant_methods = ['gptq', 'awq']
+        quant_methods = ['gptq', 'aqlm', 'awq']
         for quant_method in quant_methods:
             quantization_config = get_quantization_config(
                 self.model, method=quant_method)
@@ -636,7 +762,8 @@ class LoraModel(_LoraModel):
                 alpha,
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
-                lora_config.use_rslora,
+                use_rslora=lora_config.use_rslora,
+                use_dora=lora_config.use_dora,
             )
             self._convert_dtype(target, lora_config.lora_dtype)
         else:
@@ -652,6 +779,35 @@ class LoraModel(_LoraModel):
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
                 self._convert_dtype(new_module, lora_config.lora_dtype)
+
+    def _replace_module(self, parent, child_name, new_module, child):
+        setattr(parent, child_name, new_module)
+        # It's not necessary to set requires_grad here, as that is handled by
+        # _mark_only_adapters_as_trainable
+
+        # child layer wraps the original module, unpack it
+        if hasattr(child, 'base_layer'):
+            child = child.base_layer
+
+        if not hasattr(new_module, 'base_layer'):
+            new_module.weight = child.weight
+            if hasattr(child, 'bias'):
+                new_module.bias = child.bias
+
+        if getattr(child, 'state', None) is not None:
+            if hasattr(new_module, 'base_layer'):
+                new_module.base_layer.state = child.state
+            else:
+                new_module.state = child.state
+            new_module.to(child.weight.device)
+
+        # dispatch to correct device
+        for name, module in new_module.named_modules():
+            if (self.prefix in name) or ('ranknum' in name):
+                weight = child.qweight if hasattr(child,
+                                                  'qweight') else child.weight
+                if weight.device != torch.device('meta'):
+                    module.to(weight.device)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
@@ -883,5 +1039,5 @@ def lora_state_dict(state_dict,
     return {
         k: v
         for k, v in to_return.items()
-        if (('lora_' in k and adapter_name in k) or ('bias' in k))
+        if (('lora_' in k and f'.{adapter_name}' in k) or ('bias' in k))
     }

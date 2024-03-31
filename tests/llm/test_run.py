@@ -5,13 +5,16 @@ if __name__ == '__main__':
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from functools import partial
 from typing import Any, Dict, List
 
 import torch
+import transformers
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
+from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
@@ -44,6 +47,9 @@ class TestRun(unittest.TestCase):
             quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
+            if quantization_bit == 4 and version.parse(
+                    transformers.__version__) >= version.parse('4.38'):
+                continue
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False
@@ -102,7 +108,7 @@ class TestRun(unittest.TestCase):
                 '--max_new_tokens', '100', '--use_flash_attn', 'true',
                 '--lora_target_modules', 'ALL', '--seed', '0',
                 '--lora_bias_trainable', 'all', '--lora_modules_to_save',
-                'wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head'
+                'EMBEDDING', 'LN', 'lm_head'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -176,12 +182,17 @@ class TestRun(unittest.TestCase):
             'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl',
             'swift_pre.csv', 'swift_single.jsonl'
         ]
+        mixture_dataset = val_dataset_fnames
         folder = os.path.join(os.path.dirname(__file__), 'data')
         sft_args = SftArguments(
             model_type='qwen-7b-chat',
             custom_train_dataset_path=[
                 os.path.join(folder, fname) for fname in train_dataset_fnames
             ],
+            train_dataset_mix_ds=[
+                os.path.join(folder, fname) for fname in mixture_dataset
+            ],
+            train_dataset_mix_ratio=0.1,
             check_dataset_strategy='warning')
         torch.cuda.empty_cache()
         best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
@@ -244,6 +255,9 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
+        quantization_bit = 4
+        if version.parse(transformers.__version__) >= version.parse('4.38'):
+            quantization_bit = 0
         torch.cuda.empty_cache()
         output = sft_main(
             SftArguments(
@@ -252,7 +266,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=100,
                 lora_target_modules='ALL',
                 eval_steps=5,
-                quantization_bit=4))
+                quantization_bit=quantization_bit))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(
@@ -337,6 +351,7 @@ class TestRun(unittest.TestCase):
         os.environ['PAI_OUTPUT_TENSORBOARD'] = tensorboard_dir
         sft_json = os.path.join(folder, 'sft.json')
         infer_json = os.path.join(folder, 'infer.json')
+        torch.cuda.empty_cache()
         output = sft_main([sft_json])
         print()
         infer_args = {
@@ -347,6 +362,7 @@ class TestRun(unittest.TestCase):
         import json
         with open(infer_json, 'w') as f:
             json.dump(infer_args, f, ensure_ascii=False, indent=4)
+        torch.cuda.empty_cache()
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
 
@@ -367,6 +383,24 @@ class TestRun(unittest.TestCase):
     #             ckpt_dir=best_model_checkpoint,
     #             load_dataset_config=True,
     #             val_dataset_sample=1))
+
+    def test_deepseek_vl_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        torch.cuda.empty_cache()
+        sft_main(
+            SftArguments(
+                model_type=ModelType.deepseek_vl_1_3b_chat,
+                #   dataset=DatasetName.capcha_images,
+                lora_target_modules='ALL',
+                train_dataset_sample=100,
+                eval_steps=5,
+                custom_train_dataset_path=[
+                    os.path.join(folder, 'multi_modal.jsonl')
+                ],
+                lazy_tokenize=False))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]],

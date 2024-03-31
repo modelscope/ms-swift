@@ -159,7 +159,7 @@ class BaseUI:
         for f in fields(dataclass):
             if 'choices' in f.metadata:
                 choice_dict[f.name] = f.metadata['choices']
-            if 'Literal' in type(f.type).__name__ and typing.get_args(f.type):
+            if 'Literal' in str(f.type) and typing.get_args(f.type):
                 choice_dict[f.name] = typing.get_args(f.type)
         return choice_dict
 

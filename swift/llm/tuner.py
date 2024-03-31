@@ -9,14 +9,17 @@ from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
+from swift.tuners.llamapro import LLaMAProConfig
+from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger)
-from .utils import SftArguments, find_all_linears, find_embedding, is_adapter
+from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
+                    is_adapter)
 
 logger = get_logger()
 
 
-def handle_target_modules_all(model, args: SftArguments) -> None:
+def handle_target_modules(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         target_modules = args.ia3_target_modules
         assert len(args.ia3_feedforward_modules) > 0, (
@@ -37,11 +40,30 @@ def handle_target_modules_all(model, args: SftArguments) -> None:
         logger.info(f'lora_target_modules: {args.lora_target_modules}')
 
 
+def handle_modules_to_save(model, args: SftArguments) -> None:
+    if args.sft_type == 'ia3':
+        modules_to_save = args.ia3_modules_to_save
+    else:
+        modules_to_save = args.lora_modules_to_save
+    if args.lora_m2s_use_embedding:
+        modules_to_save += find_embedding(model)
+    if args.lora_m2s_use_ln:
+        modules_to_save += find_ln(model)
+
+    if args.sft_type == 'ia3':
+        args.ia3_modules_to_save = modules_to_save
+        logger.info(f'ia3_modules_to_save: {args.ia3_modules_to_save}')
+    else:
+        args.lora_modules_to_save = modules_to_save
+        logger.info(f'lora_modules_to_save: {args.lora_modules_to_save}')
+
+
 def prepare_model(model, args: SftArguments):
     # Preparing LoRA
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
-            handle_target_modules_all(model, args)
+            handle_target_modules(model, args)
+            handle_modules_to_save(model, args)
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_modules,
@@ -54,12 +76,16 @@ def prepare_model(model, args: SftArguments):
                 'rank_pattern': args.lora_rank_pattern,
                 'alpha_pattern': args.lora_alpha_pattern,
                 'loftq_config': args.lora_loftq_config,
+                'use_rslora': args.use_rslora,
+                'use_dora': args.use_dora,
             }
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
+                    lora_kwargs['lr_ratio'] = args.lora_lr_ratio
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
+                    assert args.lora_lr_ratio is None, 'Please use tuner_backend="swift" to use LoRA+'
                     lora_config = LoraConfig(
                         task_type='CAUSAL_LM', **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
@@ -109,6 +135,19 @@ def prepare_model(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')
+            elif args.sft_type == 'llamapro':
+                model_type = args.model_type or args.model_id_or_path
+                for key in MODEL_KEYS_MAPPING.keys():
+                    if key in model_type.lower():
+                        model_type = key
+                        break
+
+                llamapro_config = LLaMAProConfig(
+                    model_type=model_type,
+                    num_new_blocks=args.llamapro_num_new_blocks,
+                    num_groups=args.llamapro_num_groups)
+                model = Swift.prepare_model(model, llamapro_config)
+                logger.info(f'llamapro_config: {llamapro_config}')
         else:
             model = Swift.from_pretrained(
                 model, args.resume_from_checkpoint, is_trainable=True)
@@ -132,11 +171,28 @@ def prepare_model(model, args: SftArguments):
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
-    if version.parse(transformers.__version__) < version.parse(
-            '4.35') and args.neftune_noise_alpha not in {None, 0.}:
+    if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {
+            None, 0.
+    }:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_noise_alpha)
         model = Swift.prepare_model(model, {'neftune': neftune_config})
         logger.info(f'neftune_config: {neftune_config}')
+
+    if args.use_galore:
+        from swift.trainers.optimizers.galore import GaLoreConfig
+        if args.galore_target_modules is None:
+            args.galore_target_modules = find_all_linears(
+                model, 0, args.model_type)
+        if args.galore_with_embedding:
+            args.galore_target_modules += find_embedding(model)
+        args.training_args.galore_config = GaLoreConfig(
+            target_modules=args.galore_target_modules,
+            rank=args.galore_rank,
+            update_proj_gap=args.galore_update_proj_gap,
+            galore_scale=args.galore_scale,
+            proj_type=args.galore_proj_type,
+            optim_per_parameter=args.galore_optim_per_parameter,
+        )
 
     class TrainerAdapterCallback(TrainerCallback):
 

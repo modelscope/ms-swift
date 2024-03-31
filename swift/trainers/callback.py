@@ -8,8 +8,8 @@ from transformers.trainer_callback import (DefaultFlowCallback,
                                            TrainerControl, TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
-from swift.trainers import TrainingArguments
 from swift.utils import is_pai_training_job
+from .arguments import TrainingArguments
 
 
 class ProgressCallbackNew(ProgressCallback):

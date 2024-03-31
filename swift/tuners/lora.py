@@ -23,6 +23,9 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         use_qa_lora(bool): Use
             QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717)
             instead of LoRA. QA-LoRA only supports AutoGPTQ quantized models.
+        lora_dtype(str): The dtype for all lora modules, supported values are `fp32`, `fp16`, `bf16`.
+            Default value is `None`, which means follow the dtype of original module's weight.
+        lr_ratio(float): The lr_ratio argument for [LoRA+](https://arxiv.org/abs/2402.12354)
     """
 
     use_qa_lora: bool = field(
@@ -49,22 +52,32 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             'The lora dtype, default None means following the original layer\'s dtype'
         })
 
+    lr_ratio: float = field(
+        default=2.0**4,
+        metadata={'help': 'The lora learning_rate ratio of lora_A to lora_B'})
+
     def __post_init__(self):
+        super().__post_init__()
         from .mapping import SwiftTuners
         self.swift_type = SwiftTuners.LORA
 
     def can_be_saved_to_peft(self) -> bool:
-        return not self.use_qa_lora and not self.use_merged_linear \
-            and (not self.lora_dtype or self.lora_dtype == 'fp32')
+        if self.use_qa_lora or self.use_merged_linear:
+            logger.warn(
+                'QA-LoRA and MergedLinear cannot be saved to peft format')
+            return False
+        return True
 
     def to_peft_config(self) -> LoraConfig:
         _dict = asdict(self)
-        _dict.pop('use_qa_lora')
-        _dict.pop('enable_lora')
-        _dict.pop('lora_dtype')
-        _dict.pop('use_merged_linear')
+        _dict.pop('use_qa_lora', None)
+        _dict.pop('enable_lora', None)
+        _dict.pop('lora_dtype', None)
+        _dict.pop('use_merged_linear', None)
         _dict['peft_type'] = _dict['swift_type']
-        _dict.pop('swift_type')
+        _dict.pop('swift_type', None)
+        _dict.pop('lr_ratio', None)
+        _dict.pop('model_key_mapping', None)
         return LoraConfig(**_dict)
 
 
@@ -74,14 +87,33 @@ class LoRA(SwiftAdapter):
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
         LoraModel(model, config, adapter_name)
 
-        def state_dict_callback(state_dict, adapter_name):
-            return lora_state_dict(state_dict, adapter_name, config.bias)
+        def state_dict_callback(state_dict, adapter_name, cfg=None):
+            return lora_state_dict(state_dict, adapter_name,
+                                   cfg.bias if cfg else config.bias)
 
-        def mark_trainable_callback(model):
-            mark_lora_as_trainable(model, adapter_name, config.bias)
+        def mark_trainable_callback(model, cfg=None):
+            mark_lora_as_trainable(model, adapter_name,
+                                   cfg.bias if cfg else config.bias)
+
+        def optimizer_group_callback(model, **defaults):
+            if config.lr_ratio is not None:
+                params = []
+                names = set()
+                for name, param in model.named_parameters():
+                    if adapter_name in name and ('lora_B' in name or
+                                                 'lora_embedding_B' in name):
+                        params.append(param)
+                        names.add(name)
+                if params:
+                    assert 'lr' in defaults
+                    return names, {
+                        'params': params,
+                        'lr': defaults['lr'] * config.lr_ratio
+                    }
+            return None, None
 
         return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+                           mark_trainable_callback, optimizer_group_callback)
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module,

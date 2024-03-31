@@ -1,5 +1,4 @@
-import re
-from typing import Dict, List, Tuple
+from typing import List
 
 from swift.llm import MODEL_MAPPING, ModelType
 
@@ -8,9 +7,9 @@ def get_model_info_table() -> List[str]:
     model_name_list = ModelType.get_model_name_list()
     result = (
         '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
-        ' Support Flash Attn | Support VLLM | Requires |\n'
+        ' Support Flash Attn | Support VLLM | Requires | Tags |\n'
         '| ---------  | -------- | --------------------------- | ---------------- |'
-        ' ------------------ | ------------ | -------- |\n')
+        ' ------------------ | ------------ | -------- | ---- |\n')
     res: List[str] = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
     for model_name in model_name_list:
@@ -23,15 +22,20 @@ def get_model_info_table() -> List[str]:
         support_vllm = model_info.get('support_vllm', False)
         support_vllm = bool_mapping[support_vllm]
         requires = ', '.join(model_info['requires'])
+        tags = model_info.get('tags', [])
+        tags_str = ', '.join(tags)
+        if len(tags_str) == 0:
+            tags_str = '-'
         r = [
             model_name, model_id, lora_target_modules, template,
-            support_flash_attn, support_vllm, requires
+            support_flash_attn, support_vllm, requires, tags_str
         ]
         res.append(r)
     text = ''
     for r in res:
         url = f'https://modelscope.cn/models/{r[1]}/summary'
-        text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|\n'
+        text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|{r[7]}|\n'
+    print(f'模型总数: {len(res)}')
     result += text
     #
     fpath = 'docs/source/LLM/支持的模型和数据集.md'

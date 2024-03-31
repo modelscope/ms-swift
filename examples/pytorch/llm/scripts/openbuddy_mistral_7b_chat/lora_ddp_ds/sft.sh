@@ -27,7 +27,7 @@ torchrun \
     --lora_target_modules ALL \
     --gradient_checkpointing true \
     --batch_size 1 \
-    --weight_decay 0.01 \
+    --weight_decay 0.1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \
@@ -36,9 +36,5 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --push_to_hub false \
-    --hub_model_id openbuddy-mistral-7b-chat-lora \
-    --hub_private_repo true \
-    --hub_token 'your-sdk-token' \
-    --deepspeed_config_path default-zero2 \
+    --deepspeed default-zero2 \
     --save_only_model true \
