@@ -31,4 +31,4 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn true \
+    --use_flash_attn true 
