@@ -2,9 +2,9 @@ absl-py
 cachetools
 datasets>=2.14.5
 editdistance
-llmuses
 jieba
 jsonlines
+llmuses
 matplotlib
 modelscope>=1.9.5,!=1.12.0
 nltk

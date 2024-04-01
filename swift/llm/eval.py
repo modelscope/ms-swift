@@ -185,7 +185,8 @@ class EvalModel(CustomModel):
                 generation_info=generation_info,
                 generation_config=GenerationConfig(**kwargs['infer_cfg']))
             self.generation_info['time'] += time.time() - ts
-            self.generation_info['tokens'] += generation_info['num_generated_tokens']
+            self.generation_info['tokens'] += generation_info[
+                'num_generated_tokens']
 
         res_d: dict = {
             'choices': [{
@@ -214,13 +215,17 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     if args.custom_eval_dataset:
         assert args.custom_eval_name and args.custom_eval_pattern, 'Please pass eval name and ' \
                                                                    'pattern when using custom_eval_dataset'
-        assert len(args.custom_eval_name) == len(args.custom_eval_pattern) == len(args.custom_eval_dataset)
-        for name, pattern, dataset in zip(args.custom_eval_name, args.custom_eval_pattern, args.custom_eval_dataset):
+        assert len(args.custom_eval_name) == len(
+            args.custom_eval_pattern) == len(args.custom_eval_dataset)
+        for name, pattern, dataset in zip(args.custom_eval_name,
+                                          args.custom_eval_pattern,
+                                          args.custom_eval_dataset):
             TaskConfig.registry(name, pattern, dataset)
     eval_model = EvalModel(args, model_name, config=record or {})
 
     task_configs = TaskConfig.load(
-        custom_model=eval_model, tasks=args.eval_dataset + (args.custom_eval_name or []))
+        custom_model=eval_model,
+        tasks=args.eval_dataset + (args.custom_eval_name or []))
     for task_config in task_configs:
         task_config.use_cache = False
         if args.eval_limit:

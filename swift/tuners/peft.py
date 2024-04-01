@@ -76,7 +76,7 @@ class LoraConfig(peft.LoraConfig):
                          cls).from_pretrained(pretrained_model_name_or_path,
                                               subfolder, **kwargs)
 
-        if isinstance(self, peft.LoraConfig):
+        if type(self) == LoraConfig:
             self = LoraConfig(**self.to_dict())
 
         if os.path.isfile(

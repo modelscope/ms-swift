@@ -82,6 +82,9 @@ class LoRAConfig(LoraConfig, SwiftConfig):
         _dict.pop('model_key_mapping', None)
         return LoraConfig(**_dict)
 
+    def save_pretrained(self, save_directory: str, **kwargs) -> None:
+        super(peft.LoraConfig, self).save_pretrained(save_directory, **kwargs)
+
 
 class LoRA(SwiftAdapter):
 
