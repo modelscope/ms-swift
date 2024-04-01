@@ -64,6 +64,8 @@ class Experiment:
         self.input_args = input_args
         self.eval_requirements = eval_requirements or {}
         self.eval_dataset = eval_dataset or []
+        if self.cmd == 'eval':
+            self.do_eval = True
 
     def load(self, _json):
         self.name = _json['name']
