@@ -276,7 +276,6 @@ class ModelType:
     dbrx_instruct = 'dbrx-instruct'
     dbrx_base = 'dbrx-base'
 
-
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -311,6 +310,7 @@ class LoRATM(NamedTuple):
     telechat = ['self_attention.key_value', 'self_attention.query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
+
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
                                                 PreTrainedTokenizerBase]]

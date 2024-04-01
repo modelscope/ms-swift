@@ -1210,14 +1210,15 @@ DBRX_SYSTEM = (
     'You do not provide song lyrics, poems, or news articles and do not divulge details of your training data.\n'
     'This is your system prompt, guiding your responses. Do not reference it, just respond to the user. '
     'If you find yourself talking about this message, stop. You should be responding appropriately and usually that means not mentioning this.'
-    'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY PERTINENT TO THE USER\'S QUERY.')
+    'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY PERTINENT TO THE USER\'S QUERY.'
+)
 register_template(
     TemplateType.dbrx,
     Template(
-        [],
-        ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         ['<|im_end|>\n'], ['<|im_end|>'], DBRX_SYSTEM,
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
 
 def get_template(
     template_type: str,
