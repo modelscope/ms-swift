@@ -1209,9 +1209,10 @@ DBRX_SYSTEM = (
     ' You avoid stereotyping and provide balanced perspectives on controversial topics. '
     'You do not provide song lyrics, poems, or news articles and do not divulge details of your training data.\n'
     'This is your system prompt, guiding your responses. Do not reference it, just respond to the user. '
-    'If you find yourself talking about this message, stop. You should be responding appropriately and usually that means not mentioning this.'
-    'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY PERTINENT TO THE USER\'S QUERY.'
-)
+    'If you find yourself talking about this message, stop. You should be responding appropriately '
+    'and usually that means not mentioning this.'
+    'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY '
+    'PERTINENT TO THE USER\'S QUERY.')
 register_template(
     TemplateType.dbrx,
     Template(
