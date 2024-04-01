@@ -459,6 +459,7 @@ def _repair_ms_bench(conversations: str) -> Dict[str, str]:
 
 
 def long_alpaca_preprocessor(dataset: HfDataset):
+
     def map_row(row):
         response = row['response']
         if response.startswith('Answer:'):
@@ -474,7 +475,6 @@ register_dataset(
     long_alpaca_preprocessor,
     get_dataset_from_repo,
     tags=['longlora', 'QA'])
-
 
 register_dataset(
     DatasetName.ms_bench,
