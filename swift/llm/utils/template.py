@@ -184,7 +184,7 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
-        self.data_collator = DataCollatorForSeq2Seq(
+        self._data_collator = DataCollatorForSeq2Seq(
             tokenizer=self.tokenizer,
             label_pad_token_id=self.tokenizer.pad_token_id,
         )
@@ -396,10 +396,10 @@ class Template:
             batch(`List[Dict[str, Any]]`): The input data in batch
             padding_to_multiple_of(`int`, optional): Whether padding to the multiple of an integer value.
         """
-        self.data_collator.pad_to_multiple_of = padding_to_multiple_of
-        res = self.data_collator(batch, return_tensors='pt')
-        loss_scale = [torch.tensor(b['loss_scale'])
-                      for b in batch] if 'loss_scale' in batch[0] else None
+        self._data_collator.pad_to_multiple_of = padding_to_multiple_of
+        loss_scale = [torch.tensor(b.pop('loss_scale'))
+                for b in batch] if 'loss_scale' in batch[0] else None
+        res = self._data_collator(batch, return_tensors='pt')
         padding_to = res['input_ids'].shape[1]
         if loss_scale:
             loss_scale[0] = F.pad(
