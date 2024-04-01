@@ -395,7 +395,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | phi2                           | 微软PHI2模型                                                 | 英文       | 3B                        | base模型<br>代码模型                            |
 | Grok | [X-ai](https://github.com/xai-org/grok-1) | 英文       | 300B | base模型                                    |
 | TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | 中文<br>英文 | 7B-12B | chat模型                                    |
-| dbrx | [databricks](https://github.com/databricks/dbrx) | 中文<br>英文 | 132B | base模型<br>chat模型  |
+| dbrx | [databricks](https://github.com/databricks/dbrx) | 英文 | 132B | base模型<br>chat模型  |
 
 #### 多模态大模型
 

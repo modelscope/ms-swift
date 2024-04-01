@@ -396,7 +396,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | phi2                                           | Microsoft's PHI2 model                                                 | English            | 3B                                     | base model<br>code model                          |
 | Grok | [X-ai](https://github.com/xai-org/grok-1) | English | 300B | base model |
 | TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 7B-12B | chat model |
-| dbrx | [databricks](https://github.com/databricks/dbrx) | Chinese<br>English | 132B | base model<br>chat model  |
+| dbrx | [databricks](https://github.com/databricks/dbrx) | English | 132B | base model<br>chat model  |
 
 
 #### MLLMs
