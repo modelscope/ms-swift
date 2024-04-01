@@ -173,7 +173,12 @@ class ExpManager:
 
         best_model_checkpoint = exp.record.get('best_model_checkpoint')
         eval_dataset = exp.eval_dataset
-        cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+        if best_model_checkpoint is not None:
+            cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+        else:
+            assert exp.args.get('model_type') is not None
+            cmd = f'swift eval --model_type {exp.args.get("model_type")} --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+
         return {
             'running_cmd': cmd,
             'gpu': allocated,
