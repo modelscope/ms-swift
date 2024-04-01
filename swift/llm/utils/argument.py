@@ -237,6 +237,11 @@ class SftArguments:
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
+    # fsdp option
+    fsdp: Optional[str] = None
+    # fsdp config file
+    fsdp_config: Optional[str] = None
+
     def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
@@ -527,6 +532,8 @@ class SftArguments:
             acc_strategy=self.acc_strategy,
             save_safetensors=self.save_safetensors,
             logging_first_step=True,
+            fsdp=self.fsdp,
+            fsdp_config=self.fsdp_config,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
