@@ -390,13 +390,13 @@ class Template:
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
-                      padding_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+                      pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
-            padding_to_multiple_of(`int`, optional): Whether padding to the multiple of an integer value.
+            padd_to_multiple_of(`int`, optional): Whether padding to the multiple of an integer value.
         """
-        self._data_collator.pad_to_multiple_of = padding_to_multiple_of
+        self._data_collator.pad_to_multiple_of = pad_to_multiple_of
         loss_scale = [torch.tensor(b.pop('loss_scale'))
                 for b in batch] if 'loss_scale' in batch[0] else None
         res = self._data_collator(batch, return_tensors='pt')
@@ -617,8 +617,8 @@ class YiVLTemplate(Template):
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+                      pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, pad_to_multiple_of)
         res['images'] = torch.concat([b['images'] for b in batch])
         return res
 
@@ -924,8 +924,8 @@ class LLavaTemplate(Template):
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+                      pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, pad_to_multiple_of)
         res['images'] = torch.concat([b['images'] for b in batch])
         res['image_sizes'] = sum([b['image_sizes'] for b in batch], start=[])
         return res
@@ -1109,8 +1109,8 @@ class CogTemplate(Template):
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+                      pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, pad_to_multiple_of)
         is_cogagent = 'cross_images' in batch[0]
         keys = ['images', 'cross_images'] if is_cogagent else ['images']
         for key in keys:
