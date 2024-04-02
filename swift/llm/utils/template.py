@@ -463,6 +463,9 @@ class Template:
                                   tokenizer.pad_token_id)
                 attention_mask = F.pad(attention_mask, (0, padding_length),
                                        'constant', 0)
+                if loss_scale:
+                    loss_scale = F.pad(loss_scale, (0, padding_length),
+                                       'constant', 0.)
                 labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
             # manully split the batch to different DP rank.
@@ -473,6 +476,8 @@ class Template:
                 input_ids = input_ids[start:end, :]
                 attention_mask = attention_mask[start:end, :]
                 labels = labels[start:end, :]
+                if loss_scale:
+                    loss_scale = loss_scale[start:end, :]
 
         res = {
             'input_ids': input_ids,

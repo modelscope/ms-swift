@@ -31,4 +31,5 @@ swift sft \
   --save_steps 2000000 \
   --logging_steps 10 \
   --preprocess_num_proc 1 \
-  --dataloader_num_workers 0
+  --dataloader_num_workers 0 \
+  --report_to 'none'
