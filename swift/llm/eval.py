@@ -132,7 +132,7 @@ class EvalModel(CustomModel):
         if args.infer_backend == 'vllm':
             from .utils import prepare_vllm_engine_template
             self.llm_engine, self.template = prepare_vllm_engine_template(args)
-            self.max_model_len = self.model.config.max_position_embeddings
+            self.max_model_len = self.llm_engine.model_config.hf_config.max_position_embeddings
         else:
             self.model, self.template = prepare_model_template(args)
             self.max_model_len = self.model.config.max_position_embeddings
