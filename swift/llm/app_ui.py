@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Tuple
+from typing import Iterator, Tuple
 
 from swift.utils import get_logger, get_main
 from .infer import merge_lora, prepare_model_template
@@ -21,7 +21,7 @@ def gradio_generation_demo(args: AppUIArguments) -> None:
     else:
         model, template = prepare_model_template(args)
 
-    def model_generation(query: str) -> str:
+    def model_generation(query: str) -> Iterator[str]:
         if args.infer_backend == 'vllm':
             gen = inference_stream_vllm(llm_engine, template, [{
                 'query': query
@@ -64,7 +64,8 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
     else:
         model, template = prepare_model_template(args)
 
-    def model_chat(query: str, history: History) -> Tuple[str, History]:
+    def model_chat(query: str,
+                   history: History) -> Iterator[Tuple[str, History]]:
         old_history, history = limit_history_length(template, query, history,
                                                     args.max_length)
         if args.infer_backend == 'vllm':
