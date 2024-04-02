@@ -33,7 +33,7 @@ pip install -r requirements/llm.txt  -U
 
 - [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
 - [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
-- [魔搭通用agent数据集（agentfabric版）](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) 该数据包含将ms_agent转换成agentfabric的prompt格式的数据（3万条）以及一些agentfabric的实际使用数据（400多条）组合成的数据集。
+- [魔搭通用agent数据集（agentfabric版）](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) 该数据包含将ms_agent转换成agentfabric的prompt格式的数据（3万条）以及一些agentfabric的实际使用数据（488条）组合成的数据集。
 
 转换后的数据集数据格式如下：
 
@@ -140,8 +140,8 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 
 | 数据集           | 条数            |
 | ---------------- | --------------- |
-| ms_agent_for_agentfabric         | 30000(全数据集) |
-| ms-bench         | 60000(抽样)     |
+| ms_agent_for_agentfabric         | 30488(全数据集) |
+| ms-bench         | 60976(抽样)     |
 | self-recognition | 3000(重复抽样)  |
 
 我们也支持使用自己的Agent数据集。数据集格式需要符合[自定义数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86)的要求。更具体地，Agent的response/system应该符合上述的Action/Action Input/Observation格式。
