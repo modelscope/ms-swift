@@ -95,7 +95,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
-    import pdb; pdb.set_trace()
 
     show_layers(model)
     model_info = None
