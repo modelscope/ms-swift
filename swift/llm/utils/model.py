@@ -443,7 +443,9 @@ def register_model(
     ModelType.mengzi3_13b_base,
     'langboat/Mengzi3-13B-Base',
     LoRATM.llama2,
-    TemplateType.mengzi)
+    TemplateType.mengzi,
+    support_vllm=True,
+    support_flash_attn=True)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
