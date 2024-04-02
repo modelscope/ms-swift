@@ -1,6 +1,10 @@
-# Experimental environment: 3090
-# 12GB GPU memory
-CUDA_VISIBLE_DEVICES=0 \
+# Experimental environment: A100
+# 65GB GPU memory
+nproc_per_node=4
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
 swift sft \
     --model_type xverse_moe_a4_2b \
     --sft_type lora \
@@ -26,3 +30,5 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
+    --deepspeed default-zero2 \
+
