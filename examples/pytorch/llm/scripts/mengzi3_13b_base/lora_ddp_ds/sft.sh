@@ -1,5 +1,5 @@
 # Experimental environment: 2 * A100
-# 2 * 50GB GPU memory
+# 2 * 36GB GPU memory
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -10,10 +10,10 @@ swift sft \
     --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
-    --dtype AUTO \
+    --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset leetcode-python-en \
+    --dataset dureader-robust-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
@@ -21,7 +21,7 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.1 \

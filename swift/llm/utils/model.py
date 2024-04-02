@@ -517,13 +517,13 @@ def get_model_tokenizer_grok(model_dir: str,
     support_vllm=False,
     support_flash_attn=False)
 def get_model_tokenizer_mengzi(model_dir: str,
-                             torch_dtype: Optional[Dtype],
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             model_config=None,
-                             tokenizer=None,
-                             automodel_class=AutoModelForCausalLM,
-                             **kwargs):
+                               torch_dtype: Optional[Dtype],
+                               model_kwargs: Dict[str, Any],
+                               load_model: bool = True,
+                               model_config=None,
+                               tokenizer=None,
+                               automodel_class=AutoModelForCausalLM,
+                               **kwargs):
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
@@ -544,6 +544,7 @@ def get_model_tokenizer_mengzi(model_dir: str,
             trust_remote_code=True,
             **model_kwargs)
     return model, tokenizer
+
 
 @register_model(
     ModelType.mamba_130m,

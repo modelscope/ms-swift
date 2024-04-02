@@ -1,4 +1,5 @@
 # Experimental environment: A100
+# 30GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir "output/mengzi3-13b-base/vx-xxx/checkpoint-xxx" \

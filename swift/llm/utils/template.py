@@ -1223,10 +1223,8 @@ register_template(
 
 register_template(
     TemplateType.mengzi,
-    Template(
-        [], ['输入：{{QUERY}}输出：\n'],
-        [], [['eos_token_id']], None,
-        ['指令：{{SYSTEM}}']))
+    Template([], ['输入：{{QUERY}}输出：\n'], [], [['eos_token_id']], None,
+             ['指令：{{SYSTEM}}']))
 
 
 def get_template(
