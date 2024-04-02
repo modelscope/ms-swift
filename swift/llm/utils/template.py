@@ -60,6 +60,7 @@ class TemplateType:
     chatml = 'chatml'
     telechat = 'telechat'
     dbrx = 'dbrx'
+    mengzi = 'mengzi'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -1219,6 +1220,11 @@ register_template(
         [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         ['<|im_end|>\n'], ['<|im_end|>'], DBRX_SYSTEM,
         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+register_template(
+    TemplateType.mengzi,
+    Template([], ['输入：{{QUERY}}输出：\n'], [], [['eos_token_id']], None,
+             ['指令：{{SYSTEM}}']))
 
 
 def get_template(

@@ -278,6 +278,8 @@ class ModelType:
     # dbrx
     dbrx_instruct = 'dbrx-instruct'
     dbrx_base = 'dbrx-base'
+    # mengzi
+    mengzi3_13b_base = 'mengzi3-13b-base'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -440,6 +442,13 @@ def register_model(
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
+@register_model(
+    ModelType.mengzi3_13b_base,
+    'langboat/Mengzi3-13B-Base',
+    LoRATM.llama2,
+    TemplateType.mengzi,
+    support_vllm=True,
+    support_flash_attn=True)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
