@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
 swift sft \
-    --model_type xverse_moe_a4_2b \
+    --model_type xverse-moe-a4_2b \
     --sft_type lora \
     --tuner_backend swift \
     --dtype AUTO \
