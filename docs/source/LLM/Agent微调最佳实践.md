@@ -29,19 +29,20 @@ pip install -r requirements/llm.txt  -U
 
 ## 数据准备
 
-为训练Agent能力，魔搭官方提供了两个开源数据集：
+为训练Agent能力，魔搭官方提供了三个开源数据集：
 
 - [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
 - [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
+- [魔搭通用agent数据集（agentfabric版）](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) 该数据包含将ms_agent转换成agentfabric的prompt格式的数据（3万条）以及一些agentfabric的实际使用数据（400多条）组合成的数据集。
 
-该数据集数据格式如下：
+转换后的数据集数据格式如下：
 
 ```json
 {
 	"id": "MS_Agent_Bench_126374",
 	"conversations": [{
 		"from": "system",
-		"value": "Answer the following questions as best you can. You have access to the following APIs:\n1. hm_recipe_recommend: Call this tool to interact with the hmreciperecommend API. What is the hmreciperecommend API useful for? . Parameters: [{\"name\": \"keywords_dict\", \"description\": \"盒马推荐菜谱关键词字典。\", \"required\": \"True\"}]\n\n2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{\"name\": \"sku_code_list\", \"description\": \"盒马商品的编码列表\", \"required\": \"True\"}]\n\n3. hm_product_info: Call this tool to interact with the hmproductinfo API. What is the hmproductinfo API useful for? . Parameters: [{\"name\": \"sku_code_list\", \"description\": \"盒马商品的编码列表\", \"required\": \"True\"}, {\"name\": \"sku_name_list\", \"description\": \"盒马商品的名称列表\", \"required\": \"True\"}, {\"name\": \"property_list\", \"description\": \"盒马商品的属性列表\", \"required\": \"True\"}]\n\n4. hm_product_recommend: Call this tool to interact with the hmproductrecommend API. What is the hmproductrecommend API useful for? . Parameters: [{\"name\": \"keywords_dict\", \"description\": \"盒马推荐商品关键词字典。\", \"required\": \"True\"}]\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[hm_recipe_recommend, hm_product_marketing, hm_product_info, hm_product_recommend]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!"
+		"value": "\n# 工具\n\n## 你拥有如下工具：\n\nhm_recipe_recommend: hmreciperecommend API。输入参数: {\"type\": \"object\", \"properties\": {\"\\keywords_dict\": {\"type\": \"string\", \"description\": \"盒马推荐菜谱关键词字典。\"}},\"required\": [\"keywords_dict\"]} Format the arguments as a JSON object.\n\nhm_product_marketing: hmproductmarketing API。输入参数: {\"type\": \"object\", \"properties\": {\"\\sku_code_list\": {\"type\": \"string\", \"description\": \"盒马商品的编码列表\"}},\"required\": [\"sku_code_list\"]} Format the arguments as a JSON object.\n\nhm_product_info: hmproductinfo API。输入参数: {\"type\": \"object\", \"properties\": {\"\\sku_code_list\": {\"type\": \"string\", \"description\": \"盒马商品的编码列表\"}},\"required\": []} Format the arguments as a JSON object.\n\nhm_product_recommend: hmproductrecommend API。输入参数: {\"type\": \"object\", \"properties\": {\"\\keywords_dict\": {\"type\": \"string\", \"description\": \"盒马推荐商品关键词字典。\"}},\"required\": [\"keywords_dict\"]} Format the arguments as a JSON object.\n\n## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：\n\n工具调用\nAction: 工具的名称，必须是[\"hm_recipe_recommend\", \"hm_product_marketing\", \"hm_product_info\", \"hm_product_recommend\"]之一\nAction Input: 工具的输入\nObservation: <result>工具返回的结果</result>\nAnswer: 根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)\n\n\n# 指令\n\n你扮演AI-Agent，\n你具有下列具体功能：\n下面你将开始扮演\n\n请注意：你具有图像和视频的展示能力，也具有运行代码的能力，不要在回复中说你做不到。\n"
 	}, {
 		"from": "user",
 		"value": "你好，请问你们有哪些手机可以推荐？"
@@ -63,49 +64,58 @@ pip install -r requirements/llm.txt  -U
 	}]
 }
 ```
+Agent数据集的system字段具体格式如下（将\"字符转换为"字符, \n转换为换行）：
 
-Agent数据集的system字段具体格式如下（将\\"字符转换为"字符, \n转换为换行）：
+```
+# 工具
 
-```text
-Answer the following questions as best you can. You have access to the following APIs:
-1. hm_recipe_recommend: Call this tool to interact with the hmreciperecommend API. What is the hmreciperecommend API useful for? . Parameters: [{"name": "keywords_dict", "description": "盒马推荐菜谱关键词字典。", "required": "True"}]
+## 你拥有如下工具：
 
-2. hm_product_marketing: Call this tool to interact with the hmproductmarketing API. What is the hmproductmarketing API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}]
+hm_recipe_recommend: hmreciperecommend API。输入参数: {"type": "object", "properties": {"\keywords_dict": {"type": "string", "description": "盒马推荐菜谱关键词字典。"}},"required": ["keywords_dict"]} Format the arguments as a JSON object.
 
-3. hm_product_info: Call this tool to interact with the hmproductinfo API. What is the hmproductinfo API useful for? . Parameters: [{"name": "sku_code_list", "description": "盒马商品的编码列表", "required": "True"}, {"name": "sku_name_list", "description": "盒马商品的名称列表", "required": "True"}, {"name": "property_list", "description": "盒马商品的属性列表", "required": "True"}]
+hm_product_marketing: hmproductmarketing API。输入参数: {"type": "object", "properties": {"\sku_code_list": {"type": "string", "description": "盒马商品的编码列表"}},"required": ["sku_code_list"]} Format the arguments as a JSON object.
 
-4. hm_product_recommend: Call this tool to interact with the hmproductrecommend API. What is the hmproductrecommend API useful for? . Parameters: [{"name": "keywords_dict", "description": "盒马推荐商品关键词字典。", "required": "True"}]
+hm_product_info: hmproductinfo API。输入参数: {"type": "object", "properties": {"\sku_code_list": {"type": "string", "description": "盒马商品的编码列表"}},"required": []} Format the arguments as a JSON object.
 
-Use the following format:
+hm_product_recommend: hmproductrecommend API。输入参数: {"type": "object", "properties": {"\keywords_dict": {"type": "string", "description": "盒马推荐商品关键词字典。"}},"required": ["keywords_dict"]} Format the arguments as a JSON object.
 
-Thought: you should always think about what to do
-Action: the action to take, should be one of the above tools[hm_recipe_recommend, hm_product_marketing, hm_product_info, hm_product_recommend]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-Begin!
+## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
+
+工具调用
+Action: 工具的名称，必须是["hm_recipe_recommend", "hm_product_marketing", "hm_product_info", "hm_product_recommend"]之一
+Action Input: 工具的输入
+Observation: <result>工具返回的结果</result>
+Answer: 根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)
+
+
+# 指令
+
+你扮演AI-Agent，
+你具有下列具体功能：
+下面你将开始扮演
+
+请注意：你具有图像和视频的展示能力，也具有运行代码的能力，不要在回复中说你做不到。
+
 ```
 
 API格式:
 
 ```text
-Answer the following questions as best you can. You have access to the following APIs:
-序号: API名称: API作用 API参数
+# 工具
+
+## 你拥有如下工具：
+
+工具名称: API名称 API参数
 
 ...
 
-Use the following format:
+## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
 
-Thought: you should always think about what to do
-Action: the action to take, should be one of the above tools[API名称列表]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-Begin!
+工具调用
+Action: 工具的名称，必须是["hm_recipe_recommend", "hm_product_marketing", "hm_product_info", "hm_product_recommend"]之一
+Action Input: 工具的输入
+Observation: <result>工具返回的结果</result>
+Answer: 根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)
 ```
 
 Agent数据集调用API的response的结构如下：
@@ -130,7 +140,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 
 | 数据集           | 条数            |
 | ---------------- | --------------- |
-| ms-agent         | 30000(全数据集) |
+| ms_agent_for_agentfabric         | 30000(全数据集) |
 | ms-bench         | 60000(抽样)     |
 | self-recognition | 3000(重复抽样)  |
 
@@ -148,7 +158,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 | lora_alpha                  | 32       |
 | lora_target_modules         | ALL      |
 | batch_size                  | 2        |
-| gradient_accumulation_steps | 32 total |
+| gradient_accumulation_steps | 16 total |
 
 运行命令和其他超参数如下:
 
@@ -184,7 +194,7 @@ torchrun \
     --batch_size 2 \
     --weight_decay 0.1 \
     --learning_rate 5e-5 \
-    --gradient_accumulation_steps $(expr 32 / $nproc_per_node) \
+    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
