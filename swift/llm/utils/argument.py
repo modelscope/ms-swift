@@ -104,6 +104,7 @@ class SftArguments:
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
+    bnb_4bit_quant_storage: torch.dtype = torch.bfloat16
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
@@ -238,7 +239,7 @@ class SftArguments:
     model_cache_dir: Optional[str] = None
 
     # fsdp option
-    fsdp: Optional[str] = None
+    fsdp: Optional[str] = ''
     # fsdp config file
     fsdp_config: Optional[str] = None
 
@@ -292,7 +293,7 @@ class SftArguments:
         fsdp_config_folder = os.path.join(__file__, '..', '..', 'fsdp_config')
         if self.fsdp_config == 'fsdp_offload':
             self.fsdp_config = os.path.abspath(
-                os.path.join(fsdp_config_folder, 'fsdp_offload.yaml'))
+                os.path.join(fsdp_config_folder, 'fsdp_offload.json'))
 
         handle_path(self)
         set_model_type(self)

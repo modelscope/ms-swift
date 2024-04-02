@@ -63,6 +63,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             args.load_in_4bit,
             bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+            bnb_4bit_quant_storage=args.bnb_4bit_quant_storage,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
@@ -94,6 +95,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
+    import pdb; pdb.set_trace()
 
     show_layers(model)
     model_info = None
