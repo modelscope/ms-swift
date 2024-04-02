@@ -225,6 +225,7 @@ class ModelType:
     xverse_65b_v2 = 'xverse-65b-v2'
     xverse_65b_chat = 'xverse-65b-chat'
     xverse_13b_256k = 'xverse-13b-256k'
+    xverse_moe_a4_2b = 'xverse-moe-a4_2b'
     # orion
     orion_14b = 'orion-14b'
     orion_14b_chat = 'orion-14b-chat'
@@ -276,7 +277,7 @@ class ModelType:
     dbrx_instruct = 'dbrx-instruct'
     dbrx_base = 'dbrx-base'
     # mengzi
-    mengzi3_13b_base = 'mengzi3-13b-base'
+    mengzi3_13b_base = 'mengzi3-13b-base'    
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -424,6 +425,8 @@ def register_model(
 @register_model(ModelType.xverse_7b_chat, 'xverse/XVERSE-7B-Chat',
                 LoRATM.llama2, TemplateType.xverse)
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,
+                TemplateType.default_generation)
+@register_model(ModelType.xverse_moe_a4_2b, 'xverse/XVERSE-MoE-A4.2B', LoRATM.llama2,
                 TemplateType.default_generation)
 @register_model(
     ModelType.baichuan_13b_chat,
