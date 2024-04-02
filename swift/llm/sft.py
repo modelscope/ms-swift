@@ -289,6 +289,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         'dataset_info': dataset_info,
     }
 
+
 def get_sft_main(args, llm):
     if use_torchacc():
         logger.warning('TorchAcc is currently only available internally.')
@@ -296,5 +297,6 @@ def get_sft_main(args, llm):
         # This patch should be called before `llm_sft`.
         ta.accelerate_hf_trainer()
     return get_main(args, llm)
+
 
 sft_main = get_sft_main(SftArguments, llm_sft)
