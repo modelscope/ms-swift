@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
-from swift.utils import use_torchacc
+from swift.utils import get_dist_setting, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -453,16 +453,26 @@ class Template:
                 loss_scale, batch_first=True, padding_value=0.)
         labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
+        if use_torchacc():
+            rank, _, world_size, _ = get_dist_setting()
+            if padding_to is None:
+                longest_len = input_ids.shape[-1]
+                bucket_data_length = _get_bucket(bucket_sizes, longest_len)
+                padding_length = bucket_data_length - input_ids.shape[1]
+                input_ids = F.pad(input_ids, (0, padding_length), 'constant',
+                                  tokenizer.pad_token_id)
+                attention_mask = F.pad(attention_mask, (0, padding_length),
+                                      'constant', 0)
+                labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
-        if padding_to is None and use_torchacc():
-            longest_len = input_ids.shape[-1]
-            bucket_data_length = _get_bucket(bucket_sizes, longest_len)
-            padding_length = bucket_data_length - input_ids.shape[1]
-            input_ids = F.pad(input_ids, (0, padding_length), 'constant',
-                              tokenizer.pad_token_id)
-            attention_mask = F.pad(attention_mask, (0, padding_length),
-                                   'constant', 0)
-            labels = F.pad(labels, (0, padding_length), 'constant', -100)
+            # manully split the batch to different DP rank.
+            batch_size = input_ids.shape[0] // world_size
+            if batch_size > 0:
+                start = rank * batch_size
+                end = (rank + 1) * batch_size
+                input_ids = input_ids[start:end, :]
+                attention_mask = attention_mask[start:end, :]
+                labels = labels[start:end, :]
 
         res = {
             'input_ids': input_ids,
