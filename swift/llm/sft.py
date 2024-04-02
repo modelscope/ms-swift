@@ -31,7 +31,6 @@ logger = get_logger()
 
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
-
     logger.info(f'args: {args}')
     training_args = args.training_args
     if is_torch_npu_available():
@@ -60,10 +59,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             model_kwargs['device_map'] = {'': local_rank}
         elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
-    if use_torchacc():
-        logger.warning('TorchAcc is currently only available internally.')
-        import torchacc as ta
-        ta.accelerate_hf_trainer()
 
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -297,5 +292,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         'dataset_info': dataset_info,
     }
 
+def get_sft_main(args, llm):
+    if use_torchacc():
+        logger.warning('TorchAcc is currently only available internally.')
+        import torchacc as ta
+        # This patch should be called before `llm_sft`.
+        ta.accelerate_hf_trainer()
+    return get_main(args, llm)
 
-sft_main = get_main(SftArguments, llm_sft)
+sft_main = get_sft_main(SftArguments, llm_sft)
