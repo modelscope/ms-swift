@@ -1,5 +1,5 @@
 # Experimental environment: A100
-# 30GB GPU memory
+# 2*37GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type qwen1half-32b-chat \
@@ -10,7 +10,7 @@ swift sft \
     --dataset ms-bench-mini \
     --train_dataset_sample 5000 \
     --num_train_epochs 2 \
-    --max_length 1024 \
+    --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
