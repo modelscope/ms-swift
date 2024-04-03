@@ -165,7 +165,6 @@ if is_bnb_available():
             })
             new_module = Linear8bitLt(
                 target, adapter_name, module_key=module_key, **eightbit_kwargs)
-            print('########################', new_module.lora_A['default'].weight.dtype)
 
         return new_module
 
@@ -209,7 +208,6 @@ if is_bnb_4bit_available():
             })
             new_module = Linear4bit(
                 target, adapter_name, module_key=module_key, **fourbit_kwargs)
-            print('########################', new_module.lora_A['default'].weight.dtype)
 
         return new_module
 
@@ -466,7 +464,6 @@ def dispatch_default(
         kwargs.update(lora_config.loftq_config)
         new_module = Linear(
             target, adapter_name, module_key=module_key, **kwargs)
-        print('########################', new_module.lora_A['default'].weight.dtype)
     elif isinstance(target_base_layer, Conv1D):
         if not kwargs['fan_in_fan_out']:
             warnings.warn(

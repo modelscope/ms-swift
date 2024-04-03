@@ -82,7 +82,7 @@ def prepare_model(model, args: SftArguments):
             if args.sft_type == 'lora':
                 if args.tuner_backend == 'swift':
                     lora_kwargs['lr_ratio'] = args.lora_lr_ratio
-                    lora_config = LoRAConfig(**lora_kwargs)
+                    lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
                 elif args.tuner_backend == 'peft':
                     assert args.lora_lr_ratio is None, 'Please use tuner_backend="swift" to use LoRA+'
                     lora_config = LoraConfig(

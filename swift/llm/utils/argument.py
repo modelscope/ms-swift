@@ -104,7 +104,7 @@ class SftArguments:
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
-    bnb_4bit_quant_storage: torch.dtype = torch.bfloat16
+    bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
@@ -113,7 +113,7 @@ class SftArguments:
     lora_bias_trainable: Literal['none', 'all'] = 'none'
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
-    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
+    lora_dtype: Literal['fp16', 'bf16', 'fp32'] = 'fp32'
     lora_lr_ratio: float = None
 
     use_rslora: bool = False
