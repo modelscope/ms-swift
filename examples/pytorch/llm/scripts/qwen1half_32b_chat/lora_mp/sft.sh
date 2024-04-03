@@ -1,5 +1,5 @@
 # Experimental environment: A100
-# 2*37GB GPU memory
+# 2*40GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type qwen1half-32b-chat \
