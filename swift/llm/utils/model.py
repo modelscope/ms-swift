@@ -1907,7 +1907,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True)
 @register_model(
     ModelType.llama2_70b,
-    'AI-ModelScope/Llama-2-70b-hf',
+    'modelscope/Llama-2-70b-ms',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
     ignore_file_pattern=[r'.+\.bin$'],

@@ -4,7 +4,7 @@ PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 accelerate launch --config_file "../../../swift/llm/fsdp_config/fsdp_offload.json" \
     llm_sft.py \
-    --model_type llama2-70b \
+    --model_type llama2-70b-chat \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
@@ -18,6 +18,7 @@ accelerate launch --config_file "../../../swift/llm/fsdp_config/fsdp_offload.jso
     --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype "bf16" \
+    --bnb_4bit_quant_storage bfloat16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dtype bf16 \
@@ -35,4 +36,3 @@ accelerate launch --config_file "../../../swift/llm/fsdp_config/fsdp_offload.jso
     --save_total_limit 2 \
     --logging_steps 10 \
     --save_only_model true \
-
