@@ -1,3 +1,4 @@
+# 2 GPU * 24G
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -23,7 +24,7 @@ accelerate launch --config_file "../../../swift/llm/fsdp_config/fsdp_offload.jso
     --lora_alpha 32 \
     --lora_dtype bf16 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules q_proj v_proj \
+    --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 1 \
     --weight_decay 0.1 \
@@ -31,8 +32,7 @@ accelerate launch --config_file "../../../swift/llm/fsdp_config/fsdp_offload.jso
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 50 \
+    --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --save_only_model true \
