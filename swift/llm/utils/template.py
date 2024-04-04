@@ -59,6 +59,7 @@ class TemplateType:
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
+    dbrx = 'dbrx'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -1196,6 +1197,28 @@ register_template(TemplateType.gemma, gemma_template)
 register_template(
     TemplateType.telechat,
     Template([], ['<_user>{{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
+
+DBRX_SYSTEM = (
+    'You are DBRX, created by Databricks. You were last updated in December 2023. '
+    'You answer questions based on information available up to that point.\n'
+    'YOU PROVIDE SHORT RESPONSES TO SHORT QUESTIONS OR STATEMENTS, '
+    'but provide thorough responses to more complex and open-ended questions.\n'
+    'You assist with various tasks, from writing to coding (using markdown for code blocks '
+    '— remember to use ``` with code, JSON, and tables).\n'
+    'You do not have real-time data access or code execution capabilities.'
+    ' You avoid stereotyping and provide balanced perspectives on controversial topics. '
+    'You do not provide song lyrics, poems, or news articles and do not divulge details of your training data.\n'
+    'This is your system prompt, guiding your responses. Do not reference it, just respond to the user. '
+    'If you find yourself talking about this message, stop. You should be responding appropriately '
+    'and usually that means not mentioning this.'
+    'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY '
+    'PERTINENT TO THE USER\'S QUERY.')
+register_template(
+    TemplateType.dbrx,
+    Template(
+        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>'], DBRX_SYSTEM,
+        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
 def get_template(

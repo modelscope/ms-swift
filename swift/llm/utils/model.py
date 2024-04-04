@@ -272,6 +272,9 @@ class ModelType:
     telechat_12b = 'telechat-12b'
     # grok-1
     grok_1 = 'grok-1'
+    # dbrx
+    dbrx_instruct = 'dbrx-instruct'
+    dbrx_base = 'dbrx-base'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -306,6 +309,7 @@ class LoRATM(NamedTuple):
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
     telechat = ['self_attention.key_value', 'self_attention.query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
+    dbrx = ['attn.Wqkv']
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -1252,6 +1256,24 @@ def get_model_tokenizer_chatglm(model_dir: str,
     'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
     LoRATM.llama2,
     TemplateType.llama,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+@register_model(
+    ModelType.dbrx_base,
+    'AI-ModelScope/dbrx-base',
+    LoRATM.dbrx,
+    TemplateType.dbrx,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+@register_model(
+    ModelType.dbrx_instruct,
+    'AI-ModelScope/dbrx-instruct',
+    LoRATM.dbrx,
+    TemplateType.dbrx,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
