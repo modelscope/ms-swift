@@ -1,4 +1,5 @@
 # 2 GPU * 24G
+# bitsandbytes>=0.43.0 needed
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
