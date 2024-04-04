@@ -1,9 +1,9 @@
 # Experiment env: A100
-# 1 * 30GB GPU memory
+# 1 * 18GB GPU memory
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
-  --model_type telechat-12b \
+  --model_type telechat-7b \
   --dataset dureader-robust-zh \
   --batch_size 1 \
   --max_length 1024 \
