@@ -4,7 +4,7 @@ nproc_per_node=2
 
 PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
-accelerate launch --config_file "../../../swift/llm/fsdp_config/fsdp_offload.json" \
+accelerate launch --config_file "./scripts/llama2_70b_chat/qlora_fsdp/fsdp_offload.json" \
     llm_sft.py \
     --model_type llama2-70b-chat \
     --model_revision master \
