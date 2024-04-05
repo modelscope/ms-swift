@@ -253,6 +253,11 @@ def load_ms_dataset(
     DatasetName.alpaca_en,
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
     tags=['chat', 'general', '🔥'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric,
+    'AI-ModelScope/ms_agent_for_agentfabric', ['train'],
+    tags=['chat', 'agent', 'multi-round', '🔥'])
+
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],
@@ -480,11 +485,6 @@ register_dataset(
     'iic/ms_agent', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
-
-register_dataset(
-    DatasetName.ms_agent_for_agentfabric,
-    'AI-ModelScope/ms_agent_for_agentfabric', ['train'], [],
     tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
