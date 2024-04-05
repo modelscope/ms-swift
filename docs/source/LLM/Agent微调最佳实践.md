@@ -33,9 +33,11 @@ pip install -r requirements/llm.txt  -U
 
 - [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
 - [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
-- [魔搭通用agent数据集（agentfabric版）](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) 该数据包含将ms_agent转换成agentfabric的prompt格式的数据（3万条）以及一些agentfabric的实际使用数据（488条）组合成的数据集。
+- [魔搭通用agent数据集（agentfabric版）](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) 该数据集包含30488条Agent格式的API调用数据，其中3万条`default`数据由ms-agent原数据集根据modelscope-agent格式转换而成，488条`addition`数据由开源的agentfabric框架实际调用访问数据筛选得到，共30488条数据
 
-转换后的数据集数据格式如下：
+本实践使用`魔搭通用问答知识数据集`和`魔搭通用agent数据集（agentfabric版）`进行agent训练
+
+该数据集数据格式如下：
 
 ```json
 {
@@ -136,7 +138,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 
 ## 微调
 
-在Agent训练中，为了避免训练后造成严重知识遗忘，我们的数据配比为[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary):[ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary)数据集1比2，其中ms_agent共30000条，随机抽样ms_bench数据集60000条，同时为了改变模型认知，增加自我认知数据3000条。
+在Agent训练中，为了避免训练后造成严重知识遗忘，我们的数据配比为[ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary):[ms-bench](https://www.modelscope.cn/datasets/iic/ms_bench/summary)数据集1比2，其中ms_agent_for_agentfabric共30488条，随机抽样ms_bench数据集60976条，同时为了改变模型认知，增加自我认知数据3000条。
 
 | 数据集           | 条数            |
 | ---------------- | --------------- |
@@ -164,7 +166,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 
 ```shell
 # Experimental environment: 8GPU
-nproc_per_node=8
+nproc_per_node=2
 
 PYTHONPATH=../../.. \
 torchrun \
@@ -177,11 +179,11 @@ torchrun \
     --tuner_backend swift \
     --dtype AUTO \
     --output_dir output \
-    --dataset ms-agent \
+    --dataset ms-agent-for-agentfabric \
     --train_dataset_mix_ratio 2.0 \
     --train_dataset_sample -1 \
     --num_train_epochs 2 \
-    --max_length 1500 \
+    --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -203,11 +205,11 @@ torchrun \
     --logging_steps 10
 ```
 
-在官方实验中，训练过程使用了8GPU硬件环境，**训练时长3小时**。
+在官方实验中，训练过程使用了2GPU硬件环境，**训练时长7小时**。
 
 > [!NOTE]
 >
-> 1. 该训练使用消费级单显卡也可以运行（对应**占用显存22G**），用户将DDP命令改为单卡命令即可
+> 1. 该训练使用消费级单显卡也可以运行（对应**占用显存22G**），用户将DDP命令改为单卡命令，将max_length降为1500即可
 >
 > 2. LoRA训练的遗忘问题并不严重，可以适当调低ms-bench数据集的比例，提高训练速度
 

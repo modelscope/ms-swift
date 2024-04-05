@@ -69,6 +69,7 @@ class DatasetName:
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     # agent
     ms_agent = 'ms-agent'
+    ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -478,6 +479,13 @@ register_dataset(
     DatasetName.ms_agent,
     'iic/ms_agent', ['train'], [],
     ConversationsPreprocessor(error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'agent', 'multi-round', '🔥'])
+
+register_dataset(
+    DatasetName.ms_agent_for_agentfabric,
+    'AI-ModelScope/ms_agent_for_agentfabric', ['train'], [],
+    None,
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', '🔥'])
 
