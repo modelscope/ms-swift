@@ -485,8 +485,6 @@ register_dataset(
 register_dataset(
     DatasetName.ms_agent_for_agentfabric,
     'AI-ModelScope/ms_agent_for_agentfabric', ['train'], [],
-    None,
-    get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
