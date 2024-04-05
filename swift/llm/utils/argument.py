@@ -290,11 +290,6 @@ class SftArguments:
             self.deepspeed = os.path.abspath(
                 os.path.join(ds_config_folder, 'zero3.json'))
 
-        fsdp_config_folder = os.path.join(__file__, '..', '..', 'fsdp_config')
-        if self.fsdp_config == 'fsdp_offload':
-            self.fsdp_config = os.path.abspath(
-                os.path.join(fsdp_config_folder, 'fsdp_offload.json'))
-
         handle_path(self)
         set_model_type(self)
         if isinstance(self.dataset, str):

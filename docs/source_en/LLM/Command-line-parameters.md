@@ -107,9 +107,9 @@
 
 ### FSDP Parameters
 
-- `--fsdp`: Default value`''`, the FSDP type, please check[this documentation](https://huggingface.co/docs/transformers/v4.39.3/en/main_classes/trainer#transformers.TrainingArguments.fsdp) for details.
+- `--fsdp`: Default value `''`, the FSDP type, please check [this documentation](https://huggingface.co/docs/transformers/v4.39.3/en/main_classes/trainer#transformers.TrainingArguments.fsdp) for details.
 
-- `--fsdp_config`: Default value`None`, the FSDP config file path, `fsdp_offload` is a special value, check [here](https://github.com/modelscope/swift/tree/main/swift/llm/fsdp_config/fsdp_offload.json) for details.
+- `--fsdp_config`: Default value `None`, the FSDP config file path.
 
 ### LoRA+ Fine-tuning Parameters
 
