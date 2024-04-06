@@ -174,7 +174,12 @@ class ExpManager:
         best_model_checkpoint = exp.record.get('best_model_checkpoint')
         eval_dataset = exp.eval_dataset
         if best_model_checkpoint is not None:
-            cmd = f'swift eval --ckpt_dir {best_model_checkpoint} --infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            model_type_kwargs = ''
+            if not os.path.exists(os.path.join(best_model_checkpoint, 'sft_args.json')):
+                model_type = best_model_checkpoint[best_model_checkpoint.rfind(os.path.sep)+1:]
+                model_type = '-'.join(model_type.split('-')[:-2])
+                model_type_kwargs = f'--model_type {model_type}'
+            cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} --infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
         else:
             assert exp.args.get('model_type') is not None
             cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
@@ -411,6 +416,6 @@ def find_all_config(dir_or_file: str):
         configs = []
         for dirpath, dirnames, filenames in os.walk(dir_or_file):
             for name in filenames:
-                if name.endswith('.json'):
+                if name.endswith('.json') and 'ipynb' not in dirpath:
                     configs.append(os.path.join(dirpath, name))
         return configs

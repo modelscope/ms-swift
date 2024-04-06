@@ -97,6 +97,7 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, longlora_config)
                 logger.info(f'longlora_config: {longlora_config}')
             elif args.sft_type == 'adalora':
+                lora_kwargs.pop('lorap_lr_ratio', None)
                 lora_kwargs['rank_pattern'] = None
                 adalora_config = AdaLoraConfig(
                     task_type='CAUSAL_LM',
