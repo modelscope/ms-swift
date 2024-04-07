@@ -255,7 +255,7 @@ def load_ms_dataset(
     tags=['chat', 'general', '🔥'])
 @register_dataset(
     DatasetName.ms_agent_for_agentfabric,
-    'AI-ModelScope/ms_agent_for_agentfabric', ['train'],
+    'AI-ModelScope/ms_agent_for_agentfabric', ['additional'],
     tags=['chat', 'agent', 'multi-round', '🔥'])
 def get_dataset_from_repo(
         dataset_id: str,
