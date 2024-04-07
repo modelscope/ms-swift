@@ -427,7 +427,7 @@ def register_model(
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,
                 TemplateType.default_generation)
 @register_model(ModelType.xverse_moe_a4_2b, 'xverse/XVERSE-MoE-A4.2B', LoRATM.llama2,
-                TemplateType.default_generation)
+                TemplateType.default_generation,support_gradient_checkpointing=False,support_flash_attn=True)
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
