@@ -253,10 +253,6 @@ def load_ms_dataset(
     DatasetName.alpaca_en,
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
     tags=['chat', 'general', '🔥'])
-@register_dataset(
-    DatasetName.ms_agent_for_agentfabric,
-    'AI-ModelScope/ms_agent_for_agentfabric', [('default', 'train'),('additional', 'train')],
-    tags=['chat', 'agent', 'multi-round', '🔥'])
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],
@@ -281,10 +277,36 @@ def get_dataset_from_repo(
         dataset_list.append(dataset)
     return tuple(dataset_list)
 
+# def _preprocess_agentfabric(dataset: HfDataset) -> HfDataset:
+#     response = []
+#     for d in tqdm(dataset):
+#         output, answer = d['output'], d['answer']
+#         response.append(f'{output}\n\nAnswer: {answer}')
+#     return HfDataset.from_dict({
+#         'query': dataset['input'],
+#         'response': response
+#     })
+
+# register_dataset(
+#     DatasetName.ms_agent_for_agentfabric,
+#     'AI-ModelScope/ms_agent_for_agentfabric',  [('default', 'train'),('additional', 'train')],
+#     None,
+#     _preprocess_agentfabric,
+#     get_dataset_from_repo,
+#     tags=['chat', 'agent', 'multi-round', '🔥'])
 
 _multi_alpaca_subset_list = [
     'ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi'
 ]
+
+register_dataset(
+    DatasetName.ms_agent_for_agentfabric,
+    'AI-ModelScope/ms_agent_for_agentfabric', 
+    [('default', 'train'),('additional', 'train')],
+    None,
+    None,
+    get_dataset_from_repo,
+    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.multi_alpaca_all,
