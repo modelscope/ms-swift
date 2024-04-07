@@ -19,7 +19,7 @@ swift sft \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.1 \
     --learning_rate 1e-4 \
@@ -30,5 +30,3 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --deepspeed default-zero2 \
-
