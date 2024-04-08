@@ -2,12 +2,15 @@
 import os
 import types
 
+import os
+
 import torch
 import transformers
 from packaging import version
 
 from swift.trainers import TrainerCallback
 from swift.trainers.utils import consolidate_checkpoint
+<<<<<<< HEAD
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
@@ -17,6 +20,13 @@ from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger, use_torchacc)
 from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
                     is_adapter)
+=======
+from swift.tuners import (LongLoRAConfig, LongLoRAModelType, LoraConfig,
+                          LoRAConfig, NEFTuneConfig, Swift)
+from swift.utils import (activate_model_parameters, freeze_model_parameters,
+                         get_logger, use_torchacc)
+from .utils import SftArguments, find_all_linear_for_lora, is_lora
+>>>>>>> torchacc2
 
 logger = get_logger()
 

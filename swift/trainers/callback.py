@@ -2,11 +2,12 @@
 import os
 
 import json
+import time
 from tqdm.auto import tqdm
 from transformers.trainer_callback import (DefaultFlowCallback,
                                            ProgressCallback, TrainerCallback,
                                            TrainerControl, TrainerState)
-from transformers.trainer_utils import IntervalStrategy, has_length
+from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
 from swift.utils import is_pai_training_job
 from .arguments import TrainingArguments
@@ -19,6 +20,9 @@ class ProgressCallbackNew(ProgressCallback):
             self.training_bar = tqdm(
                 desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
+        self.warmup_start_time = 0
+        self.warmup_metric = None
+        self.metric_warmup_step = int(args.metric_warmup_step * state.max_steps)if args.metric_warmup_step < 1 else args.metric_warmup_step
 
     def on_prediction_step(self,
                            args,
@@ -45,6 +49,26 @@ class ProgressCallbackNew(ProgressCallback):
                logs=None,
                **kwargs):
         logs['global_step'] = state.global_step
+        if state.global_step >= self.metric_warmup_step and self.warmup_start_time == 0:
+            self.warmup_start_time = time.time()
+            self.metric_warmup_step = state.global_step
+        if state.max_steps == state.global_step and self.warmup_metric is None:
+            num_steps = state.max_steps - self.metric_warmup_step
+            # num_total_samples = int(logs['train_samples_per_second'] * logs['train_runtime'])
+            num_total_samples = args.train_dataset_sample
+            num_train_samples = int(num_total_samples / state.max_steps * num_steps)
+            # num_train_samples = (state.max_steps - self.metric_warmup_step) * args.train_batch_size * args.gradient_accumulation_steps * args.world_size
+            self.warmup_metric = speed_metrics(
+                "warmup_train",
+                self.warmup_start_time,
+                num_train_samples,
+                num_steps
+                )
+            self.warmup_metric['num_total_samples'] = num_total_samples
+            self.warmup_metric['num_after_warmup_samples'] = num_train_samples
+        if "train_samples_per_second" in logs:
+            logs.update(self.warmup_metric)
+            state.log_history[-1] = logs
         for k, v in logs.items():
             if isinstance(v, float):
                 logs[k] = round(logs[k], 8)
@@ -86,3 +110,10 @@ class PrinterCallbackNew(TrainerCallback):
         _ = logs.pop('total_flos', None)
         if state.is_local_process_zero:
             print(logs, flush=True)
+
+class ProfCallback(TrainerCallback):
+    def __init__(self, prof):
+        self.prof = prof
+
+    def on_step_end(self, args, state, control, **kwargs):
+        self.prof.step()

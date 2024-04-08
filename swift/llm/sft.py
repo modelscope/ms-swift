@@ -13,11 +13,14 @@ from transformers.utils import is_torch_npu_available
 
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
+from swift.trainers import Seq2SeqTrainer
+from swift.trainers.utils import can_return_loss, find_labels
+from swift.trainers.callback import ProfCallback
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers, use_torchacc)
+                         seed_everything, show_layers, use_torchacc, patch_acc_model)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
@@ -31,6 +34,7 @@ logger = get_logger()
 
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
+
     logger.info(f'args: {args}')
     training_args = args.training_args
     if is_torch_npu_available():
@@ -101,7 +105,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         # wrapper the model and make these properties wrong.
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
-        model = ta.patch_qwen_model(model)
+        # model = ta.patch_qwen_model(model)
+        model = patch_acc_model(model, args)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -122,7 +127,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info('Setting model.config.use_cache: False')
         model = ta_accelerate(
             model,
-            world_size,
+            args.fsdp_num,
             args.model_layer_cls_name,
             args.bf16,
             args.fp16,
@@ -262,7 +267,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                     indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    trainer.train(training_args.resume_from_checkpoint)
+
+    if args.use_profiler:
+        with torch.profiler.profile(
+            schedule=torch.profiler.schedule(wait=20, warmup=20, active=5),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join(args.output_dir, './profile')),
+            with_stack=False) as prof:
+            trainer.add_callback(ProfCallback(prof))
+            trainer.train()
+    else:
+        trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',
                                     None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
