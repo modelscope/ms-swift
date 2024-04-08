@@ -175,6 +175,13 @@ def parse_output(file):
     content = content['record']
     if cmd == 'export':
         best_model_checkpoint = content['best_model_checkpoint']
+        return ModelOutput(
+            name=name,
+            cmd=cmd,
+            requirements=requirements,
+            args=args,
+            best_model_checkpoint=best_model_checkpoint,
+        )
     else:
         memory = content['memory']
         memory = '/'.join(memory.values())
@@ -193,6 +200,7 @@ def parse_output(file):
             'SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'M Params (',
             'M Trainable [', ']), ', 'M Buffers.'
         ])
+        print(str_dict)
         str_dict = {c['key']: c['content'] for c in str_dict}
         if 'SwiftModel:' in str_dict:
             num_total_parameters = float(str_dict['SwiftModel:'])
@@ -206,37 +214,37 @@ def parse_output(file):
 
         eval_tokens = 0
         eval_time = 0.0
+        eval_result = None
         if 'eval_result' in content:
             eval_result = content['eval_result']
             eval_tokens = eval_result['generation_info']['tokens']
             eval_time = eval_result['generation_info']['time']
             eval_result = eval_result['report']
 
-
-    return ModelOutput(
-        name=name,
-        cmd=cmd,
-        requirements=requirements,
-        args=args,
-        memory=memory,
-        train_time=train_time,
-        train_samples=train_samples,
-        train_samples_per_second=train_samples_per_second,
-        last_model_checkpoint=last_model_checkpoint,
-        best_model_checkpoint=best_model_checkpoint,
-        best_metric=best_metric,
-        global_step=global_step,
-        train_dataset_info=train_dataset_info,
-        val_dataset_info=val_dataset_info,
-        train_create_time=create_time,
-        num_total_parameters=num_total_parameters,
-        num_trainable_parameters=num_trainable_parameters,
-        num_buffers=num_buffers,
-        trainable_parameters_percentage=trainable_parameters_percentage,
-        eval_time=eval_time,
-        eval_tokens=eval_tokens,
-        eval_result=eval_result,
-    )
+        return ModelOutput(
+            name=name,
+            cmd=cmd,
+            requirements=requirements,
+            args=args,
+            memory=memory,
+            train_time=train_time,
+            train_samples=train_samples,
+            train_samples_per_second=train_samples_per_second,
+            last_model_checkpoint=last_model_checkpoint,
+            best_model_checkpoint=best_model_checkpoint,
+            best_metric=best_metric,
+            global_step=global_step,
+            train_dataset_info=train_dataset_info,
+            val_dataset_info=val_dataset_info,
+            train_create_time=create_time,
+            num_total_parameters=num_total_parameters,
+            num_trainable_parameters=num_trainable_parameters,
+            num_buffers=num_buffers,
+            trainable_parameters_percentage=trainable_parameters_percentage,
+            eval_time=eval_time,
+            eval_tokens=eval_tokens,
+            reports=eval_result,
+        )
 
 
 def generate_reports():
