@@ -63,7 +63,7 @@ class SftArguments:
         })
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
-    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = 'nccl'
+    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
 
