@@ -280,7 +280,7 @@ class ModelType:
     dbrx_instruct = 'dbrx-instruct'
     dbrx_base = 'dbrx-base'
     # mengzi
-    mengzi3_13b_base = 'mengzi3-13b-base'    
+    mengzi3_13b_base = 'mengzi3-13b-base'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -429,8 +429,12 @@ def register_model(
                 LoRATM.llama2, TemplateType.xverse)
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,
                 TemplateType.default_generation)
-@register_model(ModelType.xverse_moe_a4_2b, 'xverse/XVERSE-MoE-A4.2B', LoRATM.llama2,
-                TemplateType.default_generation,support_gradient_checkpointing=False,support_flash_attn=True)
+@register_model(
+    ModelType.xverse_moe_a4_2b,
+    'xverse/XVERSE-MoE-A4.2B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False)
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
@@ -520,6 +524,7 @@ def get_model_tokenizer_grok(model_dir: str,
             trust_remote_code=True,
             **model_kwargs)
     return model, tokenizer
+
 
 @register_model(
     ModelType.mamba_130m,
