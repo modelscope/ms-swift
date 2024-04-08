@@ -175,8 +175,10 @@ class ExpManager:
         eval_dataset = exp.eval_dataset
         if best_model_checkpoint is not None:
             model_type_kwargs = ''
-            if not os.path.exists(os.path.join(best_model_checkpoint, 'sft_args.json')):
-                model_type = best_model_checkpoint[best_model_checkpoint.rfind(os.path.sep)+1:]
+            if not os.path.exists(
+                    os.path.join(best_model_checkpoint, 'sft_args.json')):
+                model_type = best_model_checkpoint[best_model_checkpoint.
+                                                   rfind(os.path.sep) + 1:]
                 model_type = '-'.join(model_type.split('-')[:-2])
                 model_type_kwargs = f'--model_type {model_type}'
             cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} --infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'

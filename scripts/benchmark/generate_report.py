@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
-import json
 import os
 from dataclasses import dataclass
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
+import json
 
 from swift.utils.utils import split_str_parts_by
 
@@ -243,8 +244,8 @@ def parse_output(file):
         if 'model_info' in content:
             # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
             str_dict = split_str_parts_by(content['model_info'], [
-                'SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'LMHeadModel:', 'M Params (',
-                'M Trainable [', ']), ', 'M Buffers.'
+                'SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'LMHeadModel:',
+                'M Params (', 'M Trainable [', ']), ', 'M Buffers.'
             ])
             str_dict = {c['key']: c['content'] for c in str_dict}
             if 'SwiftModel:' in str_dict:
@@ -305,9 +306,13 @@ def generate_reports():
 
             outputs.append(parse_output(abs_file))
 
-    print(generate_sft_report([output for output in outputs if output.cmd in ('sft', 'eval')]))
+    print(
+        generate_sft_report(
+            [output for output in outputs if output.cmd in ('sft', 'eval')]))
     # print(generate_dpo_report([output for output in outputs if output.cmd == 'dpo']))
-    print(generate_export_report([output for output in outputs if output.cmd == 'export']))
+    print(
+        generate_export_report(
+            [output for output in outputs if output.cmd == 'export']))
 
 
 if __name__ == '__main__':
