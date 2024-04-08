@@ -473,6 +473,31 @@ print()
 4. 重要位置的`\n`等特殊字符比较重要，请注意推理和训练格式统一
 
 ## agentfabric 实战
+用微调后的模型配合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)使用
+
+安装环境依赖
 ```bash
-pip install modelscope_gradio_components
+git clone https://github.com/modelscope/modelscope-agent.git
+cd modelscope-agent  && pip install -r requirements.txt && pip install -r apps/agentfabric/requirements.txt
+```
+
+### Agentfabric中使用
+
+```bash
+# 进入agentfabric目录
+cd modelscope-agent/apps/agentfabric
+
+# 在config/model_config.json文件，新增训好的本地模型
+    "my-qwen-7b-chat": {
+        "type": "openai",
+        "model": "/dir/to/your/model-merged",
+        "api_base": "http://localhost:8000/v1",
+        "is_chat": true,
+        "is_function_call": false,
+        "support_stream": false
+    }
+```
+在`agentfabric`目录下执行如下命令拉起gradio
+```bash
+GRADIO_SERVER_NAME=0.0.0.0 PYTHONPATH=../../  python app.py
 ```
