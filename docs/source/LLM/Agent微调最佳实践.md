@@ -414,20 +414,12 @@ call_fireman: calling API。This API will call 119 to extinguish the fire输入�
 ## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
 
 工具调用
-Action: 工具的名称，必须是["fire_recognition", "fire_alert", "call_police", "call_fireman"]之一
+Action: 工具的名称，必须是[fire_recognition,fire_alert,call_police,call_police]之一
 Action Input: 工具的输入
 Observation: <result>工具返回的结果</result>
-Answer: 根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)
-
-
-# 指令
-
-你扮演AI-Agent，
-你具有下列具体功能：
-下面你将开始扮演
-
-请注意：你具有图像和视频的展示能力，也具有运行代码的能力，不要在回复中说你做不到。
-"""
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer:根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)"""
 messages = [{
     'role': 'system',
     'content': system
@@ -441,10 +433,10 @@ resp = client.chat.completions.create(
     stop=['Observation:'],
     seed=42)
 response = resp.choices[0].message.content
-print(f'response: {response}')
+print(f'response:\n{response}')
 
-# # 流式
-messages.append({'role': 'assistant', 'content': response + "\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"})
+## 流式
+messages.append({'role': 'assistant', 'content': response + "\n[{'coordinate': [101.1, 200.9], 'on_fire': True}] "})
 print(messages)
 stream_resp = client.chat.completions.create(
     model=model_type,
@@ -453,25 +445,20 @@ stream_resp = client.chat.completions.create(
     stream=True,
     seed=42)
 
-print('response: ', end='')
+print('response:')
 for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
-##
-# model_type: qwen-7b-chat
-# response: Action: fire_recognition
-# Action Input: {'image': '/tmp/1.jpg'}
-# Observation:
-
 ## Output:
 # model_type: qwen-7b-chat
-# response: Thought: I need to check if there is fire in the image
-# Action: Use fire\_recognition API
-# Action Input: /tmp/1.jpg
-# Observation:
-# [{'role': 'system', 'content': 'Answer the following questions as best you can. You have access to the following APIs:\n1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{"name": "image", "description": "The input image to recognize fire", "required": "True"}]\n\n2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building\'s administraters. Parameters: []\n\n3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []\n\n4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []\n\nUse the following format:\n\nThought: you should always think about what to do\nAction: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]\nAction Input: the input to the action\nObservation: the result of the action\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer: the final answer to the original input question\nBegin!'}, {'role': 'user', 'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Thought: I need to check if there is fire in the image\nAction: Use fire\\_recognition API\nAction Input: /tmp/1.jpg\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}]"}]
 # response:
-# Final Answer: There is fire in the image at coordinates [101.1, 200.9]
+# Action: fire_recognition
+# Action Input: {'image': '/tmp/1.jpg'}
+# Observation:
+# [{'role': 'system', 'content': '\n# 工具\n\n## 你拥有如下工具：\n\nfire_recognition: recognition API。This API is used to recognize whether there is fire in the image输入参数: {"type": "object", "properties": {"\\image": {"type": "string", "description": "The input image to recognize fire"}},"required": ["image"]} Format the arguments as a JSON object.\n\nfire_alert: alert API。This API will start an alert to warn the building\'s administraters输入参数: {"type": "object", "properties": {},"required": []} Format the arguments as a JSON object.\n\ncall_police: calling API。This API will call 110 to catch the thief输入参数: {"type": "object", "properties": {},"required": []} Format the arguments as a JSON object.\n\ncall_fireman: calling API。This API will call 119 to extinguish the fire输入参数: {"type": "object", "properties": {},"required": []} Format the arguments as a JSON object.\n\n## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：\n\n工具调用\nAction: 工具的名称，必须是[fire_recognition,fire_alert,call_police,call_police]之一\nAction Input: 工具的输入\nObservation: <result>工具返回的结果</result>\n... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\nThought: I now know the final answer\nFinal Answer:根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)'}, {'role': 'user', 'content': '输入图片是/tmp/1.jpg，协助判断图片中是否存在着火点'}, {'role': 'assistant', 'content': "Action: fire_recognition\nAction Input: {'image': '/tmp/1.jpg'}\nObservation:\n[{'coordinate': [101.1, 200.9], 'on_fire': True}] "}]
+# response:
+# Thought: I now know the final answer
+# Final Answer: 根据您的图片，我们使用了fire_recognition API进行识别，结果显示图片中存在火点，火点坐标为(101.1, 200.9)。建议您及时采取措施，避免火势扩大。
 ```
 
 
@@ -484,3 +471,8 @@ print()
 2. 部分模型可能在训练后仍然调用效果不佳，可以测试该模型本身预训练能力是否扎实
 3. Agent训练集格式、语种有细节改变后，对应推理阶段的格式也需要相应调整，否则可能效果不佳
 4. 重要位置的`\n`等特殊字符比较重要，请注意推理和训练格式统一
+
+## agentfabric 实战
+```bash
+pip install modelscope_gradio_components
+```
