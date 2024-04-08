@@ -337,7 +337,6 @@ def get_dataset_from_repo(
     _iter = zip([train_subset_split_list, val_subset_split_list],
                 [train_dataset_sample, val_dataset_sample])
     for subset_split_list, dataset_sample in _iter:
-        print(dataset_id, subset_split_list)
         dataset = load_ms_dataset(dataset_id, subset_split_list)
         if dataset is not None:
             if dataset_sample > 0 and len(dataset) > dataset_sample:
