@@ -139,6 +139,21 @@ class DatasetName:
     # for awq
     pileval = 'pileval'
 
+    # COIG-CQIA
+    coig_cqia_chinese_traditional = 'coig-cqia-chinese-traditional'
+    coig_cqia_coig_pc = 'coig-cqia-coig-pc'
+    coig_cqia_exam = 'coig-cqia-exam'
+    coig_cqia_finance = 'coig-cqia-finance'
+    coig_cqia_douban = 'coig-cqia-douban'
+    coig_cqia_human_value = 'coig-cqia-human-value'
+    coig_cqia_logi_qa = 'coig-cqia-logi-qa'
+    coig_cqia_ruozhiba = 'coig-cqia-ruozhiba'
+    coig_cqia_segmentfault = 'coig-cqia-segmentfault'
+    coig_cqia_wiki = 'coig-cqia-wiki'
+    coig_cqia_wikihow = 'coig-cqia-wikihow'
+    coig_cqia_xhs = 'coig-cqia-xhs'
+    coig_cqia_zhihu = 'coig-cqia-zhihu'
+
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
         res = []
@@ -253,6 +268,58 @@ def load_ms_dataset(
     DatasetName.alpaca_en,
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
     tags=['chat', 'general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_chinese_traditional,
+    'AI-ModelScope/COIG-CQIA', [('chinese_traditional', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_coig_pc,
+    'AI-ModelScope/COIG-CQIA', [('coig_pc', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_exam,
+    'AI-ModelScope/COIG-CQIA', [('exam', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_finance,
+    'AI-ModelScope/COIG-CQIA', [('finance', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_douban,
+    'AI-ModelScope/COIG-CQIA', [('douban', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_human_value,
+    'AI-ModelScope/COIG-CQIA', [('human_value', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_logi_qa,
+    'AI-ModelScope/COIG-CQIA', [('logi_qa', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_ruozhiba,
+    'AI-ModelScope/COIG-CQIA', [('ruozhiba', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_segmentfault,
+    'AI-ModelScope/COIG-CQIA', [('segmentfault', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_wiki,
+    'AI-ModelScope/COIG-CQIA', [('wiki', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_wikihow,
+    'AI-ModelScope/COIG-CQIA', [('wikihow', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_xhs,
+    'AI-ModelScope/COIG-CQIA', [('xhs', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_zhihu,
+    'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
+    tags=['general', '🔥'])
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],
@@ -346,6 +413,7 @@ register_dataset(
     _preprocess_vision_dataset,
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'vision'])
+
 
 register_dataset(
     DatasetName.coco_mini_en,
@@ -475,6 +543,7 @@ register_dataset(
     long_alpaca_preprocessor,
     get_dataset_from_repo,
     tags=['longlora', 'QA'])
+
 
 register_dataset(
     DatasetName.ms_bench,
