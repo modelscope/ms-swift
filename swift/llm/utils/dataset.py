@@ -167,7 +167,7 @@ class DatasetName:
                 continue
             res.append(cls.__dict__[k])
         return res
-    
+
 
 def register_dataset(
         dataset_name: str,
@@ -419,7 +419,6 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'vision'])
 
-
 register_dataset(
     DatasetName.coco_mini_en,
     'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
@@ -558,30 +557,33 @@ def _preprocess_ruozhiba(dataset: HfDataset):
         if abs and abs != title:
             title = title + '，' + abs
 
-        pattern = r"\d+[\.,\s,\、](.+)"
+        pattern = r'\d+[\.,\s,\、](.+)'
         match = re.search(pattern, title)
         if match:
             title = match.group(1)
         return {'response': title}
+
     return dataset.map(map_row).filter(lambda row: row['response'])
 
 
 register_dataset(
     DatasetName.ruozhiba_post_annual,
-    'AI-ModelScope/ruozhiba', [('post-annual', 'train')], [], 
-    _preprocess_ruozhiba, get_dataset_from_repo,
+    'AI-ModelScope/ruozhiba', [('post-annual', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
     tags=['pretrain', '🔥'])
 register_dataset(
     DatasetName.ruozhiba_title_good,
-    'AI-ModelScope/ruozhiba', [('title-good', 'train')], [], 
-    _preprocess_ruozhiba, get_dataset_from_repo,
+    'AI-ModelScope/ruozhiba', [('title-good', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
     tags=['pretrain', '🔥'])
 register_dataset(
     DatasetName.ruozhiba_title_norm,
-    'AI-ModelScope/ruozhiba', [('title-norm', 'train')], [], 
-    _preprocess_ruozhiba, get_dataset_from_repo,
+    'AI-ModelScope/ruozhiba', [('title-norm', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
     tags=['pretrain', '🔥'])
-
 
 register_dataset(
     DatasetName.ms_bench,
