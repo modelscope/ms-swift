@@ -226,12 +226,6 @@ class LLMTrain(BaseUI):
                         step=0.5,
                         scale=4)
                 with gr.Row():
-                    gr.Dropdown(elem_id='sft_type', scale=4)
-                    gr.Textbox(elem_id='seed', scale=4)
-                    gr.Dropdown(elem_id='dtype', scale=4)
-                    gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
-                    gr.Textbox(elem_id='ddp_num', value='2', scale=4)
-                with gr.Row():
                     gr.Checkbox(elem_id='use_galore', scale=4)
                     gr.Slider(
                         elem_id='galore_rank',
