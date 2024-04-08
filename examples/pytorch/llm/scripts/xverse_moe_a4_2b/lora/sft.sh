@@ -1,24 +1,21 @@
 # Experimental environment: A100
-# 65GB GPU memory
-nproc_per_node=4
-
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=$nproc_per_node \
-MASTER_PORT=29500 \
+# 66GB GPU memory
+CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type xverse-moe-a4_2b \
     --sft_type lora \
     --tuner_backend swift \
-    --dtype AUTO \
+    --dtype fp16 \
     --dataset dureader-robust-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 2048 \
+    --max_length 1024 \
     --check_dataset_strategy warning \
+    --lora_dtype fp16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_target_modules ALL \
+    --lora_target_modules DEFAULT \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.1 \

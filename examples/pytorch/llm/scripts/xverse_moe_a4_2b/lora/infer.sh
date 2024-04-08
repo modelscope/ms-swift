@@ -1,4 +1,6 @@
-# Experimental environment: 3090
+# Experimental environment: A100
+# 60GB GPU memory
+
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir "output/xverse-moe-a4_2b/vx-xxx/checkpoint-xxx" \
