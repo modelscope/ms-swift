@@ -27,8 +27,8 @@ from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice,
                        CompletionStreamResponse, DeltaMessage, Model,
                        ModelList, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
-                       StopWords, Template, TemplateType, get_bucket_sizes,
-                       get_template, register_template)
+                       StopWords, Template, TemplateType, get_template,
+                       register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
                     find_all_linears, find_embedding, find_ln,
                     get_max_model_len, get_time_info, history_to_messages,

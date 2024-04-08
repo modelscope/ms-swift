@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import sys
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -12,6 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
+from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
@@ -121,26 +121,6 @@ def _replace_system(prefix: Prompt) -> Prompt:
             p = p.replace('{{SYSTEM}}', '')
         res.append(p)
     return res
-
-
-def get_bucket_sizes(max_length: int) -> List[int]:
-    return [max_length // 4 * (i + 1) for i in range(4)]
-
-
-def _get_bucket(bucket_sizes, data_length):
-    """Select the one from bucket_sizes that is closest in distance to
-    data_length. This is required for TorchAcc.
-    """
-    cloest_length = sys.maxsize
-    for b in bucket_sizes:
-        if b == data_length or ((b < cloest_length) and (b > data_length)):
-            cloest_length = b
-
-    if cloest_length == sys.maxsize:
-        bucket_sizes.append(data_length)
-        cloest_length = data_length
-
-    return cloest_length
 
 
 class Template:
@@ -455,29 +435,9 @@ class Template:
 
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()
-            if padding_to is None:
-                longest_len = input_ids.shape[-1]
-                bucket_data_length = _get_bucket(bucket_sizes, longest_len)
-                padding_length = bucket_data_length - input_ids.shape[1]
-                input_ids = F.pad(input_ids, (0, padding_length), 'constant',
-                                  tokenizer.pad_token_id)
-                attention_mask = F.pad(attention_mask, (0, padding_length),
-                                       'constant', 0)
-                if loss_scale:
-                    loss_scale = F.pad(loss_scale, (0, padding_length),
-                                       'constant', 0.)
-                labels = F.pad(labels, (0, padding_length), 'constant', -100)
-
-            # manully split the batch to different DP rank.
-            batch_size = input_ids.shape[0] // world_size
-            if batch_size > 0:
-                start = rank * batch_size
-                end = (rank + 1) * batch_size
-                input_ids = input_ids[start:end, :]
-                attention_mask = attention_mask[start:end, :]
-                labels = labels[start:end, :]
-                if loss_scale:
-                    loss_scale = loss_scale[start:end, :]
+            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
+                input_ids, attention_mask, labels, loss_scale, padding_to,
+                bucket_sizes, tokenizer, rank, world_size)
 
         res = {
             'input_ids': input_ids,

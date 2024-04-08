@@ -11,6 +11,7 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
+from swift.torchacc_utils import get_bucket_sizes
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
@@ -21,10 +22,10 @@ from swift.utils import (check_json_format, compute_acc_metrics,
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, dataset_map, get_bucket_sizes,
-                    get_dataset, get_model_tokenizer, get_template,
-                    get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    add_self_cognition_dataset, dataset_map, get_dataset,
+                    get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length,
+                    stat_dataset)
 from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
@@ -66,7 +67,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             args.load_in_4bit,
             bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
-            bnb_4bit_quant_storage=args.bnb_4bit_quant_storage,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
@@ -293,7 +293,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
 def get_sft_main(args, llm):
     if use_torchacc():
-        logger.warning('TorchAcc is currently only available internally.')
+        logger.warning('TorchAcc is currently only available internally '
+                       'within Alibaba Cloud.')
         import torchacc as ta
         # This patch should be called before `llm_sft`.
         ta.accelerate_hf_trainer()
