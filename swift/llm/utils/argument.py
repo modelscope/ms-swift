@@ -181,6 +181,7 @@ class SftArguments:
     neftune_alpha: Optional[float] = None
     metric_warmup_step: Optional[float] = 1
     use_profiler: Optional[bool] = False
+    fsdp_num: int = 1
 
     def __post_init__(self) -> None:
         handle_compatibility(self)

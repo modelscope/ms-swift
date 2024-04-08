@@ -101,8 +101,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info('Setting model.config.use_cache: False')
         model = ta_accelerate(
             model,
-            # world_size,
-            1,
+            args.fsdp_num,
             args.model_layer_cls_name,
             args.bf16,
             args.fp16,
