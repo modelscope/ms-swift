@@ -357,6 +357,24 @@ Final Answer: There is fire in the input image.
 
 ### 在部署中使用Agent
 
+合并LoRA参数
+```bash
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
+```
+
+拉起部署
+```bash
+python -m vllm.entrypoints.openai.api_server --model /dir/to/your/model-merged --trust-remote-code
+```
+python -m vllm.entrypoints.openai.api_server --model /mnt/workspace/hujinghan.hjh/output/qwen-7b-chat/v3-20240327-104716/checkpoint-5736-merged --trust-remote-code
+
+测试部署
+```bash
+curl http://localhost:8000/v1/completions -H "Content-Type: application/json" -d '{"model": "/dir/to/your/model-merged", "prompt": "San Francisco is a", "max_tokens": 7, "temperature": 0}'
+```
+swift deploy --ckpt_dir /mnt/workspace/hujinghan.hjh/output/qwen-7b-chat/v3-20240327-104716/checkpoint-5736-merged --stop_words Observation
+
 由于部署不支持history管理，因此agent的API调用结果拼接需要用户自行进行，下面给出一个OpenAI格式可运行的代码范例。
 
 服务端：
@@ -380,25 +398,36 @@ client = OpenAI(
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
 
-system = """Answer the following questions as best you can. You have access to the following APIs:
-1. fire_recognition: Call this tool to interact with the fire recognition API. This API is used to recognize whether there is fire in the image. Parameters: [{\"name\": \"image\", \"description\": \"The input image to recognize fire\", \"required\": \"True\"}]
+system = """
+# 工具
 
-2. fire_alert: Call this tool to interact with the fire alert API. This API will start an alert to warn the building's administraters. Parameters: []
+## 你拥有如下工具：
 
-3. call_police: Call this tool to interact with the police calling API. This API will call 110 to catch the thief. Parameters: []
+fire_recognition: recognition API。This API is used to recognize whether there is fire in the image输入参数: {"type": "object", "properties": {"\image": {"type": "string", "description": "The input image to recognize fire"}},"required": ["image"]} Format the arguments as a JSON object.
 
-4. call_fireman: Call this tool to interact with the fireman calling API. This API will call 119 to extinguish the fire. Parameters: []
+fire_alert: alert API。This API will start an alert to warn the building's administraters输入参数: {"type": "object", "properties": {},"required": []} Format the arguments as a JSON object.
 
-Use the following format:
+call_police: calling API。This API will call 110 to catch the thief输入参数: {"type": "object", "properties": {},"required": []} Format the arguments as a JSON object.
 
-Thought: you should always think about what to do
-Action: the action to take, should be one of the above tools[fire_recognition, fire_alert, call_police, call_fireman]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-Begin!"""
+call_fireman: calling API。This API will call 119 to extinguish the fire输入参数: {"type": "object", "properties": {},"required": []} Format the arguments as a JSON object.
+
+## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
+
+工具调用
+Action: 工具的名称，必须是["fire_recognition", "fire_alert", "call_police", "call_fireman"]之一
+Action Input: 工具的输入
+Observation: <result>工具返回的结果</result>
+Answer: 根据Observation总结本次工具调用返回的结果，如果结果中出现url，请使用如下格式展示出来：![图片](url)
+
+
+# 指令
+
+你扮演AI-Agent，
+你具有下列具体功能：
+下面你将开始扮演
+
+请注意：你具有图像和视频的展示能力，也具有运行代码的能力，不要在回复中说你做不到。
+"""
 messages = [{
     'role': 'system',
     'content': system
@@ -428,6 +457,12 @@ print('response: ', end='')
 for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
+##
+# model_type: qwen-7b-chat
+# response: Action: fire_recognition
+# Action Input: {'image': '/tmp/1.jpg'}
+# Observation:
+
 ## Output:
 # model_type: qwen-7b-chat
 # response: Thought: I need to check if there is fire in the image

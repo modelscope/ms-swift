@@ -298,13 +298,31 @@ def get_dataset_from_repo(
 _multi_alpaca_subset_list = [
     'ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi'
 ]
+# def _process_agentfabric(dataset: HfDataset) -> HfDataset:
+#     query = []
+#     response = []
+#     history: List[History] = []
+#     for d in tqdm(dataset):
+#         conversation = ast.literal_eval(d['conversation'])
+#         query.append(conversation[-1]['human'])
+#         response.append(conversation[-1]['assistant'])
+#         h = []
+#         for c in conversation[:-1]:
+#             h.append([c['human'], c['assistant']])
+#         history.append(h)
+#     return HfDataset.from_dict({
+#         'query': query,
+#         'response': response,
+#         'history': history
+#     })
+
 
 register_dataset(
     DatasetName.ms_agent_for_agentfabric,
     'AI-ModelScope/ms_agent_for_agentfabric', 
     [('default', 'train'),('additional', 'train')],
     None,
-    None,
+    _process_agentfabric,
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', '🔥'])
 
