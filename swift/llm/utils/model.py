@@ -521,44 +521,6 @@ def get_model_tokenizer_grok(model_dir: str,
             **model_kwargs)
     return model, tokenizer
 
-
-@register_model(
-    ModelType.mengzi3_13b_base,
-    'langboat/Mengzi3-13B-Base',
-    LoRATM.llama2,
-    TemplateType.mengzi,
-    support_vllm=False,
-    support_flash_attn=False)
-def get_model_tokenizer_mengzi(model_dir: str,
-                               torch_dtype: Optional[Dtype],
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               model_config=None,
-                               tokenizer=None,
-                               automodel_class=AutoModelForCausalLM,
-                               **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(
-            model_dir, trust_remote_code=True)
-    if torch_dtype is not None:
-        model_config.torch_dtype = torch_dtype
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(
-            'langboat/Mengzi3-13B-Base', trust_remote_code=True)
-    eos_token = kwargs.get('eos_token')
-    if eos_token is not None:
-        tokenizer.eos_token = eos_token
-    model = None
-    if load_model:
-        model = automodel_class.from_pretrained(
-            model_dir,
-            config=model_config,
-            torch_dtype=torch_dtype,
-            trust_remote_code=True,
-            **model_kwargs)
-    return model, tokenizer
-
-
 @register_model(
     ModelType.mamba_130m,
     'AI-ModelScope/mamba-130m-hf',
