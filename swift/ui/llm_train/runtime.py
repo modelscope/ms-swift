@@ -438,7 +438,12 @@ class Runtime(BaseUI):
         fname = [
             fname for fname in os.listdir(tb_dir)
             if os.path.isfile(os.path.join(tb_dir, fname))
-        ][0]
+            and fname.startswith('events.out')
+        ]
+        if fname:
+            fname = fname[0]
+        else:
+            return [None] * len(Runtime.sft_plot)
         tb_path = os.path.join(tb_dir, fname)
         data = read_tensorboard_file(tb_path)
 
