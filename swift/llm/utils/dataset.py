@@ -154,6 +154,11 @@ class DatasetName:
     coig_cqia_xhs = 'coig-cqia-xhs'
     coig_cqia_zhihu = 'coig-cqia-zhihu'
 
+    # ruozhiba
+    ruozhiba_post_annual = 'ruozhiba-post-annual'
+    ruozhiba_title_good = 'ruozhiba-title-good'
+    ruozhiba_title_norm = 'ruozhiba-title-norm'
+
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
         res = []
@@ -162,7 +167,7 @@ class DatasetName:
                 continue
             res.append(cls.__dict__[k])
         return res
-
+    
 
 def register_dataset(
         dataset_name: str,
@@ -227,7 +232,7 @@ def load_ms_dataset(
         assert len(subset_split) == 2
         subset_name, split = subset_split
         dataset = MsDataset.load(
-            dataset_id, subset_name=subset_name, split=split).to_hf_dataset()
+            dataset_id, subset_name=subset_name, split=split)
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -332,6 +337,7 @@ def get_dataset_from_repo(
     _iter = zip([train_subset_split_list, val_subset_split_list],
                 [train_dataset_sample, val_dataset_sample])
     for subset_split_list, dataset_sample in _iter:
+        print(dataset_id, subset_split_list)
         dataset = load_ms_dataset(dataset_id, subset_split_list)
         if dataset is not None:
             if dataset_sample > 0 and len(dataset) > dataset_sample:
@@ -543,6 +549,39 @@ register_dataset(
     long_alpaca_preprocessor,
     get_dataset_from_repo,
     tags=['longlora', 'QA'])
+
+
+def _preprocess_ruozhiba(dataset: HfDataset):
+
+    def map_row(row):
+        title = row['title'] if 'title' in row else row['content']
+        abs = row['abs'] if 'abs' in row else None
+        if abs and abs != title:
+            title = title + '，' + abs
+
+        pattern = r"\d+[\.,\s,\、](.+)"
+        match = re.search(pattern, title)
+        if match:
+            title = match.group(1)
+        return {'response': title}
+    return dataset.map(map_row).filter(lambda row: row['response'])
+
+
+register_dataset(
+    DatasetName.ruozhiba_post_annual,
+    'AI-ModelScope/ruozhiba', [('post-annual', 'train')], [], 
+    _preprocess_ruozhiba, get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
+register_dataset(
+    DatasetName.ruozhiba_title_good,
+    'AI-ModelScope/ruozhiba', [('title-good', 'train')], [], 
+    _preprocess_ruozhiba, get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
+register_dataset(
+    DatasetName.ruozhiba_title_norm,
+    'AI-ModelScope/ruozhiba', [('title-norm', 'train')], [], 
+    _preprocess_ruozhiba, get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
 
 
 register_dataset(
