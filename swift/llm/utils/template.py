@@ -401,6 +401,8 @@ class Template:
             pad_to_multiple_of(`int`, optional): Whether padding to the multiple of an integer value.
         """
         self._data_collator.pad_to_multiple_of = pad_to_multiple_of
+        if pad_to_multiple_of:
+            self.tokenizer.padding_side = 'right'
         loss_scale = [torch.tensor(b.pop('loss_scale'))
                       for b in batch] if 'loss_scale' in batch[0] else None
         res = self._data_collator(batch, return_tensors='pt')
