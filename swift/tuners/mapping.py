@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 from .adapter import Adapter, AdapterConfig
+from .llamapro import LLaMAPro, LLaMAProConfig
 from .longlora.longlora import LongLoRA, LongLoRAConfig
 from .lora import LoRA, LoRAConfig
 from .neftune import NEFTune, NEFTuneConfig
@@ -20,6 +21,7 @@ class SwiftTuners:
     ROME = 'ROME'
     LONGLORA = 'longlora'
     NEFTUNE = 'neftune'
+    LLAMAPRO = 'LLAMAPRO'
     SCETUNING = 'SCETuning'
 
 
@@ -33,4 +35,5 @@ SWIFT_MAPPING = {
     SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
     SwiftTuners.NEFTUNE: (NEFTuneConfig, NEFTune),
     SwiftTuners.SCETUNING: (SCETuningConfig, SCETuning),
+    SwiftTuners.LLAMAPRO: (LLaMAProConfig, LLaMAPro),
 }

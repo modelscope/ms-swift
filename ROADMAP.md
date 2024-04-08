@@ -50,9 +50,6 @@ The development of SWIFT V1.7 is between Feb/1/2024 and Feb/29/2024 ideally.
 - *Support More LLM Models*:
   - codefuse-ai/CodeFuse-DeepSeek-33B
   - codefuse-ai/CodeFuse-13B
-  - Shanghai_AI_Laboratory/internlm2-1_8b
-  - Shanghai_AI_Laboratory/internlm2-chat-1_8b
-  - Shanghai_AI_Laboratory/internlm2-chat-1_8b-sft
   - 01ai/Yi-34B-Chat-4bits
   - 01ai/Yi-34B-Chat-8bits
   - 01ai/Yi-6B-Chat-4bits

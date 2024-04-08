@@ -3,8 +3,7 @@ import os.path
 import time
 import webbrowser
 from datetime import datetime
-from functools import partial
-from typing import Dict, List, Tuple, Type, Union
+from typing import Dict, List, Tuple, Type
 
 import gradio as gr
 import matplotlib.pyplot as plt
@@ -150,13 +149,13 @@ class Runtime(BaseUI):
         },
         'refresh_tasks': {
             'value': {
-                'zh': '刷新运行时任务',
-                'en': 'Refresh tasks'
+                'zh': '找回运行时任务',
+                'en': 'Find running tasks'
             },
         },
         'kill_task': {
             'value': {
-                'zh': '停止任务',
+                'zh': '杀死任务',
                 'en': 'Kill running task'
             },
         },
@@ -247,14 +246,6 @@ class Runtime(BaseUI):
                     Runtime.refresh_tasks,
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
-                )
-
-                base_tab.element('kill_task').click(
-                    Runtime.kill_task,
-                    [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')] + [cls.element('log')]
-                    + cls.all_plots,
-                    cancels=[cls.log_event],
                 )
 
     @classmethod
@@ -398,7 +389,8 @@ class Runtime(BaseUI):
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
         for i in range(len(args)):
-            splits = args[i].split(' ')
+            space = args[i].find(' ')
+            splits = args[i][:space], args[i][space + 1:]
             all_args[splits[0]] = splits[1]
         return all_args
 
@@ -410,6 +402,10 @@ class Runtime(BaseUI):
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (
             len(Runtime.sft_plot) + 1)
+
+    @staticmethod
+    def reset():
+        return None, 'output'
 
     @staticmethod
     def task_changed(task, base_tab):
@@ -442,7 +438,12 @@ class Runtime(BaseUI):
         fname = [
             fname for fname in os.listdir(tb_dir)
             if os.path.isfile(os.path.join(tb_dir, fname))
-        ][0]
+            and fname.startswith('events.out')
+        ]
+        if fname:
+            fname = fname[0]
+        else:
+            return [None] * len(Runtime.sft_plot)
         tb_path = os.path.join(tb_dir, fname)
         data = read_tensorboard_file(tb_path)
 

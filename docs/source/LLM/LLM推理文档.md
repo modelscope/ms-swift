@@ -1,5 +1,5 @@
 # LLM推理文档
-如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](./VLLM推理加速与部署.md#推理加速)
+如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#推理加速)
 
 ## 目录
 - [环境准备](#环境准备)
@@ -9,12 +9,10 @@
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
 ```bash
-# 设置pip全局镜像
+# 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e .[llm]
+pip install ms-swift[llm] -U
 
 # 如果你想要使用基于auto_gptq的模型进行推理.
 # 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
@@ -398,7 +396,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat
 ```
 
 ### 微调后模型
-如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](./LLM微调文档.md#微调后模型)
+如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](LLM微调文档.md调后模型)
 
 
 ## Web-UI
@@ -448,4 +446,4 @@ app_ui_main(app_ui_args)
 ```
 
 ### 微调后模型
-使用微调后模型的web-ui可以查看[LLM微调文档](./LLM微调文档.md#微调后模型-1)
+使用微调后模型的web-ui可以查看[LLM微调文档](LLM微调文档.md调后模型-1)

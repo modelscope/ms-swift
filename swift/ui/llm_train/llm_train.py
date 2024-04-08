@@ -165,6 +165,36 @@ class LLMTrain(BaseUI):
                 'en':
                 'Use neftune to improve performance, normally the value should be 5 or 10'
             }
+        },
+        'use_galore': {
+            'label': {
+                'zh': '使用GaLore',
+                'en': 'Use GaLore'
+            },
+            'info': {
+                'zh':
+                '使用Galore来减少全参数训练的显存消耗',
+                'en':
+                'Use Galore to reduce GPU memory usage in full parameter training'
+            }
+        },
+        'galore_rank': {
+            'label': {
+                'zh': 'Galore的秩',
+                'en': 'The rank of Galore'
+            },
+        },
+        'galore_update_proj_gap': {
+            'label': {
+                'zh': 'Galore project matrix更新频率',
+                'en': 'The updating gap of the project matrix'
+            },
+        },
+        'galore_optim_per_parameter': {
+            'label': {
+                'zh': '为每个Galore Parameter创建单独的optimizer',
+                'en': 'Create unique optimizer for per Galore parameter'
+            },
         }
     }
 
@@ -195,6 +225,21 @@ class LLMTrain(BaseUI):
                         maximum=20.0,
                         step=0.5,
                         scale=4)
+                with gr.Row():
+                    gr.Checkbox(elem_id='use_galore', scale=4)
+                    gr.Slider(
+                        elem_id='galore_rank',
+                        minimum=8,
+                        maximum=256,
+                        step=8,
+                        scale=4)
+                    gr.Slider(
+                        elem_id='galore_update_proj_gap',
+                        minimum=10,
+                        maximum=1000,
+                        step=50,
+                        scale=4)
+                    gr.Checkbox(elem_id='galore_optim_per_parameter', scale=4)
                 with gr.Row():
                     gr.Dropdown(
                         elem_id='gpu_id',
@@ -243,6 +288,14 @@ class LLMTrain(BaseUI):
                         if not isinstance(value, (Tab, Accordion))
                     ] + [cls.element('log')] + Runtime.all_plots,
                     cancels=Runtime.log_event)
+                Runtime.element('kill_task').click(
+                    Runtime.kill_task,
+                    [Runtime.element('running_tasks')],
+                    [Runtime.element('running_tasks')]
+                    + [Runtime.element('log')] + Runtime.all_plots,
+                    cancels=[Runtime.log_event],
+                ).then(Runtime.reset, [], [Runtime.element('logging_dir')]
+                       + [Save.element('output_dir')])
 
     @classmethod
     def update_runtime(cls):
@@ -260,6 +313,7 @@ class LLMTrain(BaseUI):
             key for key, value in cls.elements().items()
             if not isinstance(value, (Tab, Accordion))
         ]
+        model_type = None
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(
@@ -283,6 +337,12 @@ class LLMTrain(BaseUI):
             if key == 'more_params' and value:
                 more_params = json.loads(value)
 
+            if key == 'model_type':
+                model_type = value
+
+        if os.path.exists(kwargs['model_id_or_path']):
+            kwargs['model_type'] = model_type
+
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
@@ -300,9 +360,7 @@ class LLMTrain(BaseUI):
             else:
                 params += f'--{e} "{kwargs[e]}" '
         params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
-                  f'--logging_dir {sft_args.logging_dir}'
-        for key, param in more_params.items():
-            params += f'--{key} "{param}" '
+                  f'--logging_dir {sft_args.logging_dir} '
         ddp_param = ''
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]

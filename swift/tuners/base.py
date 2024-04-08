@@ -1,26 +1,27 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
-import inspect
 import os
 import re
+import shutil
 from copy import copy
-from dataclasses import asdict
+from functools import partial
 from inspect import Parameter, Signature, signature
 from types import MethodType
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import json
 import torch
 from peft.utils import CONFIG_NAME
 from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
+from transformers import Trainer
 
-from swift import LoraConfig, SwiftTuners
+from swift import SwiftTuners
 from swift.hub.snapshot_download import snapshot_download
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
 from .. import PeftConfig, PeftModel, get_peft_model
-from .utils import SwiftConfig
+from .utils import SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -46,10 +47,12 @@ class SwiftModel(nn.Module):
                  **kwargs):
         super().__init__()
         self.adapters = {}
+        self.active_adapters = set()
         if isinstance(model, SwiftModel):
             self.adapters = model.adapters
             extra_state_keys = extra_state_keys or []
             extra_state_keys.extend(model.extra_state_keys)
+            self.active_adapters = model.active_adapters
             model = model.base_model
 
         new_adapters = []
@@ -257,6 +260,44 @@ class SwiftModel(nn.Module):
             return torch.load(filename, map_location=device)
         return None
 
+    def create_optimizer_param_groups(self, **defaults):
+        all_param_names = set()
+        param_groups = []
+        for output in self.adapters.values():
+            if output.optimizer_group_callback:
+                param_names, param_group = output.optimizer_group_callback(
+                    self.model, **defaults)
+                if param_names and all_param_names & param_names:
+                    raise ValueError(
+                        'Cannot set one parameter to different param groups')
+                if param_names and param_group:
+                    all_param_names.update(param_names)
+                    param_groups.append(param_group)
+
+        decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
+        param_groups.extend([
+            {
+                'params': [
+                    p for n, p in self.model.named_parameters()
+                    if (n in decay_parameters and n not in all_param_names
+                        and p.requires_grad)
+                ],
+                'weight_decay':
+                defaults['weight_decay'],
+            },
+            {
+                'params': [
+                    p for n, p in self.model.named_parameters()
+                    if (n not in decay_parameters and n not in all_param_names
+                        and p.requires_grad)
+                ],
+                'weight_decay':
+                0.0,
+            },
+        ])
+
+        return param_groups
+
     @classmethod
     def from_pretrained(cls,
                         model: Union[nn.Module, 'SwiftModel'],
@@ -408,8 +449,9 @@ class SwiftModel(nn.Module):
         quantization_config = None
         if hasattr(self.base_model, 'config') and hasattr(
                 self.base_model.config, 'quantization_config'):
-            quantization_config = self.base_model.config.quantization_config.to_dict(
-            )
+            if hasattr(self.base_model.config.quantization_config, 'to_dict'):
+                quantization_config = self.base_model.config.quantization_config.to_dict(
+                )
         training_config_text = ''
         # Adds quantization information if it was used
         if quantization_config is not None:
@@ -447,6 +489,102 @@ class SwiftModel(nn.Module):
         # write the lines back to README.md
         with open(os.path.join(output_dir, 'README.md'), 'w') as f:
             f.writelines(lines)
+
+    def add_weighted_adapter(
+        self,
+        adapters,
+        weights,
+        adapter_name,
+        combination_type='svd',
+        svd_rank=None,
+        svd_clamp=None,
+        svd_full_matrices=True,
+        svd_driver=None,
+        density=None,
+        majority_sign_method: Literal['total', 'frequency'] = 'total',
+    ):
+        """
+        This method adds a new adapter by merging the given adapters with the given weights.
+
+        When using the `cat` combination_type you should be aware that rank of the resulting adapter will be equal to
+        the sum of all adapters ranks. So it's possible that the mixed adapter may become too big and result in OOM
+        errors.
+
+        Args:
+            adapters (`list`):
+                List of adapter names to be merged.
+            weights (`list`):
+                List of weights for each adapter.
+            adapter_name (`str`):
+                Name of the new adapter.
+            combination_type (`str`):
+                The merging type can be one of [`svd`, `linear`, `cat`, `ties`, `ties_svd`, `dare_ties`, `dare_linear`,
+                `dare_ties_svd`, `dare_linear_svd`, `magnitude_prune`, `magnitude_prune_svd`]. When using the `cat`
+                combination_type, the rank of the resulting adapter is equal to the sum of all adapters ranks (the
+                mixed adapter may be too big and result in OOM errors).
+            svd_rank (`int`, *optional*):
+                Rank of output adapter for svd. If None provided, will use max rank of merging adapters.
+            svd_clamp (`float`, *optional*):
+                A quantile threshold for clamping SVD decomposition output. If None is provided, do not perform
+                clamping. Defaults to None.
+            svd_full_matrices (`bool`, *optional*):
+                Controls whether to compute the full or reduced SVD, and consequently, the shape of the returned
+                tensors U and Vh. Defaults to True.
+            svd_driver (`str`, *optional*):
+                Name of the cuSOLVER method to be used. This keyword argument only works when merging on CUDA. Can be
+                one of [None, `gesvd`, `gesvdj`, `gesvda`]. For more info please refer to `torch.linalg.svd`
+                documentation. Defaults to None.
+            density (`float`, *optional*):
+                Value between 0 and 1. 0 means all values are pruned and 1 means no values are pruned. Should be used
+                with [`ties`, `ties_svd`, `dare_ties`, `dare_linear`, `dare_ties_svd`, `dare_linear_svd`,
+                `magnintude_prune`, `magnitude_prune_svd`]
+            majority_sign_method (`str`):
+                The method, should be one of ["total", "frequency"], to use to get the magnitude of the sign values.
+                Should be used with [`ties`, `ties_svd`, `dare_ties`, `dare_ties_svd`]
+        """
+        from swift.tuners.lora import LoraModel
+        lora_model = LoraModel(self.model, None, '')
+        lora_model.peft_config = {
+            key: value.config
+            for key, value in self.adapters.items()
+        }
+        from peft.tuners.lora import LoraLayer
+        lora_model.targeted_module_names = [
+            key for key, value in self.model.named_modules()
+            if isinstance(value, LoraLayer)
+        ]
+        lora_model.active_adapter = self.active_adapters
+        lora_model.add_weighted_adapter(
+            adapters=adapters,
+            weights=weights,
+            adapter_name=adapter_name,
+            combination_type=combination_type,
+            svd_rank=svd_rank,
+            svd_clamp=svd_clamp,
+            svd_full_matrices=svd_full_matrices,
+            svd_driver=svd_driver,
+            density=density,
+            majority_sign_method=majority_sign_method,
+        )
+
+        def state_dict_callback(state_dict, adapter_name, cfg):
+            from swift.tuners.lora_layers import lora_state_dict
+            return lora_state_dict(state_dict, adapter_name, cfg.bias)
+
+        def mark_trainable_callback(model, cfg):
+            from swift.tuners.lora_layers import mark_lora_as_trainable
+            mark_lora_as_trainable(model, adapter_name, cfg.bias)
+
+        cfg = lora_model.peft_config[adapter_name]
+        cfg.has_additional_modules = True
+        self.adapters[adapter_name] = SwiftOutput(
+            config=cfg,
+            state_dict_callback=partial(state_dict_callback, cfg=cfg),
+            mark_trainable_callback=partial(mark_trainable_callback, cfg=cfg),
+            optimizer_group_callback=None,
+        )
+
+        self.set_active_adapters(adapter_name)
 
     def save_pretrained(self,
                         save_directory: str,
@@ -555,7 +693,13 @@ class SwiftModel(nn.Module):
 
     def set_active_adapters(self,
                             adapter_names: Union[List[str], str],
-                            offload=None):
+                            offload: str = None):
+        """Set activated adapters
+
+        Args:
+            adapter_names(`Union[List[str], str]`): The adapters needed to be activated
+            offload(`str`): Whether to offload the deactivated ones to `cpu` or `meta` device
+        """
         if not adapter_names:
             adapter_names = []
 
@@ -564,12 +708,19 @@ class SwiftModel(nn.Module):
 
         adapter_names = set(adapter_names)
         for adapter_name in (adapter_names & set(self.adapters.keys())):
-            self.activate_adapter(adapter_name, offload)
+            self.activate_adapter(adapter_name)
 
         for adapter_name in (set(self.adapters.keys()) - adapter_names):
             self.deactivate_adapter(adapter_name, offload)
 
-    def activate_adapter(self, adapter_name, offload=None):
+        self.active_adapters = (adapter_names & set(self.adapters.keys()))
+
+    def activate_adapter(self, adapter_name: str):
+        """Activate one adapter
+
+        Args:
+            adapter_name(`str`): The adapter needed to be activated
+        """
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -577,9 +728,16 @@ class SwiftModel(nn.Module):
 
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
-            .activate_adapter(self.base_model, adapter_name, True, offload)
+            .activate_adapter(self.base_model, adapter_name, True)
+        self.active_adapters = self.active_adapters | {adapter_name}
 
-    def deactivate_adapter(self, adapter_name, offload=None):
+    def deactivate_adapter(self, adapter_name: str, offload: str = None):
+        """Deactivate one adapter
+
+        Args:
+            adapter_name(`str`): The adapter needed to be activated
+            offload(`str`): Whether to offload to `cpu` or `meta` device
+        """
         if adapter_name not in self.adapters:
             logger.warning(
                 f'{adapter_name} not in adapters: {self.adapters.keys()}')
@@ -588,6 +746,7 @@ class SwiftModel(nn.Module):
         from .mapping import SWIFT_MAPPING
         SWIFT_MAPPING[self.adapters[adapter_name].config.swift_type][1]\
             .activate_adapter(self.base_model, adapter_name, False, offload=offload)
+        self.active_adapters = self.active_adapters - {adapter_name}
 
     def get_trainable_parameters(self):
         """
@@ -686,6 +845,89 @@ class Swift:
         for sub_module in model.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
                 sub_module.unmerge(**kwargs)
+
+    @staticmethod
+    def save_to_peft_format(ckpt_dir: str, output_dir: str) -> None:
+        """Save swift format to peft format
+
+        Args:
+            ckpt_dir(`str`): Original swift output dir
+            output_dir(`str`): Converted peft format dir
+        """
+        assert ckpt_dir and output_dir, 'Please pass in valid ckpt_dir and output_dir.'
+        assert os.path.exists(
+            ckpt_dir), f'ckpt_dir: {ckpt_dir} must exists in local disk.'
+        if os.path.exists(os.path.join(ckpt_dir, SwiftModel.EXTRA_STATE_DIR)):
+            raise AssertionError(
+                'Cannot transfer to peft format, because you are additional state dicts.'
+            )
+
+        adapter_names = [
+            sub_dir for sub_dir in os.listdir(ckpt_dir)
+            if os.path.isfile(os.path.join(ckpt_dir, sub_dir, CONFIG_NAME))
+        ]
+
+        def has_custom_content(_json):
+            if _json.get('swift_type',
+                         _json.get('peft_type')) != SwiftTuners.LORA:
+                logger.warn('Only LoRA can be converted to peft format')
+                return True
+
+            from swift import LoRAConfig
+            return not LoRAConfig(**_json).can_be_saved_to_peft()
+
+        for adapter in adapter_names:
+            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
+                _json = json.load(f)
+                if has_custom_content(_json):
+                    raise AssertionError(
+                        'Cannot transfer to peft format, '
+                        'because you have special parameters or adapter types.'
+                    )
+
+        os.makedirs(output_dir, exist_ok=True)
+        if ckpt_dir != output_dir:
+            shutil.copytree(ckpt_dir, output_dir, dirs_exist_ok=True)
+
+        for adapter in adapter_names:
+            safe_serialization = os.path.isfile(
+                os.path.join(output_dir, adapter, SAFETENSORS_WEIGHTS_NAME))
+            state_dict = SwiftModel.load_state_file(
+                os.path.join(output_dir, adapter))
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                if not key.startswith('base_model.model.'):
+                    key = 'base_model.model.' + key
+                key = key.replace(f'lora_A.{adapter}.', 'lora_A.')
+                key = key.replace(f'lora_B.{adapter}.', 'lora_B.')
+                key = key.replace(f'lora_embedding_A.{adapter}.',
+                                  'lora_embedding_A.')
+                key = key.replace(f'lora_embedding_B.{adapter}.',
+                                  'lora_embedding_B.')
+                key = key.replace(f'lora_magnitude_vector.{adapter}',
+                                  'lora_magnitude_vector')
+                new_state_dict[key] = value
+            state_dict = new_state_dict
+            SwiftModel._save_state_dict(state_dict,
+                                        os.path.join(output_dir, adapter),
+                                        safe_serialization)
+            from swift import LoRAConfig
+            with open(os.path.join(output_dir, adapter, CONFIG_NAME)) as f:
+                _json = json.load(f)
+                peft_config = LoRAConfig(**_json).to_peft_config()
+            peft_config.save_pretrained(os.path.join(output_dir, adapter))
+
+        if 'default' in adapter_names:
+            shutil.move(
+                os.path.join(output_dir, 'default', CONFIG_NAME),
+                os.path.join(output_dir, CONFIG_NAME))
+            state_dict = SwiftModel.load_state_file(
+                os.path.join(output_dir, 'default'))
+            safe_serialization = os.path.isfile(
+                os.path.join(output_dir, 'default', SAFETENSORS_WEIGHTS_NAME))
+            SwiftModel._save_state_dict(state_dict, output_dir,
+                                        safe_serialization)
+            shutil.rmtree(os.path.join(output_dir, 'default'))
 
     @staticmethod
     def from_pretrained(model: Union[nn.Module, SwiftModel],

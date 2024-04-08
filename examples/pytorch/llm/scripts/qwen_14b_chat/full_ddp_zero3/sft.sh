@@ -1,8 +1,10 @@
-# Experimental environment: 8 * A100
-nproc_per_node=8
+# Experimental environment: 4 * A100
+# 4 * 78GB GPU memory
+nproc_per_node=4
+
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model_id_or_path qwen/Qwen-14B-Chat \
     --model_revision master \
@@ -19,7 +21,7 @@ swift sft \
     --check_dataset_strategy warning \
     --gradient_checkpointing true \
     --batch_size 1 \
-    --weight_decay 0.01 \
+    --weight_decay 0.1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps $(expr 64 / $nproc_per_node) \
     --max_grad_norm 0.5 \
@@ -29,5 +31,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --deepspeed_config_path 'default-zero3' \
+    --deepspeed 'default-zero3' \
     --save_only_model true \

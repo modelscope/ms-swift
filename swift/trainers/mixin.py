@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import importlib
 import os
 import re
 import shutil
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -15,9 +16,10 @@ import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
-from requests.exceptions import HTTPError
+from torch import nn
 from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
+                          is_bitsandbytes_available)
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
@@ -25,17 +27,17 @@ from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
                                   ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME,
                                   TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
-                                  WEIGHTS_NAME, IntervalStrategy,
+                                  WEIGHTS_NAME, IntervalStrategy, Trainer,
                                   TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
-from swift.hub import HubApi, ModelScopeConfig, Repository
+from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.hub.constants import ModelVisibility
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, get_logger
+from swift.utils import check_json_format, create_ms_repo, get_logger
 from swift.utils.constants import Invoke
+from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import (can_return_loss, find_labels, get_function,
                     is_instance_of_ms_model)
 
@@ -120,38 +122,15 @@ class PushToMsHubMixin:
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
             return
-        # Make sure the repo exists.
-        api = HubApi()
-        hub_token = self.args.hub_token
-        if hub_token is None:
-            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if hub_token is not None:
-            api.login(hub_token)
-
-        hub_model_id = self.args.hub_model_id
-        assert hub_model_id is not None, 'Please enter a valid hub_model_id'
-        if '/' not in hub_model_id:
-            user_name = ModelScopeConfig.get_user_info()[0]
-            assert isinstance(user_name, str)
-            hub_model_id = f'{user_name}/{hub_model_id}'
-            logger.info(
-                f"'/' not in hub_model_id, setting hub_model_id: {hub_model_id}"
-            )
-            self.args.hub_model_id = hub_model_id
-
-        visibility = ModelVisibility.PRIVATE if self.args.hub_private_repo else ModelVisibility.PUBLIC
-        try:
-            api.create_model(hub_model_id, visibility)
-        except HTTPError:
-            # The remote repository has been created
-            pass
-
         if (os.path.exists(self.args.output_dir)
                 and os.listdir(self.args.output_dir)
                 and self.args.overwrite_output_dir and at_init):
             # directory not empty.
             shutil.rmtree(self.args.output_dir)
-        self.repo = Repository(self.args.output_dir, hub_model_id)
+        self.args.hub_model_id = create_ms_repo(self.args.hub_model_id,
+                                                self.args.hub_token,
+                                                self.args.hub_private_repo)
+        self.repo = Repository(self.args.output_dir, self.args.hub_model_id)
         self._add_patterns_to_gitattributes(['*.safetensors', '*.bin', '*.pt'])
         self.repo.push_to_hub = MethodType(_push_to_hub, self.repo)
         self.repo.local_dir = self.repo.model_dir  # hf compatibility
@@ -446,8 +425,10 @@ class SwiftMixin:
             for file in additional_files:
                 src_path = os.path.join(model_dir, file)
                 dst_path = os.path.join(output_dir, file)
-                if os.path.exists(src_path):
+                if os.path.isfile(src_path):
                     shutil.copy(src_path, dst_path)
+                elif os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
         self.state.last_model_checkpoint = os.path.join(
@@ -598,6 +579,8 @@ class SwiftMixin:
             if version.parse(
                     transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
+                if isinstance(grad_norm, torch.Tensor):
+                    grad_norm = grad_norm.item()
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
@@ -607,3 +590,64 @@ class SwiftMixin:
             self.store_flos()
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
+
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        if hasattr(self.args, 'galore_config'):
+            optimizer, lr_scheduler = create_optimizer_and_scheduler(
+                self.model,
+                self.args,
+                self.args.galore_config,
+                num_training_steps,
+                lr=self.args.learning_rate,
+                weight_decay=self.args.weight_decay)
+            self.optimizer = optimizer
+            self.lr_scheduler = lr_scheduler
+        else:
+            self.create_optimizer()
+            self.create_scheduler(
+                num_training_steps=num_training_steps,
+                optimizer=self.optimizer)
+
+    def create_optimizer(self):
+        opt_model = self.model
+
+        if self.optimizer is None:
+            if version.parse(
+                    transformers.__version__) < version.parse('4.34.0'):
+                logger.warning(
+                    f'If you are using lora+, please remember using transformers>=4.34.0, '
+                    f'but now is {transformers.__version__}')
+                return super().create_optimizer()
+
+            decay_parameters = self.get_decay_parameter_names(opt_model)
+            if isinstance(self.model, SwiftModel):
+                # Lora+ parameter groups (or a default one)
+                optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
+                    lr=self.args.learning_rate,
+                    weight_decay=self.args.weight_decay)
+            else:
+                # Default parameter groups
+                optimizer_grouped_parameters = [
+                    {
+                        'params': [
+                            p for n, p in opt_model.named_parameters()
+                            if (n in decay_parameters and p.requires_grad)
+                        ],
+                        'weight_decay':
+                        self.args.weight_decay,
+                    },
+                    {
+                        'params': [
+                            p for n, p in opt_model.named_parameters()
+                            if (n not in decay_parameters and p.requires_grad)
+                        ],
+                        'weight_decay':
+                        0.0,
+                    },
+                ]
+
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+                self.args)
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters,
+                                           **optimizer_kwargs)
+        return self.optimizer

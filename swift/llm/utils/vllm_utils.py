@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import vllm
-from modelscope import GenerationConfig, snapshot_download
+from modelscope import GenerationConfig
 from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
@@ -14,11 +14,17 @@ from transformers import PreTrainedTokenizerBase
 from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
                   SamplingParams)
 
+from swift.tuners import Swift
 from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
-from .model import MODEL_MAPPING, get_model_tokenizer
+from .model import get_model_tokenizer
 from .template import Template, get_template
-from .utils import _is_chinese_char
+from .utils import _get_safe_print_idx
+
+try:
+    from vllm.lora.request import LoRARequest
+except ImportError:
+    pass
 
 logger = get_logger()
 
@@ -26,49 +32,57 @@ logger = get_logger()
 def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
+                    model_id_or_path: Optional[str] = None,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     max_model_len: Optional[int] = None,
                     engine_kwargs: Optional[Dict[str, Any]] = None,
                     use_async: bool = False,
+                    enable_lora: bool = False,
+                    max_loras: int = 1,
+                    max_lora_rank: int = 16,
                     **kwargs) -> LLMEngine:
+    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    tokenizer = get_model_tokenizer(
+        model_type,
+        load_model=False,
+        model_id_or_path=model_id_or_path,
+        model_dir=model_dir)[1]
+    model_dir = tokenizer.model_dir
+
     if engine_kwargs is None:
         engine_kwargs = {}
-    model_info = MODEL_MAPPING[model_type]
-    model_id_or_path = model_info['model_id_or_path']
-    ignore_file_pattern = model_info['ignore_file_pattern']
-    model_dir = kwargs.get('model_dir', None)
-    if model_dir is None:
-        model_dir = model_id_or_path
-        if model_id_or_path is not None and not os.path.exists(
-                model_id_or_path):
-            revision = model_info['revision']
-            model_dir = snapshot_download(
-                model_id_or_path,
-                revision,
-                ignore_file_pattern=ignore_file_pattern)
-    model_dir = os.path.expanduser(model_dir)
-    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
-
     dtype_mapping = {
         torch.float16: 'float16',
         torch.bfloat16: 'bfloat16',
         torch.float32: 'float32',
         None: 'auto'
     }
-    tokenizer = get_model_tokenizer(
-        model_type, load_model=False, model_dir=model_dir)[1]
+    dtype = dtype_mapping[torch_dtype]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
+
     if use_async:
         engine_args_cls = AsyncEngineArgs
         llm_engine_cls = AsyncLLMEngine
+        engine_kwargs['disable_log_requests'] = True
     else:
         engine_args_cls = EngineArgs
         llm_engine_cls = LLMEngine
+
+    parameters = inspect.signature(engine_args_cls.__init__).parameters
+    if 'enable_lora' in parameters:
+        engine_kwargs['enable_lora'] = enable_lora
+        engine_kwargs['max_loras'] = max_loras
+        engine_kwargs['max_lora_rank'] = max_lora_rank
+    else:
+        assert not enable_lora, (
+            'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+        )
+
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
-        dtype=dtype_mapping[torch_dtype],
+        dtype=dtype,
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
         max_model_len=max_model_len,
@@ -190,6 +204,7 @@ def inference_stream_vllm(
         request_list: List[Dict[str, Any]],
         *,
         generation_config: Optional[VllmGenerationConfig] = None,
+        lora_request: Optional['LoRARequest'] = None,
         use_tqdm: bool = False,
         **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
@@ -216,14 +231,39 @@ def inference_stream_vllm(
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
+    parameters = inspect.signature(llm_engine.add_request).parameters
+    add_request_kwargs = {}
+    if 'lora_request' in parameters:
+        add_request_kwargs['lora_request'] = lora_request
+    else:
+        assert lora_request is None, (
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
+        )
+    request_temp = []
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
             history = []
+
+        # agent support
+        is_observation = history[-1][-1].endswith(
+            'Observation:') if history and history[-1][-1] else False
+        act_length = None
+        if is_observation:
+            history[-1][-1] = history[-1][-1] + request['query']
+            act_length = len(history[-1][-1])
+            request['query'] = None
+        request_temp.append((is_observation, act_length))
+
         request['history'] = history
         inputs = template.encode(request)[0]
+        if len(inputs) == 0:
+            raise ValueError(
+                'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+            )
         input_ids = inputs['input_ids']
-        llm_engine.add_request(str(i), None, generation_config, input_ids)
+        llm_engine.add_request(
+            str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     batch_size = len(request_list)
     resp_list = [None] * batch_size
@@ -235,20 +275,20 @@ def inference_stream_vllm(
             i = int(output.request_id)
             request = request_list[i]
             response = tokenizer.decode(output.outputs[0].token_ids, True)
-            if output.finished or response.endswith(
-                    '\n') or len(response) > 0 and _is_chinese_char(
-                        ord(response[-1])):
-                print_idx_list[i] = len(response)
-            else:
-                print_idx_list[i] = max(
-                    response.rfind(' ') + 1, print_idx_list[i])
+            print_idx_list[i] = _get_safe_print_idx(response,
+                                                    print_idx_list[i],
+                                                    output.finished)
             # avoid printing incomplete words
             safe_response = response[:print_idx_list[i]]
             query = request['query']
             history = request['history']
-            if resp_list[i] is None:
+            if resp_list[i] is None and not request_temp[i][0]:
                 history.append(None)
-            history[-1] = (query, safe_response)
+            if not request_temp[i][0]:
+                history[-1] = [query, safe_response]
+            else:
+                history[-1][
+                    -1] = history[-1][-1][:request_temp[i][1]] + safe_response
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
@@ -260,6 +300,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    request_list: List[Dict[str, Any]],
                    *,
                    generation_config: Optional[VllmGenerationConfig] = None,
+                   lora_request: Optional['LoRARequest'] = None,
                    use_tqdm: bool = False,
                    verbose: bool = False,
                    prompt_prefix: str = '[PROMPT]',
@@ -286,14 +327,34 @@ def inference_vllm(llm_engine: LLMEngine,
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
 
+    parameters = inspect.signature(llm_engine.add_request).parameters
+    add_request_kwargs = {}
+    if 'lora_request' in parameters:
+        add_request_kwargs['lora_request'] = lora_request
+    else:
+        assert lora_request is None, (
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
+        )
+
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
             history = []
+
+        is_observation = history[-1][-1].endswith(
+            'Observation:') if history and history[-1][-1] else False
+        if is_observation:
+            history[-1][-1] = history[-1][-1] + request['query']
+            request['query'] = None
         request['history'] = history
         inputs = template.encode(request)[0]
+        if len(inputs) == 0:
+            raise ValueError(
+                'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
+            )
         input_ids = inputs['input_ids']
-        llm_engine.add_request(str(i), None, generation_config, input_ids)
+        llm_engine.add_request(
+            str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     batch_size = len(request_list)
     if use_tqdm is True:
@@ -314,7 +375,10 @@ def inference_vllm(llm_engine: LLMEngine,
         response = tokenizer.decode(output.outputs[0].token_ids, True)
         query = request['query']
         history = request['history']
-        history.append((query, response))
+        if not is_observation:
+            history.append([query, response])
+        else:
+            history[-1][-1] = history[-1][-1] + response
         resp_list[i] = {'response': response, 'history': history}
         if verbose:
             print(
@@ -327,18 +391,18 @@ def inference_vllm(llm_engine: LLMEngine,
 def prepare_vllm_engine_template(
         args: InferArguments,
         use_async: bool = False) -> Tuple[LLMEngine, Template]:
-    logger.info(f'args: {args}')
     logger.info(f'device_count: {torch.cuda.device_count()}')
     seed_everything(args.seed)
 
     assert args.quantization_bit == 0, 'not support bnb'
-    assert args.sft_type == 'full', 'you need to merge lora'
+    assert not (args.sft_type == 'lora'
+                and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
-    kwargs = {}
+    model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
-        kwargs['model_dir'] = args.ckpt_dir
-    elif args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
     llm_engine = get_vllm_engine(
         args.model_type,
         args.torch_dtype,
@@ -346,7 +410,10 @@ def prepare_vllm_engine_template(
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         use_async=use_async,
-        **kwargs)
+        model_id_or_path=model_id_or_path,
+        enable_lora=args.vllm_enable_lora,
+        max_loras=len(args.vllm_lora_modules),
+        max_lora_rank=args.vllm_max_lora_rank)
     tokenizer = llm_engine.hf_tokenizer
     if use_async:
         model_config = asyncio.run(llm_engine.get_model_config())
@@ -354,6 +421,7 @@ def prepare_vllm_engine_template(
     else:
         model_config = llm_engine.model_config
     logger.info(f'model_config: {model_config.hf_config}')
+
     if not args.do_sample:
         args.temperature = 0
     generation_config = VllmGenerationConfig(
@@ -361,6 +429,7 @@ def prepare_vllm_engine_template(
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
+        stop=args.stop_words,
         repetition_penalty=args.repetition_penalty,
         num_beams=args.num_beams)
     logger.info(f'generation_config: {generation_config}')

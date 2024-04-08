@@ -1,6 +1,4 @@
 import os
-import re
-from typing import List
 
 from datasets import concatenate_datasets
 
@@ -15,10 +13,9 @@ def write_dataset_info() -> None:
     if os.path.exists(fpath):
         with open(fpath, 'r', encoding='utf-8') as f:
             text = f.read()
-        match_ = re.search(r'\| Dataset Name \|', text)
-        assert match_ is not None
-        pre_text = text[:match_.start()]
-        text = text[match_.start():]
+        idx = text.find('| Dataset Name |')
+        pre_text = text[:idx]
+        text = text[idx:]
         text_list = [t for t in text.split('\n') if len(t.strip()) > 0]
     else:
         text_list = []
@@ -95,6 +92,7 @@ def write_dataset_info() -> None:
         res_text_list.append(
             f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
             f'{val_size}|{stat_str}|{tags_str}|')
+    print(f'数据集总数: {len(dataset_name_list)}')
     text = '\n'.join(res_text_list)
     text = pre_text + text + '\n'
     with open(fpath, 'w', encoding='utf-8') as f:

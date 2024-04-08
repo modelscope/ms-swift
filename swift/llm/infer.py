@@ -5,10 +5,12 @@ import shutil
 from typing import Any, Dict, Literal, Optional, Tuple
 
 import json
+import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
@@ -21,9 +23,63 @@ from .utils import (TEMPLATE_MAPPING, InferArguments, Template,
 logger = get_logger()
 
 
+def save_checkpoint(model: Optional[PreTrainedModel],
+                    tokenizer: PreTrainedTokenizerBase,
+                    model_cache_dir: str,
+                    ckpt_dir: Optional[str],
+                    target_dir: str,
+                    *,
+                    save_safetensors: bool = True) -> None:
+    if model is not None:
+        model.save_pretrained(target_dir, safe_serialization=save_safetensors)
+    tokenizer.save_pretrained(target_dir)
+    model_type = getattr(tokenizer, 'model_type')
+    fname_list = ['generation_config.json']
+    if model_type is not None:
+        fname_list += get_additional_saved_files(model_type)
+
+    for fname in fname_list:
+        tgt_path = os.path.join(target_dir, fname)
+        for model_dir in [ckpt_dir, model_cache_dir]:
+            if model_dir is None:
+                continue
+            src_path = os.path.join(model_dir, fname)
+            if os.path.isfile(src_path):
+                shutil.copy(src_path, tgt_path)
+                break
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, tgt_path)
+                break
+    # configuration.json
+    configuration_fname = 'configuration.json'
+    new_configuration_path = os.path.join(target_dir, configuration_fname)
+    for model_dir in [ckpt_dir, model_cache_dir]:
+        if model_dir is None:
+            continue
+        old_configuration_path = os.path.join(model_dir, configuration_fname)
+        if os.path.exists(old_configuration_path):
+            with open(old_configuration_path, 'r', encoding='utf-8') as f:
+                res = json.load(f)
+            res.pop('adapter_cfg', None)
+            with open(new_configuration_path, 'w', encoding='utf-8') as f:
+                json.dump(res, f, ensure_ascii=False, indent=4)
+            break
+    if ckpt_dir is not None:
+        # sft_args.json
+        sft_args_fname = 'sft_args.json'
+        old_sft_args_path = os.path.join(ckpt_dir, sft_args_fname)
+        new_sft_args_path = os.path.join(target_dir, sft_args_fname)
+        if os.path.exists(old_sft_args_path):
+            with open(old_sft_args_path, 'r', encoding='utf-8') as f:
+                res = json.load(f)
+            res['sft_type'] = 'full'
+            with open(new_sft_args_path, 'w', encoding='utf-8') as f:
+                json.dump(res, f, ensure_ascii=False, indent=2)
+
+
 def merge_lora(args: InferArguments,
                replace_if_exists=False,
-               device_map: str = 'auto',
+               device_map: Optional[str] = None,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
@@ -47,13 +103,26 @@ def merge_lora(args: InferArguments,
             'skipping the saving process. '
             'you can pass `replace_if_exists=True` to overwrite it.')
         return
+
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+    model_kwargs['device_map'] = device_map
+
     # Loading Model and Tokenizer
-    kwargs = {}
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': device_map}
-    if args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model_id_or_path = None
+    if args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path)
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
@@ -61,51 +130,34 @@ def merge_lora(args: InferArguments,
     Swift.merge_and_unload(model)
     model = model.model
     logger.info('Saving merged weights...')
-    model.save_pretrained(
-        merged_lora_path, safe_serialization=args.save_safetensors)
-    for add_file in get_additional_saved_files(args.model_type):
-        shutil.copy(
-            os.path.join(model.model_dir, add_file),
-            os.path.join(merged_lora_path, add_file))
-    tokenizer.save_pretrained(merged_lora_path)
-    for fname in os.listdir(old_ckpt_dir):
-        if fname in {'generation_config.json'}:
-            src_path = os.path.join(old_ckpt_dir, fname)
-            tgt_path = os.path.join(merged_lora_path, fname)
-            shutil.copy(src_path, tgt_path)
-    # configuration.json
-    configuration_fname = 'configuration.json'
-    old_configuration_path = os.path.join(old_ckpt_dir, configuration_fname)
-    new_configuration_path = os.path.join(merged_lora_path,
-                                          configuration_fname)
-    if os.path.exists(old_configuration_path):
-        with open(old_configuration_path, 'r', encoding='utf-8') as f:
-            res = json.load(f)
-        res.pop('adapter_cfg', None)
-        with open(new_configuration_path, 'w', encoding='utf-8') as f:
-            json.dump(res, f, ensure_ascii=False, indent=4)
-    # sft_args.json
-    sft_args_fname = 'sft_args.json'
-    old_sft_args_path = os.path.join(old_ckpt_dir, sft_args_fname)
-    new_sft_args_path = os.path.join(merged_lora_path, sft_args_fname)
-    if os.path.exists(old_sft_args_path):
-        with open(old_sft_args_path, 'r', encoding='utf-8') as f:
-            res = json.load(f)
-        res['sft_type'] = 'full'
-        with open(new_sft_args_path, 'w', encoding='utf-8') as f:
-            json.dump(res, f, ensure_ascii=False, indent=2)
+    save_checkpoint(
+        model,
+        tokenizer,
+        model.model_dir,
+        old_ckpt_dir,
+        merged_lora_path,
+        save_safetensors=args.save_safetensors)
     logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     return merged_lora_path
 
 
 def prepare_model_template(
-        args: InferArguments) -> Tuple[PreTrainedModel, Template]:
-    logger.info(f'args: {args}')
-    logger.info(f'device_count: {torch.cuda.device_count()}')
+        args: InferArguments,
+        device_map: Optional[str] = None) -> Tuple[PreTrainedModel, Template]:
+
     seed_everything(args.seed)
 
+    model_kwargs = {}
+    if is_torch_npu_available():
+        logger.info(f'device_count: {torch.npu.device_count()}')
+        device_map = 'npu:0'
+    else:
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+        device_map = 'auto'
+        model_kwargs['low_cpu_mem_usage'] = True
+    model_kwargs['device_map'] = device_map
+
     # Loading Model and Tokenizer
-    model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -113,19 +165,46 @@ def prepare_model_template(
             bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,
             bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
+        if args.bnb_4bit_compute_dtype is None:
+            quantization_config.bnb_4bit_compute_dtype = None
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
     kwargs = {}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
+    model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
-        kwargs['model_dir'] = args.ckpt_dir
-    elif args.model_cache_dir is not None:
-        kwargs['model_dir'] = args.model_cache_dir
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
 
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model, tokenizer = get_model_tokenizer(
+        args.model_type,
+        args.torch_dtype,
+        model_kwargs,
+        model_id_or_path=model_id_or_path,
+        **kwargs)
     logger.info(f'model_config: {model.config}')
+    if model.max_model_len is None:
+        model.max_model_len = args.max_model_len
+    elif args.max_model_len is not None:
+        if args.max_model_len <= model.max_model_len:
+            model.max_model_len = args.max_model_len
+        else:
+            raise ValueError(
+                'args.max_model_len exceeds the maximum max_model_len supported by the model.'
+                f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}'
+            )
+    # Preparing LoRA
+    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
+        model = Swift.from_pretrained(
+            model, args.ckpt_dir, inference_mode=True)
+        if args.sft_type == 'adalora':
+            model = model.to(model.dtype)
+
+    logger.info(get_model_info(model))
+    show_layers(model)
+
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -138,15 +217,6 @@ def prepare_model_template(
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
-    # Preparing LoRA
-    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        model = Swift.from_pretrained(
-            model, args.ckpt_dir, inference_mode=True)
-        if args.sft_type == 'adalora':
-            model = model.to(model.dtype)
-
-    logger.info(get_model_info(model))
-    show_layers(model)
 
     template: Template = get_template(
         args.template_type,
@@ -176,16 +246,21 @@ def read_media_file(
 
 
 def llm_infer(args: InferArguments) -> None:
-    if args.merge_lora_and_save:
-        merge_lora(args, device_map='cpu')
+    logger.info(f'args: {args}')
+    if args.merge_lora:
+        merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':
-        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        from .utils import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
         model, template = prepare_model_template(args)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)
+    lora_request = None
+    if args.vllm_enable_lora:
+        assert len(args.vllm_lora_request_list) == 1
+        lora_request = args.vllm_lora_request_list[0]
     # Inference
     result = []
     jsonl_path = None
@@ -196,6 +271,8 @@ def llm_infer(args: InferArguments) -> None:
         input_mode: Literal['S', 'M'] = 'S'
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
+        logger.info(
+            'Input `reset-system` to reset the system and clear the history.')
         if template.support_multi_round:
             logger.info('Input `clear` to clear the history.')
         else:
@@ -206,11 +283,19 @@ def llm_infer(args: InferArguments) -> None:
         if args.infer_media_type != 'none':
             logger.info('Please enter the conversation content first, '
                         'followed by the path to the multimedia file.')
+        system = None
+        read_system = False
         while True:
             if input_mode == 'S':
-                query = input('<<< ')
+                addi_prompt = ''
+                if read_system:
+                    addi_prompt = '[S]'
+                query = input(f'<<<{addi_prompt} ')
             else:
-                query = read_multi_line()
+                addi_prompt = '[M]'
+                if read_system:
+                    addi_prompt = '[MS]'
+                query = read_multi_line(addi_prompt)
             if query.strip().lower() in {'exit', 'quit'}:
                 break
             elif query.strip().lower() == 'clear':
@@ -218,6 +303,13 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
                 continue
             elif query.strip() == '':
+                continue
+            elif query.strip().lower() == 'reset-system':
+                read_system = True
+                continue
+            if read_system:
+                system = query
+                read_system = False
                 continue
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
@@ -231,12 +323,20 @@ def llm_infer(args: InferArguments) -> None:
             if not template.support_multi_round:
                 history = []
                 infer_kwargs = {}
+
             read_media_file(infer_kwargs, args.infer_media_type)
             if args.infer_backend == 'vllm':
-                request_list = [{'query': query, 'history': history}]
+                request_list = [{
+                    'query': query,
+                    'history': history,
+                    'system': system
+                }]
                 if args.stream:
-                    gen = inference_stream_vllm(llm_engine, template,
-                                                request_list)
+                    gen = inference_stream_vllm(
+                        llm_engine,
+                        template,
+                        request_list,
+                        lora_request=lora_request)
                     print_idx = 0
                     for resp_list in gen:
                         response = resp_list[0]['response']
@@ -246,15 +346,20 @@ def llm_infer(args: InferArguments) -> None:
                             print_idx = len(response)
                     print()
                 else:
-                    resp_list = inference_vllm(llm_engine, template,
-                                               request_list)
+                    resp_list = inference_vllm(
+                        llm_engine,
+                        template,
+                        request_list,
+                        lora_request=lora_request)
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
                     print(response)
             else:
+                if args.stop_words:
+                    infer_kwargs['stop_words'] = args.stop_words
                 if args.stream:
                     gen = inference_stream(model, template, query, history,
-                                           **infer_kwargs)
+                                           system, **infer_kwargs)
                     print_idx = 0
                     for response, new_history in gen:
                         if len(response) > print_idx:
@@ -263,7 +368,8 @@ def llm_infer(args: InferArguments) -> None:
                     print()
                 else:
                     response, new_history = inference(model, template, query,
-                                                      history, **infer_kwargs)
+                                                      history, system,
+                                                      **infer_kwargs)
                     print(response)
             print('-' * 50)
             obj = {
@@ -276,11 +382,18 @@ def llm_infer(args: InferArguments) -> None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
     else:
-        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
-                                     args.dataset_seed)
-        if args.val_dataset_sample >= 0:
-            val_dataset = val_dataset.select(
-                range(min(args.val_dataset_sample, val_dataset.shape[0])))
+        random_state = np.random.RandomState(args.dataset_seed)
+        _, val_dataset = get_dataset(
+            args.dataset,
+            args.dataset_test_ratio,
+            random_state,
+            check_dataset_strategy=args.check_dataset_strategy)
+        if args.val_dataset_sample >= 0 and val_dataset.shape[
+                0] > args.val_dataset_sample:
+            logger.info(f'val_dataset_sample: {args.val_dataset_sample}')
+            val_idxs = random_state.permutation(args.val_dataset_sample)
+            val_dataset = val_dataset.select(val_idxs)
+
         logger.info(f'val_dataset: {val_dataset}')
         if args.verbose is None:
             if len(val_dataset) >= 100:
@@ -320,6 +433,8 @@ def llm_infer(args: InferArguments) -> None:
                 history = data.get('history')
                 system = data.get('system')
                 images = data.get('images')
+                if args.verbose and system is not None:
+                    print(f'[SYSTEM]{system}')
                 if history is not None:
                     kwargs['history'] = history
                 if system is not None:
@@ -329,8 +444,11 @@ def llm_infer(args: InferArguments) -> None:
                 if args.infer_backend == 'vllm':
                     assert args.stream is True
                     if args.verbose:
-                        print(f"query: {data['query']}\nresponse: ", end='')
-                    gen = inference_stream_vllm(llm_engine, template, [kwargs])
+                        print(f"[QUERY]{data['query']}\n[RESPONSE]", end='')
+                    gen = inference_stream_vllm(
+                        llm_engine,
+                        template, [kwargs],
+                        lora_request=lora_request)
                     print_idx = 0
                     for resp_list in gen:
                         response = resp_list[0]['response']
@@ -360,6 +478,10 @@ def llm_infer(args: InferArguments) -> None:
                     print('-' * 50)
     if args.save_result and args.ckpt_dir is not None:
         logger.info(f'save_result_path: {jsonl_path}')
+    if args.val_dataset_sample == 10:  # is default
+        logger.info(
+            'You can set `--val_dataset_sample -1` to perform inference on the entire dataset.'
+        )
     return {'result': result}
 
 
