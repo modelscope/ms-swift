@@ -139,6 +139,26 @@ class DatasetName:
     # for awq
     pileval = 'pileval'
 
+    # COIG-CQIA
+    coig_cqia_chinese_traditional = 'coig-cqia-chinese-traditional'
+    coig_cqia_coig_pc = 'coig-cqia-coig-pc'
+    coig_cqia_exam = 'coig-cqia-exam'
+    coig_cqia_finance = 'coig-cqia-finance'
+    coig_cqia_douban = 'coig-cqia-douban'
+    coig_cqia_human_value = 'coig-cqia-human-value'
+    coig_cqia_logi_qa = 'coig-cqia-logi-qa'
+    coig_cqia_ruozhiba = 'coig-cqia-ruozhiba'
+    coig_cqia_segmentfault = 'coig-cqia-segmentfault'
+    coig_cqia_wiki = 'coig-cqia-wiki'
+    coig_cqia_wikihow = 'coig-cqia-wikihow'
+    coig_cqia_xhs = 'coig-cqia-xhs'
+    coig_cqia_zhihu = 'coig-cqia-zhihu'
+
+    # ruozhiba
+    ruozhiba_post_annual = 'ruozhiba-post-annual'
+    ruozhiba_title_good = 'ruozhiba-title-good'
+    ruozhiba_title_norm = 'ruozhiba-title-norm'
+
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
         res = []
@@ -212,7 +232,7 @@ def load_ms_dataset(
         assert len(subset_split) == 2
         subset_name, split = subset_split
         dataset = MsDataset.load(
-            dataset_id, subset_name=subset_name, split=split).to_hf_dataset()
+            dataset_id, subset_name=subset_name, split=split)
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -253,6 +273,58 @@ def load_ms_dataset(
     DatasetName.alpaca_en,
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
     tags=['chat', 'general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_chinese_traditional,
+    'AI-ModelScope/COIG-CQIA', [('chinese_traditional', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_coig_pc,
+    'AI-ModelScope/COIG-CQIA', [('coig_pc', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_exam,
+    'AI-ModelScope/COIG-CQIA', [('exam', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_finance,
+    'AI-ModelScope/COIG-CQIA', [('finance', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_douban,
+    'AI-ModelScope/COIG-CQIA', [('douban', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_human_value,
+    'AI-ModelScope/COIG-CQIA', [('human_value', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_logi_qa,
+    'AI-ModelScope/COIG-CQIA', [('logi_qa', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_ruozhiba,
+    'AI-ModelScope/COIG-CQIA', [('ruozhiba', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_segmentfault,
+    'AI-ModelScope/COIG-CQIA', [('segmentfault', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_wiki,
+    'AI-ModelScope/COIG-CQIA', [('wiki', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_wikihow,
+    'AI-ModelScope/COIG-CQIA', [('wikihow', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_xhs,
+    'AI-ModelScope/COIG-CQIA', [('xhs', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_zhihu,
+    'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
+    tags=['general', '🔥'])
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],
@@ -475,6 +547,43 @@ register_dataset(
     long_alpaca_preprocessor,
     get_dataset_from_repo,
     tags=['longlora', 'QA'])
+
+
+def _preprocess_ruozhiba(dataset: HfDataset):
+
+    def map_row(row):
+        title = row['title'] if 'title' in row else row['content']
+        abs = row['abs'] if 'abs' in row else None
+        if abs and abs != title:
+            title = title + '，' + abs
+
+        pattern = r'\d+[\.,\s,\、](.+)'
+        match = re.search(pattern, title)
+        if match:
+            title = match.group(1)
+        return {'response': title}
+
+    return dataset.map(map_row).filter(lambda row: row['response'])
+
+
+register_dataset(
+    DatasetName.ruozhiba_post_annual,
+    'AI-ModelScope/ruozhiba', [('post-annual', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
+register_dataset(
+    DatasetName.ruozhiba_title_good,
+    'AI-ModelScope/ruozhiba', [('title-good', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
+register_dataset(
+    DatasetName.ruozhiba_title_norm,
+    'AI-ModelScope/ruozhiba', [('title-norm', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
 
 register_dataset(
     DatasetName.ms_bench,
