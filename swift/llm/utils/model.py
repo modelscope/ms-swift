@@ -228,6 +228,7 @@ class ModelType:
     xverse_65b_v2 = 'xverse-65b-v2'
     xverse_65b_chat = 'xverse-65b-chat'
     xverse_13b_256k = 'xverse-13b-256k'
+    xverse_moe_a4_2b = 'xverse-moe-a4_2b'
     # orion
     orion_14b = 'orion-14b'
     orion_14b_chat = 'orion-14b-chat'
@@ -428,6 +429,8 @@ def register_model(
                 LoRATM.llama2, TemplateType.xverse)
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,
                 TemplateType.default_generation)
+@register_model(ModelType.xverse_moe_a4_2b, 'xverse/XVERSE-MoE-A4.2B',
+                LoRATM.llama2, TemplateType.default_generation)
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
