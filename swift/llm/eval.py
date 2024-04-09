@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
+import os.path
 import time
 from typing import Any, Dict, List
 
@@ -104,15 +105,12 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
 
-    if args.custom_eval_dataset:
-        assert args.custom_eval_name and args.custom_eval_pattern, 'Please pass eval name and ' \
-                                                                   'pattern when using custom_eval_dataset'
-        assert len(args.custom_eval_name) == len(
-            args.custom_eval_pattern) == len(args.custom_eval_dataset)
-        for name, pattern, dataset in zip(args.custom_eval_name,
-                                          args.custom_eval_pattern,
-                                          args.custom_eval_dataset):
-            TaskConfig.registry(name, pattern, dataset)
+    if args.custom_eval_config:
+        assert os.path.isfile(args.custom_eval_config)
+        with open(args.custom_eval_config, 'r') as f:
+            custom_eval = json.load(f)
+            for _ds in custom_eval:
+                TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
     eval_model = EvalModel(args, model_name, config=record or {})
 
     task_configs = TaskConfig.load(
