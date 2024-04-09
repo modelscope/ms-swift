@@ -182,8 +182,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
 
-    padding_to = args.max_length if args.sft_type == 'longlora' else None
-    data_collator = partial(template.data_collator, padding_to=padding_to)
+    pad_to_multiple_of = 8 if args.sft_type == 'longlora' else None
+    data_collator = partial(
+        template.data_collator, pad_to_multiple_of=pad_to_multiple_of)
 
     # Trainer
     logger.info(f'training_args: {training_args}')

@@ -8,7 +8,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from transformers import (DataCollatorForSeq2Seq, PreTrainedTokenizerBase,
+                          StoppingCriteria)
 
 from swift.llm.agent.utils import calculate_loss_scale
 
@@ -186,6 +187,10 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
+        self._data_collator = DataCollatorForSeq2Seq(
+            tokenizer=self.tokenizer,
+            label_pad_token_id=self.tokenizer.pad_token_id,
+        )
         for key in [
                 'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
         ]:
@@ -386,55 +391,28 @@ class Template:
         assert len(old_tokenizer_kwargs) == 0
         return curr_tokenizer_kwargs
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(
+            self,
+            batch: List[Dict[str, Any]],
+            pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
-            padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
-                will be padded to the `longest`
+            pad_to_multiple_of(`int`, optional): Whether padding to the multiple of an integer value.
         """
-        tokenizer = self.tokenizer
-        assert tokenizer.pad_token_id is not None
-        input_ids = [torch.tensor(b['input_ids']) for b in batch]
-        labels = [torch.tensor(b['labels']) for b in batch]
-        loss_scale = [torch.tensor(b['loss_scale'])
+        self._data_collator.pad_to_multiple_of = pad_to_multiple_of
+        if pad_to_multiple_of:
+            self.tokenizer.padding_side = 'right'
+        loss_scale = [torch.tensor(b.pop('loss_scale'))
                       for b in batch] if 'loss_scale' in batch[0] else None
-        attention_mask = [
-            torch.ones(len(input_ids[i]), dtype=torch.int64)
-            for i in range(len(input_ids))
-        ]
-
-        if padding_to is not None:
-            padding_len = padding_to - input_ids[0].shape[-1]
-            if padding_len > 0:
-                input_ids[0] = F.pad(input_ids[0], (0, padding_len),
-                                     'constant', tokenizer.pad_token_id)
-                attention_mask[0] = F.pad(attention_mask[0], (0, padding_len),
-                                          'constant', 0)
-                labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
-                                  -100)
-                if loss_scale:
-                    loss_scale[0] = F.pad(
-                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
-                        'constant', 0.)
-
-        input_ids = pad_sequence(
-            input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-        attention_mask = pad_sequence(
-            attention_mask, batch_first=True, padding_value=0)
+        res = self._data_collator(batch, return_tensors='pt')
+        padding_to = res['input_ids'].shape[1]
         if loss_scale:
+            loss_scale[0] = F.pad(loss_scale[0],
+                                  (0, padding_to - loss_scale[0].shape[-1]),
+                                  'constant', 0.)
             loss_scale = pad_sequence(
                 loss_scale, batch_first=True, padding_value=0.)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
-
-        res = {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'labels': labels,
-        }
-        if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
 
@@ -601,10 +579,11 @@ class YiVLTemplate(Template):
         inputs['images'] = image_tensor.to(model.dtype)
         return inputs, {}
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(
+            self,
+            batch: List[Dict[str, Any]],
+            pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, pad_to_multiple_of)
         res['images'] = torch.concat([b['images'] for b in batch])
         return res
 
@@ -908,10 +887,11 @@ class LLavaTemplate(Template):
         inputs['image_sizes'] = image_sizes
         return inputs, {}
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(
+            self,
+            batch: List[Dict[str, Any]],
+            pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, pad_to_multiple_of)
         res['images'] = torch.concat([b['images'] for b in batch])
         res['image_sizes'] = sum([b['image_sizes'] for b in batch], start=[])
         return res
@@ -1093,10 +1073,11 @@ class CogTemplate(Template):
             len(inputs['input_ids']) - len(token_type_ids))
         return inputs, {}
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(
+            self,
+            batch: List[Dict[str, Any]],
+            pad_to_multiple_of: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, pad_to_multiple_of)
         is_cogagent = 'cross_images' in batch[0]
         keys = ['images', 'cross_images'] if is_cogagent else ['images']
         for key in keys:
