@@ -362,13 +362,13 @@ def get_dataset_from_repo(
 #         'response': response
 #     })
 
-# register_dataset(
-#     DatasetName.ms_agent_for_agentfabric,
-#     'AI-ModelScope/ms_agent_for_agentfabric',  [('default', 'train'),('additional', 'train')],
-#     None,
-#     _preprocess_agentfabric,
-#     get_dataset_from_repo,
-#     tags=['chat', 'agent', 'multi-round', '🔥'])
+register_dataset(
+    DatasetName.ms_agent_for_agentfabric,
+    'AI-ModelScope/ms_agent_for_agentfabric',  [('default', 'train'),('additional', 'train')],
+    None,
+    None,
+    get_dataset_from_repo,
+    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 _multi_alpaca_subset_list = [
     'ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi'
