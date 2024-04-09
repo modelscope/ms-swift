@@ -1,18 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import dataclasses
+import json
 import os.path
 import time
-from typing import Any, Dict, List
+from typing import List
 
-import json
 from llmuses.models.custom import CustomModel
 from modelscope import GenerationConfig
 
 from swift.utils import get_logger, get_main
-from swift.utils.utils import split_str_parts_by
 from . import (EvalArguments, inference, inference_vllm, merge_lora,
                prepare_model_template)
-from .utils.model import dtype_mapping
 
 logger = get_logger()
 
@@ -25,10 +22,8 @@ class EvalModel(CustomModel):
         if args.infer_backend == 'vllm':
             from .utils import prepare_vllm_engine_template
             self.llm_engine, self.template = prepare_vllm_engine_template(args)
-            self.max_model_len = self.llm_engine.model_config.hf_config.max_position_embeddings
         else:
             self.model, self.template = prepare_model_template(args)
-            self.max_model_len = self.model.config.max_position_embeddings
             if args.overwrite_generation_config:
                 assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
                 self.model.generation_config.save_pretrained(args.ckpt_dir)
