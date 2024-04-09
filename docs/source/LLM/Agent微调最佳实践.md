@@ -11,6 +11,7 @@ SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent�
 - [微调](#微调)
 - [推理](#推理)
 - [总结](#总结)
+- [搭配Modelscope-Agent使用](#搭配Modelscope-Agent使用)
 
 ## 环境安装
 
@@ -429,7 +430,7 @@ print()
 
 
 
-## Modelscope-Agent
+## 搭配Modelscope-Agent使用
 结合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)，微调模型搭建一个自定义Agent
 
 本节针对Modelscope-Agent中的交互式框架AgentFabric，微调小模型qwen-7b-chat，使其具备工具调用能力
