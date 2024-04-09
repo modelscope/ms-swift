@@ -513,7 +513,7 @@ In /path/to/modelscope-agent/apps/agentfabric/config/model_config.json, add the 
 ```
 Note that if deploying with `swift deploy`, the value of `model` should be set to `qwen-7b-chat`.
 
-#### gradio
+#### Launching AgentFabric
 In the following practice, [Wanx Image Generation](https://help.aliyun.com/zh/dashscope/opening-service?spm=a2c4g.11186623.0.0.50724937O7n40B) and [Amap Weather]((https://lbs.amap.com/api/webservice/guide/create-project/get-key)) will be called, requiring manual setting of API KEY. After setting, start AgentFabric:
 ```bash
 export PYTHONPATH=$PYTHONPATH:/path/to/your/modelscope-agent

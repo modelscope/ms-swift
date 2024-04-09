@@ -521,7 +521,7 @@ python -m vllm.entrypoints.openai.api_server --model /path/to/qwen-7b-chat/vx-xx
 ```
 注意，如果使用`swift deploy`部署，需要将`"model"`的值设为`qwen-7b-chat`
 
-#### gradio
+#### 启动AgentFabric
 在以下实践中，会调用[Wanx Image Generation](https://help.aliyun.com/zh/dashscope/opening-service?spm=a2c4g.11186623.0.0.50724937O7n40B)和[高德天气](https://lbs.amap.com/api/webservice/guide/create-project/get-key),需要手动设置API KEY, 设置后启动AgentFabric
 ```bash
 export PYTHONPATH=$PYTHONPATH:/path/to/your/modelscope-agent
