@@ -387,7 +387,7 @@ class Template:
         return curr_tokenizer_kwargs
 
     def data_collator(self,
-            batch: List[Dict[str, Any]],
+                      batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -416,8 +416,8 @@ class Template:
                 labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
                                   -100)
         if loss_scale:
-                    loss_scale[0] = F.pad(
-                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
+            loss_scale[0] = F.pad(loss_scale[0],
+                                  (0, padding_to - labels[0].shape[-1]),
                                   'constant', 0.)
 
         input_ids = pad_sequence(
@@ -602,7 +602,7 @@ class YiVLTemplate(Template):
         return inputs, {}
 
     def data_collator(self,
-            batch: List[Dict[str, Any]],
+                      batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         res['images'] = torch.concat([b['images'] for b in batch])
@@ -909,7 +909,7 @@ class LLavaTemplate(Template):
         return inputs, {}
 
     def data_collator(self,
-            batch: List[Dict[str, Any]],
+                      batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         res['images'] = torch.concat([b['images'] for b in batch])
@@ -1094,7 +1094,7 @@ class CogTemplate(Template):
         return inputs, {}
 
     def data_collator(self,
-            batch: List[Dict[str, Any]],
+                      batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         is_cogagent = 'cross_images' in batch[0]
