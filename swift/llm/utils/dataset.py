@@ -69,8 +69,8 @@ class DatasetName:
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     # agent
     ms_agent = 'ms-agent'
-    ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric_default'
-    ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric_addition'
+    ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
+    ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric-addition'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
