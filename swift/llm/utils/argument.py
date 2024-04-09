@@ -243,6 +243,9 @@ class SftArguments:
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+    metric_warmup_step: Optional[float] = 1
+    use_profiler: Optional[bool] = False
+    fsdp_num: int = 1
 
     def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
@@ -278,9 +281,7 @@ class SftArguments:
             modules_to_save.remove('LN')
             self.lora_m2s_use_ln = True
         return modules_to_save
-    metric_warmup_step: Optional[float] = 1
-    use_profiler: Optional[bool] = False
-    fsdp_num: int = 1
+
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -537,6 +538,7 @@ class SftArguments:
             acc_strategy=self.acc_strategy,
             save_safetensors=self.save_safetensors,
             logging_first_step=True,
+            metric_warmup_step=self.metric_warmup_step,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters

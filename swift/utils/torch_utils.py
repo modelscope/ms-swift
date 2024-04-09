@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from torch.nn import Module
 
 from .logger import get_logger, is_master
@@ -286,69 +287,6 @@ def patch_llama_model(model):
 
         return self.o_proj(einops.rearrange(
             output, "b s h d -> b s (h d)")), None, past_key_value
-    #     self,
-    #     hidden_states: torch.Tensor,
-    #     attention_mask: Optional[torch.Tensor] = None,
-    #     position_ids: Optional[torch.Tensor] = None,
-    #     past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    #     output_attentions: bool = False,
-    #     use_cache: bool = False,
-    # ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-    #     from torchacc.ops import flash_attn_varlen_qkvpacked_xla
-
-    #     bsz, q_len, _ = hidden_states.size()
-
-    #     query_states = (
-    #         self.q_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads,
-    #                                         self.head_dim).transpose(1, 2))
-    #     key_states = (
-    #         self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads,
-    #                                         self.head_dim).transpose(1, 2))
-    #     value_states = (
-    #         self.v_proj(hidden_states).view(bsz, q_len, self.num_heads,
-    #                                         self.head_dim).transpose(1, 2))
-
-    #     kv_seq_len = key_states.shape[-2]
-    #     assert past_key_value is None, "past_key_value is not supported"
-
-    #     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-    #     query_states, key_states = apply_rotary_pos_emb(query_states, key_states,
-    #                                                     cos, sin, position_ids)
-    #     assert not output_attentions, "output_attentions is not supported"
-
-    #     if past_key_value is not None:
-    #         key_states = torch.cat([past_key_value[0], key_states], dim=2)
-    #         value_states = torch.cat([past_key_value[1], value_states], dim=2)
-    #     past_key_value = (key_states, value_states) if use_cache else None
-
-    #     # See https://github.com/HazyResearch/flash-attention/blob/main/flash_attn/flash_attention.py
-    #     # if attention_mask is not None:
-    #     #     value_states = value_states * attention_mask.unsqueeze(1).unsqueeze(-1)
-    #     # qkv = torch.stack([query_states, key_states, value_states], dim=2)
-    #     # qkv = qkv.transpose(1, 3)
-
-    #     # qkv = einops.rearrange(qkv, "b s ... -> (b s) ...")
-    #     # max_s = q_len
-    #     # cu_q_lens = torch.arange(
-    #     #     0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
-    #     # output = flash_attn_varlen_qkvpacked_xla(
-    #     #     qkv, cu_q_lens, max_s, 0.0, softmax_scale=None, causal=True)
-    #     # output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
-
-    #     # return self.o_proj(einops.rearrange(
-    #     #     output, "b s h d -> b s (h d)")), None, past_key_value
-
-    #     from torchacc.ops import flash_attn_varlen_xla
-    #     query_states = query_states.transpose(1, 2)
-    #     key_states = key_states.transpose(1, 2)
-    #     value_states = value_states.transpose(1, 2)
-    #     q, k, v = [einops.rearrange(x, "b s ... -> (b s) ...") for x in [query_states, key_states, value_states]]
-    #     cu_q_lens = torch.arange(
-    #         0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device)
-    #     output = flash_attn_varlen_xla(q, k, v, cu_q_lens, cu_q_lens, q_len, q_len, 0.0, softmax_scale=None, causal=True)
-    #     output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
-    #     output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
-    #     return output, None, past_key_value
 
     for layer in model.model.layers:
         layer.self_attn.forward = types.MethodType(llama_attn_forward, layer.self_attn)
@@ -474,9 +412,15 @@ def patah_chatglm_model(model):
 
         return output, kv_cache   
 
+    def torchacc_swiglu(x):
+        x = torch.chunk(x, 2, dim=-1)
+        return F.silu(x[0]).to(x[0].dtype) * x[1]
+
+    # patch attention
     for layer in model.transformer.encoder.layers:
         layer.self_attention.forward = types.MethodType(chatglm_attn_forward, layer.self_attention)
-    
+        layer.mlp.activation_func = torchacc_swiglu    
+
     return model
 
 def patch_baichuan_model(model):
@@ -519,56 +463,17 @@ def patch_baichuan_model(model):
 
         past_key_value = (key_states, value_states) if use_cache else None
 
-        if not use_torchacc():
-        # if attention_mask is not None:
-        #     if q_len == 1: # inference with cache
-        #         if len(attention_mask.size()) == 4:
-        #             attention_mask = attention_mask[:, :, -1:, :]   
-        #         else:
-        #             attention_mask = attention_mask[:, -1:, :]    
-        #     attn_weights = attn_weights + attention_mask
-        #     attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
-
-            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
-
-            attn_output = torch.matmul(attn_weights, value_states)
-
-            attn_output = attn_output.transpose(1, 2)
-            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-            attn_output = self.o_proj(attn_output)
-
-            if not output_attentions:
-                attn_weights = None
-
-            return attn_output, attn_weights, past_key_value
-
-        else:
-        # # try:
-        # from torchacc.ops import flash_attn_varlen_qkvpacked_xla
-        # qkv = torch.stack([query_states, key_states, value_states], dim=2)
-        # qkv = qkv.transpose(1, 3)
-        # qkv = einops.rearrange(qkv, "b s ... -> (b s) ...")
-        # cu_q_lens = torch.arange(
-        #     0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
-        # output = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
-        # output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
-        # output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
-        # return output, None, past_key_value
-        # # except:
-        #     # print('import torchacc failed.')
-            from torchacc.ops import flash_attn_varlen_xla
-            query_states = query_states.transpose(1, 2)
-            key_states = key_states.transpose(1, 2)
-            value_states = value_states.transpose(1, 2)
-            q, k, v = [einops.rearrange(x, "b s ... -> (b s) ...") for x in [query_states, key_states, value_states]]
-            cu_q_lens = torch.arange(
-                0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device)
-            output = flash_attn_varlen_xla(q, k, v, cu_q_lens, cu_q_lens, q_len, q_len, 0.0, softmax_scale=None, causal=True)
-            output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
-            output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
-            return output, None, past_key_value
+        from torchacc.ops import flash_attn_varlen_xla
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+        q, k, v = [einops.rearrange(x, "b s ... -> (b s) ...") for x in [query_states, key_states, value_states]]
+        cu_q_lens = torch.arange(
+            0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device)
+        output = flash_attn_varlen_xla(q, k, v, cu_q_lens, cu_q_lens, q_len, q_len, 0.0, softmax_scale=None, causal=True)
+        output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
+        output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
+        return output, None, past_key_value
 
     for layer in model.base_model.layers:
         layer.self_attn.forward = types.MethodType(baichuan_attn_forward, layer.self_attn)

@@ -157,6 +157,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
+    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
+    training_args.val_dataset_sample = val_dataset.shape[0] if val_dataset is not None else 0
 
     train_dataset = handle_dataset_mixture(args, train_dataset)
 
