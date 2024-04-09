@@ -69,7 +69,8 @@ class DatasetName:
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     # agent
     ms_agent = 'ms-agent'
-    ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
+    ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric_default'
+    ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric_addition'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -328,6 +329,14 @@ def load_ms_dataset(
     DatasetName.coig_cqia_zhihu,
     'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
     tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric_default,
+    'AI-ModelScope/ms_agent_for_agentfabric',  [('default', 'train')],
+    tags=['chat', 'agent', 'multi-round'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric_addition,
+    'AI-ModelScope/ms_agent_for_agentfabric',  [('addition', 'train')],
+    tags=['chat', 'agent', 'multi-round'])
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],
@@ -352,46 +361,11 @@ def get_dataset_from_repo(
         dataset_list.append(dataset)
     return tuple(dataset_list)
 
-# def _preprocess_agentfabric(dataset: HfDataset) -> HfDataset:
-#     response = []
-#     for d in tqdm(dataset):
-#         output, answer = d['output'], d['answer']
-#         response.append(f'{output}\n\nAnswer: {answer}')
-#     return HfDataset.from_dict({
-#         'query': dataset['input'],
-#         'response': response
-#     })
 
-register_dataset(
-    DatasetName.ms_agent_for_agentfabric,
-    'AI-ModelScope/ms_agent_for_agentfabric',  [('default', 'train'),('addition', 'train')],
-    None,
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 _multi_alpaca_subset_list = [
     'ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi'
 ]
-# def _process_agentfabric(dataset: HfDataset) -> HfDataset:
-#     query = []
-#     response = []
-#     history: List[History] = []
-#     for d in tqdm(dataset):
-#         conversation = ast.literal_eval(d['conversation'])
-#         query.append(conversation[-1]['human'])
-#         response.append(conversation[-1]['assistant'])
-#         h = []
-#         for c in conversation[:-1]:
-#             h.append([c['human'], c['assistant']])
-#         history.append(h)
-#     return HfDataset.from_dict({
-#         'query': query,
-#         'response': response,
-#         'history': history
-#     })
-
-
 
 register_dataset(
     DatasetName.multi_alpaca_all,
