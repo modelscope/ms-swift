@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os.path
 import time
 from typing import List
 
+import json
 from llmuses.models.custom import CustomModel
 from modelscope import GenerationConfig
 
@@ -107,12 +107,15 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
             custom_eval = json.load(f)
             for _ds in custom_eval:
                 custom_names.append(_ds['name'])
-                TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
+                TaskConfig.registry(
+                    _ds['name'],
+                    _ds['pattern'],
+                    _ds['dataset'],
+                    subset_list=_ds.get('subset_list'))
     eval_model = EvalModel(args, model_name, config=record or {})
 
     task_configs = TaskConfig.load(
-        custom_model=eval_model,
-        tasks=args.eval_dataset + custom_names)
+        custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
         task_config.use_cache = False
         if args.eval_limit:

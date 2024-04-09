@@ -6,7 +6,7 @@ python llm_sft.py \
     --model_id_or_path skywork/Skywork-13B-base \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type default-generation-bos \
     --dtype AUTO \
     --output_dir output \

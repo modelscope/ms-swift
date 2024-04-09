@@ -788,6 +788,7 @@ class EvalArguments(InferArguments):
 
 @dataclass
 class ExportArguments(InferArguments):
+    to_peft_format: bool = False
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 

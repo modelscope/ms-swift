@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_type tongyi-finance-14b-chat-int4 \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type qwen \
     --dtype fp16 \
     --output_dir output \

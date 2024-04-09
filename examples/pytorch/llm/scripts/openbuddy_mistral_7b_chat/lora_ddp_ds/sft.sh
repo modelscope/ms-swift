@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path OpenBuddy/openbuddy-mistral-7b-v13.1 \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type openbuddy \
     --dtype AUTO \
     --output_dir output \

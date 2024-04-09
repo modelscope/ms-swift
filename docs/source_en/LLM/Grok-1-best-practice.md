@@ -45,7 +45,7 @@ torchrun \
     llm_sft.py \
     --model_type grok-1 \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \

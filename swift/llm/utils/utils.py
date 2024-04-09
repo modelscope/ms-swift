@@ -564,10 +564,8 @@ def inference_stream(model: PreTrainedModel,
         if max_length and token_len + generation_config.max_new_tokens > max_length:
             generation_config.max_new_tokens = max_length - token_len
             if generation_config.max_new_tokens <= 0:
-                raise AssertionError(
-                    'Current sentence length exceeds'
-                    f'the model max_length: {max_length}'
-                )
+                raise AssertionError('Current sentence length exceeds'
+                                     f'the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
@@ -718,10 +716,8 @@ def inference(model: PreTrainedModel,
         if max_length and token_len + generation_config.max_new_tokens > max_length:
             generation_config.max_new_tokens = max_length - token_len
             if generation_config.max_new_tokens <= 0:
-                raise AssertionError(
-                    'Current sentence length exceeds'
-                    f'the model max_length: {max_length}'
-                )
+                raise AssertionError('Current sentence length exceeds'
+                                     f'the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(

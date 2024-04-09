@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path OpenBuddy/openbuddy-llama2-13b-v8.1-fp16 \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type openbuddy \
     --dtype AUTO \
     --output_dir output \

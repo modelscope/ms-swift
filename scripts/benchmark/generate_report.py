@@ -85,11 +85,10 @@ class ModelOutput:
         return hyper_params
 
     @property
-    def hyper_paramters(self):
+    def hyper_parameters(self):
         if 'learning_rate' not in self.args:
             return ''
-        return f'lr={self.args["learning_rate"]}/' \
-                       f'epoch={self.args["num_train_epochs"]}'
+        return f'lr={self.args["learning_rate"]}/epoch={self.args["num_train_epochs"]}'
 
     @property
     def train_speed(self):
@@ -104,7 +103,7 @@ class ModelOutput:
 
 def generate_sft_report(outputs: List[ModelOutput]):
     tab = '| exp_name | model_type | dataset | mix_ratio | tuner | tuner_params | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
-          '| -------- | ---------- | ------- | ----------| ----- | ------------ | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |\n'
+          '| -------- | ---------- | ------- | ----------| ----- | ------------ | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |\n' # noqa
     for output in outputs:
         use_flash_attn = output.args.get('use_flash_attn', '')
         use_gc = output.args.get('gradient_checkpointing', '')
@@ -132,7 +131,7 @@ def generate_sft_report(outputs: List[ModelOutput]):
                f'{output.tuner_hyper_params}|' \
                f'{use_flash_attn}|' \
                f'{use_gc}|' \
-               f'{output.hyper_paramters}|' \
+               f'{output.hyper_parameters}|' \
                f'{memory}|' \
                f'{train_speed}|' \
                f'{infer_speed}|' \
@@ -147,7 +146,7 @@ def generate_sft_report(outputs: List[ModelOutput]):
 
 def generate_export_report(outputs: List[ModelOutput]):
     tab = '| exp_name | model_type | dataset | quantization method | quantization bits | infer speed(tokens/s) | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
-          '| -------- | ---------- | ------- | ------------------- | ----------------- | --------------------- | ------------------ | ---------------- | ------------------ |\n'
+          '| -------- | ---------- | ------- | ------------------- | ----------------- | --------------------- | ------------------ | ---------------- | ------------------ |\n' # noqa
     for output in outputs:
         infer_speed = output.infer_speed
         gsm8k_acc = ''

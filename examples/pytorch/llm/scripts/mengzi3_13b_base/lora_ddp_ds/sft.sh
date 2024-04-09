@@ -9,7 +9,7 @@ swift sft \
     --model_id_or_path langboat/Mengzi3-13B-Base \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \

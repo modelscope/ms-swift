@@ -181,10 +181,12 @@ class ExpManager:
                                                    rfind(os.path.sep) + 1:]
                 model_type = '-'.join(model_type.split('-')[:-2])
                 model_type_kwargs = f'--model_type {model_type}'
-            cmd = f'swift eval {model_type_kwargs} --model_id_or_path {best_model_checkpoint} --infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            cmd = f'swift eval {model_type_kwargs} --model_id_or_path {best_model_checkpoint} ' \
+                  f'--infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
         else:
             assert exp.args.get('model_type') is not None
-            cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt ' \
+                  f'--name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
 
         return {
             'running_cmd': cmd,

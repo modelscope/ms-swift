@@ -159,9 +159,9 @@ def gptq_model_quantize(model, tokenizer):
 def llm_export(args: ExportArguments) -> None:
     global _args, template
     logger.info(f'args: {args}')
-    #if args.to_peft_format:
-    #    assert args.sft_type == 'lora'
-    #    args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
+    if args.to_peft_format:
+        assert args.sft_type == 'lora'
+        args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.quant_bits > 0:

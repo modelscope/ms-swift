@@ -8,7 +8,7 @@ NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model_type yi-9b \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type default \
     --dtype AUTO \
     --output_dir output \
