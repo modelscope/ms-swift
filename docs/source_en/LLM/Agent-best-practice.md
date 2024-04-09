@@ -10,7 +10,7 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 - [Data Preparation](#Data-Preparation)
 - [Fine-tuning](#Fine-tuning)
 - [Inference](#Inference)
-- [Usage with Modelscope-Agent](#Usage with Modelscope-Agent) 
+- [Usage with Modelscope-Agent](#Usage-with-Modelscope_Agent) 
 - [Summary](#Summary)
 
 ## Environment Setup
@@ -422,7 +422,7 @@ print()
 # response:
 # Final Answer: There is fire in the image at coordinates [101.1, 200.9]
 ```
-## Usage with Modelscope-Agent
+## Usage-with-Modelscope_Agent
 In conjunction with Modelscope-Agent(https://github.com/modelscope/modelscope-agent), fine-tune models for building Agents.
 
 This section focuses on the interactive framework AgentFabric within Modelscope-Agent to fine-tune the small model qwen-7b-chat to enable function call capabilities.
