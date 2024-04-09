@@ -16,10 +16,8 @@ import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
-from torch import nn
 from torch.nn import Module
-from transformers import (PreTrainedModel, PreTrainedTokenizerBase,
-                          is_bitsandbytes_available)
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
@@ -34,8 +32,12 @@ from transformers.training_args import TrainingArguments
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
+from swift.torchacc_utils import (save_ta_checkpoint,
+                                  ta_load_optimizer_and_scheduler,
+                                  ta_save_optimizer_and_scheduler)
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, create_ms_repo, get_logger
+from swift.utils import (check_json_format, create_ms_repo, get_logger,
+                         use_torchacc)
 from swift.utils.constants import Invoke
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import (can_return_loss, find_labels, get_function,
@@ -359,6 +361,31 @@ class SwiftMixin:
                 indent=2)
         return
 
+    def _save_optimizer_and_scheduler(self, output_dir):
+        if not use_torchacc():
+            return super()._save_optimizer_and_scheduler(output_dir)
+
+        ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
+                                        output_dir)
+
+    def _load_optimizer_and_scheduler(self, checkpoint):
+        if not use_torchacc():
+            return super()._load_optimizer_and_scheduler(checkpoint)
+
+        if checkpoint is None or self.args.save_only_model:
+            return
+
+        self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(
+            self.optimizer, self.lr_scheduler, checkpoint, self.args.device)
+
+    def _save_tpu(self, output_dir: Optional[str] = None):
+        if not use_torchacc():
+            return super()._save_tpu(output_dir)
+
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        logger.info(f'Saving model checkpoint to {output_dir}')
+        save_ta_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
         # If we are executing this function, we are the process zero, so we don't check for that.
@@ -491,7 +518,14 @@ class SwiftMixin:
                               model=None) -> None:
         if model is None:
             model = self.model
-        if not isinstance(model, SwiftModel):
+        supported_classes = (SwiftModel, PeftModel)
+        if use_torchacc():
+            # Loading checkpoint of TorchAcc has been done in tuner.py when
+            # sft_type if 'full'.
+            model = model._get_underlay_model().module.module
+            if isinstance(model, PreTrainedModel):
+                return
+        if not isinstance(model, supported_classes):
             # Avoid throwing exceptions
             return super()._load_from_checkpoint(resume_from_checkpoint, model)
 
