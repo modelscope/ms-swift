@@ -105,17 +105,19 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
 
+    custom_names = []
     if args.custom_eval_config:
         assert os.path.isfile(args.custom_eval_config)
         with open(args.custom_eval_config, 'r') as f:
             custom_eval = json.load(f)
             for _ds in custom_eval:
+                custom_names.append(_ds['name'])
                 TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
     eval_model = EvalModel(args, model_name, config=record or {})
 
     task_configs = TaskConfig.load(
         custom_model=eval_model,
-        tasks=args.eval_dataset + (args.custom_eval_name or []))
+        tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
         task_config.use_cache = False
         if args.eval_limit:
