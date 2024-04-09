@@ -435,7 +435,7 @@ print()
 本节针对Modelscope-Agent中的交互式框架AgentFabric，微调小模型qwen-7b-chat，使其具备工具调用能力
 
 由于ms-agent中的system prompt与Modelscope-Agent中的system prompt格式不匹配，直接训练效果不佳，为此我们根据ms-agent转换格式得到新数据集[ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary)，现已集成到SWIFT中。
-其中`ms-agent-for-agentfabric-default`包含3万条由ms-agent转换的数据集，`ms-agent-for-agentfabric-additional`包含488条由开源的agentfabric框架实际调用访问数据筛选得到，共30488条数据。
+其中`ms-agent-for-agentfabric-default`包含3万条由ms-agent转换的数据集，`ms-agent-for-agentfabric-additional`包含488条由开源的AgentFabric框架实际调用访问数据筛选得到，共30488条数据。
 
 
 ### 微调
@@ -525,7 +525,7 @@ python app.py
 
 内置能力选择agent可以调用的API, 这里选择`Wanx Image Generation`和`高德天气`
 
-点击更新配置，等待配置完成后在右侧的输入栏中开始尝试Agent。
+点击更新配置，等待配置完成后在右侧的输入栏中与Agent交互
 > 天气查询
 ![agentfabric_1](../../resources/agentfabric_1.png)
 ![agentfabric_2](../../resources/agentfabric_2.png)
