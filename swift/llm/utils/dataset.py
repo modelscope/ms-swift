@@ -234,6 +234,8 @@ def load_ms_dataset(
         subset_name, split = subset_split
         dataset = MsDataset.load(
             dataset_id, subset_name=subset_name, split=split)
+        if hasattr(dataset, 'to_hf_dataset'):
+            dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
