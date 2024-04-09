@@ -392,14 +392,6 @@ _multi_alpaca_subset_list = [
 #     })
 
 
-register_dataset(
-    DatasetName.ms_agent_for_agentfabric,
-    'AI-ModelScope/ms_agent_for_agentfabric', 
-    [('default', 'train'),('addition', 'train')],
-    None,
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.multi_alpaca_all,
