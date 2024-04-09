@@ -10,6 +10,7 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 - [Data Preparation](#Data-Preparation)
 - [Fine-tuning](#Fine-tuning)
 - [Inference](#Inference)
+- [Usage with Modelscope-Agent](#Usage with Modelscope-Agent) 
 - [Summary](#Summary)
 
 ## Environment Setup
