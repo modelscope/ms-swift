@@ -60,6 +60,7 @@ class ModelType:
     qwen1half_4b = 'qwen1half-4b'
     qwen1half_7b = 'qwen1half-7b'
     qwen1half_14b = 'qwen1half-14b'
+    qwen1half_32b = 'qwen1half-32b'
     qwen1half_72b = 'qwen1half-72b'
     qwen1half_moe_a2_7b = 'qwen1half-moe-a2_7b'
     qwen1half_0_5b_chat = 'qwen1half-0_5b-chat'
@@ -67,6 +68,7 @@ class ModelType:
     qwen1half_4b_chat = 'qwen1half-4b-chat'
     qwen1half_7b_chat = 'qwen1half-7b-chat'
     qwen1half_14b_chat = 'qwen1half-14b-chat'
+    qwen1half_32b_chat = 'qwen1half-32b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
     qwen1half_moe_a2_7b_chat = 'qwen1half-moe-a2_7b-chat'
 
@@ -76,6 +78,7 @@ class ModelType:
     qwen1half_4b_chat_int4 = 'qwen1half-4b-chat-int4'
     qwen1half_7b_chat_int4 = 'qwen1half-7b-chat-int4'
     qwen1half_14b_chat_int4 = 'qwen1half-14b-chat-int4'
+    qwen1half_32b_chat_int4 = 'qwen1half-32b-chat-int4'
     qwen1half_72b_chat_int4 = 'qwen1half-72b-chat-int4'
     qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
     qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
@@ -225,6 +228,7 @@ class ModelType:
     xverse_65b_v2 = 'xverse-65b-v2'
     xverse_65b_chat = 'xverse-65b-chat'
     xverse_13b_256k = 'xverse-13b-256k'
+    xverse_moe_a4_2b = 'xverse-moe-a4_2b'
     # orion
     orion_14b = 'orion-14b'
     orion_14b_chat = 'orion-14b-chat'
@@ -275,6 +279,8 @@ class ModelType:
     # dbrx
     dbrx_instruct = 'dbrx-instruct'
     dbrx_base = 'dbrx-base'
+    # mengzi
+    mengzi3_13b_base = 'mengzi3-13b-base'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -423,6 +429,8 @@ def register_model(
                 LoRATM.llama2, TemplateType.xverse)
 @register_model(ModelType.xverse_7b, 'xverse/XVERSE-7B', LoRATM.llama2,
                 TemplateType.default_generation)
+@register_model(ModelType.xverse_moe_a4_2b, 'xverse/XVERSE-MoE-A4.2B',
+                LoRATM.llama2, TemplateType.default_generation)
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
@@ -437,6 +445,13 @@ def register_model(
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True)
+@register_model(
+    ModelType.mengzi3_13b_base,
+    'langboat/Mengzi3-13B-Base',
+    LoRATM.llama2,
+    TemplateType.mengzi,
+    support_vllm=True,
+    support_flash_attn=True)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
@@ -983,6 +998,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
+    ModelType.qwen1half_32b,
+    'qwen/Qwen1.5-32B',
+    LoRATM.qwen1half,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
     ModelType.qwen1half_72b,
     'qwen/Qwen1.5-72B',
     LoRATM.qwen1half,
@@ -1431,6 +1454,14 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
+    ModelType.qwen1half_32b_chat,
+    'qwen/Qwen1.5-32B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
     ModelType.qwen1half_72b_chat,
     'qwen/Qwen1.5-72B-Chat',
     LoRATM.qwen1half,
@@ -1563,6 +1594,16 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'bits': 8},
     support_flash_attn=True)
+@register_model(
+    ModelType.qwen1half_32b_chat_int4,
+    'qwen/Qwen1.5-32B-Chat-GPTQ-Int4',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
     'qwen/Qwen1.5-72B-Chat-GPTQ-Int4',
