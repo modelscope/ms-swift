@@ -431,12 +431,12 @@ print()
 
 
 ## 搭配Modelscope-Agent使用
-结合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)，微调模型搭建一个自定义Agent
+结合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)，微调模型用于搭建Agent
 
-本节针对Modelscope-Agent中的交互式框架AgentFabric，微调小模型qwen-7b-chat，使其具备工具调用能力
+本节针对Modelscope-Agent中的交互式框架AgentFabric，微调小模型qwen-7b-chat使其具有function call能力
 
 由于ms-agent中的system prompt与Modelscope-Agent中的system prompt格式不匹配，直接训练效果不佳，为此我们根据ms-agent转换格式得到新数据集[ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary)，现已集成到SWIFT中。
-其中`ms-agent-for-agentfabric-default`包含3万条由ms-agent转换的数据集，`ms-agent-for-agentfabric-additional`包含488条由开源的AgentFabric框架实际调用访问数据筛选得到，共30488条数据。
+其中`ms-agent-for-agentfabric-default`包含3万条由ms-agent转换的数据集，`ms-agent-for-agentfabric-additional`包含488条由开源的AgentFabric框架实际调用访问数据筛选得到
 
 
 ### 微调

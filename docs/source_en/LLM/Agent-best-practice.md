@@ -421,7 +421,107 @@ print()
 # response:
 # Final Answer: There is fire in the image at coordinates [101.1, 200.9]
 ```
+## Usage with Modelscope-Agent
+In conjunction with Modelscope-Agent(https://github.com/modelscope/modelscope-agent), fine-tune models for building Agents.
 
+This section focuses on the interactive framework AgentFabric within Modelscope-Agent to fine-tune the small model qwen-7b-chat to enable function call capabilities.
+
+Due to the mismatch between the system prompt in ms-agent and that in Modelscope-Agent, direct training yields suboptimal results. To address this, we have created a new dataset [ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) by converting the format from ms-agent, which is now integrated into SWIFT. The `ms-agent-for-agentfabric-default` includes 30,000 entries converted from ms-agent data, while `ms-agent-for-agentfabric-additional` contains 488 entries filtered from actual function call access data by the open-source AgentFabric framework.
+
+### Fine-tuning
+Replace `dataset` with `ms-agent-for-agentfabric` and `ms-agent-for-agentfabric-default`:
+```shell
+# Experimental environment: 8GPU
+nproc_per_node=8
+
+PYTHONPATH=../../.. \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    llm_sft.py \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --model_revision master \
+    --sft_type lora \
+    --tuner_backend swift \
+    --dtype AUTO \
+    --output_dir output \
+    --dataset ms-agent-for-agentfabric-default ms-agent-for-agentfabric-addition \
+    --train_dataset_mix_ratio 2.0 \
+    --train_dataset_sample -1 \
+    --num_train_epochs 2 \
+    --max_length 1500 \
+    --check_dataset_strategy warning \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --lora_dropout_p 0.05 \
+    --lora_target_modules ALL \
+    --self_cognition_sample 3000 \
+    --model_name 卡卡罗特 \
+    --model_author 陶白白 \
+    --gradient_checkpointing true \
+    --batch_size 2 \
+    --weight_decay 0.1 \
+    --learning_rate 5e-5 \
+    --gradient_accumulation_steps $(expr 32 / $nproc_per_node) \
+    --max_grad_norm 0.5 \
+    --warmup_ratio 0.03 \
+    --eval_steps 100 \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --logging_steps 10
+```
+
+merge lora
+```
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir '/path/to/qwen-7b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
+```
+### AgentFabric
+Environment setup:
+```bash
+git clone https://github.com/modelscope/modelscope-agent.git
+cd modelscope-agent  && pip install -r requirements.txt && pip install -r apps/agentfabric/requirements.txt
+```
+
+Launch vllm service:
+```bash
+python -m vllm.entrypoints.openai.api_server --model /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged --trust-remote-code
+```
+
+In /path/to/modelscope-agent/apps/agentfabric/config/model_config.json, add the merged local model:
+```
+    "my-qwen-7b-chat": {
+        "type": "openai",
+        "model": "/path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged",
+        "api_base": "http://localhost:8000/v1",
+        "is_chat": true,
+        "is_function_call": false,
+        "support_stream": false
+    }
+```
+In the following practice, [Wanx Image Generation](https://help.aliyun.com/zh/dashscope/opening-service?spm=a2c4g.11186623.0.0.50724937O7n40B) and [Amap Weather]((https://lbs.amap.com/api/webservice/guide/create-project/get-key)) will be called, requiring manual setting of API KEY. After setting, start AgentFabric:
+```bash
+export PYTHONPATH=$PYTHONPATH:/path/to/your/modelscope-agent
+export DASHSCOPE_API_KEY=your_api_key
+export AMAP_TOKEN=your_api_key
+cd modelscope-agent/apps/agentfabric
+python app.py
+```
+After entering Agentfabric, select the local model my-qwen-7b-chat in the Configured models.
+
+Choose the APIs that the agent can call, select Wanx Image Generation and Amap Weather here.
+
+Click Update Configuration, wait for the configuration to complete, and interact with the Agent in the input box on the right.
+
+> Weather Inquiry
+![agentfabric_1](../../resources/agentfabric_1.png)
+![agentfabric_2](../../resources/agentfabric_2.png)
+
+> text2image
+![agentfabric_3](../../resources/agentfabric_3.png)
+![agentfabric_4](../../resources/agentfabric_4.png)
+
+It can be seen that the fine-tuned model can correctly understand instructions and call tools.
 ## Summary
 
 Through the Agent training capability supported by SWIFT, we fine-tuned the qwen-7b-chat model using ms-agent and ms-bench. It can be seen that after fine-tuning, the model retains the general knowledge question-answering ability, and when the system field is added with APIs, it can correctly call and complete tasks. It should be noted that:

@@ -331,11 +331,11 @@ def load_ms_dataset(
     tags=['general', '🔥'])
 @register_dataset(
     DatasetName.ms_agent_for_agentfabric_default,
-    'AI-ModelScope/ms_agent_for_agentfabric',  [('default', 'train')],
+    'AI-ModelScope/ms_agent_for_agentfabric', [('default', 'train')],
     tags=['chat', 'agent', 'multi-round'])
 @register_dataset(
     DatasetName.ms_agent_for_agentfabric_addition,
-    'AI-ModelScope/ms_agent_for_agentfabric',  [('addition', 'train')],
+    'AI-ModelScope/ms_agent_for_agentfabric', [('addition', 'train')],
     tags=['chat', 'agent', 'multi-round'])
 def get_dataset_from_repo(
         dataset_id: str,
@@ -360,7 +360,6 @@ def get_dataset_from_repo(
                 dataset = _remove_useless_columns(dataset)
         dataset_list.append(dataset)
     return tuple(dataset_list)
-
 
 
 _multi_alpaca_subset_list = [
