@@ -395,7 +395,7 @@ _multi_alpaca_subset_list = [
 register_dataset(
     DatasetName.ms_agent_for_agentfabric,
     'AI-ModelScope/ms_agent_for_agentfabric', 
-    [('default', 'train'),('additional', 'train')],
+    [('default', 'train'),('addition', 'train')],
     None,
     None,
     get_dataset_from_repo,
