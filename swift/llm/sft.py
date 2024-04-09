@@ -207,9 +207,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     bucket_sizes = get_bucket_sizes(
         args.max_length) if use_torchacc() else None
     padding_to = args.max_length if args.sft_type == 'longlora' else None
-    data_collator = partial(template.data_collator,
-                            padding_to=padding_to,
-                            bucket_sizes=bucket_sizes)
+    data_collator = partial(
+        template.data_collator,
+        padding_to=padding_to,
+        bucket_sizes=bucket_sizes)
 
     trian_batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size

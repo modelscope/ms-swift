@@ -388,10 +388,11 @@ class Template:
         assert len(old_tokenizer_kwargs) == 0
         return curr_tokenizer_kwargs
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None,
-                      bucket_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
+    def data_collator(
+            self,
+            batch: List[Dict[str, Any]],
+            padding_to: Optional[int] = None,
+            bucket_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
@@ -431,16 +432,19 @@ class Template:
         if loss_scale:
             loss_scale = pad_sequence(
                 loss_scale, batch_first=True, padding_value=0.)
+        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()
             input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
-                res['input_ids'], res['attention_mask'], res['labels'],
-                loss_scale, bucket_sizes, self.tokenizer, rank, world_size)
-            res['input_ids'] = input_ids
-            res['attention_mask'] = attention_mask
-            res['labels'] = labels
+                padding_to, input_ids, attention_mask, labels, loss_scale,
+                bucket_sizes, self.tokenizer, rank, world_size)
 
+        res = {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels,
+        }
         if loss_scale:
             res['loss_scale'] = loss_scale
         return res

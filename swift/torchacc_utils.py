@@ -38,17 +38,19 @@ def _get_closet_bucket(bucket_sizes, data_length):
     return cloest_length
 
 
-def pad_and_split_batch(input_ids, attention_mask, labels, loss_scale,
-                        bucket_sizes, tokenizer, rank, world_size):
-    longest_len = input_ids.shape[-1]
-    bucket_data_length = _get_closet_bucket(bucket_sizes, longest_len)
-    padding_length = bucket_data_length - input_ids.shape[1]
-    input_ids = F.pad(input_ids, (0, padding_length), 'constant',
-                      tokenizer.pad_token_id)
-    attention_mask = F.pad(attention_mask, (0, padding_length), 'constant', 0)
-    if loss_scale:
-        loss_scale = F.pad(loss_scale, (0, padding_length), 'constant', 0.)
-    labels = F.pad(labels, (0, padding_length), 'constant', -100)
+def pad_and_split_batch(padding_to, input_ids, attention_mask, labels,
+                        loss_scale, bucket_sizes, tokenizer, rank, world_size):
+    if padding_to is None:
+        longest_len = input_ids.shape[-1]
+        bucket_data_length = _get_closet_bucket(bucket_sizes, longest_len)
+        padding_length = bucket_data_length - input_ids.shape[1]
+        input_ids = F.pad(input_ids, (0, padding_length), 'constant',
+                          tokenizer.pad_token_id)
+        attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
+                               0)
+        if loss_scale:
+            loss_scale = F.pad(loss_scale, (0, padding_length), 'constant', 0.)
+        labels = F.pad(labels, (0, padding_length), 'constant', -100)
 
     # manully split the batch to different DP rank.
     batch_size = input_ids.shape[0] // world_size
