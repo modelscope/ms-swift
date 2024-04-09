@@ -11,7 +11,6 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
-from swift.torchacc_utils import get_bucket_sizes
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
@@ -204,13 +203,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
 
-    bucket_sizes = get_bucket_sizes(
-        args.max_length) if use_torchacc() else None
     padding_to = args.max_length if args.sft_type == 'longlora' else None
-    data_collator = partial(
-        template.data_collator,
-        padding_to=padding_to,
-        bucket_sizes=bucket_sizes)
+    data_collator = partial(template.data_collator, padding_to=padding_to)
 
     trian_batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size

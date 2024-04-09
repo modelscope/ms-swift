@@ -388,17 +388,14 @@ class Template:
         assert len(old_tokenizer_kwargs) == 0
         return curr_tokenizer_kwargs
 
-    def data_collator(
-            self,
-            batch: List[Dict[str, Any]],
-            padding_to: Optional[int] = None,
-            bucket_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
-            bucket_sizes(`List[int]`, optional): Bucket sizes of sequence for TorchAcc.
         """
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
@@ -438,7 +435,7 @@ class Template:
             rank, _, world_size, _ = get_dist_setting()
             input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
                 padding_to, input_ids, attention_mask, labels, loss_scale,
-                bucket_sizes, self.tokenizer, rank, world_size)
+                self.max_length, self.tokenizer, rank, world_size)
 
         res = {
             'input_ids': input_ids,
