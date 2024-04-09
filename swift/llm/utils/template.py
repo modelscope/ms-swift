@@ -436,8 +436,7 @@ class Template:
             rank, _, world_size, _ = get_dist_setting()
             input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
                 res['input_ids'], res['attention_mask'], res['labels'],
-                loss_scale, padding_to, bucket_sizes, self.tokenizer, rank,
-                world_size)
+                loss_scale, bucket_sizes, self.tokenizer, rank, world_size)
             res['input_ids'] = input_ids
             res['attention_mask'] = attention_mask
             res['labels'] = labels
