@@ -489,18 +489,25 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```
 
 ### AgentFabric
-环境安装
+#### 环境安装
 ```bash
 git clone https://github.com/modelscope/modelscope-agent.git
 cd modelscope-agent  && pip install -r requirements.txt && pip install -r apps/agentfabric/requirements.txt
 ```
 
+#### 部署模型
+使用以下任意一种方式部署模型
+##### swift deploy
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged
+```
 
-vllm拉起服务
+##### vllm
 ```bash
 python -m vllm.entrypoints.openai.api_server --model /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged --trust-remote-code
 ```
 
+#### 添加本地模型配置
 在`/path/to/modelscope-agent/apps/agentfabric/config/model_config.json`中，新增合并后的本地模型
 ```
     "my-qwen-7b-chat": {
@@ -512,7 +519,9 @@ python -m vllm.entrypoints.openai.api_server --model /path/to/qwen-7b-chat/vx-xx
         "support_stream": false
     }
 ```
+注意，如果使用`swift deploy`部署，需要将`"model"`的值设为`qwen-7b-chat`
 
+#### gradio
 在以下实践中，会调用[Wanx Image Generation](https://help.aliyun.com/zh/dashscope/opening-service?spm=a2c4g.11186623.0.0.50724937O7n40B)和[高德天气](https://lbs.amap.com/api/webservice/guide/create-project/get-key),需要手动设置API KEY, 设置后启动AgentFabric
 ```bash
 export PYTHONPATH=$PYTHONPATH:/path/to/your/modelscope-agent
@@ -522,7 +531,7 @@ cd modelscope-agent/apps/agentfabric
 python app.py
 ```
 
-进入Agentfabric后，在配置(Configure)的模型中选择本地模型`my-qwen-7b-chat`
+进入AgentFabric后，在配置(Configure)的模型中选择本地模型`my-qwen-7b-chat`
 
 内置能力选择agent可以调用的API, 这里选择`Wanx Image Generation`和`高德天气`
 

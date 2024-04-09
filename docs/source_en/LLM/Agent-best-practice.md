@@ -478,16 +478,27 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir '/path/to/qwen-7b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
 ```
 ### AgentFabric
-Environment setup:
+#### Environment Setup:
 ```bash
 git clone https://github.com/modelscope/modelscope-agent.git
 cd modelscope-agent  && pip install -r requirements.txt && pip install -r apps/agentfabric/requirements.txt
 ```
 
+#### Model Deployment
 Launch vllm service:
+Use any of the following methods to deploy the model.
+
+##### swift deploy
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged
+```
+
+##### vllm
 ```bash
 python -m vllm.entrypoints.openai.api_server --model /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged --trust-remote-code
 ```
+
+#### Adding Local Model Configuration
 
 In /path/to/modelscope-agent/apps/agentfabric/config/model_config.json, add the merged local model:
 ```
@@ -500,6 +511,9 @@ In /path/to/modelscope-agent/apps/agentfabric/config/model_config.json, add the 
         "support_stream": false
     }
 ```
+Note that if deploying with `swift deploy`, the value of `model` should be set to `qwen-7b-chat`.
+
+#### gradio
 In the following practice, [Wanx Image Generation](https://help.aliyun.com/zh/dashscope/opening-service?spm=a2c4g.11186623.0.0.50724937O7n40B) and [Amap Weather]((https://lbs.amap.com/api/webservice/guide/create-project/get-key)) will be called, requiring manual setting of API KEY. After setting, start AgentFabric:
 ```bash
 export PYTHONPATH=$PYTHONPATH:/path/to/your/modelscope-agent
