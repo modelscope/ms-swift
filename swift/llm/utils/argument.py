@@ -69,7 +69,7 @@ class SftArguments:
         })
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
-    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = 'nccl'
+    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
 
@@ -110,6 +110,7 @@ class SftArguments:
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
+    bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
@@ -118,7 +119,7 @@ class SftArguments:
     lora_bias_trainable: Literal['none', 'all'] = 'none'
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
-    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
+    lora_dtype: Literal['fp16', 'bf16', 'fp32'] = 'fp32'
     lora_lr_ratio: float = None
 
     use_rslora: bool = False
@@ -247,6 +248,11 @@ class SftArguments:
     use_profiler: Optional[bool] = False
     fsdp_num: int = 1
 
+    # fsdp option
+    fsdp: Optional[str] = ''
+    # fsdp config file
+    fsdp_config: Optional[str] = None
+
     def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
@@ -294,6 +300,7 @@ class SftArguments:
         elif self.deepspeed == 'default-zero3':
             self.deepspeed = os.path.abspath(
                 os.path.join(ds_config_folder, 'zero3.json'))
+
         handle_path(self)
         set_model_type(self)
         if isinstance(self.dataset, str):
@@ -539,6 +546,8 @@ class SftArguments:
             save_safetensors=self.save_safetensors,
             logging_first_step=True,
             metric_warmup_step=self.metric_warmup_step,
+            fsdp=self.fsdp,
+            fsdp_config=self.fsdp_config,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters

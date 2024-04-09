@@ -16,6 +16,8 @@ from transformers.models.auto.modeling_auto import \
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.torchacc_utils import (ta_eval_dataloader, ta_test_dataloader,
+                                  ta_train_dataloader)
 from swift.utils import use_torchacc
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
                        ProgressCallbackNew)
@@ -268,6 +270,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if not use_torchacc():
             return super().get_train_dataloader()
         else:
+<<<<<<< HEAD
             # patch skip_first_batches for customized dataloader.
             def acc_skip_first_batches(dataloader, num_batches=0):
                 from accelerate.data_loader import SkipBatchSampler
@@ -294,6 +297,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
             # dataloader for TorchAcc.
             import torchacc as ta
+=======
+>>>>>>> origin_balole/features/rebase_0401
             if trainer.is_datasets_available():
                 import datasets
 
@@ -310,6 +315,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             else:
                 data_collator = self._get_collator_with_removed_columns(
                     data_collator, description='training')
+<<<<<<< HEAD
             dataloader_params = {
                 'batch_size': self._train_batch_size,
                 'collate_fn': data_collator,
@@ -326,6 +332,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             return ta.AsyncLoader(
                 DataLoader(train_dataset, **dataloader_params),
                 self.args.device)
+=======
+
+            return ta_train_dataloader(train_dataset, data_collator,
+                                       self._get_train_sampler(), self.args,
+                                       self._train_batch_size)
+>>>>>>> origin_balole/features/rebase_0401
 
     def get_eval_dataloader(self, eval_dataset):
         if not use_torchacc():
@@ -349,6 +361,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 data_collator = self._get_collator_with_removed_columns(
                     data_collator, description='evaluation')
 
+<<<<<<< HEAD
             dataloader_params = {
                 'batch_size': self.args.eval_batch_size,
                 'collate_fn': data_collator,
@@ -365,6 +378,11 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             return ta.AsyncLoader(
                 DataLoader(eval_dataset, **dataloader_params),
                 self.args.device)
+=======
+            return ta_eval_dataloader(eval_dataset, data_collator,
+                                      self._get_eval_sampler(eval_dataset),
+                                      self.args)
+>>>>>>> origin_balole/features/rebase_0401
 
     def get_test_dataloader(self, test_dataset):
         if not use_torchacc():
@@ -384,6 +402,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 data_collator = self._get_collator_with_removed_columns(
                     data_collator, description='test')
 
+<<<<<<< HEAD
             dataloader_params = {
                 'batch_size': self.args.eval_batch_size,
                 'collate_fn': data_collator,
@@ -401,6 +420,11 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             return ta.AsyncLoader(
                 DataLoader(test_dataset, **dataloader_params),
                 self.args.device)
+=======
+            return ta_test_dataloader(test_dataset, data_collator,
+                                      self._get_eval_sampler(test_dataset),
+                                      self.args)
+>>>>>>> origin_balole/features/rebase_0401
 
 
 # monkey patching

@@ -11,16 +11,24 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
+from swift.torchacc_utils import get_bucket_sizes
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
+<<<<<<< HEAD
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.trainers.callback import ProfCallback
+=======
+>>>>>>> origin_balole/features/rebase_0401
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
+<<<<<<< HEAD
                          seed_everything, show_layers, use_torchacc, patch_acc_model)
+=======
+                         seed_everything, show_layers, use_torchacc)
+>>>>>>> origin_balole/features/rebase_0401
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
@@ -127,7 +135,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info('Setting model.config.use_cache: False')
         model = ta_accelerate(
             model,
+<<<<<<< HEAD
             args.fsdp_num,
+=======
+            world_size,
+>>>>>>> origin_balole/features/rebase_0401
             args.model_layer_cls_name,
             args.bf16,
             args.fp16,
@@ -210,13 +222,24 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
 
+<<<<<<< HEAD
+=======
+    pad_to_multiple_of = 8 if args.sft_type == 'longlora' else None
+>>>>>>> origin_balole/features/rebase_0401
     bucket_sizes = get_bucket_sizes(
         args.max_length) if use_torchacc() else None
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(
         template.data_collator,
+<<<<<<< HEAD
         padding_to=padding_to,
         bucket_sizes=bucket_sizes)
+=======
+        pad_to_multiple_of=pad_to_multiple_of,
+        padding_to=padding_to,
+        bucket_sizes=bucket_sizes)
+
+>>>>>>> origin_balole/features/rebase_0401
     trian_batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size
     if use_torchacc():
@@ -308,7 +331,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
 def get_sft_main(args, llm):
     if use_torchacc():
+<<<<<<< HEAD
         logger.warning('TorchAcc is currently only available internally.')
+=======
+        logger.warning('TorchAcc is currently only available internally '
+                       'within Alibaba Cloud.')
+>>>>>>> origin_balole/features/rebase_0401
         import torchacc as ta
         # This patch should be called before `llm_sft`.
         ta.accelerate_hf_trainer()

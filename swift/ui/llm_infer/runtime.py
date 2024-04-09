@@ -155,7 +155,7 @@ class Runtime(BaseUI):
                     else:
                         latest_data = ''
                     lines.extend(latest_lines)
-                    yield ['\n'.join(lines)]
+                    yield '\n'.join(lines)
         except IOError:
             pass
 
