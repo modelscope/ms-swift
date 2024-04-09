@@ -15,26 +15,6 @@ NODE_RANK=0 \
 NNODES=4 \
 NPROC_PER_NODE=8 \
 swift sft \
-<<<<<<< HEAD
-	--model_type qwen-72b-chat \
-  --model_layer_cls_name QWenBlock \
-	--dataset codefuse-python-en \
-	--sft_type full \
-  --output_dir output \
-  --num_train_epochs 1 \
-  --max_length 1024 \
-  --batch_size 1 \
-  --use_flash_attn true \
-  --gradient_accumulation_steps 1 \
-  --gradient_checkpointing no \
-  --tuner_backend 'peft' \
-  --eval_steps 2000000 \
-  --save_steps 2000000 \
-  --logging_steps 10 \
-  --preprocess_num_proc 1 \
-  --dataloader_num_workers 0 \
-  --report_to 'none'
-=======
     --model_type qwen-72b-chat \
     --model_layer_cls_name QWenBlock \
     --dataset codefuse-python-en \
@@ -51,4 +31,3 @@ swift sft \
     --save_steps 200 \
     --logging_steps 100 \
     --report_to 'none'
->>>>>>> origin_balole/features/rebase_0401

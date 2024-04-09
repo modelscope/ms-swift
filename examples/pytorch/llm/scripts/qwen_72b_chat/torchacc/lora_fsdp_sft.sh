@@ -11,26 +11,6 @@ export XLA_EXPERIMENTAL=nonzero:masked_select
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
-<<<<<<< HEAD
-	--model_type qwen-72b-chat \
-  --model_layer_cls_name QWenBlock \
-	--dataset codefuse-python-en \
-	--sft_type lora \
-  --output_dir output_qwen_72b \
-  --num_train_epochs 1 \
-  --max_length 2048 \
-  --batch_size 6 \
-  --use_flash_attn true \
-  --gradient_accumulation_steps 1 \
-  --gradient_checkpointing no \
-  --tuner_backend 'peft' \
-  --eval_steps 2000000 \
-  --save_steps 2000000 \
-  --logging_steps 100 \
-  --preprocess_num_proc 1 \
-  --dataloader_num_workers 0 \
-  --report_to 'none' \
-=======
     --model_type qwen-72b-chat \
     --model_layer_cls_name QWenBlock \
     --dataset codefuse-python-en \
@@ -47,4 +27,3 @@ swift sft \
     --save_steps 200 \
     --logging_steps 100 \
     --report_to 'none' \
->>>>>>> origin_balole/features/rebase_0401

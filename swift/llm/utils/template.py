@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import sys
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -123,26 +122,6 @@ def _replace_system(prefix: Prompt) -> Prompt:
             p = p.replace('{{SYSTEM}}', '')
         res.append(p)
     return res
-
-
-def get_bucket_sizes(max_length: int) -> List[int]:
-    return [max_length // 4 * (i + 1) for i in range(4)]
-
-
-def _get_bucket(bucket_sizes, data_length):
-    """Select the one from bucket_sizes that is closest in distance to
-    data_length. This is required for TorchAcc.
-    """
-    cloest_length = sys.maxsize
-    for b in bucket_sizes:
-        if b == data_length or ((b < cloest_length) and (b > data_length)):
-            cloest_length = b
-
-    if cloest_length == sys.maxsize:
-        bucket_sizes.append(data_length)
-        cloest_length = data_length
-
-    return cloest_length
 
 
 class Template:

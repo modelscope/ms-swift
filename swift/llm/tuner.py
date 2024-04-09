@@ -2,15 +2,12 @@
 import os
 import types
 
-import os
-
 import torch
 import transformers
 from packaging import version
 
 from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
-from swift.trainers.utils import consolidate_checkpoint
 from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
