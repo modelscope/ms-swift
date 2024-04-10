@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 import json
+import numpy as np
 
 from swift.utils.utils import split_str_parts_by
 
@@ -85,36 +86,34 @@ class ModelOutput:
         return hyper_params
 
     @property
-    def hyper_parameters(self):
+    def hyper_paramters(self):
         if 'learning_rate' not in self.args:
             return ''
-        return f'lr={self.args["learning_rate"]}/epoch={self.args["num_train_epochs"]}'
+        return f'lr={self.args["learning_rate"]}/' \
+               f'epoch={self.args["num_train_epochs"]}'
 
     @property
     def train_speed(self):
-        return f'{self.train_samples_per_second}({self.train_samples} samples/{self.train_time} seconds)'
+        if self.train_samples_per_second:
+            return f'{self.train_samples_per_second:.2f}({self.train_samples} samples/{self.train_time:.2f} seconds)'
+        else:
+            return ''
 
     @property
     def infer_speed(self):
         if self.eval_tokens:
-            return f'{self.eval_tokens / self.eval_time}({self.eval_tokens} tokens/{self.eval_time} seconds)'
+            return f'{self.eval_tokens / self.eval_time:.2f}({self.eval_tokens} tokens/{self.eval_time:.2f} seconds)'
         return ''
 
 
 def generate_sft_report(outputs: List[ModelOutput]):
-    tab = '| exp_name | model_type | dataset | mix_ratio | tuner | tuner_params | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
-          '| -------- | ---------- | ------- | ----------| ----- | ------------ | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |\n' # noqa
+    gsm8k_accs = []
+    arc_accs = []
+    ceval_accs = []
     for output in outputs:
-        use_flash_attn = output.args.get('use_flash_attn', '')
-        use_gc = output.args.get('gradient_checkpointing', '')
-        memory = output.memory
-
-        train_speed = output.train_speed
-
-        infer_speed = output.infer_speed
-        gsm8k_acc = ''
-        arc_acc = ''
-        ceval_acc = ''
+        gsm8k_acc = None
+        arc_acc = None
+        ceval_acc = None
         for report in (output.reports or []):
             if report['name'] == 'gsm8k':
                 gsm8k_acc = report['score']
@@ -122,6 +121,57 @@ def generate_sft_report(outputs: List[ModelOutput]):
                 arc_acc = report['score']
             if report['name'] == 'ceval':
                 ceval_acc = report['score']
+        gsm8k_accs.append(gsm8k_acc)
+        arc_accs.append(arc_acc)
+        ceval_accs.append(ceval_acc)
+
+    tab = '| exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
+          '| -------- | ---------- | ------- | -------------------| ----- | ------------ | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |\n' # noqa
+
+    min_best_metric = min([output.best_metric or 999. for output in outputs])
+    min_train_loss = min([output.train_loss or 999. for output in outputs])
+    max_gsm8k = max([gsm8k or 0. for gsm8k in gsm8k_accs])
+    max_arc = max([arc or 0. for arc in arc_accs])
+    max_ceval = max([ceval or 0. for ceval in ceval_accs])
+    for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs,
+                                                     arc_accs, ceval_accs):
+        use_flash_attn = output.args.get('use_flash_attn', '')
+        use_gc = output.args.get('gradient_checkpointing', '')
+        memory = output.memory
+        train_speed = output.train_speed
+        infer_speed = output.infer_speed
+
+        is_best_metric = np.isclose(min_best_metric, output.best_metric
+                                    or 999.0)
+        is_best_loss = np.isclose(min_train_loss, output.train_loss or 999.0)
+        is_best_gsm8k = np.isclose(max_gsm8k, gsm8k_acc or 0.0)
+        is_best_arc = np.isclose(max_arc, arc_acc or 0.0)
+        is_best_ceval = np.isclose(max_ceval, ceval_acc or 0.0)
+
+        if not is_best_metric:
+            best_metric = '' if not output.best_metric else f'{output.best_metric:.2f}'
+        else:
+            best_metric = '' if not output.best_metric else f'**{output.best_metric:.2f}**'
+
+        if not is_best_loss:
+            train_loss = '' if not output.train_loss else f'{output.train_loss:.2f}'
+        else:
+            train_loss = '' if not output.train_loss else f'**{output.train_loss:.2f}**'
+
+        if not is_best_gsm8k:
+            gsm8k_acc = '' if not gsm8k_acc else f'{gsm8k_acc:.3f}'
+        else:
+            gsm8k_acc = '' if not gsm8k_acc else f'**{gsm8k_acc:.3f}**'
+
+        if not is_best_arc:
+            arc_acc = '' if not arc_acc else f'{arc_acc:.3f}'
+        else:
+            arc_acc = '' if not arc_acc else f'**{arc_acc:.3f}**'
+
+        if not is_best_ceval:
+            ceval_acc = '' if not ceval_acc else f'{ceval_acc:.3f}'
+        else:
+            ceval_acc = '' if not ceval_acc else f'**{ceval_acc:.3f}**'
 
         line = f'|{output.name}|' \
                f'{output.args["model_type"]}|' \
@@ -131,12 +181,12 @@ def generate_sft_report(outputs: List[ModelOutput]):
                f'{output.tuner_hyper_params}|' \
                f'{use_flash_attn}|' \
                f'{use_gc}|' \
-               f'{output.hyper_parameters}|' \
+               f'{output.hyper_paramters}|' \
                f'{memory}|' \
                f'{train_speed}|' \
                f'{infer_speed}|' \
-               f'{output.best_metric}|' \
-               f'{output.train_loss}|' \
+               f'{best_metric}|' \
+               f'{train_loss}|' \
                f'{gsm8k_acc}|' \
                f'{arc_acc}|' \
                f'{ceval_acc}|\n'
@@ -145,13 +195,16 @@ def generate_sft_report(outputs: List[ModelOutput]):
 
 
 def generate_export_report(outputs: List[ModelOutput]):
-    tab = '| exp_name | model_type | dataset | quantization method | quantization bits | infer speed(tokens/s) | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
-          '| -------- | ---------- | ------- | ------------------- | ----------------- | --------------------- | ------------------ | ---------------- | ------------------ |\n' # noqa
+    tab = '| exp_name | model_type | calibration dataset | quantization method | quantization bits | infer speed(tokens/s) | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
+          '| -------- | ---------- | ------------------- | ------------------- | ----------------- | --------------------- | ------------------ | ---------------- | ------------------ |\n' # noqa
+
+    gsm8k_accs = []
+    arc_accs = []
+    ceval_accs = []
     for output in outputs:
-        infer_speed = output.infer_speed
-        gsm8k_acc = ''
-        arc_acc = ''
-        ceval_acc = ''
+        gsm8k_acc = None
+        arc_acc = None
+        ceval_acc = None
         for report in (output.reports or []):
             if report['name'] == 'gsm8k':
                 gsm8k_acc = report['score']
@@ -159,10 +212,42 @@ def generate_export_report(outputs: List[ModelOutput]):
                 arc_acc = report['score']
             if report['name'] == 'ceval':
                 ceval_acc = report['score']
+        gsm8k_accs.append(gsm8k_acc)
+        arc_accs.append(arc_acc)
+        ceval_accs.append(ceval_acc)
 
+    max_gsm8k = max([gsm8k or 0. for gsm8k in gsm8k_accs])
+    max_arc = max([arc or 0. for arc in arc_accs])
+    max_ceval = max([ceval or 0. for ceval in ceval_accs])
+    for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs,
+                                                     arc_accs, ceval_accs):
+        infer_speed = output.infer_speed
+        is_best_gsm8k = np.isclose(max_gsm8k, gsm8k_acc or 0.0)
+        is_best_arc = np.isclose(max_arc, arc_acc or 0.0)
+        is_best_ceval = np.isclose(max_ceval, ceval_acc or 0.0)
+
+        if not is_best_gsm8k:
+            gsm8k_acc = '' if not gsm8k_acc else f'{gsm8k_acc:.3f}'
+        else:
+            gsm8k_acc = '' if not gsm8k_acc else f'**{gsm8k_acc:.3f}**'
+
+        if not is_best_arc:
+            arc_acc = '' if not arc_acc else f'{arc_acc:.3f}'
+        else:
+            arc_acc = '' if not arc_acc else f'**{arc_acc:.3f}**'
+
+        if not is_best_ceval:
+            ceval_acc = '' if not ceval_acc else f'{ceval_acc:.3f}'
+        else:
+            ceval_acc = '' if not ceval_acc else f'**{ceval_acc:.3f}**'
+
+        if output.train_dataset_info:
+            dataset_info = f'{output.args["dataset"]}/{output.train_dataset_info}'
+        else:
+            dataset_info = f'{output.args["dataset"]}'
         line = f'|{output.name}|' \
                f'{output.args["model_type"]}|' \
-               f'{output.args["dataset"]}/{output.train_dataset_info}|' \
+               f'{dataset_info}|' \
                f'{output.args["quant_method"]}|' \
                f'{output.args["quant_bits"]}|' \
                f'{infer_speed}|' \
