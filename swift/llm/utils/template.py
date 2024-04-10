@@ -63,6 +63,7 @@ class TemplateType:
     telechat = 'telechat'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
+    c4ai = 'c4ai'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -1234,6 +1235,13 @@ register_template(
     Template([], ['输入：{{QUERY}}输出：\n'], [], [['eos_token_id']], None,
              ['指令：{{SYSTEM}}']))
 
+C4AI_SYSTEM = (
+'You are Command-R, a brilliant, sophisticated, AI-assistant trained to assist human users by providing thorough responses.'
+'You are trained by Cohere.')
+register_template(
+    TemplateType.c4ai,
+    Template(['<BOS_TOKEN>'], ['<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'], [['<|END_OF_TURN_TOKEN|>']], [['<|END_OF_TURN_TOKEN|>']], C4AI_SYSTEM,
+             ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
 
 def get_template(
     template_type: str,

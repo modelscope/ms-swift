@@ -281,6 +281,8 @@ class ModelType:
     dbrx_base = 'dbrx-base'
     # mengzi
     mengzi3_13b_base = 'mengzi3-13b-base'
+    # c4ai
+    c4ai_command_r_v01='c4ai-command-r-v01'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -313,7 +315,7 @@ class LoRATM(NamedTuple):
     phi = ['Wqkv']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
-    telechat = ['self_attention.key_value', 'self_attention.query']
+    telechat = ['key_value', 'query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
 
@@ -450,6 +452,13 @@ def register_model(
     'langboat/Mengzi3-13B-Base',
     LoRATM.llama2,
     TemplateType.mengzi,
+    support_vllm=True,
+    support_flash_attn=True)
+@register_model(
+    ModelType.c4ai_command_r_v01,
+    'AI-ModelScope/c4ai-command-r-v01',
+    LoRATM.llama2, # 1
+    TemplateType.c4ai,
     support_vllm=True,
     support_flash_attn=True)
 def get_model_tokenizer_from_repo(model_dir: str,
