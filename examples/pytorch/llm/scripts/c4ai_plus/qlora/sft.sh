@@ -1,21 +1,25 @@
 # Experimental environment: 4 * A100
-# 4 * 80GB GPU memory
-nproc_per_node=4
+# 4 * 75GB GPU memory
+nproc_per_node=2
 
+PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=$nproc_per_node \
-MASTER_PORT=29500 \
-swift sft \
-    --model_type c4ai-command-r-v01 \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    llm_sft.py \
+    --model_id_or_path qwen/Qwen-72B-Chat \
+    --model_revision master \
     --sft_type lora \
     --tuner_backend swift \
+    --template_type qwen \
     --dtype AUTO \
     --output_dir output \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 5000 \
-    --num_train_epochs 2 \
-    --max_length 2048 \
     --ddp_backend nccl \
+    --dataset blossom-math-zh \
+    --train_dataset_sample -1 \
+    --num_train_epochs 1 \
+    --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -33,4 +37,3 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --deepspeed default-zero2

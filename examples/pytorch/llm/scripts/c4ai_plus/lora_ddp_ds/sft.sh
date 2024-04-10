@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
 swift sft \
-    --model_type c4ai-command-r-v01 \
+    --model_type c4ai-command-r-plus \
     --sft_type lora \
     --tuner_backend swift \
     --dtype AUTO \
@@ -33,4 +33,4 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --deepspeed default-zero2
+    --deepspeed default-zero3
