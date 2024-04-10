@@ -13,7 +13,7 @@ from .torch_utils import (activate_model_parameters, broadcast_string,
                           freeze_model_parameters, get_dist_setting,
                           get_model_info, is_ddp_plus_mp, is_dist,
                           is_local_master, is_master, is_mp, is_on_same_device,
-                          show_layers, time_synchronize)
+                          show_layers, time_synchronize, use_torchacc)
 from .utils import (add_version_to_work_dir, check_json_format,
                     get_pai_tensorboard_dir, is_pai_training_job, lower_bound,
                     parse_args, read_multi_line, seed_everything,

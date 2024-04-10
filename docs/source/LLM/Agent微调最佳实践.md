@@ -11,6 +11,7 @@ SWIFT支持了开源模型，尤其是中小型模型（7B、14B等）对Agent�
 - [微调](#微调)
 - [推理](#推理)
 - [总结](#总结)
+- [搭配Modelscope-Agent使用](#搭配Modelscope-Agent使用)
 
 ## 环境安装
 
@@ -427,6 +428,123 @@ print()
 # Final Answer: There is fire in the image at coordinates [101.1, 200.9]
 ```
 
+
+
+## 搭配Modelscope-Agent使用
+结合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)，微调模型用于搭建Agent
+
+本节针对Modelscope-Agent中的交互式框架AgentFabric，微调小模型qwen-7b-chat使其具有function call能力
+
+由于ms-agent中的system prompt与Modelscope-Agent中的system prompt格式不匹配，直接训练效果不佳，为此我们根据ms-agent转换格式得到新数据集[ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary)，现已集成到SWIFT中。
+其中`ms-agent-for-agentfabric-default`包含3万条由ms-agent转换的数据集，`ms-agent-for-agentfabric-additional`包含488条由开源的AgentFabric框架实际调用访问数据筛选得到
+
+
+### 微调
+将`dataset`换为`ms-agent-for-agentfabric`和`ms-agent-for-agentfabric-default`
+```shell
+# Experimental environment: 8GPU
+nproc_per_node=8
+
+PYTHONPATH=../../.. \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    llm_sft.py \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --model_revision master \
+    --sft_type lora \
+    --tuner_backend swift \
+    --dtype AUTO \
+    --output_dir output \
+    --dataset ms-agent-for-agentfabric-default ms-agent-for-agentfabric-addition \
+    --train_dataset_mix_ratio 2.0 \
+    --train_dataset_sample -1 \
+    --num_train_epochs 2 \
+    --max_length 1500 \
+    --check_dataset_strategy warning \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --lora_dropout_p 0.05 \
+    --lora_target_modules ALL \
+    --self_cognition_sample 3000 \
+    --model_name 卡卡罗特 \
+    --model_author 陶白白 \
+    --gradient_checkpointing true \
+    --batch_size 2 \
+    --weight_decay 0.1 \
+    --learning_rate 5e-5 \
+    --gradient_accumulation_steps $(expr 32 / $nproc_per_node) \
+    --max_grad_norm 0.5 \
+    --warmup_ratio 0.03 \
+    --eval_steps 100 \
+    --save_steps 100 \
+    --save_total_limit 2 \
+    --logging_steps 10
+```
+
+merge lora
+```
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir '/path/to/qwen-7b-chat/vx-xxx/checkpoint-xxx' --merge_lora true
+```
+
+### AgentFabric
+#### 环境安装
+```bash
+git clone https://github.com/modelscope/modelscope-agent.git
+cd modelscope-agent  && pip install -r requirements.txt && pip install -r apps/agentfabric/requirements.txt
+```
+
+#### 部署模型
+使用以下任意一种方式部署模型
+##### swift deploy
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged
+```
+
+##### vllm
+```bash
+python -m vllm.entrypoints.openai.api_server --model /path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged --trust-remote-code
+```
+
+#### 添加本地模型配置
+在`/path/to/modelscope-agent/apps/agentfabric/config/model_config.json`中，新增合并后的本地模型
+```
+    "my-qwen-7b-chat": {
+        "type": "openai",
+        "model": "/path/to/qwen-7b-chat/vx-xxx/checkpoint-xxxx-merged",
+        "api_base": "http://localhost:8000/v1",
+        "is_chat": true,
+        "is_function_call": false,
+        "support_stream": false
+    }
+```
+注意，如果使用`swift deploy`部署，需要将`"model"`的值设为`qwen-7b-chat`
+
+#### 启动AgentFabric
+在以下实践中，会调用[Wanx Image Generation](https://help.aliyun.com/zh/dashscope/opening-service?spm=a2c4g.11186623.0.0.50724937O7n40B)和[高德天气](https://lbs.amap.com/api/webservice/guide/create-project/get-key),需要手动设置API KEY, 设置后启动AgentFabric
+```bash
+export PYTHONPATH=$PYTHONPATH:/path/to/your/modelscope-agent
+export DASHSCOPE_API_KEY=your_api_key
+export AMAP_TOKEN=your_api_key
+cd modelscope-agent/apps/agentfabric
+python app.py
+```
+
+进入AgentFabric后，在配置(Configure)的模型中选择本地模型`my-qwen-7b-chat`
+
+内置能力选择agent可以调用的API, 这里选择`Wanx Image Generation`和`高德天气`
+
+点击更新配置，等待配置完成后在右侧的输入栏中与Agent交互
+> 天气查询
+![agentfabric_1](../../resources/agentfabric_1.png)
+![agentfabric_2](../../resources/agentfabric_2.png)
+
+> 文生图
+![agentfabric_3](../../resources/agentfabric_3.png)
+![agentfabric_4](../../resources/agentfabric_4.png)
+
+可以看到微调后的模型可以正确理解指令并调用工具
 
 
 ## 总结

@@ -69,6 +69,8 @@ class DatasetName:
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     # agent
     ms_agent = 'ms-agent'
+    ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
+    ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric-addition'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -327,6 +329,14 @@ def load_ms_dataset(
     DatasetName.coig_cqia_zhihu,
     'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
     tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric_default,
+    'AI-ModelScope/ms_agent_for_agentfabric', [('default', 'train')],
+    tags=['chat', 'agent', 'multi-round'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric_addition,
+    'AI-ModelScope/ms_agent_for_agentfabric', [('addition', 'train')],
+    tags=['chat', 'agent', 'multi-round'])
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],

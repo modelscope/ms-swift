@@ -11,11 +11,15 @@ from transformers.trainer_utils import (EvaluationStrategy, FSDPOption,
                                         HPSearchBackend, HubStrategy,
                                         IntervalStrategy, SchedulerType)
 
+from swift.utils import get_logger
+
 try:
     # https://github.com/huggingface/transformers/pull/25702
     from transformers.trainer_utils import ShardedDDPOption
 except ImportError:
     ShardedDDPOption = None
+
+logger = get_logger()
 
 
 def can_return_loss(model: Module) -> bool:

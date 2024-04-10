@@ -11,6 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
+from swift.torchacc_utils import pad_and_split_batch
+from swift.utils import get_dist_setting, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -429,12 +431,18 @@ class Template:
                 loss_scale, batch_first=True, padding_value=0.)
         labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
+        if use_torchacc():
+            rank, _, world_size, _ = get_dist_setting()
+            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
+                padding_to, input_ids, attention_mask, labels, loss_scale,
+                self.max_length, self.tokenizer, rank, world_size)
+
         res = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
         }
-        if loss_scale is not None:
+        if loss_scale:
             res['loss_scale'] = loss_scale
         return res
 
