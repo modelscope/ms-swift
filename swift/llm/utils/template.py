@@ -1242,7 +1242,7 @@ register_template(
     TemplateType.c4ai,
     Template(['<BOS_TOKEN>'], [
         '<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'
-    ], [['<|END_OF_TURN_TOKEN|>']], [['<|END_OF_TURN_TOKEN|>']], C4AI_SYSTEM, [
+    ], ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM, [
         '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|'
     ]))
 

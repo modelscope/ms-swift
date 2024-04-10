@@ -283,6 +283,7 @@ class ModelType:
     mengzi3_13b_base = 'mengzi3-13b-base'
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
+    c4ai_command_r_plus = 'c4ai-command-r-plus'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -491,6 +492,13 @@ def get_model_tokenizer_from_repo(model_dir: str,
     ModelType.c4ai_command_r_v01,
     'AI-ModelScope/c4ai-command-r-v01',
     LoRATM.llama2,  # 1
+    TemplateType.c4ai,
+    support_vllm=True,
+    support_flash_attn=True)
+@register_model(
+    ModelType.c4ai_command_r_plus,
+    'AI-ModelScope/c4ai-command-r-plus',
+    LoRATM.llama2, 
     TemplateType.c4ai,
     support_vllm=True,
     support_flash_attn=True)
