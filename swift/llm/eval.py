@@ -99,6 +99,8 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     from llmuses.run import run_task
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
+    if args.eval_dataset == 'no':
+        args.eval_dataset = []
 
     custom_names = []
     if args.custom_eval_config:
