@@ -493,6 +493,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'AI-ModelScope/c4ai-command-r-v01',
     LoRATM.llama2,  # 1
     TemplateType.c4ai,
+    requires=['transformers>=4.39.1'],
     support_vllm=True,
     support_flash_attn=True)
 @register_model(
@@ -500,6 +501,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'AI-ModelScope/c4ai-command-r-plus',
     LoRATM.llama2, 
     TemplateType.c4ai,
+    requires=['transformers>=4.40.0'],
     support_vllm=True,
     support_flash_attn=True)
 def get_model_tokenizer_c4ai(model_dir: str,

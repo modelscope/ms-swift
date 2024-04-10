@@ -2,7 +2,7 @@
 
 CUDA_VISIBLE_DEVICES=0,1 \
 swift infer \
-    --ckpt_dir "output/c4ai-command-r-v01/vx-xxx/checkpoint-xx" \
+    --ckpt_dir "output/c4ai-command-r-plus/vx-xxx/checkpoint-xx" \
     --load_args_from_ckpt_dir true \
     --eval_human true \
     --temperature 0.3 \
