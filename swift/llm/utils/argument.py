@@ -787,6 +787,8 @@ class EvalArguments(InferArguments):
     eval_dataset: List[str] = field(
         default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
 
+    eval_few_shot: Optional[int] = None
+
     eval_limit: Optional[int] = None
 
     custom_eval_config: Optional[str] = None

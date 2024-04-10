@@ -122,6 +122,11 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
         task_config.use_cache = False
         if args.eval_limit:
             task_config.limit = args.eval_limit
+        if args.eval_few_shot is not None:
+            for dataset in task_config.datasets:
+                if not task_config.dataset_args.get(dataset):
+                    task_config.dataset_args[dataset] = {}
+                task_config.dataset_args[dataset]['few_shot_num'] = args.eval_few_shot
     logger.warn('Eval does not support temperature/top_p/do_sample argument')
     logger.info(f'Eval task config: {task_configs}')
     run_task(task_cfg=task_configs)
