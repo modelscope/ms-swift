@@ -70,6 +70,8 @@ class EvalModel(CustomModel):
                 self.model,
                 self.template,
                 prompt,
+                history=kwargs.get('history'),
+                system=kwargs.get('system'),
                 generation_info=generation_info,
                 generation_config=GenerationConfig(**kwargs['infer_cfg']))
             self.generation_info['time'] += time.time() - ts
