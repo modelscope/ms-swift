@@ -282,7 +282,7 @@ class ModelType:
     # mengzi
     mengzi3_13b_base = 'mengzi3-13b-base'
     # c4ai
-    c4ai_command_r_v01='c4ai-command-r-v01'
+    c4ai_command_r_v01 = 'c4ai-command-r-v01'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -454,13 +454,6 @@ def register_model(
     TemplateType.mengzi,
     support_vllm=True,
     support_flash_attn=True)
-@register_model(
-    ModelType.c4ai_command_r_v01,
-    'AI-ModelScope/c4ai-command-r-v01',
-    LoRATM.llama2, # 1
-    TemplateType.c4ai,
-    support_vllm=True,
-    support_flash_attn=True)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
@@ -490,6 +483,43 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 config=model_config,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
+                **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.c4ai_command_r_v01,
+    'AI-ModelScope/c4ai-command-r-v01',
+    LoRATM.llama2,  # 1
+    TemplateType.c4ai,
+    support_vllm=True,
+    support_flash_attn=True)
+def get_model_tokenizer_c4ai(model_dir: str,
+                             torch_dtype: Optional[Dtype],
+                             model_kwargs: Dict[str, Any],
+                             load_model: bool = True,
+                             model_config=None,
+                             tokenizer=None,
+                             automodel_class=AutoModelForCausalLM,
+                             **kwargs):
+    """load from an independent repository"""
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir)
+    if torch_dtype is not None:
+        model_config.torch_dtype = torch_dtype
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    eos_token = kwargs.get('eos_token')
+    if eos_token is not None:
+        tokenizer.eos_token = eos_token
+    model = None
+    context = kwargs.get('context', nullcontext())
+    if load_model:
+        with context:
+            model = automodel_class.from_pretrained(
+                model_dir,
+                config=model_config,
+                torch_dtype=torch_dtype,
                 **model_kwargs)
     return model, tokenizer
 
