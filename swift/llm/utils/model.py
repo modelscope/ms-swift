@@ -285,6 +285,9 @@ class ModelType:
     dbrx_base = 'dbrx-base'
     # mengzi
     mengzi3_13b_base = 'mengzi3-13b-base'
+    # c4ai
+    c4ai_command_r_v01 = 'c4ai-command-r-v01'
+    c4ai_command_r_plus = 'c4ai-command-r-plus'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -317,7 +320,7 @@ class LoRATM(NamedTuple):
     phi = ['Wqkv']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
-    telechat = ['self_attention.key_value', 'self_attention.query']
+    telechat = ['key_value', 'query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
 
@@ -455,6 +458,22 @@ def register_model(
     LoRATM.llama2,
     TemplateType.mengzi,
     support_vllm=True,
+    support_flash_attn=True)
+@register_model(
+    ModelType.c4ai_command_r_v01,
+    'AI-ModelScope/c4ai-command-r-v01',
+    LoRATM.llama2,
+    TemplateType.c4ai,
+    requires=['transformers>=4.39.1'],
+    support_vllm=False,
+    support_flash_attn=True)
+@register_model(
+    ModelType.c4ai_command_r_plus,
+    'AI-ModelScope/c4ai-command-r-plus',
+    LoRATM.llama2,
+    TemplateType.c4ai,
+    requires=['transformers>4.39'],
+    support_vllm=False,
     support_flash_attn=True)
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
