@@ -533,7 +533,7 @@ def get_model_tokenizer_c4ai(model_dir: str,
     if torch_dtype is not None:
         model_config.torch_dtype = torch_dtype
     if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token
