@@ -183,10 +183,14 @@ class ModelType:
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
     # minicpm
+    minicpm_1b_sft_chat = 'minicpm-1b-sft-chat'
     minicpm_2b_sft_chat = 'minicpm-2b-sft-chat'
     minicpm_2b_chat = 'minicpm-2b-chat'
+    minicpm_2b_128k = 'minicpm-2b-128k'
+    minicpm_moe_8x2b = 'minicpm-moe-8x2b'
     # minicpm-v
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
+    minicpm_v_v2 = 'minicpm-v-v2'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
@@ -2725,7 +2729,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
         model.config.max_sequence_length = 2048
     return model, tokenizer
 
-
 @register_model(
     ModelType.minicpm_2b_sft_chat,
     'OpenBMB/MiniCPM-2B-sft-fp32',
@@ -2735,6 +2738,24 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 @register_model(
     ModelType.minicpm_2b_chat,
     'OpenBMB/MiniCPM-2B-dpo-fp32',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    support_flash_attn=True)
+@register_model(
+    ModelType.minicpm_1b_sft_chat,
+    'OpenBMB/MiniCPM-1B-sft-bf16',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    support_flash_attn=True)
+@register_model(
+    ModelType.minicpm_2b_128k,
+    'OpenBMB/MiniCPM-2B-128k',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    support_flash_attn=True)
+@register_model(
+    ModelType.minicpm_moe_8x2b,
+    'OpenBMB/MiniCPM-MoE-8x2B',
     LoRATM.llama2,
     TemplateType.minicpm,
     support_flash_attn=True)
@@ -2760,6 +2781,12 @@ def get_model_tokenizer_minicpm(model_dir: str,
 @register_model(
     ModelType.minicpm_v_3b_chat,
     'OpenBMB/MiniCPM-V',
+    LoRATM.llama2,
+    TemplateType.minicpm_v,
+    support_flash_attn=True)
+@register_model(
+    ModelType.minicpm_v_v2,
+    'OpenBMB/MiniCPM-V-2.0',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True)
