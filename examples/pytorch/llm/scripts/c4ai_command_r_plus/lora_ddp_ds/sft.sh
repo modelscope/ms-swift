@@ -1,5 +1,7 @@
 # Experimental environment: 4 * A100
 # 4 * 80GB GPU memory
+# Note: you have to install latest version of the transformers library.
+# pip install git+https://github.com/huggingface/transformers
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

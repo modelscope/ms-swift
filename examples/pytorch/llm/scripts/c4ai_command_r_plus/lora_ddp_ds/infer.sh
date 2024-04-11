@@ -1,6 +1,6 @@
-# Experimental environment: 2*A100
-
-CUDA_VISIBLE_DEVICES=0,1 \
+# Experimental environment: 4*A100
+# 4 * 55GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift infer \
     --ckpt_dir "output/c4ai-command-r-plus/vx-xxx/checkpoint-xx" \
     --load_args_from_ckpt_dir true \
@@ -10,3 +10,5 @@ swift infer \
     --repetition_penalty 1. \
     --do_sample true \
     --merge_lora false \
+    --load_dataset_config true \
+    --eval_human false \

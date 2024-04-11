@@ -491,7 +491,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
 @register_model(
     ModelType.c4ai_command_r_v01,
     'AI-ModelScope/c4ai-command-r-v01',
-    LoRATM.llama2,  # 1
+    LoRATM.llama2,
     TemplateType.c4ai,
     requires=['transformers>=4.39.1'],
     support_vllm=True,
@@ -501,7 +501,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     'AI-ModelScope/c4ai-command-r-plus',
     LoRATM.llama2, 
     TemplateType.c4ai,
-    requires=['transformers>=4.40.0'],
+    requires=['transformers>4.39'],
     support_vllm=True,
     support_flash_attn=True)
 def get_model_tokenizer_c4ai(model_dir: str,
@@ -512,7 +512,6 @@ def get_model_tokenizer_c4ai(model_dir: str,
                              tokenizer=None,
                              automodel_class=AutoModelForCausalLM,
                              **kwargs):
-    """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir)
     if torch_dtype is not None:
