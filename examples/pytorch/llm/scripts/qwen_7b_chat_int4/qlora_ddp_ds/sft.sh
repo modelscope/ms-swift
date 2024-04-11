@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path qwen/Qwen-7B-Chat-Int4 \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type qwen \
     --dtype fp16 \
     --output_dir output \

@@ -9,7 +9,7 @@ swift sft \
     --model_id_or_path qwen/Qwen-14B-Chat \
     --model_revision master \
     --sft_type full \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \

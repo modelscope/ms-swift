@@ -5,7 +5,7 @@ swift sft \
     --model_type dbrx-instruct \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type qwen \
     --dtype bf16 \
     --output_dir output \

@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_id_or_path AI-ModelScope/gemma-2b-it \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \

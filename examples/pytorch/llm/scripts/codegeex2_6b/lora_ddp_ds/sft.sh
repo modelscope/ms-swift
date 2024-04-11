@@ -11,7 +11,7 @@ torchrun \
     --model_type codegeex2-6b \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \

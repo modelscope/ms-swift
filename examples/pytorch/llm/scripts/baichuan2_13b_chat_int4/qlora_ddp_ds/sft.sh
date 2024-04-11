@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path baichuan-inc/Baichuan2-13B-Chat-4bits \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type baichuan \
     --dtype AUTO \
     --output_dir output \

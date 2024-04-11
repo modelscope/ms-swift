@@ -22,9 +22,9 @@ from transformers.utils.versions import require_version
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
-from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, get_logger, get_pai_tensorboard_dir,
-                         is_dist, is_mp, is_pai_training_job)
+from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
+                         get_pai_tensorboard_dir, is_dist, is_mp,
+                         is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
@@ -37,7 +37,7 @@ logger = get_logger()
 
 def is_adapter(sft_type: str) -> bool:
     return sft_type in {
-        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro'
+        'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'
     }
 
 
@@ -56,11 +56,11 @@ class SftArguments:
             "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"
         })
 
-    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3',
-                      'llamapro'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro',
+                      'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
-    tuner_backend: Literal['swift', 'peft'] = 'swift'
+    tuner_backend: Literal['swift', 'peft'] = 'peft'
     template_type: str = field(
         default='AUTO',
         metadata={
@@ -121,14 +121,12 @@ class SftArguments:
     lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32'] = 'fp32'
     lora_lr_ratio: float = None
-
     use_rslora: bool = False
-    lora_layers_to_transform: Optional[List[int]] = None
-    lora_layers_pattern: Optional[List[str]] = None
-    lora_rank_pattern: Dict = field(default_factory=dict)
-    lora_alpha_pattern: Dict = field(default_factory=dict)
-    lora_loftq_config: Dict = field(default_factory=dict)
     use_dora: bool = False
+
+    # adapter
+    adapter_act: str = 'gelu'
+    adapter_length: int = 128
 
     # galore
     use_galore: bool = False
@@ -583,7 +581,7 @@ class InferArguments:
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'qalora', 'full', 'adalora', 'ia3',
+    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3',
                       'llamapro'] = 'lora'
     template_type: str = field(
         default='AUTO',
@@ -779,6 +777,21 @@ class DeployArguments(InferArguments):
         if 'multi-modal' in tags:
             raise ValueError(
                 'Deployment of multimodal models is currently not supported.')
+
+
+@dataclass
+class EvalArguments(InferArguments):
+
+    name: Optional[str] = None
+
+    eval_dataset: List[str] = field(
+        default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
+
+    eval_few_shot: Optional[int] = None
+
+    eval_limit: Optional[int] = None
+
+    custom_eval_config: Optional[str] = None
 
 
 @dataclass

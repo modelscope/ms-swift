@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_type codefuse-codellama-34b-chat \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type codefuse-codellama \
     --dtype fp16 \
     --output_dir output \

@@ -8,7 +8,7 @@ MASTER_PORT=29500 \
 swift sft \
     --model_type orion-14b-chat \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \

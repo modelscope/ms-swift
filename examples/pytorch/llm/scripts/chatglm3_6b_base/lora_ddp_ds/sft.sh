@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path ZhipuAI/chatglm3-6b-base \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type chatglm-generation \
     --dtype AUTO \
     --output_dir output \

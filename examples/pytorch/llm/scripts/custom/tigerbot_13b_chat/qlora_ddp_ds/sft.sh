@@ -10,7 +10,7 @@ torchrun \
     llm_sft.py \
     --model_type tigerbot-13b-chat \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type tigerbot \
     --dtype AUTO \
     --output_dir output \

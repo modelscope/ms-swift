@@ -7,6 +7,10 @@
 - [Use Flash Attn & Gradient Checkpointing](#use-flash-attn--gradient-checkpointing)
 - [LoRA Rank & LoRA Target Modules](#lora-rank--lora-target-modules)
 - [Gradient Accumulation Steps](#gradient-accumulation-steps)
+- [Tuners](#Tuners)
+- [Export](#Export)
+- [AWQ](#AWQ)
+- [AQLM](#AQLM)
 
 ## 参数设置
 实验环境:
@@ -699,3 +703,45 @@ swift sft \
         <td>27.74</td>
     </tr>
 </table>
+## Tuners
+
+| exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
+| -------- | ---------- | ------- | -------------------| ----- | ------------ | ------------------- | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |
+|adalora|qwen-7b-chat|ms-agent|2.0|adalora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|26.8389(0.3464%)|True|True|lr=5e-05/epoch=2|32.55GiB|0.92(87543 samples/95338.71 seconds)|17.33(2345 tokens/135.29 seconds)|0.57|1.07|0.391|0.665|0.569|
+|adapter|qwen-7b-chat|ms-agent|2.0|adapter||33.6896(0.4344%)|True|True|lr=5e-05/epoch=2|32.19GiB|1.48(87543 samples/59067.71 seconds)|26.63(4019 tokens/150.90 seconds)|0.55|1.03|0.438|0.662|0.565|
+|dora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=True|19.2512(0.2487%)|True|True|lr=5e-05/epoch=2|32.46GiB|0.51(87543 samples/171110.54 seconds)|4.29(2413 tokens/562.32 seconds)|0.53|1.01|0.466|0.683|**0.577**|
+|full+galore128|qwen-7b-chat|ms-agent|2.0|full|galore_rank=128/galore_per_parameter=false/galore_with_embedding=false|7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|47.02GiB|1.10(87543 samples/79481.96 seconds)|28.96(2400 tokens/82.88 seconds)|0.55|1.00|0.358|**0.688**|**0.577**|
+|full+galore32|qwen-7b-chat|ms-agent|2.0|full|galore_rank=32/galore_per_parameter=false/galore_with_embedding=false|7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|47.05GiB|1.11(87543 samples/78989.74 seconds)|29.17(2431 tokens/83.35 seconds)|0.56|1.01|0.386|0.667|0.539|
+|full+galore64|qwen-7b-chat|ms-agent|2.0|full|galore_rank=64/galore_per_parameter=false/galore_with_embedding=false|7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|46.91GiB|1.11(87543 samples/79200.36 seconds)|28.94(2448 tokens/84.60 seconds)|0.56|1.01|0.397|0.674|0.544|
+|full+galore_emb|qwen-7b-chat|ms-agent|2.0|full|galore_rank=128/galore_per_parameter=false/galore_with_embedding=true|7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|44.53GiB|1.10(87543 samples/79775.02 seconds)|29.45(2433 tokens/82.62 seconds)|0.55|1.00|0.398|0.670|0.568|
+|full+galore_perparam|qwen-7b-chat|ms-agent|2.0|full|galore_rank=128/galore_per_parameter=true/galore_with_embedding=false|7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|47.02GiB|1.25(87543 samples/69821.89 seconds)|29.02(2478 tokens/85.39 seconds)|0.54|1.00|0.372|0.669|0.524|
+|full+no_mix|qwen-7b-chat|ms-agent|0.0|full||7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|72.56GiB|1.27(29698 samples/23356.97 seconds)|30.31(11738 tokens/387.29 seconds)|0.57|**0.44**|0.174|0.652|0.553|
+|full|qwen-7b-chat|ms-agent|2.0|full||7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|73.53GiB|1.43(87543 samples/61022.97 seconds)|29.51(3382 tokens/114.62 seconds)|0.54|0.95|0.343|0.536|0.495|
+|llamapro|qwen-7b-chat|ms-agent|2.0|llamapro|num_blocks=4|809.5826(9.4900%)|True|True|lr=5e-05/epoch=2|38.11GiB|1.53(87543 samples/57294.42 seconds)|25.80(2374 tokens/92.02 seconds)|0.53|1.00|0.434|0.645|0.357|
+|lora+|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=16.0/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.95(87543 samples/91923.80 seconds)|18.81(3329 tokens/176.94 seconds)|0.53|0.98|0.432|0.647|0.344|
+|lora+neftune|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=Falseneftune_alpha=15.0|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.96(87543 samples/91525.50 seconds)|19.84(161792 tokens/8156.02 seconds)|0.53|1.02|0.456|0.671|0.401|
+|lora+no_mix|qwen-7b-chat|ms-agent|0.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|30.86GiB|0.91(29698 samples/32570.15 seconds)|19.89(36308 tokens/1825.26 seconds)|0.53|0.53|0.470|0.666|0.574|
+|lora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.95(87543 samples/91974.29 seconds)|18.11(2415 tokens/133.32 seconds)|0.53|1.01|0.462|0.676|0.304|
+|qwen-7b-chat-eval|qwen-7b-chat|None|0.0|None||None(None)||||None||30.81(13765 tokens/446.83 seconds)|||**0.517**|0.679|0.568|
+|rslora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=True/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.94(87543 samples/92758.63 seconds)|18.87(2762 tokens/146.34 seconds)|**0.53**|0.99|0.451|0.679|0.339|
+
+## Export
+
+| exp_name | model_type | calibration dataset | quantization method | quantization bits | infer speed(tokens/s) | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
+| -------- | ---------- | ------------------- | ------------------- | ----------------- | --------------------- | ------------------ | ---------------- | ------------------ |
+|awq-ms-bench-mini|qwen-7b-chat|ms-bench-mini|awq|4|27.25(16501 tokens/605.47 seconds)|0.494|0.665|0.571|
+|awq-pileval|qwen-7b-chat|pileval|awq|4|26.92(12994 tokens/482.72 seconds)|**0.497**|**0.675**|**0.577**|
+|gptq-ms-bench-mini|qwen-7b-chat|ms-bench-mini|gptq|4|31.16(15349 tokens/492.54 seconds)|0.482|0.642|0.556|
+|gptq-pileval|qwen-7b-chat|pileval|gptq|4|31.67(15185 tokens/479.54 seconds)|0.478|0.654|0.559|
+
+## AWQ
+
+| exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
+| -------- | ---------- | ------- | -------------------| ----- | ------------ | ------------------- | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |
+|qwen1half-7b-chat-awq|qwen1half-7b-chat-awq|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|19.9885(1.5802%)|True|True|lr=5e-05/epoch=2|24.26GiB|0.45(87543 samples/194746.58 seconds)|16.08(2469 tokens/153.58 seconds)|**0.55**|**1.19**|**0.505**|**0.737**|**0.656**|
+
+## AQLM
+
+| exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
+| -------- | ---------- | ------- | -------------------| ----- | ------------ | ------------------- | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |
+|llama2-7b-aqlm-2bit-1x16|llama2-7b-aqlm-2bit-1x16|dureader-robust-zh|0.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|19.9885(1.6510%)|True|True|lr=5e-05/epoch=2|4.04GiB|0.17(14994 samples/86140.71 seconds)||**0.48**|**0.74**||||

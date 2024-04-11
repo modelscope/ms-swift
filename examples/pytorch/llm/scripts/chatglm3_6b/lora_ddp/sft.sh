@@ -9,7 +9,7 @@ swift sft \
     --model_id_or_path ZhipuAI/chatglm3-6b \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type chatglm3 \
     --dtype AUTO \
     --output_dir output \

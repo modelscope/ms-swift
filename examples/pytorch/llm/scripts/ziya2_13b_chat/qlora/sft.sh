@@ -7,7 +7,7 @@ python llm_sft.py \
     --model_id_or_path Fengshenbang/Ziya2-13B-Chat \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type ziya \
     --dtype AUTO \
     --output_dir output \
