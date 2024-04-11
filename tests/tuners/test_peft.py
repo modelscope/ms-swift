@@ -4,10 +4,12 @@ import shutil
 import tempfile
 import unittest
 
+import peft
 import torch
 from modelscope import Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
+from packaging import version
 from peft import PeftModel, inject_adapter_in_model
 from peft.tuners.lora import Linear
 from peft.utils import WEIGHTS_NAME
@@ -119,6 +121,9 @@ class TestPeft(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict3[key]).flatten().detach().cpu()))
 
+    @unittest.skipIf(
+        version.parse(peft.__version__) >= version.parse('0.10.0'),
+        reason='version not match')
     def test_lora_reload_by_peft(self):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = SbertForSequenceClassification(SbertConfig())

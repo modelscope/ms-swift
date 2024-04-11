@@ -1,13 +1,18 @@
 import math
 import unittest
 
+import peft
 import torch
 from modelscope import Model, Preprocessor
+from packaging import version
 from torch import nn
 
 from swift import LoRAConfig, Swift
 
 
+@unittest.skipIf(
+    version.parse(peft.__version__) >= version.parse('0.10.0'),
+    reason='version not match')
 class TestMergedLinear(unittest.TestCase):
 
     def test_swift_lora_forward(self):
