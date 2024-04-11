@@ -35,18 +35,23 @@ The table below introcudes all models supported by SWIFT:
 |qwen1half-4b|[qwen/Qwen1.5-4B](https://modelscope.cn/models/qwen/Qwen1.5-4B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-7b|[qwen/Qwen1.5-7B](https://modelscope.cn/models/qwen/Qwen1.5-7B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-14b|[qwen/Qwen1.5-14B](https://modelscope.cn/models/qwen/Qwen1.5-14B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-32b|[qwen/Qwen1.5-32B](https://modelscope.cn/models/qwen/Qwen1.5-32B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-72b|[qwen/Qwen1.5-72B](https://modelscope.cn/models/qwen/Qwen1.5-72B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-moe-a2_7b|[qwen/Qwen1.5-MoE-A2.7B](https://modelscope.cn/models/qwen/Qwen1.5-MoE-A2.7B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-0_5b-chat|[qwen/Qwen1.5-0.5B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-1_8b-chat|[qwen/Qwen1.5-1.8B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-4b-chat|[qwen/Qwen1.5-4B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-7b-chat|[qwen/Qwen1.5-7B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-14b-chat|[qwen/Qwen1.5-14B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-32b-chat|[qwen/Qwen1.5-32B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-32B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-72b-chat|[qwen/Qwen1.5-72B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|qwen1half-moe-a2_7b-chat|[qwen/Qwen1.5-MoE-A2.7B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-MoE-A2.7B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-0_5b-chat-int4|[qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-1_8b-chat-int4|[qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-4b-chat-int4|[qwen/Qwen1.5-4B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-7b-chat-int4|[qwen/Qwen1.5-7B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-14b-chat-int4|[qwen/Qwen1.5-14B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-32b-chat-int4|[qwen/Qwen1.5-32B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-32B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-72b-chat-int4|[qwen/Qwen1.5-72B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-0_5b-chat-int8|[qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-1_8b-chat-int8|[qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
@@ -54,6 +59,7 @@ The table below introcudes all models supported by SWIFT:
 |qwen1half-7b-chat-int8|[qwen/Qwen1.5-7B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-14b-chat-int8|[qwen/Qwen1.5-14B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-72b-chat-int8|[qwen/Qwen1.5-72B-Chat-GPTQ-Int8](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat-GPTQ-Int8/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
+|qwen1half-moe-a2_7b-chat-int4|[qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-0_5b-chat-awq|[qwen/Qwen1.5-0.5B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
 |qwen1half-1_8b-chat-awq|[qwen/Qwen1.5-1.8B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
 |qwen1half-4b-chat-awq|[qwen/Qwen1.5-4B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
@@ -78,6 +84,7 @@ The table below introcudes all models supported by SWIFT:
 |llama2-70b|[modelscope/Llama-2-70b-ms](https://modelscope.cn/models/modelscope/Llama-2-70b-ms/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;||-|
 |llama2-70b-chat|[modelscope/Llama-2-70b-chat-ms](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;||-|
 |llama2-7b-aqlm-2bit-1x16|[AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf](https://modelscope.cn/models/AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2718;|transformers>=4.38, aqlm, torch>=2.2.0|-|
+|llava1d6-mistral-7b-instruct|[AI-ModelScope/llava-v1.6-mistral-7b](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary)|q_proj, k_proj, v_proj|llava-mistral-instruct|&#x2714;|&#x2718;|transformers>=4.34|multi-modal, vision|
 |yi-6b|[01ai/Yi-6B](https://modelscope.cn/models/01ai/Yi-6B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
 |yi-6b-200k|[01ai/Yi-6B-200K](https://modelscope.cn/models/01ai/Yi-6B-200K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
 |yi-6b-chat|[01ai/Yi-6B-Chat](https://modelscope.cn/models/01ai/Yi-6B-Chat/summary)|q_proj, k_proj, v_proj|yi|&#x2714;|&#x2714;||-|
@@ -85,8 +92,8 @@ The table below introcudes all models supported by SWIFT:
 |yi-34b|[01ai/Yi-34B](https://modelscope.cn/models/01ai/Yi-34B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
 |yi-34b-200k|[01ai/Yi-34B-200K](https://modelscope.cn/models/01ai/Yi-34B-200K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
 |yi-34b-chat|[01ai/Yi-34B-Chat](https://modelscope.cn/models/01ai/Yi-34B-Chat/summary)|q_proj, k_proj, v_proj|yi|&#x2714;|&#x2714;||-|
-|yi-vl-6b-chat|[01ai/Yi-VL-6B](https://modelscope.cn/models/01ai/Yi-VL-6B/summary)|q_proj, k_proj, v_proj|yi-vl|&#x2718;|&#x2718;|transformers>=4.34|multi-modal, vision|
-|yi-vl-34b-chat|[01ai/Yi-VL-34B](https://modelscope.cn/models/01ai/Yi-VL-34B/summary)|q_proj, k_proj, v_proj|yi-vl|&#x2718;|&#x2718;|transformers>=4.34|multi-modal, vision|
+|yi-vl-6b-chat|[01ai/Yi-VL-6B](https://modelscope.cn/models/01ai/Yi-VL-6B/summary)|q_proj, k_proj, v_proj|yi-vl|&#x2714;|&#x2718;|transformers>=4.34|multi-modal, vision|
+|yi-vl-34b-chat|[01ai/Yi-VL-34B](https://modelscope.cn/models/01ai/Yi-VL-34B/summary)|q_proj, k_proj, v_proj|yi-vl|&#x2714;|&#x2718;|transformers>=4.34|multi-modal, vision|
 |internlm-7b|[Shanghai_AI_Laboratory/internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2714;||-|
 |internlm-7b-chat|[Shanghai_AI_Laboratory/internlm-chat-7b-v1_1](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-v1_1/summary)|q_proj, k_proj, v_proj|internlm|&#x2718;|&#x2714;||-|
 |internlm-7b-chat-8k|[Shanghai_AI_Laboratory/internlm-chat-7b-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary)|q_proj, k_proj, v_proj|internlm|&#x2718;|&#x2714;||-|
@@ -140,6 +147,7 @@ The table below introcudes all models supported by SWIFT:
 |openbuddy-deepseek-67b-chat|[OpenBuddy/openbuddy-deepseek-67b-v15.2](https://modelscope.cn/models/OpenBuddy/openbuddy-deepseek-67b-v15.2/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
 |openbuddy-mixtral-moe-7b-chat|[OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k](https://modelscope.cn/models/OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|transformers>=4.36|-|
 |mistral-7b|[AI-ModelScope/Mistral-7B-v0.1](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.1/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.34|-|
+|mistral-7b-v2|[AI-ModelScope/Mistral-7B-v0.2-hf](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-v0.2-hf/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.34|-|
 |mistral-7b-instruct|[AI-ModelScope/Mistral-7B-Instruct-v0.1](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;|transformers>=4.34|-|
 |mistral-7b-instruct-v2|[AI-ModelScope/Mistral-7B-Instruct-v0.2](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.2/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;|transformers>=4.34|-|
 |mixtral-moe-7b|[AI-ModelScope/Mixtral-8x7B-v0.1](https://modelscope.cn/models/AI-ModelScope/Mixtral-8x7B-v0.1/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2714;|transformers>=4.36|-|
@@ -166,6 +174,7 @@ The table below introcudes all models supported by SWIFT:
 |xverse-65b-v2|[xverse/XVERSE-65B-2](https://modelscope.cn/models/xverse/XVERSE-65B-2/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
 |xverse-65b-chat|[xverse/XVERSE-65B-Chat](https://modelscope.cn/models/xverse/XVERSE-65B-Chat/summary)|q_proj, k_proj, v_proj|xverse|&#x2718;|&#x2718;||-|
 |xverse-13b-256k|[xverse/XVERSE-13B-256K](https://modelscope.cn/models/xverse/XVERSE-13B-256K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|xverse-moe-a4_2b|[xverse/XVERSE-MoE-A4.2B](https://modelscope.cn/models/xverse/XVERSE-MoE-A4.2B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
 |orion-14b|[OrionStarAI/Orion-14B-Base](https://modelscope.cn/models/OrionStarAI/Orion-14B-Base/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2718;||-|
 |orion-14b-chat|[OrionStarAI/Orion-14B-Chat](https://modelscope.cn/models/OrionStarAI/Orion-14B-Chat/summary)|q_proj, k_proj, v_proj|orion|&#x2714;|&#x2718;||-|
 |bluelm-7b|[vivo-ai/BlueLM-7B-Base](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2718;|&#x2718;||-|
@@ -190,15 +199,23 @@ The table below introcudes all models supported by SWIFT:
 |cogvlm-17b-instruct|[ZhipuAI/cogvlm-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary)|vision_expert_query_key_value, vision_expert_dense, language_expert_query_key_value, language_expert_dense|cogvlm-instruct|&#x2718;|&#x2718;||multi-modal, vision|
 |cogagent-18b-chat|[ZhipuAI/cogagent-chat](https://modelscope.cn/models/ZhipuAI/cogagent-chat/summary)|vision_expert_query_key_value, vision_expert_dense, language_expert_query_key_value, language_expert_dense, query, key_value, dense|cogagent-chat|&#x2718;|&#x2718;||multi-modal, vision|
 |cogagent-18b-instruct|[ZhipuAI/cogagent-vqa](https://modelscope.cn/models/ZhipuAI/cogagent-vqa/summary)|vision_expert_query_key_value, vision_expert_dense, language_expert_query_key_value, language_expert_dense, query, key_value, dense|cogagent-instruct|&#x2718;|&#x2718;||multi-modal, vision|
-|mamba-130m|[AI-ModelScope/mamba-130m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-130m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
-|mamba-370m|[AI-ModelScope/mamba-370m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-370m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
-|mamba-390m|[AI-ModelScope/mamba-390m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-390m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
-|mamba-790m|[AI-ModelScope/mamba-790m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-790m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
-|mamba-1.4b|[AI-ModelScope/mamba-1.4b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-1.4b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
-|mamba-2.8b|[AI-ModelScope/mamba-2.8b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-2.8b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
+|mamba-130m|[AI-ModelScope/mamba-130m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-130m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0|-|
+|mamba-370m|[AI-ModelScope/mamba-370m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-370m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0|-|
+|mamba-390m|[AI-ModelScope/mamba-390m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-390m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0|-|
+|mamba-790m|[AI-ModelScope/mamba-790m-hf](https://modelscope.cn/models/AI-ModelScope/mamba-790m-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0|-|
+|mamba-1.4b|[AI-ModelScope/mamba-1.4b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-1.4b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0|-|
+|mamba-2.8b|[AI-ModelScope/mamba-2.8b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-2.8b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0|-|
+|telechat-7b|[TeleAI/TeleChat-7B](https://modelscope.cn/models/TeleAI/TeleChat-7B/summary)|key_value, query|telechat|&#x2714;|&#x2718;||-|
+|telechat-12b|[TeleAI/TeleChat-12B](https://modelscope.cn/models/TeleAI/TeleChat-12B/summary)|key_value, query|telechat|&#x2714;|&#x2718;||-|
+|grok-1|[colossalai/grok-1-pytorch](https://modelscope.cn/models/colossalai/grok-1-pytorch/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;||-|
+|dbrx-instruct|[AI-ModelScope/dbrx-instruct](https://modelscope.cn/models/AI-ModelScope/dbrx-instruct/summary)|attn.Wqkv|dbrx|&#x2714;|&#x2714;|transformers>=4.36|-|
+|dbrx-base|[AI-ModelScope/dbrx-base](https://modelscope.cn/models/AI-ModelScope/dbrx-base/summary)|attn.Wqkv|dbrx|&#x2714;|&#x2714;|transformers>=4.36|-|
+|mengzi3-13b-base|[langboat/Mengzi3-13B-Base](https://modelscope.cn/models/langboat/Mengzi3-13B-Base/summary)|q_proj, k_proj, v_proj|mengzi|&#x2714;|&#x2714;||-|
+|c4ai-command-r-v01|[AI-ModelScope/c4ai-command-r-v01](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-v01/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>=4.39.1|-|
+|c4ai-command-r-plus|[AI-ModelScope/c4ai-command-r-plus](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-plus/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>4.39|-|
 
 
-## 数据集
+## dataset
 The table below introduces the datasets supported by SWIFT:
 - Dataset Name: The dataset name registered in SWIFT.
 - Dataset ID: The dataset id in [ModelScope](https://www.modelscope.cn/my/overview).
@@ -262,6 +279,7 @@ The table below introduces the datasets supported by SWIFT:
 |generated-chat-zh|[AI-ModelScope/generated_chat_0.4M](https://modelscope.cn/datasets/AI-ModelScope/generated_chat_0.4M/summary)|396004|0|273.3±52.0, min=32, max=873|chat, character-dialogue|
 |cls-fudan-news-zh|[damo/zh_cls_fudan-news](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary)|4959|0|3234.4±2547.5, min=91, max=19548|chat, classification|
 |ner-jave-zh|[damo/zh_ner-JAVE](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)|1266|0|118.3±45.5, min=44, max=223|chat, ner|
+|long-alpaca-12k|[AI-ModelScope/LongAlpaca-12k](https://modelscope.cn/datasets/AI-ModelScope/LongAlpaca-12k/summary)|11998|0|9619.0±8295.8, min=36, max=78925|longlora, QA|
 |coco-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|414113|40504|298.8±2.8, min=294, max=351|chat, multi-modal, vision|
 |🔥coco-mini-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|20000|200|298.8±2.8, min=294, max=339|chat, multi-modal, vision|
 |🔥coco-mini-en-2|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|20000|200|36.8±2.8, min=32, max=77|chat, multi-modal, vision|
