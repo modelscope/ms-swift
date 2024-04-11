@@ -9,15 +9,19 @@ from swift.utils import stat_array
 
 
 def write_dataset_info(fpath) -> None:
-    if os.path.exists(fpath):
-        with open(fpath, 'r', encoding='utf-8') as f:
-            text = f.read()
-        idx = text.find('| Dataset Name |')
-        pre_text = text[:idx]
-        text = text[idx:]
-        text_list = [t for t in text.split('\n') if len(t.strip()) > 0]
-    else:
-        text_list = []
+    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
+    pre_texts = []
+    for fpath in fpaths:
+        if os.path.exists(fpath):
+            with open(fpath, 'r', encoding='utf-8') as f:
+                text = f.read()
+            idx = text.find('| Dataset Name |')
+            pre_texts.append(text[:idx])
+
+            text = text[idx:]
+            text_list=[t for t in text.split('\n') if len(t.strip()) > 0]
+        else:
+            text_list=[]
 
     res_text_list = []
 
@@ -92,12 +96,14 @@ def write_dataset_info(fpath) -> None:
             f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
             f'{val_size}|{stat_str}|{tags_str}|')
     print(f'数据集总数: {len(dataset_name_list)}')
-    text = '\n'.join(res_text_list)
-    text = pre_text + text + '\n'
-    with open(fpath, 'w', encoding='utf-8') as f:
-        f.write(text)
+
+    for idx in range(fpaths):
+        text = '\n'.join(res_text_list)
+        text = pre_texts[idx] + text + '\n'
+        with open(fpaths[i], 'w', encoding='utf-8') as f:
+            f.write(text)
+        
 
 
 if __name__ == '__main__':
-    write_dataset_info('docs/source/LLM/支持的模型和数据集.md')
-    write_dataset_info('docs/source_en/LLM/Supported-models-datasets.md')
+    write_dataset_info()
