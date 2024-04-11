@@ -37,15 +37,17 @@ def get_model_info_table() -> List[str]:
         text += f'|{r[0]}|[{r[1]}]({url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|{r[7]}|\n'
     print(f'模型总数: {len(res)}')
     result += text
-    #
-    fpath = 'docs/source/LLM/支持的模型和数据集.md'
-    with open(fpath, 'r') as f:
-        text = f.read()
-    start_idx = text.find('| Model Type |')
-    end_idx = text.find('## 数据集')
-    output = text[:start_idx] + result + '\n\n' + text[end_idx:]
-    with open(fpath, 'w') as f:
-        text = f.write(output)
+    
+    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
+    end_idxs = ['## 数据集', '## dataset']
+    for idx, fpath in enumerate(fpaths):
+        with open(fpath, 'r') as f:
+            text = f.read()
+        start_idx = text.find('| Model Type |')
+        end_idx = text.find(end_idxs[idx])
+        output = text[:start_idx] + result + '\n\n' + text[end_idx:]
+        with open(fpath, 'w') as f:
+            text = f.write(output)
     return res
 
 

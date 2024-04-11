@@ -8,8 +8,7 @@ from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map,
 from swift.utils import stat_array
 
 
-def write_dataset_info() -> None:
-    fpath = 'docs/source/LLM/支持的模型和数据集.md'
+def write_dataset_info(fpath) -> None:
     if os.path.exists(fpath):
         with open(fpath, 'r', encoding='utf-8') as f:
             text = f.read()
@@ -100,4 +99,5 @@ def write_dataset_info() -> None:
 
 
 if __name__ == '__main__':
-    write_dataset_info()
+    write_dataset_info('docs/source/LLM/支持的模型和数据集.md')
+    write_dataset_info('docs/source_en/LLM/Supported-models-datasets.md')

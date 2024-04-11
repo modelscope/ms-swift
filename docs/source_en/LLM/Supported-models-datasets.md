@@ -198,7 +198,7 @@ The table below introcudes all models supported by SWIFT:
 |mamba-2.8b|[AI-ModelScope/mamba-2.8b-hf](https://modelscope.cn/models/AI-ModelScope/mamba-2.8b-hf/summary)|in_proj, x_proj, embeddings, out_proj|default-generation|&#x2718;|&#x2718;|transformers>=4.39.0.dev0|-|
 
 
-## 数据集
+## dataset
 The table below introduces the datasets supported by SWIFT:
 - Dataset Name: The dataset name registered in SWIFT.
 - Dataset ID: The dataset id in [ModelScope](https://www.modelscope.cn/my/overview).
