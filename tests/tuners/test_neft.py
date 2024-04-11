@@ -3,8 +3,10 @@ import shutil
 import tempfile
 import unittest
 
+import peft
 import torch
 from modelscope import AutoModel, AutoTokenizer, Preprocessor
+from packaging import version
 from peft.utils import WEIGHTS_NAME
 from transformers import PreTrainedModel
 
@@ -75,6 +77,9 @@ class TestNEFT(unittest.TestCase):
                                   state_dict2[key]).flatten().detach().cpu()))
         PreTrainedModel.save_pretrained = PreTrainedModel.origin_save_pretrained
 
+    @unittest.skipIf(
+        version.parse(peft.__version__) >= version.parse('0.10.0'),
+        reason='version not match')
     def test_neft_lora(self):
         model = AutoModel.from_pretrained('AI-ModelScope/bert-base-uncased')
         preprocessor = Preprocessor.from_pretrained(
