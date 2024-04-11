@@ -181,8 +181,8 @@ class ExpManager:
                                                    rfind(os.path.sep) + 1:]
                 model_type = '-'.join(model_type.split('-')[:-2])
                 model_type_kwargs = f'--model_type {model_type}'
-            cmd = f'swift eval {model_type_kwargs} --model_id_or_path {best_model_checkpoint} ' \
-                  f'--infer_backend pt --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} ' \
+                  + f'--infer_backend pt --sft_type full --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
         else:
             assert exp.args.get('model_type') is not None
             cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt ' \
@@ -260,6 +260,8 @@ class ExpManager:
         experiments = []
         for config_file in args.config:
             with open(config_file, 'r') as f:
+                group = os.path.basename(config_file)
+                group = group[:-5]
                 content = json.load(f)
                 exps = content['experiment']
                 for exp in exps:
@@ -279,6 +281,7 @@ class ExpManager:
                         env.update(exp['env'])
                     experiments.append(
                         Experiment(
+                            group=group,
                             name=name,
                             cmd=cmd,
                             args=run_args,

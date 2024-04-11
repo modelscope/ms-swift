@@ -12,6 +12,9 @@ from swift.utils.utils import split_str_parts_by
 
 @dataclass
 class ModelOutput:
+
+    group: str = None
+
     name: str = None
 
     cmd: str = None
@@ -263,6 +266,7 @@ def parse_output(file):
         content = json.load(f)
 
     name = content['name']
+    group = content['group']
     cmd = content['cmd']
     requirements = content['requirements']
     args = content['args']
@@ -279,6 +283,7 @@ def parse_output(file):
             eval_time = eval_result['generation_info']['time']
             eval_result = eval_result['report']
         return ModelOutput(
+            group=group,
             name=name,
             cmd=cmd,
             requirements=requirements,
@@ -390,13 +395,20 @@ def generate_reports():
 
             outputs.append(parse_output(abs_file))
 
-    print(
-        generate_sft_report(
-            [output for output in outputs if output.cmd in ('sft', 'eval')]))
-    # print(generate_dpo_report([output for output in outputs if output.cmd == 'dpo']))
-    print(
-        generate_export_report(
-            [output for output in outputs if output.cmd == 'export']))
+    all_groups = set([output.group for output in outputs])
+    for group in all_groups:
+        group_outputs = [output for output in outputs if output.group == group]
+        print(f'=================Printing the sft cmd result of exp {group}==================')
+        print(
+            generate_sft_report(
+                [output for output in group_outputs if output.cmd in ('sft', 'eval')]))
+        # print(f'=================Printing the dpo result of exp {group}==================')
+        # print(generate_dpo_report([output for output in outputs if output.cmd == 'dpo']))
+        print(f'=================Printing the export cmd result of exp {group}==================')
+        print(
+            generate_export_report(
+                [output for output in group_outputs if output.cmd == 'export']))
+        print(f'=================Printing done==================')
 
 
 if __name__ == '__main__':
