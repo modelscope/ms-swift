@@ -4,7 +4,10 @@ from swift.llm import MODEL_MAPPING, ModelType
 
 
 def get_model_info_table() -> List[str]:
-    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
+    fpaths = [
+        'docs/source/LLM/支持的模型和数据集.md',
+        'docs/source_en/LLM/Supported-models-datasets.md'
+    ]
     end_words = ['## 数据集', '## dataset']
     model_name_list = ModelType.get_model_name_list()
     result = (
@@ -52,4 +55,3 @@ def get_model_info_table() -> List[str]:
 
 if __name__ == '__main__':
     get_model_info_table()
-

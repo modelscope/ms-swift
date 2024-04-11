@@ -9,7 +9,10 @@ from swift.utils import stat_array
 
 
 def write_dataset_info() -> None:
-    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
+    fpaths = [
+        'docs/source/LLM/支持的模型和数据集.md',
+        'docs/source_en/LLM/Supported-models-datasets.md'
+    ]
     pre_texts = []
     for fpath in fpaths:
         if os.path.exists(fpath):
@@ -19,10 +22,10 @@ def write_dataset_info() -> None:
             pre_texts.append(text[:idx])
 
             text = text[idx:]
-            text_list=[t for t in text.split('\n') if len(t.strip()) > 0]
+            text_list = [t for t in text.split('\n') if len(t.strip()) > 0]
         else:
-            text_list=[]
-            pre_texts.append("")
+            text_list = []
+            pre_texts.append('')
 
     res_text_list = []
 
@@ -103,7 +106,6 @@ def write_dataset_info() -> None:
         text = pre_texts[idx] + text + '\n'
         with open(fpaths[idx], 'w', encoding='utf-8') as f:
             f.write(text)
-        
 
 
 if __name__ == '__main__':
