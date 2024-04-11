@@ -39,7 +39,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 ## 🎉 News
-- 🔥2024.04.11: Support **c4ai-command** series: c4ai-command-r-plus, c4ai-command-r-v01, [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/c4ai-command-r-plus/lora_ddp_ds/sft.sh) to train.
+- 🔥2024.04.11: Support **c4ai-command-r** series: c4ai-command-r-plus, c4ai-command-r-v01, [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/c4ai-command-r-plus/lora_mp/sft.sh) to train.
 - 2024.04.10: Use SWIFT to fine-tune the qwen-7b-chat model to enhance its function call capabilities, and combine it with [Modelscope-Agent](https://github.com/modelscope/modelscope-agent) for best practices, which can be found [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/Agent-best-practice.md#Usage-with-Modelscope_Agent).
 - 🔥2024.04.09: Support ruozhiba dataset. Search `ruozhiba` in [this documentation](docs/source_en/LLM/Supported-models-datasets.md) to begin training!
 - 2024.04.08: Support the fine-tuning and inference of XVERSE-MoE-A4.2B model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/xverse_moe_a4_2b/lora/sft.sh) to start training!
@@ -406,6 +406,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 7B-12B | chat model |
 | dbrx | [databricks](https://github.com/databricks/dbrx) | English | 132B | base model<br>chat model  |
 | mengzi3 | [Langboat](https://github.com/Langboat/Mengzi3) | Chinese<br>English | 13B | base model  |
+| c4ai-command-r | [c4ai](https://cohere.com/command) | Multilingual | 35B-104B | chat model  |
 
 
 #### MLLMs

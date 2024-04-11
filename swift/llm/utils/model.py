@@ -466,7 +466,7 @@ def register_model(
 # @register_model(
 #     ModelType.c4ai_command_r_plus,
 #     'AI-ModelScope/c4ai-command-r-plus',
-#     LoRATM.llama2, 
+#     LoRATM.llama2,
 #     TemplateType.c4ai,
 #     requires=['transformers>4.39'],
 #     support_vllm=True,
@@ -510,15 +510,15 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.llama2,
     TemplateType.c4ai,
     requires=['transformers>=4.39.1'],
-    support_vllm=True,
+    support_vllm=False,
     support_flash_attn=True)
 @register_model(
     ModelType.c4ai_command_r_plus,
     'AI-ModelScope/c4ai-command-r-plus',
-    LoRATM.llama2, 
+    LoRATM.llama2,
     TemplateType.c4ai,
     requires=['transformers>4.39'],
-    support_vllm=True,
+    support_vllm=False,
     support_flash_attn=True)
 def get_model_tokenizer_c4ai(model_dir: str,
                              torch_dtype: Optional[Dtype],
@@ -529,11 +529,13 @@ def get_model_tokenizer_c4ai(model_dir: str,
                              automodel_class=AutoModelForCausalLM,
                              **kwargs):
     if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir)
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
     if torch_dtype is not None:
         model_config.torch_dtype = torch_dtype
     if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_dir, trust_remote_code=True, use_fast=False)
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token

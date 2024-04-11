@@ -40,7 +40,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
-- 🔥2024.04.03: 支持**Qwen1.5-32B**系列: Qwen1.5-32B, Qwen1.5-32B-Chat, Qwen1.5-32B-Chat-GPTQ-Int4。使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_32b_chat/lora_mp/sft.sh)来开始训练！
+- 🔥2024.04.11: 支持**c4ai-command-r**系列: c4ai-command-r-plus, c4ai-command-r-v01。使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/c4ai-command-r-plus/lora_mp/sft.sh)来开始训练！
 - 2024.04.10: 使用swift微调qwen-7b-chat模型增强模型function call能力，并结合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)使用，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/Agent微调最佳实践.md#搭配Modelscope-Agent使用)。
 - 🔥2024.04.09: 支持`弱智吧`系列数据集. 在[支持的模型和数据集文档](docs/source/LLM/支持的模型和数据集.md)中搜索`ruozhiba`来找到数据集并开始训练！
 - 2024.04.08: 支持XVERSE-MoE-A4.2B模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/xverse_moe_a4_2b/lora/sft.sh)来开始训练！
@@ -405,6 +405,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | 中文<br>英文 | 7B-12B | chat模型                                    |
 | dbrx | [databricks](https://github.com/databricks/dbrx) | 英文 | 132B | base模型<br>chat模型  |
 | mengzi3 | [Langboat](https://github.com/Langboat/Mengzi3) | 中文<br>英文 | 13B | base模型  |
+| c4ai-command-r | [c4ai](https://cohere.com/command) | 多语种 | 35B-104B | chat模型  |
 
 
 #### 多模态大模型
