@@ -187,7 +187,7 @@ class SftArguments:
     logging_steps: int = 5
     dataloader_num_workers: int = 1
     dataloader_pin_memory: bool = True
-    dataloader_drop_last: bool=True
+    dataloader_drop_last: bool = True
 
     # push to ms hub
     push_to_hub: bool = False
@@ -244,7 +244,7 @@ class SftArguments:
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
-    metric_warmup_step: Optional[float] = 1
+    metric_warmup_step: Optional[float] = 0
     use_profiler: Optional[bool] = False
     fsdp_num: int = 1
 
@@ -287,7 +287,6 @@ class SftArguments:
             modules_to_save.remove('LN')
             self.lora_m2s_use_ln = True
         return modules_to_save
-
 
     def __post_init__(self) -> None:
         handle_compatibility(self)

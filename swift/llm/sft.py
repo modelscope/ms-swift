@@ -11,10 +11,10 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
-from swift.torchacc_utils import get_bucket_sizes, patch_acc_model
+from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
-from swift.trainers.utils import can_return_loss, find_labels
 from swift.trainers.callback import ProfCallback
+from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
@@ -23,9 +23,10 @@ from swift.utils import (check_json_format, compute_acc_metrics,
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, dataset_map, get_dataset, get_model_tokenizer, get_template,
-                    get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    add_self_cognition_dataset, dataset_map, get_dataset,
+                    get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length,
+                    stat_dataset)
 from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
@@ -155,8 +156,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             logger.info(f'val_dataset_sample: {val_dataset_sample}')
             val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
-    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
-    training_args.val_dataset_sample = val_dataset.shape[0] if val_dataset is not None else 0
+    training_args.train_dataset_sample = train_dataset.shape[
+        0] if train_dataset is not None else 0
 
     train_dataset = handle_dataset_mixture(args, train_dataset)
 
@@ -266,9 +267,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
 
     if args.use_profiler:
         with torch.profiler.profile(
-            schedule=torch.profiler.schedule(wait=20, warmup=20, active=5),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join(args.output_dir, './profile')),
-            with_stack=False) as prof:
+                schedule=torch.profiler.schedule(wait=20, warmup=20, active=5),
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                    os.path.join(args.output_dir, './profile')),
+                with_stack=False) as prof:
             trainer.add_callback(ProfCallback(prof))
             trainer.train()
     else:

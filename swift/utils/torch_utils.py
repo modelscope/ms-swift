@@ -2,16 +2,12 @@
 
 import os
 import socket
-import types
-import einops
-import math
 from bisect import bisect_right
 from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 from torch.nn import Module
 
 from .logger import get_logger, is_master
@@ -174,4 +170,3 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
 def time_synchronize() -> float:
     torch.cuda.synchronize()
     return time.perf_counter()  # second
-

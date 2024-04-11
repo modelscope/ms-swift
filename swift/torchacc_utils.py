@@ -1,9 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 import sys
+import types
 from collections import OrderedDict
-from typing import List
+from typing import List, Optional, Tuple
 
+import einops
 import safetensors
 import torch
 import torch.nn.functional as F
@@ -286,6 +289,7 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
             is_main_process=xm.is_master_ordinal(local=False),
             save_function=xm.save)
 
+
 def patch_acc_model(model, args):
     if not args.use_flash_attn:
         return model
@@ -296,7 +300,8 @@ def patch_acc_model(model, args):
     elif args.model_type.startswith('baichuan'):
         model = patch_baichuan_model(model)
         # pass
-    elif args.model_type.startswith('llama') or args.model_type.startswith('yi'):
+    elif args.model_type.startswith('llama') or args.model_type.startswith(
+            'yi'):
         model = patch_llama_model(model)
     elif args.model_type.startswith('chatglm'):
         model = patah_chatglm_model(model)
@@ -307,8 +312,8 @@ def patch_llama_model(model):
 
     def rotate_half(x):
         """Rotates half the hidden dims of the input."""
-        x1 = x[..., : x.shape[-1] // 2]
-        x2 = x[..., x.shape[-1] // 2 :]
+        x1 = x[..., :x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2:]
         return torch.cat((-x2, x1), dim=-1)
 
     def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
@@ -324,11 +329,12 @@ def patch_llama_model(model):
                 used to pass offsetted position ids when working with a KV-cache.
             unsqueeze_dim (`int`, *optional*, defaults to 1):
                 The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
-                sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
-                that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
+                sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k.
+                For example, note that cos[position_ids] and sin[position_ids]
+                have the shape [batch_size, seq_len, head_dim]. Then, if q and
                 k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
-                cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
-                the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
+                cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k.
+                Similarly, if q and k have the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
         Returns:
             `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
         """
@@ -346,7 +352,8 @@ def patch_llama_model(model):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor],
+               Optional[Tuple[torch.Tensor]]]:
         from torchacc.ops import flash_attn_varlen_xla
 
         bsz, q_len, _ = hidden_states.size()
@@ -355,19 +362,21 @@ def patch_llama_model(model):
             self.q_proj(hidden_states).view(bsz, q_len, self.num_heads,
                                             self.head_dim).transpose(1, 2))
         key_states = (
-            self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads,
+            self.k_proj(hidden_states).view(bsz, q_len,
+                                            self.num_key_value_heads,
                                             self.head_dim).transpose(1, 2))
         value_states = (
-            self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads,
+            self.v_proj(hidden_states).view(bsz, q_len,
+                                            self.num_key_value_heads,
                                             self.head_dim).transpose(1, 2))
 
         kv_seq_len = key_states.shape[-2]
-        assert past_key_value is None, "past_key_value is not supported"
+        assert past_key_value is None, 'past_key_value is not supported'
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states,
-                                                        cos, sin, position_ids)
-        assert not output_attentions, "output_attentions is not supported"
+        query_states, key_states = apply_rotary_pos_emb(
+            query_states, key_states, cos, sin, position_ids)
+        assert not output_attentions, 'output_attentions is not supported'
 
         if past_key_value is not None:
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
@@ -377,12 +386,15 @@ def patch_llama_model(model):
         # See https://github.com/HazyResearch/flash-attention/blob/main/flash_attn/flash_attention.py
         # if attention_mask is not None:
         #     value_states = value_states * attention_mask.unsqueeze(1).unsqueeze(-1)
-        q = einops.rearrange(query_states, "b h s ... -> (b s) h ...")
-        k = einops.rearrange(key_states, "b h s ... -> (b s) h ...")
-        v = einops.rearrange(value_states, "b h s ... -> (b s) h ...")
+        q = einops.rearrange(query_states, 'b h s ... -> (b s) h ...')
+        k = einops.rearrange(key_states, 'b h s ... -> (b s) h ...')
+        v = einops.rearrange(value_states, 'b h s ... -> (b s) h ...')
         max_s = q_len
         cu_q_lens = torch.arange(
-            0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device)
+            0, (bsz + 1) * q_len,
+            step=q_len,
+            dtype=torch.int32,
+            device=q.device)
         output = flash_attn_varlen_xla(
             q,
             k,
@@ -394,20 +406,24 @@ def patch_llama_model(model):
             0.0,
             softmax_scale=None,
             causal=True)
-        output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
+        output = einops.rearrange(output, '(b s) ... -> b s ...', b=bsz)
 
         return self.o_proj(einops.rearrange(
-            output, "b s h d -> b s (h d)")), None, past_key_value
+            output, 'b s h d -> b s (h d)')), None, past_key_value
 
     for layer in model.model.layers:
-        layer.self_attn.forward = types.MethodType(llama_attn_forward, layer.self_attn)
-    
+        layer.self_attn.forward = types.MethodType(llama_attn_forward,
+                                                   layer.self_attn)
+
     return model
 
+
 def patah_chatglm_model(model):
-    def apply_rotary_pos_emb(x: torch.Tensor, rope_cache: torch.Tensor) -> torch.Tensor:
+
+    def apply_rotary_pos_emb(x: torch.Tensor,
+                             rope_cache: torch.Tensor) -> torch.Tensor:
         # x: [sq, b, np, hn]
-        sq, b, np, hn = x.size(0), x.size(1), x.size(2), x.size(3)
+        sq, _, np, _ = x.size(0), x.size(1), x.size(2), x.size(3)
         rot_dim = rope_cache.shape[-2] * 2
         x, x_pass = x[..., :rot_dim], x[..., rot_dim:]
         # truncate to support variable sizes
@@ -416,17 +432,22 @@ def patah_chatglm_model(model):
         rope_cache = rope_cache.view(sq, -1, 1, xshaped.size(3), 2)
         x_out2 = torch.stack(
             [
-                xshaped[..., 0] * rope_cache[..., 0] - xshaped[..., 1] * rope_cache[..., 1],
-                xshaped[..., 1] * rope_cache[..., 0] + xshaped[..., 0] * rope_cache[..., 1],
+                xshaped[..., 0] * rope_cache[..., 0]
+                - xshaped[..., 1] * rope_cache[..., 1],
+                xshaped[..., 1] * rope_cache[..., 0]
+                + xshaped[..., 0] * rope_cache[..., 1],
             ],
             -1,
         )
         x_out2 = x_out2.flatten(3)
         return torch.cat((x_out2, x_pass), dim=-1)
 
-    def chatglm_attn_forward(
-        self, hidden_states, attention_mask, rotary_pos_emb, kv_cache=None, use_cache=True
-    ):
+    def chatglm_attn_forward(self,
+                             hidden_states,
+                             attention_mask,
+                             rotary_pos_emb,
+                             kv_cache=None,
+                             use_cache=True):
         # hidden_states: [sq, b, h]
 
         # =================================================
@@ -442,30 +463,33 @@ def patah_chatglm_model(model):
         if self.multi_query_attention:
             (query_layer, key_layer, value_layer) = mixed_x_layer.split(
                 [
-                    self.num_attention_heads_per_partition * self.hidden_size_per_attention_head,
-                    self.num_multi_query_groups_per_partition * self.hidden_size_per_attention_head,
-                    self.num_multi_query_groups_per_partition * self.hidden_size_per_attention_head,
+                    self.num_attention_heads_per_partition
+                    * self.hidden_size_per_attention_head,
+                    self.num_multi_query_groups_per_partition
+                    * self.hidden_size_per_attention_head,
+                    self.num_multi_query_groups_per_partition
+                    * self.hidden_size_per_attention_head,
                 ],
                 dim=-1,
             )
-            query_layer = query_layer.view(
-                query_layer.size()[:-1] + (self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
-            )
-            key_layer = key_layer.view(
-                key_layer.size()[:-1] + (self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head)
-            )
-            value_layer = value_layer.view(
-                value_layer.size()[:-1]
-                + (self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head)
-            )
+            query_layer = query_layer.view(query_layer.size()[:-1] + (
+                self.num_attention_heads_per_partition,
+                self.hidden_size_per_attention_head))
+            key_layer = key_layer.view(key_layer.size()[:-1] + (
+                self.num_multi_query_groups_per_partition,
+                self.hidden_size_per_attention_head))
+            value_layer = value_layer.view(value_layer.size()[:-1] + (
+                self.num_multi_query_groups_per_partition,
+                self.hidden_size_per_attention_head))
         else:
-            new_tensor_shape = mixed_x_layer.size()[:-1] + \
-                               (self.num_attention_heads_per_partition,
-                                3 * self.hidden_size_per_attention_head)
+            new_tensor_shape = mixed_x_layer.size()[:-1] + (
+                self.num_attention_heads_per_partition,
+                3 * self.hidden_size_per_attention_head)
             mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
             # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-            (query_layer, key_layer, value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
+            (query_layer, key_layer,
+             value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
 
         # apply relative positional encoding (rotary embedding)
         if rotary_pos_emb is not None:
@@ -485,34 +509,45 @@ def patah_chatglm_model(model):
         if self.multi_query_attention:
             key_layer = key_layer.unsqueeze(-2)
             key_layer = key_layer.expand(
-                -1, -1, -1, self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition, -1
-            )
+                -1, -1, -1, self.num_attention_heads_per_partition
+                // self.num_multi_query_groups_per_partition, -1)
             key_layer = key_layer.contiguous().view(
-                key_layer.size()[:2] + (self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
-            )
+                key_layer.size()[:2] + (self.num_attention_heads_per_partition,
+                                        self.hidden_size_per_attention_head))
             value_layer = value_layer.unsqueeze(-2)
             value_layer = value_layer.expand(
-                -1, -1, -1, self.num_attention_heads_per_partition // self.num_multi_query_groups_per_partition, -1
-            )
+                -1, -1, -1, self.num_attention_heads_per_partition
+                // self.num_multi_query_groups_per_partition, -1)
             value_layer = value_layer.contiguous().view(
-                value_layer.size()[:2] + (self.num_attention_heads_per_partition, self.hidden_size_per_attention_head)
-            )
+                value_layer.size()[:2]
+                + (self.num_attention_heads_per_partition,
+                   self.hidden_size_per_attention_head))
 
         # ==================================
         # core attention computation
         # ==================================
 
         from torchacc.ops import flash_attn_varlen_qkvpacked_xla
-        query_layer, key_layer, value_layer = [k.permute(1, 2, 0, 3) for k in [query_layer, key_layer, value_layer]]
+        query_layer, key_layer, value_layer = [
+            k.permute(1, 2, 0, 3)
+            for k in [query_layer, key_layer, value_layer]
+        ]
         bsz, _, q_len, _ = query_layer.size()
         qkv = torch.stack([query_layer, key_layer, value_layer], dim=2)
         qkv = qkv.transpose(1, 3)
-        qkv = einops.rearrange(qkv, "b s ... -> (b s) ...")
-        cu_q_lens = torch.arange(0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
-        context_layer = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
-        context_layer = einops.rearrange(context_layer, "(b s) ... -> b s ...", b=bsz)
+        qkv = einops.rearrange(qkv, 'b s ... -> (b s) ...')
+        cu_q_lens = torch.arange(
+            0, (bsz + 1) * q_len,
+            step=q_len,
+            dtype=torch.int32,
+            device=qkv.device)
+        context_layer = flash_attn_varlen_qkvpacked_xla(
+            qkv, cu_q_lens, q_len, 0.0, None, True, False)
+        context_layer = einops.rearrange(
+            context_layer, '(b s) ... -> b s ...', b=bsz)
         context_layer = context_layer.permute(1, 0, 2, 3)
-        new_context_layer_shape = context_layer.size()[:-2] + (self.core_attention.hidden_size_per_partition,)
+        new_context_layer_shape = context_layer.size()[:-2] + (
+            self.core_attention.hidden_size_per_partition, )
         context_layer = context_layer.reshape(*new_context_layer_shape)
 
         # =================
@@ -521,7 +556,7 @@ def patah_chatglm_model(model):
 
         output = self.dense(context_layer)
 
-        return output, kv_cache   
+        return output, kv_cache
 
     def torchacc_swiglu(x):
         x = torch.chunk(x, 2, dim=-1)
@@ -529,10 +564,12 @@ def patah_chatglm_model(model):
 
     # patch attention
     for layer in model.transformer.encoder.layers:
-        layer.self_attention.forward = types.MethodType(chatglm_attn_forward, layer.self_attention)
-        layer.mlp.activation_func = torchacc_swiglu    
+        layer.self_attention.forward = types.MethodType(
+            chatglm_attn_forward, layer.self_attention)
+        layer.mlp.activation_func = torchacc_swiglu
 
     return model
+
 
 def patch_baichuan_model(model):
 
@@ -543,25 +580,23 @@ def patch_baichuan_model(model):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor],
+               Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
         proj = self.W_pack(hidden_states)
         proj = (
-            proj.unflatten(-1, (3, self.hidden_size))
-            .unsqueeze(0)
-            .transpose(0, -2)
-            .squeeze(-2)
-        )
+            proj.unflatten(-1, (3, self.hidden_size)).unsqueeze(0).transpose(
+                0, -2).squeeze(-2))
         query_states = (
-            proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        )
+            proj[0].view(bsz, q_len, self.num_heads,
+                         self.head_dim).transpose(1, 2))
         key_states = (
-            proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        )
+            proj[1].view(bsz, q_len, self.num_heads,
+                         self.head_dim).transpose(1, 2))
         value_states = (
-            proj[2].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        )
+            proj[2].view(bsz, q_len, self.num_heads,
+                         self.head_dim).transpose(1, 2))
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -578,15 +613,32 @@ def patch_baichuan_model(model):
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        q, k, v = [einops.rearrange(x, "b s ... -> (b s) ...") for x in [query_states, key_states, value_states]]
+        q, k, v = [
+            einops.rearrange(x, 'b s ... -> (b s) ...')
+            for x in [query_states, key_states, value_states]
+        ]
         cu_q_lens = torch.arange(
-            0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device)
-        output = flash_attn_varlen_xla(q, k, v, cu_q_lens, cu_q_lens, q_len, q_len, 0.0, softmax_scale=None, causal=True)
-        output = einops.rearrange(output, "(b s) ... -> b s ...", b=bsz)
-        output = self.o_proj(einops.rearrange(output, "b s h d -> b s (h d)"))
+            0, (bsz + 1) * q_len,
+            step=q_len,
+            dtype=torch.int32,
+            device=q.device)
+        output = flash_attn_varlen_xla(
+            q,
+            k,
+            v,
+            cu_q_lens,
+            cu_q_lens,
+            q_len,
+            q_len,
+            0.0,
+            softmax_scale=None,
+            causal=True)
+        output = einops.rearrange(output, '(b s) ... -> b s ...', b=bsz)
+        output = self.o_proj(einops.rearrange(output, 'b s h d -> b s (h d)'))
         return output, None, past_key_value
 
     for layer in model.base_model.layers:
-        layer.self_attn.forward = types.MethodType(baichuan_attn_forward, layer.self_attn)
-    
+        layer.self_attn.forward = types.MethodType(baichuan_attn_forward,
+                                                   layer.self_attn)
+
     return model
