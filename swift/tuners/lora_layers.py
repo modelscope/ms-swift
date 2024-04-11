@@ -627,6 +627,25 @@ class LoraModel(_LoraModel):
             nn.Module.__init__(self)
             self.model = model
 
+    def _mark_only_adapters_as_trainable(self, model: nn.Module) -> None:
+        for active_adapter in self.active_adapters:
+            bias = self.peft_config[active_adapter].bias
+            if bias == 'none':
+                continue
+
+            if bias == 'all':
+                for n, p in model.named_parameters():
+                    if 'bias' in n:
+                        p.requires_grad = True
+            elif bias == 'lora_only':
+                for m in model.modules():
+                    if isinstance(m, LoraLayer) and hasattr(
+                            m, 'bias') and m.bias is not None:
+                        m.bias.requires_grad = True
+            else:
+                raise NotImplementedError(
+                    f'Requested bias: {bias}, is not implemented.')
+
     def inject_adapter(self, model: nn.Module, adapter_name: str):
         r"""
         Override code:
@@ -1039,7 +1058,7 @@ def mark_lora_as_trainable(model: nn.Module,
                 p.requires_grad = True
     elif bias == 'lora_only':
         for n, m in model.named_modules():
-            if f'loramodule_{adapter_name}' in n and \
+            if 'lora_' in n and f'.{adapter_name}' in n and \
                     hasattr(m, 'bias') and \
                     m.bias is not None:
                 m.bias.requires_grad = True
