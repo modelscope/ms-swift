@@ -3,7 +3,7 @@ from typing import List
 from swift.llm import MODEL_MAPPING, ModelType
 
 
-def get_model_info_table() -> List[str]:
+def get_model_info_table(fpath, end_word) -> List[str]:
     model_name_list = ModelType.get_model_name_list()
     result = (
         '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
@@ -38,18 +38,17 @@ def get_model_info_table() -> List[str]:
     print(f'模型总数: {len(res)}')
     result += text
     
-    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
-    end_idxs = ['## 数据集', '## dataset']
-    for idx, fpath in enumerate(fpaths):
-        with open(fpath, 'r') as f:
-            text = f.read()
-        start_idx = text.find('| Model Type |')
-        end_idx = text.find(end_idxs[idx])
-        output = text[:start_idx] + result + '\n\n' + text[end_idx:]
-        with open(fpath, 'w') as f:
-            text = f.write(output)
+    with open(fpath, 'r') as f:
+        text = f.read()
+    start_idx = text.find('| Model Type |')
+    end_idx = text.find(end_word)
+    output = text[:start_idx] + result + '\n\n' + text[end_idx:]
+    with open(fpath, 'w') as f:
+        text = f.write(output)
     return res
 
 
 if __name__ == '__main__':
-    result = get_model_info_table()
+    get_model_info_table(fpath='docs/source/LLM/支持的模型和数据集.md', end_word="## 数据集")
+    get_model_info_table(fpath='docs/source_en/LLM/Supported-models-datasets.md', end_word='## dataset')
+
