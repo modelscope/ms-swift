@@ -133,7 +133,8 @@ def generate_sft_report(outputs: List[ModelOutput]):
     min_best_metric = 999.
     min_train_loss = 999.
     if outputs:
-        min_best_metric = min([output.best_metric or 999. for output in outputs])
+        min_best_metric = min(
+            [output.best_metric or 999. for output in outputs])
         min_train_loss = min([output.train_loss or 999. for output in outputs])
 
     max_gsm8k = 0.0
@@ -422,17 +423,24 @@ def generate_reports():
     print(f'all exp groups: {all_groups}')
     for group in all_groups:
         group_outputs = [output for output in outputs if output.group == group]
-        print(f'=================Printing the sft cmd result of exp {group}==================\n\n')
         print(
-            generate_sft_report(
-                [output for output in group_outputs if output.cmd in ('sft', 'eval')]))
+            f'=================Printing the sft cmd result of exp {group}==================\n\n'
+        )
+        print(
+            generate_sft_report([
+                output for output in group_outputs
+                if output.cmd in ('sft', 'eval')
+            ]))
         # print(f'=================Printing the dpo result of exp {group}==================')
         # print(generate_dpo_report([output for output in outputs if output.cmd == 'dpo']))
-        print(f'=================Printing the export cmd result of exp {group}==================\n\n')
         print(
-            generate_export_report(
-                [output for output in group_outputs if output.cmd == 'export']))
-        print(f'=================Printing done==================\n\n')
+            f'=================Printing the export cmd result of exp {group}==================\n\n'
+        )
+        print(
+            generate_export_report([
+                output for output in group_outputs if output.cmd == 'export'
+            ]))
+        print('=================Printing done==================\n\n')
 
 
 if __name__ == '__main__':
