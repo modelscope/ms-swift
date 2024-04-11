@@ -22,6 +22,7 @@ def write_dataset_info(fpath) -> None:
             text_list=[t for t in text.split('\n') if len(t.strip()) > 0]
         else:
             text_list=[]
+            pre_texts.append("")
 
     res_text_list = []
 
@@ -100,7 +101,7 @@ def write_dataset_info(fpath) -> None:
     for idx in range(fpaths):
         text = '\n'.join(res_text_list)
         text = pre_texts[idx] + text + '\n'
-        with open(fpaths[i], 'w', encoding='utf-8') as f:
+        with open(fpaths[idx], 'w', encoding='utf-8') as f:
             f.write(text)
         
 
