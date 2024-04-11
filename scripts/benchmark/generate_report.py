@@ -128,14 +128,26 @@ def generate_sft_report(outputs: List[ModelOutput]):
         arc_accs.append(arc_acc)
         ceval_accs.append(ceval_acc)
 
-    tab = '| exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
-          '| -------- | ---------- | ------- | -------------------| ----- | ------------ | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |\n' # noqa
+    tab = '| exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |\n' \
+          '| -------- | ---------- | ------- | -------------------| ----- | ------------ | ------------------- | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |\n' # noqa
+    min_best_metric = 999.
+    min_train_loss = 999.
+    if outputs:
+        min_best_metric = min([output.best_metric or 999. for output in outputs])
+        min_train_loss = min([output.train_loss or 999. for output in outputs])
 
-    min_best_metric = min([output.best_metric or 999. for output in outputs])
-    min_train_loss = min([output.train_loss or 999. for output in outputs])
-    max_gsm8k = max([gsm8k or 0. for gsm8k in gsm8k_accs])
-    max_arc = max([arc or 0. for arc in arc_accs])
-    max_ceval = max([ceval or 0. for ceval in ceval_accs])
+    max_gsm8k = 0.0
+    if gsm8k_accs:
+        max_gsm8k = max([gsm8k or 0. for gsm8k in gsm8k_accs])
+
+    max_arc = 0.0
+    if arc_accs:
+        max_arc = max([arc or 0. for arc in arc_accs])
+
+    max_ceval = 0.0
+    if ceval_accs:
+        max_ceval = max([ceval or 0. for ceval in ceval_accs])
+
     for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs,
                                                      arc_accs, ceval_accs):
         use_flash_attn = output.args.get('use_flash_attn', '')
@@ -182,6 +194,7 @@ def generate_sft_report(outputs: List[ModelOutput]):
                f'{output.args.get("train_dataset_mix_ratio", 0.)}|' \
                f'{output.args.get("sft_type")}|' \
                f'{output.tuner_hyper_params}|' \
+               f'{output.num_trainable_parameters}({output.trainable_parameters_percentage})|' \
                f'{use_flash_attn}|' \
                f'{use_gc}|' \
                f'{output.hyper_paramters}|' \
@@ -219,9 +232,18 @@ def generate_export_report(outputs: List[ModelOutput]):
         arc_accs.append(arc_acc)
         ceval_accs.append(ceval_acc)
 
-    max_gsm8k = max([gsm8k or 0. for gsm8k in gsm8k_accs])
-    max_arc = max([arc or 0. for arc in arc_accs])
-    max_ceval = max([ceval or 0. for ceval in ceval_accs])
+    max_gsm8k = 0.0
+    if gsm8k_accs:
+        max_gsm8k = max([gsm8k or 0. for gsm8k in gsm8k_accs])
+
+    max_arc = 0.0
+    if arc_accs:
+        max_arc = max([arc or 0. for arc in arc_accs])
+
+    max_ceval = 0.0
+    if ceval_accs:
+        max_ceval = max([ceval or 0. for ceval in ceval_accs])
+
     for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs,
                                                      arc_accs, ceval_accs):
         infer_speed = output.infer_speed
@@ -359,6 +381,7 @@ def parse_output(file):
             eval_result = eval_result['report']
 
         return ModelOutput(
+            group=group,
             name=name,
             cmd=cmd,
             requirements=requirements,
@@ -396,19 +419,20 @@ def generate_reports():
             outputs.append(parse_output(abs_file))
 
     all_groups = set([output.group for output in outputs])
+    print(f'all exp groups: {all_groups}')
     for group in all_groups:
         group_outputs = [output for output in outputs if output.group == group]
-        print(f'=================Printing the sft cmd result of exp {group}==================')
+        print(f'=================Printing the sft cmd result of exp {group}==================\n\n')
         print(
             generate_sft_report(
                 [output for output in group_outputs if output.cmd in ('sft', 'eval')]))
         # print(f'=================Printing the dpo result of exp {group}==================')
         # print(generate_dpo_report([output for output in outputs if output.cmd == 'dpo']))
-        print(f'=================Printing the export cmd result of exp {group}==================')
+        print(f'=================Printing the export cmd result of exp {group}==================\n\n')
         print(
             generate_export_report(
                 [output for output in group_outputs if output.cmd == 'export']))
-        print(f'=================Printing done==================')
+        print(f'=================Printing done==================\n\n')
 
 
 if __name__ == '__main__':
