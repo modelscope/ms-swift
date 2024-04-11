@@ -35,4 +35,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
+    --gpu_memory_fraction 0.9 \
     --deepspeed default-zero3
