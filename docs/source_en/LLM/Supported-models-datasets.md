@@ -279,6 +279,7 @@ The table below introduces the datasets supported by SWIFT:
 |generated-chat-zh|[AI-ModelScope/generated_chat_0.4M](https://modelscope.cn/datasets/AI-ModelScope/generated_chat_0.4M/summary)|396004|0|273.3±52.0, min=32, max=873|chat, character-dialogue|
 |cls-fudan-news-zh|[damo/zh_cls_fudan-news](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary)|4959|0|3234.4±2547.5, min=91, max=19548|chat, classification|
 |ner-jave-zh|[damo/zh_ner-JAVE](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)|1266|0|118.3±45.5, min=44, max=223|chat, ner|
+|long-alpaca-12k|[AI-ModelScope/LongAlpaca-12k](https://modelscope.cn/datasets/AI-ModelScope/LongAlpaca-12k/summary)|11998|0|9619.0±8295.8, min=36, max=78925|longlora, QA|
 |coco-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|414113|40504|298.8±2.8, min=294, max=351|chat, multi-modal, vision|
 |🔥coco-mini-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|20000|200|298.8±2.8, min=294, max=339|chat, multi-modal, vision|
 |🔥coco-mini-en-2|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|20000|200|36.8±2.8, min=32, max=77|chat, multi-modal, vision|
