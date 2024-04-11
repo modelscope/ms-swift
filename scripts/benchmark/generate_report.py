@@ -420,7 +420,6 @@ def generate_reports():
             outputs.append(parse_output(abs_file))
 
     all_groups = set([output.group for output in outputs])
-    print(f'all exp groups: {all_groups}')
     for group in all_groups:
         group_outputs = [output for output in outputs if output.group == group]
         print(
