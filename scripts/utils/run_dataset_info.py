@@ -8,7 +8,7 @@ from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map,
 from swift.utils import stat_array
 
 
-def write_dataset_info(fpath) -> None:
+def write_dataset_info() -> None:
     fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
     pre_texts = []
     for fpath in fpaths:
@@ -98,7 +98,7 @@ def write_dataset_info(fpath) -> None:
             f'{val_size}|{stat_str}|{tags_str}|')
     print(f'数据集总数: {len(dataset_name_list)}')
 
-    for idx in range(fpaths):
+    for idx in range(len(fpaths)):
         text = '\n'.join(res_text_list)
         text = pre_texts[idx] + text + '\n'
         with open(fpaths[idx], 'w', encoding='utf-8') as f:
