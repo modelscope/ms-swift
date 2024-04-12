@@ -1,14 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
 import torch
-import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
@@ -29,7 +27,7 @@ from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
-from .template import TEMPLATE_MAPPING, TemplateType
+from .template import TEMPLATE_MAPPING
 from .utils import is_vllm_available
 
 logger = get_logger()
@@ -845,6 +843,8 @@ class DPOArguments(SftArguments):
         default=None,
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
+    ref_model_id_or_path: Optional[str] = None
+
     max_prompt_length: int = 1024
     beta: float = 0.1
     label_smoothing: float = 0.0
@@ -1168,6 +1168,9 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
+
+    if args.model_id_or_path is None:
+        args.model_id_or_path = sft_args.get('model_id_or_path')
 
 
 def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
