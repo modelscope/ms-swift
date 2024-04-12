@@ -8,7 +8,7 @@ from llmuses.models.custom import CustomModel
 from modelscope import GenerationConfig
 
 from swift.utils import get_logger, get_main
-from . import (EvalArguments, inference, inference_vllm, merge_lora,
+from . import (EvalArguments, inference, merge_lora,
                prepare_model_template)
 
 logger = get_logger()
@@ -39,6 +39,7 @@ class EvalModel(CustomModel):
 
     def predict(self, prompt: str, **kwargs):
         if self.args.infer_backend == 'vllm':
+            from . import inference_vllm
             request_list = [{
                 'query': prompt,
                 'history': kwargs.get('history'),
