@@ -8,8 +8,7 @@ from llmuses.models.custom import CustomModel
 from modelscope import GenerationConfig
 
 from swift.utils import get_logger, get_main
-from . import (EvalArguments, inference, merge_lora,
-               prepare_model_template)
+from . import EvalArguments, inference, merge_lora, prepare_model_template
 
 logger = get_logger()
 

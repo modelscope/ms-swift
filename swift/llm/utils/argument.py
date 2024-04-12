@@ -1,10 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import math
 import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Set, Tuple, Union
 
+import json
 import numpy as np
 import torch
 import transformers

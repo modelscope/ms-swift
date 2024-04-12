@@ -549,7 +549,8 @@ def long_alpaca_preprocessor(dataset: HfDataset):
         if response and response.startswith('Answer:'):
             response = response[len('Answer:') + 1:].strip()
         return {'query': row['query'], 'response': response}
-    return dataset.rename_columns({'instruction': 'query', 'output': 'response'})\
+
+    return dataset.rename_columns({'instruction': 'query', 'output': 'response'}) \
         .remove_columns(['input', 'file']).map(map_row).filter(lambda row: row['response'] is not None)
 
 
@@ -897,27 +898,35 @@ def process_hh_rlhf_cn(dataset):
 
     def reorganize_row(row):
         history = []
-        if isinstance(row['context'], str):
-            row['context'] = ast.literal_eval(row['context'])
-        if isinstance(row['chosen'], str):
-            row['chosen'] = ast.literal_eval(row['chosen'])
-        if isinstance(row['rejected'], str):
-            row['rejected'] = ast.literal_eval(row['rejected'])
-        for idx, h in enumerate(row['context']):
-            if idx % 2 == 0 and h['role'] != 'human':
-                return {'query': None}
-            if idx % 2 != 0 and h['role'] != 'assistant':
-                return {'query': None}
-            if idx % 2 == 0:
-                history.append([h['text'], None])
-            else:
-                history[-1][-1] = h['text']
-        if history[-1][-1] is not None:
-            return {'query': None}
-        query = history[-1][0]
-        history = history[:-1]
-        response = row['chosen']['text']
-        rejected_response = row['rejected']['text']
+        try:
+            if isinstance(row['context'], str):
+                row['context'] = ast.literal_eval(row['context'])
+            if isinstance(row['chosen'], str):
+                row['chosen'] = ast.literal_eval(row['chosen'])
+            if isinstance(row['rejected'], str):
+                row['rejected'] = ast.literal_eval(row['rejected'])
+            for idx, h in enumerate(row['context']):
+                if idx % 2 == 0 and h['role'] != 'human':
+                    raise ValueError()
+                if idx % 2 != 0 and h['role'] != 'assistant':
+                    raise ValueError()
+                if idx % 2 == 0:
+                    history.append([h['text'], None])
+                else:
+                    history[-1][-1] = h['text']
+            if history[-1][-1] is not None:
+                raise ValueError()
+            query = history[-1][0]
+            history = history[:-1]
+            response = row['chosen']['text']
+            rejected_response = row['rejected']['text']
+        except:  # noqa
+            return {
+                'query': '',
+                'response': '',
+                'rejected_response': '',
+                'history': [],
+            }
         return {
             'query': query,
             'response': response,
@@ -925,8 +934,20 @@ def process_hh_rlhf_cn(dataset):
             'history': history,
         }
 
-    return dataset.map(reorganize_row).filter(
-        lambda row: row['query'] is not None)
+    def row_can_be_parsed(row):
+        try:
+            if isinstance(row['context'], str):
+                row['context'] = ast.literal_eval(row['context'])
+            if isinstance(row['chosen'], str):
+                row['chosen'] = ast.literal_eval(row['chosen'])
+            if isinstance(row['rejected'], str):
+                row['rejected'] = ast.literal_eval(row['rejected'])
+            return True
+        except:  # noqa
+            return False
+
+    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(
+        lambda row: row['query'])
 
 
 register_dataset(
