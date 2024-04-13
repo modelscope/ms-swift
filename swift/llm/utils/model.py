@@ -2619,38 +2619,6 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     return model, tokenizer
 
 
-# def get_model_tokenizer_minicpm_moe(model_dir: str,
-#                                      torch_dtype: Dtype,
-#                                      model_kwargs: Dict[str, Any],
-#                                      load_model: bool = True,
-#                                      **kwargs):
-#     model, tokenizer = get_model_tokenizer_with_flash_attn(
-#         model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-#     if model is not None:
-#         # fix dtype bug
-#         mlp_cls = model.model.layers[1].mlp.__class__
-#         for module in model.modules():
-#             if isinstance(module, mlp_cls):
-#                 if not hasattr(module,
-#                                '__old_forward'):  # Avoid double patching
-#                     __old_forward = module._old_forward if hasattr(
-#                         module, '_old_forward') else module.forward
-
-#                     def _new_forward(hidden_states, *,
-#                                      __old_forward) -> Tensor:
-#                         dtype = hidden_states.dtype
-#                         return __old_forward(hidden_states).to(dtype)
-
-#                     _new_forward = partial(
-#                         _new_forward, __old_forward=__old_forward)
-#                     if hasattr(module, '_old_forward'):  # device_map
-#                         module._old_forward = _new_forward
-#                     else:
-#                         module.forward = _new_forward
-#                     module.__old_forward = __old_forward
-#     return model, tokenizer
-
-
 @register_model(
     ModelType.yuan2_2b_instruct,
     'YuanLLM/Yuan2.0-2B-hf',
