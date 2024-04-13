@@ -2798,7 +2798,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     LoRATM.llama2,
     TemplateType.minicpm,
     requires=['transformers>=4.36.0'],
-    torch_dtype=torch.bfloat16,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
@@ -2807,7 +2806,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     LoRATM.llama2,
     TemplateType.chatml,
     requires=['transformers>=4.36.0'],
-    torch_dtype=torch.bfloat16,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(  # bug for sft
@@ -2816,7 +2814,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     LoRATM.llama2,
     TemplateType.minicpm,
     requires=['transformers>=4.36.0'],
-    torch_dtype=torch.bfloat16,
     support_flash_attn=True,
     support_vllm=True)
 def get_model_tokenizer_minicpm(model_dir: str,
