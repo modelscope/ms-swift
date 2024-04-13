@@ -1501,6 +1501,14 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_moe_a2_7b_chat,
+    'qwen/Qwen1.5-MoE-A2.7B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
 def get_model_tokenizer_qwen1half(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],

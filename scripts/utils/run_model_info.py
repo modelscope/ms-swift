@@ -17,7 +17,6 @@ def get_model_info_table() -> List[str]:
         ' ------------------ | ------------ | -------- | ---- |\n')
     res: List[str] = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
-    print(model_name_list)
     for model_name in model_name_list:
         model_info = MODEL_MAPPING[model_name]
         model_id = model_info['model_id_or_path']
