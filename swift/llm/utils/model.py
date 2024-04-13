@@ -2599,6 +2599,14 @@ def get_model_tokenizer_telechat(model_dir: str,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
     support_vllm=True)
+@register_model(
+    ModelType.minicpm_moe_8x2b,
+    'OpenBMB/MiniCPM-MoE-8x2B',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    requires=['transformers>=4.36.0'],
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_deepseek_moe(model_dir: str,
                                      torch_dtype: Dtype,
                                      model_kwargs: Dict[str, Any],
@@ -2629,6 +2637,38 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
                         module.forward = _new_forward
                     module.__old_forward = __old_forward
     return model, tokenizer
+
+
+# def get_model_tokenizer_minicpm_moe(model_dir: str,
+#                                      torch_dtype: Dtype,
+#                                      model_kwargs: Dict[str, Any],
+#                                      load_model: bool = True,
+#                                      **kwargs):
+#     model, tokenizer = get_model_tokenizer_with_flash_attn(
+#         model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+#     if model is not None:
+#         # fix dtype bug
+#         mlp_cls = model.model.layers[1].mlp.__class__
+#         for module in model.modules():
+#             if isinstance(module, mlp_cls):
+#                 if not hasattr(module,
+#                                '__old_forward'):  # Avoid double patching
+#                     __old_forward = module._old_forward if hasattr(
+#                         module, '_old_forward') else module.forward
+
+#                     def _new_forward(hidden_states, *,
+#                                      __old_forward) -> Tensor:
+#                         dtype = hidden_states.dtype
+#                         return __old_forward(hidden_states).to(dtype)
+
+#                     _new_forward = partial(
+#                         _new_forward, __old_forward=__old_forward)
+#                     if hasattr(module, '_old_forward'):  # device_map
+#                         module._old_forward = _new_forward
+#                     else:
+#                         module.forward = _new_forward
+#                     module.__old_forward = __old_forward
+#     return model, tokenizer
 
 
 @register_model(
@@ -2805,14 +2845,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     'OpenBMB/MiniCPM-2B-128k',
     LoRATM.llama2,
     TemplateType.chatml,
-    requires=['transformers>=4.36.0'],
-    support_flash_attn=True,
-    support_vllm=True)
-@register_model(  # bug for sft
-    ModelType.minicpm_moe_8x2b,
-    'OpenBMB/MiniCPM-MoE-8x2B',
-    LoRATM.llama2,
-    TemplateType.minicpm,
     requires=['transformers>=4.36.0'],
     support_flash_attn=True,
     support_vllm=True)
