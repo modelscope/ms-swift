@@ -207,7 +207,7 @@ class ModelType:
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
-    mistral_moe_8x22b_v1 = 'mistral-moe-8x22b-v1'
+    mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -1308,7 +1308,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     support_gradient_checkpointing=False)
 @register_model(
-    ModelType.mistral_moe_8x22b_v1,
+    ModelType.mixtral_moe_8x22b_v1,
     'AI-ModelScope/Mixtral-8x22B-v0.1',
     LoRATM.llama2,
     TemplateType.default_generation_bos,
