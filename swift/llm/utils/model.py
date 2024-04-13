@@ -1311,7 +1311,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.mistral_moe_8x22b_v1,
     'AI-ModelScope/Mixtral-8x22B-v0.1',
     LoRATM.llama2,
-    TemplateType.llama,
+    TemplateType.default_generation_bos,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True)
