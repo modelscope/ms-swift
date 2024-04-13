@@ -1314,8 +1314,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.llama,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False)
+    support_vllm=True)
 @register_model(
     ModelType.dbrx_base,
     'AI-ModelScope/dbrx-base',

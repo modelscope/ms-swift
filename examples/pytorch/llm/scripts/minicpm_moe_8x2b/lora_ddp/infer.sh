@@ -1,4 +1,5 @@
-# Experimental environment: 3090
+# Experimental environment: A100
+# 30GB GPU memory
 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
