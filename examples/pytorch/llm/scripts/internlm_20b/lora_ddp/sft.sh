@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path Shanghai_AI_Laboratory/internlm-20b \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type default-generation-bos \
     --dtype AUTO \
     --output_dir output \

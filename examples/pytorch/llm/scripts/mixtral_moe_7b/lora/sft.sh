@@ -6,7 +6,7 @@ python llm_sft.py \
     --model_id_or_path AI-ModelScope/Mixtral-8x7B-v0.1 \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \

@@ -1,14 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
 import torch
-import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
@@ -22,14 +20,14 @@ from transformers.utils.versions import require_version
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
-from swift.utils import (add_version_to_work_dir, broadcast_string,
-                         get_dist_setting, get_logger, get_pai_tensorboard_dir,
-                         is_dist, is_mp, is_pai_training_job)
+from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
+                         get_pai_tensorboard_dir, is_dist, is_mp,
+                         is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
-from .template import TEMPLATE_MAPPING, TemplateType
+from .template import TEMPLATE_MAPPING
 from .utils import is_vllm_available
 
 logger = get_logger()
@@ -37,7 +35,7 @@ logger = get_logger()
 
 def is_adapter(sft_type: str) -> bool:
     return sft_type in {
-        'lora', 'longlora', 'qalora', 'adalora', 'ia3', 'llamapro'
+        'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'
     }
 
 
@@ -56,11 +54,11 @@ class SftArguments:
             "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"
         })
 
-    sft_type: Literal['lora', 'full', 'longlora', 'qalora', 'adalora', 'ia3',
-                      'llamapro'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro',
+                      'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
-    tuner_backend: Literal['swift', 'peft'] = 'swift'
+    tuner_backend: Literal['swift', 'peft'] = 'peft'
     template_type: str = field(
         default='AUTO',
         metadata={
@@ -121,14 +119,12 @@ class SftArguments:
     lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32'] = 'fp32'
     lora_lr_ratio: float = None
-
     use_rslora: bool = False
-    lora_layers_to_transform: Optional[List[int]] = None
-    lora_layers_pattern: Optional[List[str]] = None
-    lora_rank_pattern: Dict = field(default_factory=dict)
-    lora_alpha_pattern: Dict = field(default_factory=dict)
-    lora_loftq_config: Dict = field(default_factory=dict)
     use_dora: bool = False
+
+    # adapter
+    adapter_act: str = 'gelu'
+    adapter_length: int = 128
 
     # galore
     use_galore: bool = False
@@ -583,7 +579,7 @@ class InferArguments:
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'qalora', 'full', 'adalora', 'ia3',
+    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3',
                       'llamapro'] = 'lora'
     template_type: str = field(
         default='AUTO',
@@ -782,6 +778,21 @@ class DeployArguments(InferArguments):
 
 
 @dataclass
+class EvalArguments(InferArguments):
+
+    name: Optional[str] = None
+
+    eval_dataset: List[str] = field(
+        default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
+
+    eval_few_shot: Optional[int] = None
+
+    eval_limit: Optional[int] = None
+
+    custom_eval_config: Optional[str] = None
+
+
+@dataclass
 class ExportArguments(InferArguments):
     to_peft_format: bool = False
     # The parameter has been defined in InferArguments.
@@ -831,6 +842,8 @@ class DPOArguments(SftArguments):
     ref_model_type: Optional[str] = field(
         default=None,
         metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+
+    ref_model_id_or_path: Optional[str] = None
 
     max_prompt_length: int = 1024
     beta: float = 0.1
@@ -1155,6 +1168,9 @@ def load_from_ckpt_dir(args: InferArguments) -> None:
         } and len(getattr(args, key)) > 0):
             continue
         setattr(args, key, sft_args.get(key))
+
+    if args.model_id_or_path is None:
+        args.model_id_or_path = sft_args.get('model_id_or_path')
 
 
 def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:

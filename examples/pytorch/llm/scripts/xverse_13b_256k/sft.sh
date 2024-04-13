@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type xverse-13b-256k \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type default-generation \
     --dtype AUTO \
     --output_dir output \

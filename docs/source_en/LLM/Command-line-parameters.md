@@ -157,6 +157,7 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 dpo parameters inherit from sft parameters, with the following added parameters:
 
 - `--ref_model_type`: Type of reference model, available `model_type` options can be found in `MODEL_MAPPING.keys()`.
+- `--ref_model_id_or_path`: The local cache dir for reference model, default `None`.
 - `--max_prompt_length`: Maximum prompt length, this parameter is passed to DPOTrainer, setting prompt length to not exceed this value, default is `1024`.
 - `--beta`: Regularization term for DPO logits, default is 0.1.
 - `--label_smoothing`: Whether to use DPO smoothing, default is 0, generally set between 0~0.5.
@@ -228,6 +229,16 @@ export parameters inherit from infer parameters, with the following added parame
 - `--hub_private_repo`: Default is `False`. See `sft.sh command line arguments` for parameter details.
 - `--commit_message`: Default is `'update files'`.
 
+## eval parameters
+
+The eval parameters inherit from the infer parameters, and additionally include the following parameters:
+
+- `--name`: Default is `None`. The name of the evaluation, the final evaluation results will be stored in a folder named `{{model_type}-{name}}`.
+- `--eval_dataset`: The official dataset for evaluation, the default value is `['ceval', 'gsm8k', 'arc']`, and `mmlu` and `bbh` datasets are also supported. If you only need to evaluate a custom dataset, you can set this parameter to `no`.
+- `--eval_limit`: The number of samples for each sub-dataset of the evaluation set, default is `None` which means full evaluation.
+- `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
+- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
+-
 ## app-ui Parameters
 
 app-ui parameters inherit from infer parameters, with the following added parameters:

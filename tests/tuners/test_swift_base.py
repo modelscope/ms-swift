@@ -6,10 +6,12 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
+import peft
 import torch
 from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
+from packaging import version
 from peft import PeftModel
 from peft.utils import WEIGHTS_NAME
 from torch import nn
@@ -18,6 +20,9 @@ from swift import (AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig,
                    SideConfig, Swift, SwiftModel)
 
 
+@unittest.skipIf(
+    version.parse(peft.__version__) >= version.parse('0.10.0'),
+    reason='version not match')
 class TestSwift(unittest.TestCase):
 
     def setUp(self):
