@@ -207,6 +207,7 @@ class ModelType:
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
+    mistral_moe_8x22b_v1 = 'mistral-moe-8x22b-v1'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -1307,6 +1308,15 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     support_gradient_checkpointing=False)
 @register_model(
+    ModelType.mistral_moe_8x22b_v1,
+    'AI-ModelScope/Mixtral-8x22B-v0.1',
+    LoRATM.llama2,
+    TemplateType.llama,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False)
+@register_model(
     ModelType.dbrx_base,
     'AI-ModelScope/dbrx-base',
     LoRATM.dbrx,
@@ -1513,11 +1523,6 @@ def get_model_tokenizer_qwen1half(model_dir: str,
                                                model_kwargs, load_model,
                                                **kwargs)
 
-def _get_qwen_moe_tokenizer(model_dir):
-    tokenizer = AutoTokenizer.from_pretrained(
-    model_dir, trust_remote_code=True, padding_side="left")
-    return tokenizer
-
 @register_model(
     ModelType.qwen1half_moe_a2_7b_chat,
     'qwen/Qwen1.5-MoE-A2.7B-Chat',
@@ -1525,25 +1530,25 @@ def _get_qwen_moe_tokenizer(model_dir):
     TemplateType.qwen,
     requires=['transformers>=4.37'],
     support_flash_attn=True,
-    support_vllm=True,
-    )
+    support_vllm=True)
 def get_model_tokenizer_from_qwen_moe(model_dir: str,
-                                  torch_dtype: Optional[Dtype],
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  model_config=None,
-                                  tokenizer=None,
-                                  automodel_class=AutoModelForCausalLM,
-                                  **kwargs):
-    
+                                      torch_dtype: Optional[Dtype],
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      model_config=None,
+                                      tokenizer=None,
+                                      automodel_class=AutoModelForCausalLM,
+                                      **kwargs):
+    # patch: qwen1.5moe fa2 implementation
     tokenizer = AutoTokenizer.from_pretrained(
-    model_dir, trust_remote_code=True, padding_side="left")
-    return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
-                                               model_kwargs, load_model,
-                                               tokenizer=tokenizer
-                                               **kwargs)
-
-
+        model_dir, trust_remote_code=True, padding_side='left')
+    return get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        tokenizer=tokenizer,
+        **kwargs)
 
 
 @register_model(
@@ -2772,32 +2777,40 @@ def get_model_tokenizer_yi_vl(model_dir: str,
         model.config.max_sequence_length = 2048
     return model, tokenizer
 
+
 @register_model(
     ModelType.minicpm_2b_sft_chat,
     'OpenBMB/MiniCPM-2B-sft-fp32',
     LoRATM.llama2,
     TemplateType.minicpm,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.minicpm_2b_chat,
     'OpenBMB/MiniCPM-2B-dpo-fp32',
     LoRATM.llama2,
     TemplateType.minicpm,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.minicpm_1b_sft_chat,
     'OpenBMB/MiniCPM-1B-sft-bf16',
     LoRATM.llama2,
     TemplateType.minicpm,
-    support_flash_attn=True)
+    requires=['transformers>=4.36.0'],
+    torch_dtype=torch.bfloat16,
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.minicpm_2b_128k,
     'OpenBMB/MiniCPM-2B-128k',
     LoRATM.llama2,
     TemplateType.chatml,
     requires=['transformers>=4.36.0'],
-    support_flash_attn=True)
-@register_model(
+    torch_dtype=torch.bfloat16,
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(  # bug for sft
     ModelType.minicpm_moe_8x2b,
     'OpenBMB/MiniCPM-MoE-8x2B',
     LoRATM.llama2,
@@ -2805,7 +2818,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     requires=['transformers>=4.36.0'],
     torch_dtype=torch.bfloat16,
     support_flash_attn=True,
-    support_vllm = True)
+    support_vllm=True)
 def get_model_tokenizer_minicpm(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
