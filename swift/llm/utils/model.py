@@ -1037,14 +1037,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
-# @register_model(
-#     ModelType.qwen1half_moe_a2_7b,
-#     'qwen/Qwen1.5-MoE-A2.7B',
-#     LoRATM.qwen1half,
-#     TemplateType.default_generation,
-#     support_flash_attn=True,
-#     support_vllm=True,
-#     requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_moe_a2_7b,
+    'qwen/Qwen1.5-MoE-A2.7B',
+    LoRATM.qwen1half,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
 @register_model(
     ModelType.deepseek_coder_1_3b,
     'deepseek-ai/deepseek-coder-1.3b-base',
@@ -1521,33 +1521,6 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
                                                model_kwargs, load_model,
                                                **kwargs)
-
-@register_model(
-    ModelType.qwen1half_moe_a2_7b_chat,
-    'qwen/Qwen1.5-MoE-A2.7B-Chat',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
-    requires=['transformers>=4.37'],
-    support_flash_attn=True,
-    support_vllm=True)
-def get_model_tokenizer_from_qwen_moe(model_dir: str,
-                                      torch_dtype: Optional[Dtype],
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
-                                      model_config=None,
-                                      tokenizer=None,
-                                      automodel_class=AutoModelForCausalLM,
-                                      **kwargs):
-    # patch: qwen1.5moe fa2 implementation
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_dir, trust_remote_code=True, padding_side='left')
-    return get_model_tokenizer_with_flash_attn(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        tokenizer=tokenizer,
-        **kwargs)
 
 
 @register_model(
