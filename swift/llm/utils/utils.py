@@ -399,12 +399,23 @@ def find_all_linears(model: Module, quantization_bit: int,
     if 'aqlm' in model_type:
         from aqlm import QuantizedLinear
         linear_cls.append(QuantizedLinear)
+
+    # The content of target_module_names cannot exist in inner_nodes.
+    # O(n^2logn), n represents the number of nodes, n<1000.
+    inner_nodes = set()
+    for name, module in model.named_modules():
+        if not isinstance(module, tuple(linear_cls)):
+            inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)):
-            module_name = '.'.join(name.split('.')[-2:])
-            if head_module_name not in module_name:
-                target_module_names.add(module_name)
+        if isinstance(module,
+                      tuple(linear_cls)) and head_module_name not in name:
+            module_name_list = name.split('.')
+            module_name = module_name_list.pop()
+            for inner_node in inner_nodes:
+                while inner_node.endswith(module_name):
+                    module_name = f'{module_name_list.pop()}.{module_name}'
+            target_module_names.add(module_name)
     return list(target_module_names)
 
 
