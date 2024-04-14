@@ -580,7 +580,7 @@ def _read_from_path(
             image = Image.open(img_path)
     else:
         image = img_path
-    if image.mode in {'L', 'RGBA'}:
+    if image.mode != 'RGB':
         image = image.convert('RGB')
     return image
 
