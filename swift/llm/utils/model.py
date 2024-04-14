@@ -2279,7 +2279,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
         tokenizer_cls._old_decode = tokenizer_cls._decode
         tokenizer_cls._decode = _qwen_vl_audio_decode
-    # fix device_map4
+    # fix device_map is 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
     if n_gpu // local_world_size >= 4:
@@ -2296,6 +2296,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
+        # fix device_map is 4
         if n_gpu // local_world_size >= 4:
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
