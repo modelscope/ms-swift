@@ -184,10 +184,14 @@ class ModelType:
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
     # minicpm
+    minicpm_1b_sft_chat = 'minicpm-1b-sft-chat'
     minicpm_2b_sft_chat = 'minicpm-2b-sft-chat'
     minicpm_2b_chat = 'minicpm-2b-chat'
+    minicpm_2b_128k = 'minicpm-2b-128k'
+    minicpm_moe_8x2b = 'minicpm-moe-8x2b'
     # minicpm-v
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
+    minicpm_v_v2 = 'minicpm-v-v2'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
@@ -204,6 +208,7 @@ class ModelType:
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
+    mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -1303,6 +1308,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False)
+@register_model(
+    ModelType.mixtral_moe_8x22b_v1,
+    'AI-ModelScope/Mixtral-8x22B-v0.1',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.dbrx_base,
     'AI-ModelScope/dbrx-base',
@@ -2602,6 +2615,14 @@ def get_model_tokenizer_telechat(model_dir: str,
     TemplateType.default_generation_bos,
     support_flash_attn=True,
     support_vllm=True)
+@register_model(
+    ModelType.minicpm_moe_8x2b,
+    'OpenBMB/MiniCPM-MoE-8x2B',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    requires=['transformers>=4.36.0'],
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_deepseek_moe(model_dir: str,
                                      torch_dtype: Dtype,
                                      model_kwargs: Dict[str, Any],
@@ -2786,13 +2807,31 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     'OpenBMB/MiniCPM-2B-sft-fp32',
     LoRATM.llama2,
     TemplateType.minicpm,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.minicpm_2b_chat,
     'OpenBMB/MiniCPM-2B-dpo-fp32',
     LoRATM.llama2,
     TemplateType.minicpm,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.minicpm_1b_sft_chat,
+    'OpenBMB/MiniCPM-1B-sft-bf16',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    requires=['transformers>=4.36.0'],
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.minicpm_2b_128k,
+    'OpenBMB/MiniCPM-2B-128k',
+    LoRATM.llama2,
+    TemplateType.chatml,
+    requires=['transformers>=4.36.0'],
+    support_flash_attn=True,
+    support_vllm=True)
 def get_model_tokenizer_minicpm(model_dir: str,
                                 torch_dtype: Dtype,
                                 model_kwargs: Dict[str, Any],
@@ -2815,6 +2854,12 @@ def get_model_tokenizer_minicpm(model_dir: str,
 @register_model(
     ModelType.minicpm_v_3b_chat,
     'OpenBMB/MiniCPM-V',
+    LoRATM.llama2,
+    TemplateType.minicpm_v,
+    support_flash_attn=True)
+@register_model(
+    ModelType.minicpm_v_v2,
+    'OpenBMB/MiniCPM-V-2.0',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True)
