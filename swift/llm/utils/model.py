@@ -26,7 +26,8 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
 
 from swift import get_logger
-from swift.utils import is_dist, is_local_master, use_torchacc
+from swift.utils import (get_dist_setting, is_dist, is_local_master,
+                         use_torchacc)
 from .template import TemplateType
 from .utils import get_max_model_len
 
@@ -2206,7 +2207,27 @@ def get_model_tokenizer_qwen_chat(*args, **kwargs):
     return model, tokenizer
 
 
+def _qwen_vl_visual_block_forward(
+    self,
+    q_x: torch.Tensor,
+    k_x: Optional[torch.Tensor] = None,
+    v_x: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = None,
+):
+    k_x = self.ln_1_kv(k_x) if hasattr(self,
+                                       'ln_1_kv') and k_x is not None else None
+    v_x = self.ln_1_kv(v_x) if hasattr(self,
+                                       'ln_1_kv') and v_x is not None else None
+
+    x = q_x + self.attention(
+        q_x=self.ln_1(q_x), k_x=k_x, v_x=v_x, attn_mask=attn_mask)
+    z = self.mlp(self.ln_2(x))
+    x = x.to(z.device) + z  # FIX
+    return x
+
+
 def fix_qwen_inplace_bug(model) -> None:
+    # qwen-vl, qwen-audio
     first_drop = model.transformer.drop
     if first_drop.p == 0.:
         # fix in-place operation bug
@@ -2271,12 +2292,27 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
         tokenizer_cls._old_decode = tokenizer_cls._decode
         tokenizer_cls._decode = _qwen_vl_audio_decode
+    # fix device_map is 4
+    n_gpu = torch.cuda.device_count()
+    local_world_size = get_dist_setting()[3]
+    if n_gpu // local_world_size >= 4:
+        visual_block_cls = get_class_from_dynamic_module(
+            'visual.VisualAttentionBlock', model_dir)
+        if not hasattr(visual_block_cls,
+                       '__old_forward'):  # avoid double patching
+            visual_block_cls.__old_forward = visual_block_cls.forward
+            visual_block_cls.forward = _qwen_vl_visual_block_forward
+
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(
         model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
                                          load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
+        # fix device_map is 4
+        if n_gpu // local_world_size >= 4:
+            model.transformer.visual.proj.data = model.transformer.visual.proj.to(
+                model.transformer.visual.ln_post.bias.device)
 
     return model, tokenizer
 
