@@ -220,6 +220,8 @@ class ModelType:
     baichuan2_13b = 'baichuan2-13b'
     baichuan2_13b_chat = 'baichuan2-13b-chat'
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
+    # owl
+    mplug_owl2d1_chat = 'mplug-owl2d1-chat'
     # yuan
     yuan2_2b_instruct = 'yuan2-2b-instruct'
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
@@ -325,6 +327,10 @@ class LoRATM(NamedTuple):
     telechat = ['key_value', 'query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
+    mplug_owl2 = [
+        'q_proj', 'k_proj.multiway.0', 'k_proj.multiway.1',
+        'v_proj.multiway.0', 'v_proj.multiway.1'
+    ]
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -2932,6 +2938,39 @@ def get_model_tokenizer_llava(model_dir: str,
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     _patch_llava(model)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.mplug_owl2d1_chat,
+    'iic/mPLUG-Owl2.1',
+    LoRATM.mplug_owl2,
+    TemplateType.mplug_owl2,
+    requires=['transformers<4.35', 'accelerate<0.22'],
+    eos_token='<|endoftext|>',
+    support_flash_attn=True)
+def get_model_tokenizer_mplug_owl2(model_dir: str,
+                                   torch_dtype: Dtype,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
+    local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
+    local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
+    sys.path.append(os.path.join(local_repo_path))
+
+    # register
+    # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
+    from mplug_owl2 import MPLUGOwl2LlamaForCausalLM
+    from transformers.models.clip.image_processing_clip import CLIPImageProcessor
+    model, tokenizer = get_model_tokenizer_qwen(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        **kwargs)
+    logger.info('Please ignore the unimported warning.')
+    image_processor = CLIPImageProcessor.from_pretrained(model_dir)
+    tokenizer.image_processor = image_processor
     return model, tokenizer
 
 
