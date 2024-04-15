@@ -2865,7 +2865,7 @@ def get_model_tokenizer_minicpm(model_dir: str,
     support_flash_attn=True)
 @register_model(
     ModelType.minicpm_v_v2,
-    'OpenBMB/MiniCPM-V-2.0',
+    'OpenBMB/MiniCPM-V-2',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True)
