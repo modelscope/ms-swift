@@ -2898,6 +2898,37 @@ def get_model_tokenizer_llava(model_dir: str,
     _patch_llava(model)
     return model, tokenizer
 
+def get_model_tokenizer_llava(model_dir: str,
+                              torch_dtype: Dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    local_repo_path = _git_clone_github(
+        'https://github.com/haotian-liu/LLaVA.git')
+    sys.path.append(os.path.join(local_repo_path))
+
+    from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
+    model_config = LlavaMistralConfig.from_pretrained(model_dir)
+    model_config.mm_vision_tower = snapshot_download(
+        'AI-ModelScope/clip-vit-large-patch14-336')
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        automodel_class=LlavaMistralForCausalLM,
+        **kwargs)
+
+    model.resize_token_embeddings(len(tokenizer))
+    vision_tower = model.get_vision_tower()
+    device_map = str(model_kwargs.get('device_map', str(model.device)))
+    if not vision_tower.is_loaded:
+        vision_tower.load_model(device_map=device_map)
+    if not hasattr(model.config, 'max_sequence_length'):
+        model.config.max_sequence_length = 2048
+    _patch_llava(model)
+    return model, tokenizer
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
     # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
