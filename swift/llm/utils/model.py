@@ -221,6 +221,9 @@ class ModelType:
     baichuan2_13b = 'baichuan2-13b'
     baichuan2_13b_chat = 'baichuan2-13b-chat'
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
+    # owl
+    mplug_owl2_chat = 'mplug-owl2-chat'  # llama
+    mplug_owl2d1_chat = 'mplug-owl2d1-chat'  # qwen
     # yuan
     yuan2_2b_instruct = 'yuan2-2b-instruct'
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
@@ -326,6 +329,17 @@ class LoRATM(NamedTuple):
     telechat = ['key_value', 'query']
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
+    mplug_owl2 = [
+        'q_proj',
+        'k_proj.multiway.0',
+        'k_proj.multiway.1',
+        'v_proj.multiway.0',
+        'v_proj.multiway.1',
+    ]
+    mplug_owl2d1 = [
+        'c_attn.multiway.0',
+        'c_attn.multiway.1',
+    ]
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel],
@@ -2080,9 +2094,11 @@ def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
+                             model_config=None,
                              **kwargs):
-    model_config = AutoConfig.from_pretrained(
-        model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
     if torch_dtype is not None:
         k_true = dtype_mapping[torch_dtype]
         for k in dtype_mapping.values():
@@ -2860,7 +2876,7 @@ def get_model_tokenizer_minicpm(model_dir: str,
     support_flash_attn=True)
 @register_model(
     ModelType.minicpm_v_v2,
-    'OpenBMB/MiniCPM-V-2.0',
+    'OpenBMB/MiniCPM-V-2',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True)
@@ -2984,6 +3000,61 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     _patch_llava(model)
+    return model, tokenizer
+  
+  
+@register_model(
+    ModelType.mplug_owl2_chat,
+    'iic/mPLUG-Owl2',
+    LoRATM.mplug_owl2,
+    TemplateType.mplug_owl2,
+    requires=['transformers<4.35', 'icecream'],
+    eos_token='</s>',
+    function_kwargs={
+        'get_model_tokenizer_function': get_model_tokenizer_with_flash_attn
+    },
+    support_flash_attn=True)
+@register_model(
+    ModelType.mplug_owl2d1_chat,
+    'iic/mPLUG-Owl2.1',
+    LoRATM.mplug_owl2d1,
+    TemplateType.mplug_owl2,
+    requires=['transformers<4.35', 'icecream'],
+    eos_token='<|endoftext|>',
+    function_kwargs={
+        'vocab_size': 151851,
+        'get_model_tokenizer_function': get_model_tokenizer_qwen
+    },
+    support_flash_attn=True)
+def get_model_tokenizer_mplug_owl2(model_dir: str,
+                                   torch_dtype: Dtype,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
+    local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
+    local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
+    sys.path.append(os.path.join(local_repo_path))
+
+    # register
+    # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
+    from mplug_owl2 import MPLUGOwl2LlamaForCausalLM
+    from transformers.models.clip.image_processing_clip import CLIPImageProcessor
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    vocab_size = kwargs.pop('vocab_size', None)
+    if vocab_size is not None:
+        model_config.vocab_size = vocab_size
+    get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function')
+    model, tokenizer = get_model_tokenizer_function(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
+    logger.info('Please ignore the unimported warning.')
+    image_processor = CLIPImageProcessor.from_pretrained(model_dir)
+    tokenizer.image_processor = image_processor
     return model, tokenizer
 
 
@@ -3164,7 +3235,6 @@ def get_additional_saved_files(model_type: str) -> List[str]:
     files_mapping = {
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
-        'deepseek-vl': ['preprocessor_config.json'],
         'yi-vl': ['vit']
     }
     for key, files_list in files_mapping.items():

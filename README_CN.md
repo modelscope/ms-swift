@@ -44,7 +44,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 - 2024.04.13: 支持Mixtral-8x22B-v0.1模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mixtral_moe_8x22b_v1/lora_ddp_ds/sft.sh)来开始训练！
 - 2024.04.13: 支持新推出的**MiniCPM**系列: MiniCPM-V-2.0、MiniCPM-2B-128k、MiniCPM-MoE-8x2B和MiniCPM-1B。使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/minicpm_moe_8x2b/lora_ddp/sft.sh)来开始训练！
 - 🔥2024.04.11: 支持一键式模型评测能力! 首批数据集包含MMLU、CEval、ARC等，也支持用户自定义数据集，具体可以[这个文档](docs/source/LLM/LLM评测文档.md)。同时, 我们支持了一个比较trick的方法来做多个消融实验的管理，查看[这个文档](docs/source/LLM/LLM实验文档.md)来使用。
-- 🔥2024.04.11: 支持**c4ai-command-r**系列: c4ai-command-r-plus, c4ai-command-r-v01。使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/c4ai-command-r-plus/lora_mp/sft.sh)来开始训练！
+- 🔥2024.04.11: 支持**c4ai-command-r**系列: c4ai-command-r-plus, c4ai-command-r-v01。使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/c4ai_command_r_plus/lora_mp/sft.sh)来开始训练！
 - 2024.04.10: 使用swift微调qwen-7b-chat模型增强模型function call能力，并结合[Modelscope-Agent](https://github.com/modelscope/modelscope-agent)使用，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/Agent微调最佳实践.md#搭配Modelscope-Agent使用)。
 - 🔥2024.04.09: 支持`弱智吧`系列数据集. 在[支持的模型和数据集文档](docs/source/LLM/支持的模型和数据集.md)中搜索`ruozhiba`来找到数据集并开始训练！
 - 2024.04.08: 支持XVERSE-MoE-A4.2B模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/xverse_moe_a4_2b/lora/sft.sh)来开始训练！
@@ -423,6 +423,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | MiniCPM-V      | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B               | chat模型          |
 | CogVLM<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
 | Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B-34B               | chat模型 |
+| mPLUG-Owl      | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)         | 英文 | 11B               | chat模型 |
 
 #### 扩散模型
 

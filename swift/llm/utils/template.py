@@ -3,6 +3,7 @@ from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
@@ -59,6 +60,7 @@ class TemplateType:
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
     gemma = 'gemma'
+    mplug_owl2 = 'mplug-owl2'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -83,7 +85,7 @@ Context = Union[str, List[int]]
 
 
 class StopWordsCriteria(StoppingCriteria):
-
+    # The returned sentence includes stop words.
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
@@ -1177,17 +1179,72 @@ class MiniCPMVTemlate(Template):
         inputs, _ = super().encode(example)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx = input_ids.index(0)
+
+        img_start_idxs = np.where(
+            np.array(input_ids) == self.tokenizer.im_start_id)[0]
+        if len(
+                img_start_idxs
+        ) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
+            start = 0
+            new_input_ids = []
+            for idx in img_start_idxs[1:]:
+                new_input_ids = new_input_ids + input_ids[start:idx]
+                start = idx + 4  # skip <image><unk></image>\n
+            new_input_ids = new_input_ids + input_ids[start:]
+            input_ids = new_input_ids
+
+        idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
-        input_ids = (
-            input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num
-            + input_ids[idx + 1:])
-        if labels is not None:
-            labels = (
-                labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
-        image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-        pixel_values = self.model.transform(image)[None].to(
-            device=self.model.device)
+        if hasattr(config, 'slice_mode') and config.slice_mode:
+            slice_mode = True
+            assert hasattr(config, 'patch_size')
+            assert hasattr(config, 'max_slice_nums')
+            assert hasattr(config, 'scale_resolution')
+        else:
+            slice_mode = False
+
+        if slice_mode:
+            images, placeholder = self.model.get_slice_image_placeholder(
+                image, self.tokenizer)
+            placeholder_id = self.tokenizer.encode(
+                placeholder, add_special_tokens=False)
+            input_ids = (
+                input_ids[:idx - 1] + placeholder_id + input_ids[idx + 2:])
+            if labels is not None:
+                labels = (
+                    labels[:idx - 1] + [-100] * len(placeholder_id)
+                    + labels[idx + 2:])
+            input_tensor_ids = torch.tensor(input_ids)
+            image_start_idx = torch.where(
+                input_tensor_ids == self.tokenizer.im_start_id)[0]
+            image_start_idx += 1
+            image_end_idx = torch.where(
+                input_tensor_ids == self.tokenizer.im_end_id)[0]
+            valid_image_nums = max(len(image_start_idx), len(image_end_idx))
+            image_bound = [
+                torch.hstack([
+                    image_start_idx[:valid_image_nums].unsqueeze(-1),
+                    image_end_idx[:valid_image_nums].unsqueeze(-1)
+                ])
+            ]
+            pixel_values = [
+                self.model.transform(img).to(device=self.model.device)
+                for img in images
+            ]
+
+        else:
+            input_ids = (
+                input_ids[:idx]
+                + [self.tokenizer.unk_token_id] * config.query_num
+                + input_ids[idx + 1:])
+            if labels is not None:
+                labels = (
+                    labels[:idx] + [-100] * config.query_num
+                    + labels[idx + 1:])
+            image_bound = [torch.tensor([[idx, idx + config.query_num]])]
+            pixel_values = [
+                self.model.transform(image).to(device=self.model.device)
+            ]
         inputs_embeds, _ = self.model.get_vllm_embedding({
             'input_ids':
             torch.tensor(input_ids)[None].to(device=self.model.device),
@@ -1263,6 +1320,49 @@ register_template(
     ], ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM, [
         '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|'
     ]))
+
+
+class mPlugOwl2Template(Template):
+
+    def __init__(self):
+        return super().__init__(['{{SYSTEM}}'],
+                                ['USER: ', [-200], '{{QUERY}}ASSISTANT:'],
+                                ['</s>'], [['eos_token_id']])
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from mplug_owl2.mm_utils import process_images
+        image_processor = self.tokenizer.image_processor
+        images_path = example['images']
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary
+            max_edge = max(image.size)
+            image = image.resize((max_edge, max_edge))
+            images.append(image)
+        inputs, _ = super().encode(example)
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        images = process_images(images, image_processor)
+        images = images.to(self.model.dtype)
+        return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['images'] = torch.concat([b['images'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.mplug_owl2,
+    mPlugOwl2Template(),
+    infer_media_type='round',
+    use_model=True,
+    lazy_tokenize=True)
 
 
 def get_template(
