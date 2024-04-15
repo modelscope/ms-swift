@@ -267,8 +267,41 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def get_train_dataloader(self):
+
+        def __iter__(self):
+            self._num_yielded = 0
+            if self._iterator is None:
+                self._iterator = self.__original_iter__()
+            return self
+
+        def __next__(self):
+            if self._num_yielded >= len(self):
+                raise StopIteration
+            self._num_yielded += 1
+            try:
+                return next(self._iterator)
+            except StopIteration:
+                self._iterator = self.__original_iter__()
+            return next(self._iterator)
+        
         if not use_torchacc():
-            return super().get_train_dataloader()
+            origin_loader = super().get_train_dataloader()
+            grad_acc_steps = self.args.gradient_accumulation_steps
+            if grad_acc_steps is None or grad_acc_steps <= 1:
+                return origin_loader
+
+            length = len(origin_loader) // grad_acc_steps * grad_acc_steps
+            origin_loader_type = type(origin_loader)
+            loader = type(
+                origin_loader_type.__name__, (origin_loader_type, ), {
+                    '__len__': lambda _: length,
+                    '__iter__': __iter__,
+                    '__next__': __next__
+                })(
+                    origin_loader.dataset)
+            loader.__dict__.update(origin_loader.__dict__)
+            loader.__original_iter__ = origin_loader.__iter__
+            return loader
         else:
             if trainer.is_datasets_available():
                 import datasets
