@@ -2954,8 +2954,8 @@ def get_model_tokenizer_llava_34b(model_dir: str,
 
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig 
     model_config = LlavaConfig.from_pretrained(model_dir)
-    # model_config.mm_vision_tower = snapshot_download(
-    #     'AI-ModelScope/clip-vit-large-patch14-336')
+    model_config.mm_vision_tower = snapshot_download(
+        'AI-ModelScope/clip-vit-large-patch14-336')
     
     # use_flash_attn = kwargs.pop('use_flash_attn', False)
     # if use_flash_attn:
