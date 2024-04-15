@@ -2995,7 +2995,7 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     device_map = str(model_kwargs.get('device_map', str(model.device)))
     if not vision_tower.is_loaded:
         vision_tower.load_model(device_map=device_map)
-    if device_map != 'auto':
+    if device_map and device_map != 'auto':
         vision_tower.to(device=device_map, dtype=torch_dtype)
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
