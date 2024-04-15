@@ -1194,7 +1194,7 @@ class MiniCPMVTemlate(Template):
             if labels is not None:
                 labels = (
                     labels[:idx - 1] + [-100] * len(placeholder_id)
-                    + labels[idx + 2])
+                    + labels[idx + 2:])
             input_tensor_ids = torch.tensor(input_ids)
             image_start_idx = torch.where(
                 input_tensor_ids == self.tokenizer.im_start_id)[0]
