@@ -208,6 +208,7 @@ NPROC_PER_NODE=8 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## Inference after Fine-tuning
 Direct inference:
 ```shell
+model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
