@@ -71,6 +71,7 @@ class ModelType:
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_32b_chat = 'qwen1half-32b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
+    qwen1half_110b_chat = 'qwen1half-110b-chat'
     qwen1half_moe_a2_7b_chat = 'qwen1half-moe-a2_7b-chat'
 
     # qwen1.5 gptq
@@ -1497,6 +1498,14 @@ def get_model_tokenizer_aqlm(model_dir: str,
 @register_model(
     ModelType.qwen1half_72b_chat,
     'qwen/Qwen1.5-72B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.qwen1half_110b_chat,
+    '/mnt/workspace/.cache/modelscope/qwen/Qwen1___5-110B-Chat/home/admin/resource/model/33e6d810.qwen1.5-110b-chat-merged-dare-ties-0.7/1.0/',
     LoRATM.qwen1half,
     TemplateType.qwen,
     support_flash_attn=True,
