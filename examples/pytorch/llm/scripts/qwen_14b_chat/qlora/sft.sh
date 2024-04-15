@@ -6,7 +6,7 @@ swift sft \
     --model_id_or_path qwen/Qwen-14B-Chat \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type qwen \
     --dtype AUTO \
     --output_dir output \

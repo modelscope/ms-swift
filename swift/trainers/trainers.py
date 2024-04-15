@@ -7,6 +7,7 @@ import torch
 from peft import PeftModel
 from torch import Tensor, nn
 from torch.nn import CrossEntropyLoss
+from torch.utils.data import DataLoader
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
@@ -15,7 +16,9 @@ from transformers.models.auto.modeling_auto import \
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import lower_bound
+from swift.torchacc_utils import (ta_eval_dataloader, ta_test_dataloader,
+                                  ta_train_dataloader)
+from swift.utils import use_torchacc
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
                        ProgressCallbackNew)
 from .mixin import PushToMsHubMixin, SwiftMixin
@@ -45,6 +48,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self.model.get_trainable_parameters() if hasattr(
                 self.model, 'get_trainable_parameters') else None,
         }
+        self._acc = torch.tensor(0.).to(self.args.device)
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
@@ -253,16 +257,16 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                                                     m]).to(torch.int64).item())
             acc = torch.tensor(acc_list, device=preds.device).float().mean()
         else:
-            acc = (preds[masks] == labels[masks]).float().mean()
+            acc = (torch.masked_select(preds, masks) == torch.masked_select(
+                labels, masks)).float().mean()
         if model.training and acc is not None:
             if 'acc' not in self._custom_metrics:
-                self._custom_metrics['acc'] = torch.tensor(0.).to(
-                    self.args.device)
-            self._custom_metrics[
-                'acc'] += acc / self.args.gradient_accumulation_steps
+                self._custom_metrics['acc'] = self._acc
+            self._custom_metrics['acc'] = self._custom_metrics[
+                'acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
-    def get_train_dataloader(self, *args, **kwargs):
+    def get_train_dataloader(self):
 
         def __iter__(self):
             self._num_yielded = 0
@@ -279,25 +283,94 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             except StopIteration:
                 self._iterator = self.__original_iter__()
             return next(self._iterator)
+        
+        if not use_torchacc():
+            origin_loader = super().get_train_dataloader()
+            grad_acc_steps = self.args.gradient_accumulation_steps
+            if grad_acc_steps is None or grad_acc_steps <= 1:
+                return origin_loader
 
-        # fix epoch log for transformers.Trainer._inner_training_loop
-        origin_loader = super().get_train_dataloader(*args, **kwargs)
-        grad_acc_steps = self.args.gradient_accumulation_steps
-        if grad_acc_steps is None or grad_acc_steps <= 1:
-            return origin_loader
+            length = len(origin_loader) // grad_acc_steps * grad_acc_steps
+            origin_loader_type = type(origin_loader)
+            loader = type(
+                origin_loader_type.__name__, (origin_loader_type, ), {
+                    '__len__': lambda _: length,
+                    '__iter__': __iter__,
+                    '__next__': __next__
+                })(
+                    origin_loader.dataset)
+            loader.__dict__.update(origin_loader.__dict__)
+            loader.__original_iter__ = origin_loader.__iter__
+            return loader
+        else:
+            if trainer.is_datasets_available():
+                import datasets
 
-        length = len(origin_loader) // grad_acc_steps * grad_acc_steps
-        origin_loader_type = type(origin_loader)
-        loader = type(
-            origin_loader_type.__name__, (origin_loader_type, ), {
-                '__len__': lambda _: length,
-                '__iter__': __iter__,
-                '__next__': __next__
-            })(
-                origin_loader.dataset)
-        loader.__dict__.update(origin_loader.__dict__)
-        loader.__original_iter__ = origin_loader.__iter__
-        return loader
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+
+            train_dataset = self.train_dataset
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(
+                    train_dataset, datasets.Dataset):
+                train_dataset = self._remove_unused_columns(
+                    train_dataset, description='training')
+            else:
+                data_collator = self._get_collator_with_removed_columns(
+                    data_collator, description='training')
+
+            return ta_train_dataloader(train_dataset, data_collator,
+                                       self._get_train_sampler(), self.args,
+                                       self._train_batch_size)
+
+    def get_eval_dataloader(self, eval_dataset):
+        if not use_torchacc():
+            return super().get_eval_dataloader(eval_dataset)
+        else:
+            import torchacc as ta
+            if trainer.is_datasets_available():
+                import datasets
+
+            if eval_dataset is None and self.eval_dataset is None:
+                raise ValueError(
+                    'Trainer: evaluation requires an eval_dataset.')
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(
+                    eval_dataset, datasets.Dataset):
+                eval_dataset = self._remove_unused_columns(
+                    eval_dataset, description='evaluation')
+            else:
+                data_collator = self._get_collator_with_removed_columns(
+                    data_collator, description='evaluation')
+
+            return ta_eval_dataloader(eval_dataset, data_collator,
+                                      self._get_eval_sampler(eval_dataset),
+                                      self.args)
+
+    def get_test_dataloader(self, test_dataset):
+        if not use_torchacc():
+            return super().get_test_dataloader(test_dataset)
+        else:
+            import torchacc as ta
+            if trainer.is_datasets_available():
+                import datasets
+
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(
+                    test_dataset, datasets.Dataset):
+                test_dataset = self._remove_unused_columns(
+                    test_dataset, description='test')
+            else:
+                data_collator = self._get_collator_with_removed_columns(
+                    data_collator, description='test')
+
+            return ta_test_dataloader(test_dataset, data_collator,
+                                      self._get_eval_sampler(test_dataset),
+                                      self.args)
 
 
 # monkey patching

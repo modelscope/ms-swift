@@ -12,11 +12,13 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
 from swift.trainers import Seq2SeqTrainer
+from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
                          compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, preprocess_logits_for_metrics,
-                         seed_everything, show_layers)
+                         seed_everything, show_layers, use_torchacc)
+from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     add_self_cognition_dataset, dataset_map, get_dataset,
@@ -55,8 +57,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
             model_kwargs['device_map'] = {'': local_rank}
-        else:
+        elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
+
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -77,7 +80,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_id_or_path=args.model_id_or_path,
         is_training=True,
         **kwargs)
-    # logger.info(f'device_map: {dict(model.hf_device_map)}')
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -93,6 +95,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     set_generation_config(model, generation_config)
     training_args.generation_config = generation_config
 
+    if use_torchacc():
+        import torchacc as ta
+        # Get `label` and `return_loss` before 'ta_accelerate' because it will
+        # wrapper the model and make these properties wrong.
+        label_names = find_labels(model)
+        return_loss = can_return_loss(model)
+        model = ta.patch_qwen_model(model)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -107,6 +116,18 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
+
+    if use_torchacc():
+        model.config.use_cache = False
+        logger.info('Setting model.config.use_cache: False')
+        model = ta_accelerate(
+            model,
+            world_size,
+            args.model_layer_cls_name,
+            args.bf16,
+            args.fp16,
+            gradient_checkpointing=True,
+            fsdp_flatten_parameters=False)
 
     # Loading Dataset
     random_state = np.random.RandomState(args.dataset_seed)
@@ -185,6 +206,15 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)
 
+    trian_batch_size = args.batch_size
+    eval_batch_size = args.eval_batch_size
+    if use_torchacc():
+        trian_batch_size *= world_size
+        eval_batch_size *= world_size
+    training_args.per_device_train_batch_size = trian_batch_size
+    training_args.per_device_eval_batch_size = eval_batch_size
+    training_args.group_by_length = use_torchacc()
+
     # Trainer
     logger.info(f'training_args: {training_args}')
 
@@ -211,6 +241,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         callbacks=callbacks,
         **trainer_kwargs)
     trainer.sft_args = args
+    if use_torchacc():
+        trainer.label_names = label_names
+        trainer.can_return_loss = return_loss
     if is_master():
         for args_obj, fname in zip([args, training_args],
                                    ['sft_args.json', 'training_args.json']):
@@ -233,15 +266,17 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
     train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
-    if is_master():
+    if is_master() and not use_torchacc():
         images_dir = os.path.join(args.output_dir, 'images')
         logger.info(f'images_dir: {images_dir}')
         plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
-    return {
+    run_info = {
         'memory': trainer.perf['memory'],
+        'gen_time': trainer.perf['gen_time'],
+        'gen_len': trainer.perf['gen_len'],
         'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
@@ -251,6 +286,20 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         'model_info': model_info,
         'dataset_info': dataset_info,
     }
+    jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
+    with open(jsonl_path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(run_info) + '\n')
+    return run_info
 
 
-sft_main = get_main(SftArguments, llm_sft)
+def get_sft_main(args, llm):
+    if use_torchacc():
+        logger.warning('TorchAcc is currently only available internally '
+                       'within Alibaba Cloud.')
+        import torchacc as ta
+        # This patch should be called before `llm_sft`.
+        ta.accelerate_hf_trainer()
+    return get_main(args, llm)
+
+
+sft_main = get_sft_main(SftArguments, llm_sft)

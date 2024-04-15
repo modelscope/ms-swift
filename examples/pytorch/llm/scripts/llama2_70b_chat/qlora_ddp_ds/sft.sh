@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path modelscope/Llama-2-70b-chat-ms \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type llama \
     --dtype AUTO \
     --output_dir output \

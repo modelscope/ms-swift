@@ -306,23 +306,51 @@ if is_auto_gptq_available():
 
         def __init__(
             self,
-            *args,
+            base_layer,
+            adapter_name: str,
+            module_key: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            init_lora_weights: bool = True,
+            use_rslora: bool = False,
+            use_dora: bool = False,
             use_qa_lora=False,
             group_size=None,
-            module_key: str,
             **kwargs,
         ):
             super(QuantLinear, self).__init__(module_key)
-            self.set_activation(args[1], True)
-            super(ActivationMixin, self).__init__(*args, **kwargs)
+            self.set_activation(adapter_name, True)
+            nn.Module.__init__(self)
             self.group_size = group_size
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:
                 assert self.group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
-            if self.use_qa_lora:
                 self.qa_pool = torch.nn.AvgPool1d(
                     self.group_size
                 )  # using pooling layer to conduct sum operation
+
+            LoraLayer.__init__(self, base_layer)
+            if use_dora:
+                raise ValueError(
+                    f'{_QuantLinear.__name__} does not support DoRA yet, please set it to False'
+                )
+            if self.use_qa_lora:
+                self.in_features = self.in_features // self.group_size
+            # self.base_layer and self.quant_linear_module are the same;
+            # we need the former for consistency and the latter
+            # for backwards compatibility
+            self.quant_linear_module = base_layer
+            self._active_adapter = adapter_name
+            self.update_layer(
+                adapter_name,
+                r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                init_lora_weights=init_lora_weights,
+                use_rslora=use_rslora,
+                use_dora=use_dora,
+            )
 
         def forward(self, x: torch.Tensor):
             # note: logic differs from default Linear because merging is not supported
@@ -505,6 +533,72 @@ class Linear(LoRAActivationMixin, _Linear):
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
+        def device_hook(module, args):
+            for active_adapter in self.active_adapters:
+                self.lora_A[active_adapter].to(args[0].device)
+                self.lora_B[active_adapter].to(args[0].device)
+
+        self.register_forward_pre_hook(device_hook)
+
+    def update_layer(self,
+                     adapter_name,
+                     r,
+                     lora_alpha,
+                     lora_dropout,
+                     init_lora_weights,
+                     use_rslora,
+                     use_dora: bool = False):
+        # This code works for linear layers, override for other layer types
+        if r <= 0:
+            raise ValueError(
+                f'`r` should be a positive integer value but the value passed is {r}'
+            )
+
+        self.r[adapter_name] = r
+        self.lora_alpha[adapter_name] = lora_alpha
+        if lora_dropout > 0.0:
+            lora_dropout_layer = nn.Dropout(p=lora_dropout)
+        else:
+            lora_dropout_layer = nn.Identity()
+
+        self.lora_dropout.update(
+            nn.ModuleDict({adapter_name: lora_dropout_layer}))
+        # Actual trainable parameters
+        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
+        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=False)
+        if use_rslora:
+            self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
+        else:
+            self.scaling[adapter_name] = lora_alpha / r
+
+        if init_lora_weights == 'loftq':
+            self.loftq_init(adapter_name)
+        elif init_lora_weights:
+            self.reset_lora_parameters(adapter_name, init_lora_weights)
+
+        # check weight and qweight (for GPTQ)
+        for weight_name in ('weight', 'qweight'):
+            weight = getattr(self.get_base_layer(), weight_name, None)
+            if weight is not None:
+                if weight.device != torch.device('meta'):
+                    # the layer is already completely initialized, this is an update
+                    if weight.dtype.is_floating_point or weight.dtype.is_complex:
+                        self.to(weight.device, dtype=weight.dtype)
+                    else:
+                        self.to(weight.device)
+                    break
+                elif weight.dtype.is_floating_point or weight.dtype.is_complex:
+                    self.to(dtype=weight.dtype)
+                    break
+
+        if use_dora:
+            self.dora_init(adapter_name)
+            self.use_dora[adapter_name] = True
+        else:
+            self.use_dora[adapter_name] = False
+
+        self.set_adapter(self.active_adapters)
+
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
 
@@ -532,6 +626,25 @@ class LoraModel(_LoraModel):
         else:
             nn.Module.__init__(self)
             self.model = model
+
+    def _mark_only_adapters_as_trainable(self, model: nn.Module) -> None:
+        for active_adapter in self.active_adapters:
+            bias = self.peft_config[active_adapter].bias
+            if bias == 'none':
+                continue
+
+            if bias == 'all':
+                for n, p in model.named_parameters():
+                    if 'bias' in n:
+                        p.requires_grad = True
+            elif bias == 'lora_only':
+                for m in model.modules():
+                    if isinstance(m, LoraLayer) and hasattr(
+                            m, 'bias') and m.bias is not None:
+                        m.bias.requires_grad = True
+            else:
+                raise NotImplementedError(
+                    f'Requested bias: {bias}, is not implemented.')
 
     def inject_adapter(self, model: nn.Module, adapter_name: str):
         r"""
@@ -714,6 +827,35 @@ class LoraModel(_LoraModel):
                 self._replace_module(parent, target_name, new_module, target)
                 self._convert_dtype(new_module, lora_config.lora_dtype)
 
+    def _replace_module(self, parent, child_name, new_module, child):
+        setattr(parent, child_name, new_module)
+        # It's not necessary to set requires_grad here, as that is handled by
+        # _mark_only_adapters_as_trainable
+
+        # child layer wraps the original module, unpack it
+        if hasattr(child, 'base_layer'):
+            child = child.base_layer
+
+        if not hasattr(new_module, 'base_layer'):
+            new_module.weight = child.weight
+            if hasattr(child, 'bias'):
+                new_module.bias = child.bias
+
+        if getattr(child, 'state', None) is not None:
+            if hasattr(new_module, 'base_layer'):
+                new_module.base_layer.state = child.state
+            else:
+                new_module.state = child.state
+            new_module.to(child.weight.device)
+
+        # dispatch to correct device
+        for name, module in new_module.named_modules():
+            if (self.prefix in name) or ('ranknum' in name):
+                weight = child.qweight if hasattr(child,
+                                                  'qweight') else child.weight
+                if weight.device != torch.device('meta'):
+                    module.to(weight.device)
+
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
         """
@@ -728,6 +870,9 @@ class LoraModel(_LoraModel):
         # because the first match is always used. Therefore, the default layers should be checked last.
         current_key = kwargs.pop('current_key')
         new_module = None
+        if lora_config.use_qa_lora:
+            kwargs['use_qa_lora'] = True
+            kwargs['group_size'] = lora_config.group_size
         if lora_config.use_merged_linear:
             bias = kwargs.pop('bias', False)
             new_module = MergedLinear(
@@ -913,7 +1058,7 @@ def mark_lora_as_trainable(model: nn.Module,
                 p.requires_grad = True
     elif bias == 'lora_only':
         for n, m in model.named_modules():
-            if f'loramodule_{adapter_name}' in n and \
+            if 'lora_' in n and f'.{adapter_name}' in n and \
                     hasattr(m, 'bias') and \
                     m.bias is not None:
                 m.bias.requires_grad = True

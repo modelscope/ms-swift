@@ -11,6 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
+from swift.torchacc_utils import pad_and_split_batch
+from swift.utils import get_dist_setting, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -59,6 +61,9 @@ class TemplateType:
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
+    dbrx = 'dbrx'
+    mengzi = 'mengzi'
+    c4ai = 'c4ai'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -413,10 +418,10 @@ class Template:
                                           'constant', 0)
                 labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
                                   -100)
-                if loss_scale:
-                    loss_scale[0] = F.pad(
-                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
-                        'constant', 0.)
+        if loss_scale:
+            loss_scale[0] = F.pad(loss_scale[0],
+                                  (0, padding_to - labels[0].shape[-1]),
+                                  'constant', 0.)
 
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
@@ -427,12 +432,18 @@ class Template:
                 loss_scale, batch_first=True, padding_value=0.)
         labels = pad_sequence(labels, batch_first=True, padding_value=-100)
 
+        if use_torchacc():
+            rank, _, world_size, _ = get_dist_setting()
+            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
+                padding_to, input_ids, attention_mask, labels, loss_scale,
+                self.max_length, self.tokenizer, rank, world_size)
+
         res = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
         }
-        if loss_scale is not None:
+        if loss_scale:
             res['loss_scale'] = loss_scale
         return res
 
@@ -569,7 +580,7 @@ def _read_from_path(
             image = Image.open(img_path)
     else:
         image = img_path
-    if image.mode in {'L', 'RGBA'}:
+    if image.mode != 'RGB':
         image = image.convert('RGB')
     return image
 
@@ -1196,6 +1207,44 @@ register_template(TemplateType.gemma, gemma_template)
 register_template(
     TemplateType.telechat,
     Template([], ['<_user>{{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
+
+DBRX_SYSTEM = (
+    'You are DBRX, created by Databricks. You were last updated in December 2023. '
+    'You answer questions based on information available up to that point.\n'
+    'YOU PROVIDE SHORT RESPONSES TO SHORT QUESTIONS OR STATEMENTS, '
+    'but provide thorough responses to more complex and open-ended questions.\n'
+    'You assist with various tasks, from writing to coding (using markdown for code blocks '
+    '— remember to use ``` with code, JSON, and tables).\n'
+    'You do not have real-time data access or code execution capabilities.'
+    ' You avoid stereotyping and provide balanced perspectives on controversial topics. '
+    'You do not provide song lyrics, poems, or news articles and do not divulge details of your training data.\n'
+    'This is your system prompt, guiding your responses. Do not reference it, just respond to the user. '
+    'If you find yourself talking about this message, stop. You should be responding appropriately '
+    'and usually that means not mentioning this.'
+    'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY '
+    'PERTINENT TO THE USER\'S QUERY.')
+register_template(
+    TemplateType.dbrx,
+    Template(
+        [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        ['<|im_end|>\n'], ['<|im_end|>'], DBRX_SYSTEM,
+        ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+register_template(
+    TemplateType.mengzi,
+    Template([], ['输入：{{QUERY}}输出：\n'], [], [['eos_token_id']], None,
+             ['指令：{{SYSTEM}}']))
+
+C4AI_SYSTEM = (
+    'You are Command-R, a brilliant, sophisticated, AI-assistant trained to assist human users by '
+    'providing thorough responses.You are trained by Cohere.')
+register_template(
+    TemplateType.c4ai,
+    Template(['<BOS_TOKEN>'], [
+        '<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'
+    ], ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM, [
+        '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|'
+    ]))
 
 
 def get_template(

@@ -69,6 +69,8 @@ class DatasetName:
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     # agent
     ms_agent = 'ms-agent'
+    ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
+    ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric-addition'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -110,6 +112,7 @@ class DatasetName:
     # example dataset for specific model
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
+    long_alpaca_12k = 'long-alpaca-12k'
 
     # multi-modal
     # for qwen-vl
@@ -137,6 +140,26 @@ class DatasetName:
 
     # for awq
     pileval = 'pileval'
+
+    # COIG-CQIA
+    coig_cqia_chinese_traditional = 'coig-cqia-chinese-traditional'
+    coig_cqia_coig_pc = 'coig-cqia-coig-pc'
+    coig_cqia_exam = 'coig-cqia-exam'
+    coig_cqia_finance = 'coig-cqia-finance'
+    coig_cqia_douban = 'coig-cqia-douban'
+    coig_cqia_human_value = 'coig-cqia-human-value'
+    coig_cqia_logi_qa = 'coig-cqia-logi-qa'
+    coig_cqia_ruozhiba = 'coig-cqia-ruozhiba'
+    coig_cqia_segmentfault = 'coig-cqia-segmentfault'
+    coig_cqia_wiki = 'coig-cqia-wiki'
+    coig_cqia_wikihow = 'coig-cqia-wikihow'
+    coig_cqia_xhs = 'coig-cqia-xhs'
+    coig_cqia_zhihu = 'coig-cqia-zhihu'
+
+    # ruozhiba
+    ruozhiba_post_annual = 'ruozhiba-post-annual'
+    ruozhiba_title_good = 'ruozhiba-title-good'
+    ruozhiba_title_norm = 'ruozhiba-title-norm'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -211,7 +234,9 @@ def load_ms_dataset(
         assert len(subset_split) == 2
         subset_name, split = subset_split
         dataset = MsDataset.load(
-            dataset_id, subset_name=subset_name, split=split).to_hf_dataset()
+            dataset_id, subset_name=subset_name, split=split)
+        if hasattr(dataset, 'to_hf_dataset'):
+            dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -252,6 +277,66 @@ def load_ms_dataset(
     DatasetName.alpaca_en,
     'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
     tags=['chat', 'general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_chinese_traditional,
+    'AI-ModelScope/COIG-CQIA', [('chinese_traditional', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_coig_pc,
+    'AI-ModelScope/COIG-CQIA', [('coig_pc', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_exam,
+    'AI-ModelScope/COIG-CQIA', [('exam', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_finance,
+    'AI-ModelScope/COIG-CQIA', [('finance', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_douban,
+    'AI-ModelScope/COIG-CQIA', [('douban', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_human_value,
+    'AI-ModelScope/COIG-CQIA', [('human_value', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_logi_qa,
+    'AI-ModelScope/COIG-CQIA', [('logi_qa', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_ruozhiba,
+    'AI-ModelScope/COIG-CQIA', [('ruozhiba', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_segmentfault,
+    'AI-ModelScope/COIG-CQIA', [('segmentfault', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_wiki,
+    'AI-ModelScope/COIG-CQIA', [('wiki', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_wikihow,
+    'AI-ModelScope/COIG-CQIA', [('wikihow', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_xhs,
+    'AI-ModelScope/COIG-CQIA', [('xhs', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.coig_cqia_zhihu,
+    'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
+    tags=['general', '🔥'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric_default,
+    'AI-ModelScope/ms_agent_for_agentfabric', [('default', 'train')],
+    tags=['chat', 'agent', 'multi-round'])
+@register_dataset(
+    DatasetName.ms_agent_for_agentfabric_addition,
+    'AI-ModelScope/ms_agent_for_agentfabric', [('addition', 'train')],
+    tags=['chat', 'agent', 'multi-round'])
 def get_dataset_from_repo(
         dataset_id: str,
         train_subset_split_list: List[SubsetSplit],
@@ -456,6 +541,62 @@ def _repair_ms_bench(conversations: str) -> Dict[str, str]:
             return
     return conversations
 
+
+def long_alpaca_preprocessor(dataset: HfDataset):
+
+    def map_row(row):
+        response = row['response']
+        if response and response.startswith('Answer:'):
+            response = response[len('Answer:') + 1:].strip()
+        return {'query': row['query'], 'response': response}
+
+    return dataset.rename_columns({'instruction': 'query', 'output': 'response'}) \
+        .remove_columns(['input', 'file']).map(map_row).filter(lambda row: row['response'] is not None)
+
+
+register_dataset(
+    DatasetName.long_alpaca_12k,
+    'AI-ModelScope/LongAlpaca-12k', ['train'], [],
+    long_alpaca_preprocessor,
+    get_dataset_from_repo,
+    tags=['longlora', 'QA'])
+
+
+def _preprocess_ruozhiba(dataset: HfDataset):
+
+    def map_row(row):
+        title = row['title'] if 'title' in row else row['content']
+        abs = row['abs'] if 'abs' in row else None
+        if abs and abs != title:
+            title = title + '，' + abs
+
+        pattern = r'\d+[\.,\s,\、](.+)'
+        match = re.search(pattern, title)
+        if match:
+            title = match.group(1)
+        return {'response': title}
+
+    return dataset.map(map_row).filter(lambda row: row['response'])
+
+
+register_dataset(
+    DatasetName.ruozhiba_post_annual,
+    'AI-ModelScope/ruozhiba', [('post-annual', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
+register_dataset(
+    DatasetName.ruozhiba_title_good,
+    'AI-ModelScope/ruozhiba', [('title-good', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
+register_dataset(
+    DatasetName.ruozhiba_title_norm,
+    'AI-ModelScope/ruozhiba', [('title-norm', 'train')], [],
+    _preprocess_ruozhiba,
+    get_dataset_from_repo,
+    tags=['pretrain', '🔥'])
 
 register_dataset(
     DatasetName.ms_bench,
@@ -757,27 +898,35 @@ def process_hh_rlhf_cn(dataset):
 
     def reorganize_row(row):
         history = []
-        if isinstance(row['context'], str):
-            row['context'] = ast.literal_eval(row['context'])
-        if isinstance(row['chosen'], str):
-            row['chosen'] = ast.literal_eval(row['chosen'])
-        if isinstance(row['rejected'], str):
-            row['rejected'] = ast.literal_eval(row['rejected'])
-        for idx, h in enumerate(row['context']):
-            if idx % 2 == 0 and h['role'] != 'human':
-                return {'query': None}
-            if idx % 2 != 0 and h['role'] != 'assistant':
-                return {'query': None}
-            if idx % 2 == 0:
-                history.append([h['text'], None])
-            else:
-                history[-1][-1] = h['text']
-        if history[-1][-1] is not None:
-            return {'query': None}
-        query = history[-1][0]
-        history = history[:-1]
-        response = row['chosen']['text']
-        rejected_response = row['rejected']['text']
+        try:
+            if isinstance(row['context'], str):
+                row['context'] = ast.literal_eval(row['context'])
+            if isinstance(row['chosen'], str):
+                row['chosen'] = ast.literal_eval(row['chosen'])
+            if isinstance(row['rejected'], str):
+                row['rejected'] = ast.literal_eval(row['rejected'])
+            for idx, h in enumerate(row['context']):
+                if idx % 2 == 0 and h['role'] != 'human':
+                    raise ValueError()
+                if idx % 2 != 0 and h['role'] != 'assistant':
+                    raise ValueError()
+                if idx % 2 == 0:
+                    history.append([h['text'], None])
+                else:
+                    history[-1][-1] = h['text']
+            if history[-1][-1] is not None:
+                raise ValueError()
+            query = history[-1][0]
+            history = history[:-1]
+            response = row['chosen']['text']
+            rejected_response = row['rejected']['text']
+        except:  # noqa
+            return {
+                'query': '',
+                'response': '',
+                'rejected_response': '',
+                'history': [],
+            }
         return {
             'query': query,
             'response': response,
@@ -785,8 +934,20 @@ def process_hh_rlhf_cn(dataset):
             'history': history,
         }
 
-    return dataset.map(reorganize_row).filter(
-        lambda row: row['query'] is not None)
+    def row_can_be_parsed(row):
+        try:
+            if isinstance(row['context'], str):
+                row['context'] = ast.literal_eval(row['context'])
+            if isinstance(row['chosen'], str):
+                row['chosen'] = ast.literal_eval(row['chosen'])
+            if isinstance(row['rejected'], str):
+                row['rejected'] = ast.literal_eval(row['rejected'])
+            return True
+        except:  # noqa
+            return False
+
+    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(
+        lambda row: row['query'])
 
 
 register_dataset(

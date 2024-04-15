@@ -10,7 +10,7 @@ torchrun \
     llm_sft.py \
     --model_type tigerbot-7b \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type default-generation \
     --dtype AUTO \
     --output_dir output \

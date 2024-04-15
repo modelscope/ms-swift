@@ -7,7 +7,7 @@ python llm_sft.py \
     --model_id_or_path qwen/Qwen-72B-Chat \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type qwen \
     --dtype AUTO \
     --output_dir output \

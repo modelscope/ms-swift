@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import os
 import shutil
+import sys
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -40,7 +41,8 @@ from transformers.generation.streamers import BaseStreamer
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, stat_array, upper_bound)
+                         is_local_master, is_master, stat_array, upper_bound,
+                         use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
@@ -397,12 +399,23 @@ def find_all_linears(model: Module, quantization_bit: int,
     if 'aqlm' in model_type:
         from aqlm import QuantizedLinear
         linear_cls.append(QuantizedLinear)
+
+    # The content of target_module_names cannot exist in inner_nodes.
+    # O(n^2logn), n represents the number of nodes, n<1000.
+    inner_nodes = set()
+    for name, module in model.named_modules():
+        if not isinstance(module, tuple(linear_cls)):
+            inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)):
-            module_name = '.'.join(name.split('.')[-2:])
-            if head_module_name not in module_name:
-                target_module_names.add(module_name)
+        if isinstance(module,
+                      tuple(linear_cls)) and head_module_name not in name:
+            module_name_list = name.split('.')
+            module_name = module_name_list.pop()
+            for inner_node in inner_nodes:
+                while inner_node.endswith(module_name):
+                    module_name = f'{module_name_list.pop()}.{module_name}'
+            target_module_names.add(module_name)
     return list(target_module_names)
 
 
@@ -560,6 +573,12 @@ def inference_stream(model: PreTrainedModel,
         generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
+        max_length = get_max_model_len(model.config)
+        if max_length and token_len + generation_config.max_new_tokens > max_length:
+            generation_config.max_new_tokens = max_length - token_len
+            if generation_config.max_new_tokens <= 0:
+                raise AssertionError('Current sentence length exceeds'
+                                     f'the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
@@ -706,6 +725,12 @@ def inference(model: PreTrainedModel,
         generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
+        max_length = get_max_model_len(model.config)
+        if max_length and token_len + generation_config.max_new_tokens > max_length:
+            generation_config.max_new_tokens = max_length - token_len
+            if generation_config.max_new_tokens <= 0:
+                raise AssertionError('Current sentence length exceeds'
+                                     f'the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
@@ -868,6 +893,8 @@ if is_ddp_plus_mp():
         _old_ddp_init(self, model, *args, **kwargs))
     transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: None
     transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
+
+if is_ddp_plus_mp() or use_torchacc():
     _old_accelerator_init = trainer.Accelerator.__init__
     trainer.Accelerator.__init__ = (
         lambda self, device_placement=False, *args, **kwargs:
