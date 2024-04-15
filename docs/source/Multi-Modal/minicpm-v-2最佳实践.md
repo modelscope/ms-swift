@@ -1,6 +1,5 @@
 
-# MiniCPM-V 最佳实践
-以下内容以`minicpm-v-3b-chat`为例, 如果你想要使用更新版本的 MiniCPM-V 多模态模型(v2), 你可以将`--model_type minicpm-v-3b-chat`切换成`--model_type minicpm-v-v2`.
+# MiniCPM-V-2 最佳实践
 
 ## 目录
 - [环境准备](#环境准备)
@@ -14,41 +13,36 @@
 pip install ms-swift[llm] -U
 ```
 
-模型链接:
-- minicpm-v-3b-chat: [https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary)
-- minicpm-v-v2: [https://modelscope.cn/models/OpenBMB/MiniCPM-V-2.0/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2.0/summary)
-
-
 ## 推理
 
-推理minicpm-v-3b-chat:
+推理[minicpm-v-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary):
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-3b-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-v2
 ```
 
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< 描述这种图片
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
- 该图像描绘了一只黑白相间的猫，它正坐在地板上。这只猫看起来很小，可能是幼猫。它的眼睛睁得大大的，似乎在观察周围环境。
+ 这张图片展示了一只小猫的特写，它的毛色主要是黑白相间，带有一些浅色条纹，可能是灰色或白色。小猫的眼睛是蓝色的，瞳孔呈黑色，与它的毛色形成鲜明对比。它的耳朵竖立着，尖端是白色的，看起来警觉而好奇。小猫的鼻子是黑色的，嘴巴微微张开，露出牙齿，表明它可能在微笑或发出声音。背景模糊不清，但似乎是柔和的绿色，可能是室内环境，比如房间或房间的一部分。小猫的表情和姿势传达出一种顽皮和可爱爱的感觉。
 --------------------------------------------------
 <<< clear
 <<< 图中有几只羊？
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
- 图中有四只羊。
+ 这幅图描绘了一群羊在草地上。总共有四只羊，它们都长着白色的毛和棕色的角。这些羊的大小各不相同，其中一只看起来比其他三只要小一些。它们站在一片郁郁葱葱的草地上，背景是起伏的山脉，天空中飘着几朵云。这幅图像的风格是卡通化的，羊的面部表情和身体特征都夸夸张化了。
 --------------------------------------------------
 <<< clear
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
- 计算结果为1452 + 4530 = 5982。
+ 计算结果是1452 + 4530 =  5982。
 --------------------------------------------------
 <<< clear
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
- 在宁静的湖面上，一艘小船缓缓驶过。
+ 这幅图片描绘了一个宁静的夜晚场景，一艘小船漂浮在宁静的湖面上。船身呈棕色，看起来像是木质结构，船头有桅杆，顶部有一盏灯，可能是为了导航或照明。船身周围散布着一些小火苗，给画面增添了温暖的光芒。湖面反射着星星和灯光，营造出一种宁静而梦幻的氛围。背景中，树木繁茂，呈现出深绿色，暗示着森林或丛林的环境。天空呈现出渐变的粉色和紫色，暗示着日出或日落。整体氛围宁静而略带带神秘感。
 """
 ```
 
@@ -83,7 +77,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.minicpm_v_3b_chat
+model_type = ModelType.minicpm_v_v2
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -111,11 +105,9 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: 距离各城市多远？
-response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
 query: 距离最远的城市是哪？
-response: 距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳圳14公里。
-history: [['距离各城市多远？', ' 广州到深圳的距离是293公里，而深圳到广州的距离是14公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳14公里。']]
+response: 距离最远的城市是广州，距离离为293公里。
+history: [['距离各城市多远？', ' 马踏到马塔14公里，到阳江62公里，到广州293公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是广州，距离为293公里。']]
 """
 ```
 
@@ -134,7 +126,7 @@ road:
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type minicpm-v-3b-chat \
+    --model_type minicpm-v-v2 \
     --dataset coco-mini-en-2 \
 ```
 
@@ -153,17 +145,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/minicpm-v-3b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/minicpm-v-v2/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/minicpm-v-3b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/minicpm-v-v2/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/minicpm-v-3b-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/minicpm-v-v2/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```
