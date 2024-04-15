@@ -602,6 +602,8 @@ def inference_stream(model: PreTrainedModel,
     print_idx = 0
     if not is_observation:
         history.append(None)  # dummy
+    # Avoid the occurrence of repeated words in sentence.
+    first_num_space = -1
     for token in streamer:
         raw_generate_ids.append(token)
         generate_ids = template.get_generate_ids(
@@ -612,6 +614,13 @@ def inference_stream(model: PreTrainedModel,
         if isinstance(template.suffix[-1], list):
             generate_ids = generate_ids[:-len(template.suffix[-1])]
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+        cur_num_space = len(response) - len(response.lstrip(' '))
+        if first_num_space == -1:
+            first_num_space = cur_num_space
+        if cur_num_space < first_num_space:
+            response = ' ' * (first_num_space - cur_num_space) + response
+        elif cur_num_space > first_num_space:
+            response = response[cur_num_space - first_num_space:]
         if isinstance(template.suffix[-1], str):
             response = response[:-len(template.suffix[-1])]
         print_idx = _get_safe_print_idx(response, print_idx)
@@ -628,6 +637,12 @@ def inference_stream(model: PreTrainedModel,
             generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
         generate_ids = generate_ids[:-len(template.suffix[-1])]
     response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+    if first_num_space > -1:
+        cur_num_space = len(response) - len(response.lstrip(' '))
+        if cur_num_space < first_num_space:
+            response = ' ' * (first_num_space - cur_num_space) + response
+        elif cur_num_space > first_num_space:
+            response = response[cur_num_space - first_num_space:]
     if isinstance(
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
