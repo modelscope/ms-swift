@@ -447,16 +447,18 @@ class SwiftMixin:
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         # additional files
-        additional_files = getattr(self.args, 'additional_saved_files',
-                                   []) + ['preprocessor_config.json']
-        if model_dir is not None:
-            for file in additional_files:
-                src_path = os.path.join(model_dir, file)
-                dst_path = os.path.join(output_dir, file)
-                if os.path.isfile(src_path):
-                    shutil.copy(src_path, dst_path)
-                elif os.path.isdir(src_path):
-                    shutil.copytree(src_path, dst_path)
+        sft_args = getattr(self, 'sft_args', None)
+        if sft_args is not None and sft_args.sft_type == 'full':
+            additional_files = getattr(self.args, 'additional_saved_files',
+                                       []) + ['preprocessor_config.json']
+            if model_dir is not None:
+                for file in additional_files:
+                    src_path = os.path.join(model_dir, file)
+                    dst_path = os.path.join(output_dir, file)
+                    if os.path.isfile(src_path):
+                        shutil.copy(src_path, dst_path)
+                    elif os.path.isdir(src_path):
+                        shutil.copytree(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
         self.state.last_model_checkpoint = os.path.join(
