@@ -3005,7 +3005,7 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     @wraps(forward)
     def _new_forward(cache_position=None, *args, **kwargs):
         return forward(cache_position=cache_position, *args, **kwargs)
-
+    LlavaLlamaForCausalLM.forward = _new_forward
     # original_forward = LlavaLlamaForCausalLM.forward
     # def new_forward(self, *args, cache_position=None, **kwargs):
     #     # patch: transformers bug
