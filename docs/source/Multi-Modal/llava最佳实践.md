@@ -17,11 +17,17 @@ pip install -e .[llm]
 
 ## 推理
 
-推理[llava1d6-mistral-7b-instruct](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary):
+推理[llava1d6-mistral-7b-instruct](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary)和[llava1d6-yi-34b-instruct](https://www.modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary):
 ```shell
 # Experimental environment: A10, 3090, V100...
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1d6-mistral-7b-instruct
+
+# 70GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1d6-yi-34b-instruct
+
+# 4*20GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1d6-yi-34b-instruct
 ```
 
 输出: (支持传入本地路径或URL)
@@ -104,7 +110,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.llava1d6_mistral_7b_instruct
+model_type = ModelType.llava1d6_mistral_7b_instruct # ModelType.llava1d6_yi_34b_instruct
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -163,6 +169,12 @@ LoRA微调:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type llava1d6-mistral-7b-instruct \
     --dataset coco-mini-en-2 \
+
+# Experimental environment: 2*A100...
+# 2*45GB GPU memory
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type llava1d6-yi-34b-instruct \
+    --dataset coco-mini-en-2 \
 ```
 
 全参数微调:
@@ -175,6 +187,15 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --train_dataset_sample -1 \
     --sft_type full \
     --deepspeed default-zero2
+
+# 8 * 70 GPU memory
+NPROC_PER_NODE=8 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
+    --model_type llava1d6-yi-34b-instruct \
+    --dataset coco-mini-en-2 \
+    --train_dataset_sample -1 \
+    --sft_type full \
+    --deepspeed default-zero3
+
 ```
 
 
@@ -188,22 +209,23 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 {"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
-
 ## 微调后推理
 直接推理:
 ```shell
+model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
+
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/llava1d6-mistral-7b-instruct/vx-xxx/checkpoint-xxx \
-    --load_dataset_config true \
+    --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
+    --load_dataset_config true
 ```
 
 **merge-lora**并推理:
 ```shell
+model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/llava1d6-mistral-7b-instruct/vx-xxx/checkpoint-xxx \
+    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
     --merge_lora true
-
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/llava1d6-mistral-7b-instruct/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx-merged" \
     --load_dataset_config true
 ```

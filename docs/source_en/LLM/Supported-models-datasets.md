@@ -85,6 +85,7 @@ The table below introcudes all models supported by SWIFT:
 |llama2-70b-chat|[modelscope/Llama-2-70b-chat-ms](https://modelscope.cn/models/modelscope/Llama-2-70b-chat-ms/summary)|q_proj, k_proj, v_proj|llama|&#x2714;|&#x2714;||-|
 |llama2-7b-aqlm-2bit-1x16|[AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf](https://modelscope.cn/models/AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf/summary)|q_proj, k_proj, v_proj|default-generation-bos|&#x2714;|&#x2718;|transformers>=4.38, aqlm, torch>=2.2.0|-|
 |llava1d6-mistral-7b-instruct|[AI-ModelScope/llava-v1.6-mistral-7b](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary)|q_proj, k_proj, v_proj|llava-mistral-instruct|&#x2714;|&#x2718;|transformers>=4.34|multi-modal, vision|
+|llava1d6-yi-34b-instruct|[AI-ModelScope/llava-v1.6-34b](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary)|q_proj, k_proj, v_proj|llava-yi-instruct|&#x2714;|&#x2718;||multi-modal, vision|
 |yi-6b|[01ai/Yi-6B](https://modelscope.cn/models/01ai/Yi-6B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
 |yi-6b-200k|[01ai/Yi-6B-200K](https://modelscope.cn/models/01ai/Yi-6B-200K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;||-|
 |yi-6b-chat|[01ai/Yi-6B-Chat](https://modelscope.cn/models/01ai/Yi-6B-Chat/summary)|q_proj, k_proj, v_proj|yi|&#x2714;|&#x2714;||-|

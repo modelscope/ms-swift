@@ -930,24 +930,6 @@ class LLavaTemplate(Template):
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
-# register_template(
-#     TemplateType.llama,
-#     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '],
-#              ['</s>'], LLAMA_DEFAULT_SYSTEM,
-#              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
-# def __init__(self):
-#     super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'], None,
-#                         ['</s>'])
-# register_template(
-#     TemplateType.yi,
-#     Template(
-#         [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-#         ['<|im_end|>\n'], ['<|im_end|>'], None,
-#         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
-class LLavaYiTemplate(LLavaTemplate):
-    def __init__(self):
-        Template.__init__(self, [], [[-200], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], None,
-                         ['<|im_end|>'])
         
 register_template(
     TemplateType.llava_mistral_instruct,
@@ -956,6 +938,11 @@ register_template(
     infer_media_type='round',
     lazy_tokenize=True)
 
+class LLavaYiTemplate(LLavaTemplate):
+    def __init__(self):
+        Template.__init__(self, [], [[-200], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], None,
+                         ['<|im_end|>'])
+        
 register_template(
     TemplateType.llava_yi_instruct,
     LLavaYiTemplate(),
