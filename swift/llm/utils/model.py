@@ -2966,16 +2966,6 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     model_config = LlavaConfig.from_pretrained(model_dir)
     model_config.mm_vision_tower = snapshot_download(
         'AI-ModelScope/clip-vit-large-patch14-336')
-
-    # use_flash_attn = kwargs.pop('use_flash_attn', False)
-    # if use_flash_attn:
-    #     kwargs['attn_implementation'] = 'flash_attention_2'
-    # tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
-    # model = LlavaLlamaForCausalLM.from_pretrained(
-    #     model_dir,
-    #     low_cpu_mem_usage=True,
-    #     **kwargs
-    # )
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
         torch_dtype,
@@ -2990,7 +2980,7 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     if not vision_tower.is_loaded:
         vision_tower.load_model(device_map=device_map)
     if device_map != 'auto':
-        vision_tower.to(device=device_map, dtype=torch_dtype)  # fp16?
+        vision_tower.to(device=device_map, dtype=torch_dtype)
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     _patch_llava(model)
