@@ -930,7 +930,8 @@ class LLavaTemplate(Template):
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
-        
+
+
 register_template(
     TemplateType.llava_mistral_instruct,
     LLavaTemplate(),
@@ -938,17 +939,23 @@ register_template(
     infer_media_type='round',
     lazy_tokenize=True)
 
+
 class LLavaYiTemplate(LLavaTemplate):
+
     def __init__(self):
-        Template.__init__(self, [], [[-200], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], None,
-                         ['<|im_end|>'])
-        
+        Template.__init__(self, [], [[
+            -200
+        ], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+                          None, ['<|im_end|>'])
+
+
 register_template(
     TemplateType.llava_yi_instruct,
     LLavaYiTemplate(),
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
+
 
 def _findall(token_list: List[int], token: int) -> List[int]:
     """Find the index of a token in the token_list."""
