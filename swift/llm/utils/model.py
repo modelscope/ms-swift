@@ -328,8 +328,8 @@ class LoRATM(NamedTuple):
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
     mplug_owl2 = [
-        'q_proj', 'k_proj.multiway.0', 'k_proj.multiway.1',
-        'v_proj.multiway.0', 'v_proj.multiway.1'
+        'c_attn.multiway.0',
+        'c_attn.multiway.1',
     ]
 
 
@@ -2085,9 +2085,11 @@ def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
+                             model_config=None,
                              **kwargs):
-    model_config = AutoConfig.from_pretrained(
-        model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(
+            model_dir, trust_remote_code=True)
     if torch_dtype is not None:
         k_true = dtype_mapping[torch_dtype]
         for k in dtype_mapping.values():
@@ -2946,7 +2948,7 @@ def get_model_tokenizer_llava(model_dir: str,
     'iic/mPLUG-Owl2.1',
     LoRATM.mplug_owl2,
     TemplateType.mplug_owl2,
-    requires=['transformers<4.35', 'accelerate<0.22'],
+    requires=['transformers<4.35', 'icecream'],
     eos_token='<|endoftext|>',
     support_flash_attn=True)
 def get_model_tokenizer_mplug_owl2(model_dir: str,
@@ -2962,11 +2964,15 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
     from mplug_owl2 import MPLUGOwl2LlamaForCausalLM
     from transformers.models.clip.image_processing_clip import CLIPImageProcessor
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    model_config.vocab_size = 151851
     model, tokenizer = get_model_tokenizer_qwen(
         model_dir,
         torch_dtype,
         model_kwargs,
         load_model,
+        model_config=model_config,
         **kwargs)
     logger.info('Please ignore the unimported warning.')
     image_processor = CLIPImageProcessor.from_pretrained(model_dir)
@@ -3151,7 +3157,6 @@ def get_additional_saved_files(model_type: str) -> List[str]:
     files_mapping = {
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
-        'deepseek-vl': ['preprocessor_config.json'],
         'yi-vl': ['vit']
     }
     for key, files_list in files_mapping.items():

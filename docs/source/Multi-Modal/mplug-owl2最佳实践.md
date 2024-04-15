@@ -88,7 +88,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.float16,
                                        model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
-seed_everything(2)  # ...
+seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = 'How far is it from each city?'
@@ -110,10 +110,10 @@ print()
 print(f'history: {history}')
 """
 query: How far is it from each city?
-response: It is 14 km from the city of Mata, 62 km from Yangjiang, and 293 km from Guangzhou.
+response: From the given information, it is 14 km from the city of Mata, 62 km from Yangjiang, and 293 km from Guangzhou.
 query: Which city is the farthest?
 response: The farthest city is Guangzhou, which is 293 km away.
-history: [['How far is it from each city?', 'It is 14 km from the city of Mata, 62 km from Yangjiang, and 293 km from Guangzhou.'], ['Which city is the farthest?', 'The farthest city is Guangzhou, which is 293 km away.']]
+history: [['How far is it from each city?', 'From the given information, it is 14 km from the city of Mata, 62 km from Yangjiang, and 293 km from Guangzhou.'], ['Which city is the farthest?', 'The farthest city is Guangzhou, which is 293 km away.']]
 """
 ```
 
@@ -130,9 +130,9 @@ road:
 (默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`. 支持全参数微调.)
 ```shell
 # Experimental environment: A10, 3090, V100...
-# 19GB GPU memory
+# 24GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type yi-vl-6b-chat \
+    --model_type mplug-owl2d1-chat \
     --dataset coco-mini-en-2 \
 ```
 
@@ -151,17 +151,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/mplug-owl2d1-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/mplug-owl2d1-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/yi-vl-6b-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/mplug-owl2d1-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```

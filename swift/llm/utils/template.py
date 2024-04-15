@@ -1331,6 +1331,13 @@ class mPlugOwl2Template(Template):
         images = images.to(self.model.dtype)
         return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
 
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['images'] = torch.concat([b['images'] for b in batch])
+        return res
+
 
 register_template(
     TemplateType.mplug_owl2,
@@ -1338,6 +1345,7 @@ register_template(
     infer_media_type='round',
     use_model=True,
     lazy_tokenize=True)
+
 
 def get_template(
     template_type: str,

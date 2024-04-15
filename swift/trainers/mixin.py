@@ -447,7 +447,8 @@ class SwiftMixin:
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         # additional files
-        additional_files = getattr(self.args, 'additional_saved_files', [])
+        additional_files = getattr(self.args, 'additional_saved_files',
+                                   []) + ['preprocessor_config.json']
         if model_dir is not None:
             for file in additional_files:
                 src_path = os.path.join(model_dir, file)
