@@ -620,7 +620,7 @@ def inference_stream(model: PreTrainedModel,
         if cur_num_space < first_num_space:
             response = ' ' * (first_num_space - cur_num_space) + response
         elif cur_num_space > first_num_space:
-            response = response[cur_num_space - num_space:]
+            response = response[cur_num_space - first_num_space:]
         if isinstance(template.suffix[-1], str):
             response = response[:-len(template.suffix[-1])]
         print_idx = _get_safe_print_idx(response, print_idx)
@@ -642,7 +642,7 @@ def inference_stream(model: PreTrainedModel,
         if cur_num_space < first_num_space:
             response = ' ' * (first_num_space - cur_num_space) + response
         elif cur_num_space > first_num_space:
-            response = response[cur_num_space - num_space:]
+            response = response[cur_num_space - first_num_space:]
     if isinstance(
             template.suffix[-1], str
     ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
