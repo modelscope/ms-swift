@@ -946,7 +946,7 @@ class LLavaTemplate(Template):
 #         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 class LLavaYiTemplate(Template, LLavaTemplate):
     def __init__(self):
-        super.__init__([], [[-200], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], None,
+        Template.__init__([], [[-200], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], None,
                          ['<|im_end|>'])
         
 register_template(
