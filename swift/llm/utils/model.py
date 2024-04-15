@@ -3000,16 +3000,20 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     sys.path.append(os.path.join(local_repo_path))
 
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig 
+    forward = LlavaLlamaForCausalLM.forward
+    LlavaLlamaForCausalLM.__old_forward = forward
+    @wraps(forward)
+    def _new_forward(cache_position=None, *args, **kwargs):
+        return forward(cache_position=cache_position, *args, **kwargs)
 
-    original_forward = LlavaLlamaForCausalLM.forward
-    def new_forward(self, *args, cache_position=None, **kwargs):
-        # patch: transformers bug
-        if 'cache_position' not in kwargs:
-            kwargs['cache_position'] = cache_position
-        # 调用原始的forward，传入新的cache_position参数
-        return original_forward(self, *args, **kwargs)
+    # original_forward = LlavaLlamaForCausalLM.forward
+    # def new_forward(self, *args, cache_position=None, **kwargs):
+    #     # patch: transformers bug
+    #     if 'cache_position' not in kwargs:
+    #         kwargs['cache_position'] = cache_position
+    #     return original_forward(self, *args, **kwargs)
 
-    LlavaLlamaForCausalLM.forward = new_forward
+    # LlavaLlamaForCausalLM.forward = new_forward
     
     model_config = LlavaConfig.from_pretrained(model_dir)
     model_config.mm_vision_tower = snapshot_download(
