@@ -142,7 +142,7 @@ The table below introcudes all models supported by SWIFT:
 |minicpm-2b-128k|[OpenBMB/MiniCPM-2B-128k](https://modelscope.cn/models/OpenBMB/MiniCPM-2B-128k/summary)|q_proj, k_proj, v_proj|chatml|&#x2714;|&#x2714;|transformers>=4.36.0|-|
 |minicpm-moe-8x2b|[OpenBMB/MiniCPM-MoE-8x2B](https://modelscope.cn/models/OpenBMB/MiniCPM-MoE-8x2B/summary)|q_proj, k_proj, v_proj|minicpm|&#x2714;|&#x2714;|transformers>=4.36.0|-|
 |minicpm-v-3b-chat|[OpenBMB/MiniCPM-V](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary)|q_proj, k_proj, v_proj|minicpm-v|&#x2714;|&#x2718;||-|
-|minicpm-v-v2|[OpenBMB/MiniCPM-V-2.0](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2.0/summary)|q_proj, k_proj, v_proj|minicpm-v|&#x2714;|&#x2718;||-|
+|minicpm-v-v2|[OpenBMB/MiniCPM-V-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary)|q_proj, k_proj, v_proj|minicpm-v|&#x2714;|&#x2718;||-|
 |openbuddy-llama2-13b-chat|[OpenBuddy/openbuddy-llama2-13b-v8.1-fp16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
 |openbuddy-llama-65b-chat|[OpenBuddy/openbuddy-llama-65b-v8-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
 |openbuddy-llama2-70b-chat|[OpenBuddy/openbuddy-llama2-70b-v10.1-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;||-|
@@ -167,6 +167,8 @@ The table below introcudes all models supported by SWIFT:
 |baichuan2-13b|[baichuan-inc/Baichuan2-13B-Base](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Base/summary)|W_pack|default-generation|&#x2718;|&#x2714;||-|
 |baichuan2-13b-chat|[baichuan-inc/Baichuan2-13B-Chat](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat/summary)|W_pack|baichuan|&#x2718;|&#x2714;||-|
 |baichuan2-13b-chat-int4|[baichuan-inc/Baichuan2-13B-Chat-4bits](https://modelscope.cn/models/baichuan-inc/Baichuan2-13B-Chat-4bits/summary)|W_pack|baichuan|&#x2718;|&#x2718;|bitsandbytes<0.41.2, accelerate<0.26|-|
+|mplug-owl2-chat|[iic/mPLUG-Owl2](https://modelscope.cn/models/iic/mPLUG-Owl2/summary)|q_proj, k_proj.multiway.0, k_proj.multiway.1, v_proj.multiway.0, v_proj.multiway.1|mplug-owl2|&#x2714;|&#x2718;|transformers<4.35, icecream|-|
+|mplug-owl2d1-chat|[iic/mPLUG-Owl2.1](https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary)|c_attn.multiway.0, c_attn.multiway.1|mplug-owl2|&#x2714;|&#x2718;|transformers<4.35, icecream|-|
 |yuan2-2b-instruct|[YuanLLM/Yuan2.0-2B-hf](https://modelscope.cn/models/YuanLLM/Yuan2.0-2B-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|
 |yuan2-2b-janus-instruct|[YuanLLM/Yuan2-2B-Janus-hf](https://modelscope.cn/models/YuanLLM/Yuan2-2B-Janus-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|
 |yuan2-51b-instruct|[YuanLLM/Yuan2.0-51B-hf](https://modelscope.cn/models/YuanLLM/Yuan2.0-51B-hf/summary)|q_proj, k_proj, v_proj|yuan|&#x2714;|&#x2718;||-|

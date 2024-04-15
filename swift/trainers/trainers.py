@@ -283,7 +283,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             except StopIteration:
                 self._iterator = self.__original_iter__()
             return next(self._iterator)
-        
+
         if not use_torchacc():
             origin_loader = super().get_train_dataloader()
             grad_acc_steps = self.args.gradient_accumulation_steps

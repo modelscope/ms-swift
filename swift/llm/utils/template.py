@@ -59,6 +59,7 @@ class TemplateType:
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
     gemma = 'gemma'
+    mplug_owl2 = 'mplug-owl2'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -83,7 +84,7 @@ Context = Union[str, List[int]]
 
 
 class StopWordsCriteria(StoppingCriteria):
-
+    # The returned sentence includes stop words.
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
@@ -1301,6 +1302,49 @@ register_template(
     ], ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM, [
         '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|'
     ]))
+
+
+class mPlugOwl2Template(Template):
+
+    def __init__(self):
+        return super().__init__(['{{SYSTEM}}'],
+                                ['USER: ', [-200], '{{QUERY}}ASSISTANT:'],
+                                ['</s>'], [['eos_token_id']])
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from mplug_owl2.mm_utils import process_images
+        image_processor = self.tokenizer.image_processor
+        images_path = example['images']
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary
+            max_edge = max(image.size)
+            image = image.resize((max_edge, max_edge))
+            images.append(image)
+        inputs, _ = super().encode(example)
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        images = process_images(images, image_processor)
+        images = images.to(self.model.dtype)
+        return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['images'] = torch.concat([b['images'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.mplug_owl2,
+    mPlugOwl2Template(),
+    infer_media_type='round',
+    use_model=True,
+    lazy_tokenize=True)
 
 
 def get_template(
