@@ -1309,7 +1309,7 @@ class mPlugOwl2Template(Template):
     def __init__(self):
         return super().__init__(['{{SYSTEM}}'],
                                 ['USER: ', [-200], '{{QUERY}}ASSISTANT:'],
-                                ['</s>'], ['<|endoftext|>'])
+                                ['</s>'], [['eos_token_id']])
 
     def encode(
             self, example: Dict[str,

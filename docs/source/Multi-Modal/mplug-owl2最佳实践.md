@@ -1,5 +1,6 @@
 
 # mPLUG-Owl2 最佳实践
+以下内容以`mplug-owl2d1-chat`为例, 你也可以选择`mplug-owl2-chat`.
 
 ## 目录
 - [环境准备](#环境准备)
@@ -17,6 +18,7 @@ pip install -e .[llm]
 
 模型链接:
 - mplug-owl2d1-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary](https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary)
+- mplug-owl2-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2/summary](https://modelscope.cn/models/iic/mPLUG-Owl2/summary)
 
 
 ## 推理

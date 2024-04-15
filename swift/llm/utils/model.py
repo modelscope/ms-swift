@@ -221,7 +221,8 @@ class ModelType:
     baichuan2_13b_chat = 'baichuan2-13b-chat'
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
     # owl
-    mplug_owl2d1_chat = 'mplug-owl2d1-chat'
+    mplug_owl2_chat = 'mplug-owl2-chat'  # llama
+    mplug_owl2d1_chat = 'mplug-owl2d1-chat'  # qwen
     # yuan
     yuan2_2b_instruct = 'yuan2-2b-instruct'
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
@@ -328,6 +329,13 @@ class LoRATM(NamedTuple):
     grok_1 = ['q_proj', 'k_proj', 'v_proj']
     dbrx = ['attn.Wqkv']
     mplug_owl2 = [
+        'q_proj',
+        'k_proj.multiway.0',
+        'k_proj.multiway.1',
+        'v_proj.multiway.0',
+        'v_proj.multiway.1',
+    ]
+    mplug_owl2d1 = [
         'c_attn.multiway.0',
         'c_attn.multiway.1',
     ]
@@ -2944,12 +2952,27 @@ def get_model_tokenizer_llava(model_dir: str,
 
 
 @register_model(
-    ModelType.mplug_owl2d1_chat,
-    'iic/mPLUG-Owl2.1',
+    ModelType.mplug_owl2_chat,
+    'iic/mPLUG-Owl2',
     LoRATM.mplug_owl2,
     TemplateType.mplug_owl2,
     requires=['transformers<4.35', 'icecream'],
+    eos_token='</s>',
+    function_kwargs={
+        'get_model_tokenizer_function': get_model_tokenizer_with_flash_attn
+    },
+    support_flash_attn=True)
+@register_model(
+    ModelType.mplug_owl2d1_chat,
+    'iic/mPLUG-Owl2.1',
+    LoRATM.mplug_owl2d1,
+    TemplateType.mplug_owl2,
+    requires=['transformers<4.35', 'icecream'],
     eos_token='<|endoftext|>',
+    function_kwargs={
+        'vocab_size': 151851,
+        'get_model_tokenizer_function': get_model_tokenizer_qwen
+    },
     support_flash_attn=True)
 def get_model_tokenizer_mplug_owl2(model_dir: str,
                                    torch_dtype: Dtype,
@@ -2966,8 +2989,11 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     from transformers.models.clip.image_processing_clip import CLIPImageProcessor
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
-    model_config.vocab_size = 151851
-    model, tokenizer = get_model_tokenizer_qwen(
+    vocab_size = kwargs.pop('vocab_size', None)
+    if vocab_size is not None:
+        model_config.vocab_size = vocab_size
+    get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function')
+    model, tokenizer = get_model_tokenizer_function(
         model_dir,
         torch_dtype,
         model_kwargs,
