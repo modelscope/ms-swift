@@ -2952,24 +2952,35 @@ def get_model_tokenizer_llava_34b(model_dir: str,
         'https://github.com/haotian-liu/LLaVA.git')
     sys.path.append(os.path.join(local_repo_path))
 
-    from llava.model import LlavaConfig # LlavaLlamaForCausalLM, 
+    from llava.model import LlavaLlamaForCausalLM, LlavaConfig 
     model_config = LlavaConfig.from_pretrained(model_dir)
-    model_config.mm_vision_tower = snapshot_download(
-        'AI-ModelScope/clip-vit-large-patch14-336')
+    # model_config.mm_vision_tower = snapshot_download(
+    #     'AI-ModelScope/clip-vit-large-patch14-336')
+    
+    # use_flash_attn = kwargs.pop('use_flash_attn', False)
+    # if use_flash_attn:
+    #     kwargs['attn_implementation'] = 'flash_attention_2'
+    # tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
+    # model = LlavaLlamaForCausalLM.from_pretrained(
+    #     model_dir,
+    #     low_cpu_mem_usage=True,
+    #     **kwargs
+    # )
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
         torch_dtype,
         model_kwargs,
         load_model,
         model_config=model_config,
-        # automodel_class='LlavaLlamaForCausalLM',
+        automodel_class=LlavaLlamaForCausalLM,
         **kwargs)
-
     model.resize_token_embeddings(len(tokenizer))
     vision_tower = model.get_vision_tower()
     device_map = str(model_kwargs.get('device_map', str(model.device)))
     if not vision_tower.is_loaded:
         vision_tower.load_model(device_map=device_map)
+    if device_map != 'auto':
+        vision_tower.to(device=device_map, dtype=torch_dtype) # fp16?
     if not hasattr(model.config, 'max_sequence_length'):
         model.config.max_sequence_length = 2048
     _patch_llava(model)
