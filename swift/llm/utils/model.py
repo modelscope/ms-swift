@@ -2952,8 +2952,8 @@ def get_model_tokenizer_llava_34b(model_dir: str,
         'https://github.com/haotian-liu/LLaVA.git')
     sys.path.append(os.path.join(local_repo_path))
 
-    from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
-    model_config = LlavaMistralConfig.from_pretrained(model_dir)
+    from llava.model import LlavaConfig # LlavaLlamaForCausalLM, 
+    model_config = LlavaConfig.from_pretrained(model_dir)
     model_config.mm_vision_tower = snapshot_download(
         'AI-ModelScope/clip-vit-large-patch14-336')
     model, tokenizer = get_model_tokenizer_with_flash_attn(
