@@ -635,9 +635,7 @@ def inference_stream(model: PreTrainedModel,
         generate_ids = generate_ids[:-len(template.suffix[-1])]
     response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
     cur_num_space = len(response) - len(response.lstrip(' '))
-    if cur_num_space < num_space:
-        num_space = cur_num_space
-    elif cur_num_space > num_space:
+    if cur_num_space > num_space:
         response = response[cur_num_space-num_space:]
     if isinstance(
             template.suffix[-1], str
