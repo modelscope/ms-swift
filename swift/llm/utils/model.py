@@ -121,6 +121,7 @@ class ModelType:
     llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
     # llava
     llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
+    llava1d6_yi_34b_instruct = 'llava1d6-yi-34b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -2934,7 +2935,15 @@ def get_model_tokenizer_llava(model_dir: str,
     _patch_llava(model)
     return model, tokenizer
 
-def get_model_tokenizer_llava(model_dir: str,
+@register_model(
+    ModelType.llava1d6_yi_34b_instruct,
+    'AI-ModelScope/llava-v1.6-34b',
+    LoRATM.llama2,
+    TemplateType.yi,
+    eos_token='<|im_end|>',
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
+def get_model_tokenizer_llava_34b(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
@@ -2953,7 +2962,7 @@ def get_model_tokenizer_llava(model_dir: str,
         model_kwargs,
         load_model,
         model_config=model_config,
-        automodel_class=LlavaMistralForCausalLM,
+        # automodel_class='LlavaLlamaForCausalLM',
         **kwargs)
 
     model.resize_token_embeddings(len(tokenizer))
