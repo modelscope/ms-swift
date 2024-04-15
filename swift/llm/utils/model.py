@@ -3001,8 +3001,8 @@ def get_model_tokenizer_llava_34b(model_dir: str,
         model.config.max_sequence_length = 2048
     _patch_llava(model)
     return model, tokenizer
-  
-  
+
+
 @register_model(
     ModelType.mplug_owl2_chat,
     'iic/mPLUG-Owl2',
