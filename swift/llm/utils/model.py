@@ -3003,18 +3003,10 @@ def get_model_tokenizer_llava_34b(model_dir: str,
     forward = LlavaLlamaForCausalLM.forward
     LlavaLlamaForCausalLM.__old_forward = forward
     @wraps(forward)
-    def _new_forward(*args,cache_position=None, **kwargs):
-        return forward(*args, **kwargs,cache_position=cache_position)
+    def _new_forward(*args, **kwargs):
+        kwargs.pop('cache_position', None)
+        return forward(*args, **kwargs)
     LlavaLlamaForCausalLM.forward = _new_forward
-    # original_forward = LlavaLlamaForCausalLM.forward
-    # def new_forward(self, *args, cache_position=None, **kwargs):
-    #     # patch: transformers bug
-    #     if 'cache_position' not in kwargs:
-    #         kwargs['cache_position'] = cache_position
-    #     return original_forward(self, *args, **kwargs)
-
-    # LlavaLlamaForCausalLM.forward = new_forward
-    
     model_config = LlavaConfig.from_pretrained(model_dir)
     model_config.mm_vision_tower = snapshot_download(
         'AI-ModelScope/clip-vit-large-patch14-336')
