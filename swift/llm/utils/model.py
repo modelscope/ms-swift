@@ -2939,7 +2939,7 @@ def get_model_tokenizer_llava(model_dir: str,
     ModelType.llava1d6_yi_34b_instruct,
     'AI-ModelScope/llava-v1.6-34b',
     LoRATM.llama2,
-    TemplateType.yi,
+    TemplateType.llava_yi_instruct,
     eos_token='<|im_end|>',
     support_flash_attn=True,
     tags=['multi-modal', 'vision'])

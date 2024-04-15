@@ -33,6 +33,7 @@ class TemplateType:
     chatglm3 = 'chatglm3'
     llama = 'llama'
     llava_mistral_instruct = 'llava-mistral-instruct'
+    llava_yi_instruct = 'llava-yi-instruct'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
     internlm2 = 'internlm2'
@@ -929,8 +930,25 @@ class LLavaTemplate(Template):
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
-
-
+# register_template(
+#     TemplateType.llama,
+#     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '],
+#              ['</s>'], LLAMA_DEFAULT_SYSTEM,
+#              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+# def __init__(self):
+#     super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'], None,
+#                         ['</s>'])
+# register_template(
+#     TemplateType.yi,
+#     Template(
+#         [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+#         ['<|im_end|>\n'], ['<|im_end|>'], None,
+#         ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+class LLavaYiTemplate(LLavaTemplate):
+    def __init__(self):
+        super().__init__([], [[-200], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], None,
+                         ['<|im_end|>'])
+        
 register_template(
     TemplateType.llava_mistral_instruct,
     LLavaTemplate(),
@@ -938,6 +956,12 @@ register_template(
     infer_media_type='round',
     lazy_tokenize=True)
 
+register_template(
+    TemplateType.llava_yi_instruct,
+    LLavaYiTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
 
 def _findall(token_list: List[int], token: int) -> List[int]:
     """Find the index of a token in the token_list."""
