@@ -3,6 +3,7 @@ from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
@@ -1159,17 +1160,72 @@ class MiniCPMVTemlate(Template):
         inputs, _ = super().encode(example)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx = input_ids.index(0)
+
+        img_start_idxs = np.where(
+            np.array(input_ids) == self.tokenizer.im_start_id)[0]
+        if len(
+                img_start_idxs
+        ) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
+            start = 0
+            new_input_ids = []
+            for idx in img_start_idxs[1:]:
+                new_input_ids = new_input_ids + input_ids[start:idx]
+                start = idx + 4  # skip <image><unk></image>\n
+            new_input_ids = new_input_ids + input_ids[start:]
+            input_ids = new_input_ids
+
+        idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
-        input_ids = (
-            input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num
-            + input_ids[idx + 1:])
-        if labels is not None:
-            labels = (
-                labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
-        image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-        pixel_values = self.model.transform(image)[None].to(
-            device=self.model.device)
+        if hasattr(config, 'slice_mode') and config.slice_mode:
+            slice_mode = True
+            assert hasattr(config, 'patch_size')
+            assert hasattr(config, 'max_slice_nums')
+            assert hasattr(config, 'scale_resolution')
+        else:
+            slice_mode = False
+
+        if slice_mode:
+            images, placeholder = self.model.get_slice_image_placeholder(
+                image, self.tokenizer)
+            placeholder_id = self.tokenizer.encode(
+                placeholder, add_special_tokens=False)
+            input_ids = (
+                input_ids[:idx - 1] + placeholder_id + input_ids[idx + 2:])
+            if labels is not None:
+                labels = (
+                    labels[:idx - 1] + [-100] * len(placeholder_id)
+                    + labels[idx + 2])
+            input_tensor_ids = torch.tensor(input_ids)
+            image_start_idx = torch.where(
+                input_tensor_ids == self.tokenizer.im_start_id)[0]
+            image_start_idx += 1
+            image_end_idx = torch.where(
+                input_tensor_ids == self.tokenizer.im_end_id)[0]
+            valid_image_nums = max(len(image_start_idx), len(image_end_idx))
+            image_bound = [
+                torch.hstack([
+                    image_start_idx[:valid_image_nums].unsqueeze(-1),
+                    image_end_idx[:valid_image_nums].unsqueeze(-1)
+                ])
+            ]
+            pixel_values = [
+                self.model.transform(img).to(device=self.model.device)
+                for img in images
+            ]
+
+        else:
+            input_ids = (
+                input_ids[:idx]
+                + [self.tokenizer.unk_token_id] * config.query_num
+                + input_ids[idx + 1:])
+            if labels is not None:
+                labels = (
+                    labels[:idx] + [-100] * config.query_num
+                    + labels[idx + 1:])
+            image_bound = [torch.tensor([[idx, idx + config.query_num]])]
+            pixel_values = [
+                self.model.transform(image).to(device=self.model.device)
+            ]
         inputs_embeds, _ = self.model.get_vllm_embedding({
             'input_ids':
             torch.tensor(input_ids)[None].to(device=self.model.device),
