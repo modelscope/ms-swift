@@ -72,6 +72,7 @@ class ModelType:
     qwen1half_32b_chat = 'qwen1half-32b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
     qwen1half_moe_a2_7b_chat = 'qwen1half-moe-a2_7b-chat'
+    codeqwen1half_7b_chat = 'codeqwen1half-7b-chat'
 
     # qwen1.5 gptq
     qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
@@ -1522,6 +1523,15 @@ def get_model_tokenizer_aqlm(model_dir: str,
     'qwen/Qwen1.5-MoE-A2.7B-Chat',
     LoRATM.qwen1half,
     TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
+    ModelType.codeqwen1half_7b_chat,
+    'qwen/CodeQwen1.5-7B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    torch_dtype=torch.float16,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
