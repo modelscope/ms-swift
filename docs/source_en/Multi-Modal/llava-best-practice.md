@@ -185,13 +185,12 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --sft_type full \
     --deepspeed default-zero2
 
-# 8 * 70 GPU memory
-NPROC_PER_NODE=8 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
+# 8 * 50 GPU memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
     --model_type llava1d6-yi-34b-instruct \
     --dataset coco-mini-en-2 \
     --train_dataset_sample -1 \
     --sft_type full \
-    --deepspeed default-zero3
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
