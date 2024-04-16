@@ -111,21 +111,6 @@ class LoRAActivationMixin(ActivationMixin):
             )
         return super().merge(*args, **kwargs)
 
-    def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
-        """
-        From LoraLayer._apply_dora, to support `weight.to(x.dtype)`
-        """
-        lora_weight = lora_B.weight @ lora_A.weight
-        magnitude = self.lora_magnitude_vector[active_adapter]
-        weight = self.get_base_layer().weight
-        weight_norm = self._get_weight_norm(weight, lora_weight, scaling)
-        weight_norm = weight_norm.detach()
-        mag_norm_scale = (magnitude / weight_norm).view(1, -1)
-        result_dora = (mag_norm_scale - 1) * (F.linear(
-            x, transpose(weight.to(x.dtype), self.fan_in_fan_out)
-        )) + mag_norm_scale * lora_B(lora_A(x)) * scaling
-        return result_dora
-
 
 if is_bnb_available():
     import bitsandbytes as bnb
@@ -535,8 +520,9 @@ class Linear(LoRAActivationMixin, _Linear):
 
         def device_hook(module, args):
             for active_adapter in self.active_adapters:
-                self.lora_A[active_adapter].to(args[0].device)
-                self.lora_B[active_adapter].to(args[0].device)
+                if active_adapter in self.lora_A:
+                    self.lora_A[active_adapter].to(args[0].device)
+                    self.lora_B[active_adapter].to(args[0].device)
 
         self.register_forward_pre_hook(device_hook)
 
@@ -674,6 +660,9 @@ class LoraModel(_LoraModel):
             from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
             # update peft_config.target_modules if required
             peft_config = _maybe_include_all_linear_layers(peft_config, model)
+        if version.parse(peft.__version__) >= version.parse('0.10.0'):
+            self._prepare_model(peft_config, model)
+
         for key in key_list:
             # Check for modules_to_save in case
             if _check_for_modules_to_save and any(
@@ -806,9 +795,9 @@ class LoraModel(_LoraModel):
             target.update_layer(
                 adapter_name,
                 r,
-                alpha,
-                lora_config.lora_dropout,
-                lora_config.init_lora_weights,
+                lora_alpha=alpha,
+                lora_dropout=lora_config.lora_dropout,
+                init_lora_weights=lora_config.init_lora_weights,
                 use_rslora=lora_config.use_rslora,
                 use_dora=lora_config.use_dora,
             )

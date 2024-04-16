@@ -791,6 +791,8 @@ class EvalArguments(InferArguments):
 
     custom_eval_config: Optional[str] = None
 
+    eval_use_cache: Optional[bool] = False
+
 
 @dataclass
 class ExportArguments(InferArguments):

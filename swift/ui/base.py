@@ -47,6 +47,9 @@ def update_data(fn):
                     kwargs['value'] = values['value']
                 if 'label' in values:
                     kwargs['label'] = values['label']
+                argument = base_builder.argument(elem_id)
+                if argument and 'label' in kwargs:
+                    kwargs['label'] = kwargs['label'] + f'({argument})'
 
         ret = fn(self, **kwargs)
         self.constructor_args.update(kwargs)
@@ -73,6 +76,7 @@ class BaseUI:
     default_dict: Dict[str, Any] = {}
     locale_dict: Dict[str, Dict] = {}
     element_dict: Dict[str, Dict] = {}
+    arguments: Dict[str, str] = {}
     sub_ui: List[Type['BaseUI']] = []
     group: str = None
     lang: str = all_langs[0]
@@ -148,6 +152,11 @@ class BaseUI:
         return elements[elem_id]
 
     @classmethod
+    def argument(cls, elem_id):
+        """Get argument by elem_id"""
+        return cls.arguments.get(elem_id)
+
+    @classmethod
     def set_lang(cls, lang):
         cls.lang = lang
         for sub_ui in cls.sub_ui:
@@ -172,6 +181,13 @@ class BaseUI:
             else:
                 default_dict[f.name] = None
         return default_dict
+
+    @staticmethod
+    def get_argument_names(dataclass):
+        arguments = {}
+        for f in fields(dataclass):
+            arguments[f.name] = f'--{f.name}'
+        return arguments
 
     @staticmethod
     def get_custom_name_list():

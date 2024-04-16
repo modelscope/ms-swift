@@ -105,6 +105,7 @@ class LLMInfer(BaseUI):
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(InferArguments)
+    arguments = BaseUI.get_argument_names(InferArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):

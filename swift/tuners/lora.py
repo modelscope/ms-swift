@@ -91,9 +91,6 @@ class LoRA(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: LoRAConfig, adapter_name: str):
-        if version.parse(peft.__version__) >= version.parse('0.10.0'):
-            logger.error('The swift LoRA adapter only supports peft<0.10.0')
-
         assert not config.use_qa_lora, 'Do not use qa-lora'
         if config.use_qa_lora:
             auto_gptq_config = get_quantization_config(model, method='gptq')

@@ -121,7 +121,7 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
     task_configs = TaskConfig.load(
         custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
-        task_config.use_cache = False
+        task_config.use_cache = args.eval_use_cache
         if args.eval_limit:
             task_config.limit = args.eval_limit
         if args.eval_few_shot is not None:
