@@ -63,6 +63,7 @@ class ModelType:
     qwen1half_14b = 'qwen1half-14b'
     qwen1half_32b = 'qwen1half-32b'
     qwen1half_72b = 'qwen1half-72b'
+    codeqwen1half_7b = 'codeqwen1half-7b'
     qwen1half_moe_a2_7b = 'qwen1half-moe-a2_7b'
     qwen1half_0_5b_chat = 'qwen1half-0_5b-chat'
     qwen1half_1_8b_chat = 'qwen1half-1_8b-chat'
@@ -97,6 +98,7 @@ class ModelType:
     qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
     qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
     qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
+    codeqwen1half_7b_chat_awq = 'codeqwen1half-7b-chat-awq'
 
     # qwen-vl
     qwen_vl = 'qwen-vl'
@@ -1055,6 +1057,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.37'])
 @register_model(
+    ModelType.codeqwen1half_7b,
+    'qwen/CodeQwen1.5-7B',
+    LoRATM.qwen1half,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'])
+@register_model(
     ModelType.qwen1half_moe_a2_7b,
     'qwen/Qwen1.5-MoE-A2.7B',
     LoRATM.qwen1half,
@@ -1456,6 +1466,15 @@ def get_model_tokenizer_aqlm(model_dir: str,
 @register_model(
     ModelType.qwen1half_72b_chat_awq,
     'qwen/Qwen1.5-72B-Chat-AWQ',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    requires=['transformers>=4.37', 'autoawq'])
+@register_model(
+    ModelType.codeqwen1half_7b_chat_awq,
+    'qwen/CodeQwen1.5-7B-Chat-AWQ',
     LoRATM.qwen1half,
     TemplateType.qwen,
     support_flash_attn=True,
