@@ -1,7 +1,9 @@
 # Experimental environment: A100
 # 8*60GB GPU memory
-# modify 'model_id_or_path' in /swift/swift/llm/utils/model.py #line 1522
-PYTHONPATH=/mnt/workspace/qwen_swift/swift \
+# modify 'model_id_or_path' in /swift/swift/llm/utils/model.py （line 1522）
+# Alternatively, you can add a new parameter --model_id_or_path and set it to the local path.
+
+PYTHONPATH=/path/to/swift \
 nproc_per_node=8
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=$nproc_per_node \
