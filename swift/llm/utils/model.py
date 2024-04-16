@@ -2527,6 +2527,15 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         model_kwargs['quantization_config'].llm_int8_skip_modules = [
             'lm_head', 'attn_pool.attn'
         ]
+        _TransformerBlock = get_class_from_dynamic_module(
+            'visual.TransformerBlock', model_dir)
+
+        def _get_cast_dtype(self) -> torch.dtype:
+            return self.resblocks[0].ln_1.weight.dtype
+
+        _TransformerBlock.__old_get_cast_dtype = _TransformerBlock.get_cast_dtype
+        _TransformerBlock.get_cast_dtype = _get_cast_dtype
+
     get_qwen_function = kwargs.pop('get_qwen_function',
                                    get_model_tokenizer_qwen_chat)
     tokenizer_config = get_tokenizer_config(model_dir)
