@@ -34,6 +34,7 @@ class TemplateType:
     chatglm3 = 'chatglm3'
     llama = 'llama'
     llava_mistral_instruct = 'llava-mistral-instruct'
+    llava_yi_instruct = 'llava-yi-instruct'
     openbuddy = 'openbuddy'
     internlm = 'internlm'
     internlm2 = 'internlm2'
@@ -936,6 +937,23 @@ class LLavaTemplate(Template):
 register_template(
     TemplateType.llava_mistral_instruct,
     LLavaTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+
+class LLavaYiTemplate(LLavaTemplate):
+
+    def __init__(self):
+        Template.__init__(self, [], [[
+            -200
+        ], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+                          None, ['<|im_end|>'])
+
+
+register_template(
+    TemplateType.llava_yi_instruct,
+    LLavaYiTemplate(),
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)

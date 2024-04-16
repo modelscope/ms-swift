@@ -121,6 +121,7 @@ class ModelType:
     llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
     # llava
     llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
+    llava1d6_yi_34b_instruct = 'llava1d6-yi-34b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -2940,6 +2941,55 @@ def get_model_tokenizer_llava(model_dir: str,
         automodel_class=LlavaMistralForCausalLM,
         **kwargs)
 
+    model.resize_token_embeddings(len(tokenizer))
+    vision_tower = model.get_vision_tower()
+    device_map = str(model_kwargs.get('device_map', str(model.device)))
+    if not vision_tower.is_loaded:
+        vision_tower.load_model(device_map=device_map)
+    if not hasattr(model.config, 'max_sequence_length'):
+        model.config.max_sequence_length = 2048
+    _patch_llava(model)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.llava1d6_yi_34b_instruct,
+    'AI-ModelScope/llava-v1.6-34b',
+    LoRATM.llama2,
+    TemplateType.llava_yi_instruct,
+    eos_token='<|im_end|>',
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'])
+def get_model_tokenizer_llava_34b(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    local_repo_path = _git_clone_github(
+        'https://github.com/haotian-liu/LLaVA.git')
+    sys.path.append(os.path.join(local_repo_path))
+
+    from llava.model import LlavaLlamaForCausalLM, LlavaConfig
+    forward = LlavaLlamaForCausalLM.forward
+    LlavaLlamaForCausalLM.__old_forward = forward
+
+    @wraps(forward)
+    def _new_forward(*args, **kwargs):
+        kwargs.pop('cache_position', None)
+        return forward(*args, **kwargs)
+
+    LlavaLlamaForCausalLM.forward = _new_forward
+    model_config = LlavaConfig.from_pretrained(model_dir)
+    model_config.mm_vision_tower = snapshot_download(
+        'AI-ModelScope/clip-vit-large-patch14-336')
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        automodel_class=LlavaLlamaForCausalLM,
+        **kwargs)
     model.resize_token_embeddings(len(tokenizer))
     vision_tower = model.get_vision_tower()
     device_map = str(model_kwargs.get('device_map', str(model.device)))
