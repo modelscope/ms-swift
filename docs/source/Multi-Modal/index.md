@@ -3,7 +3,7 @@
 ### Multi-Modal最佳实践系列
 
 1. [Qwen-VL最佳实践](qwen-vl最佳实践.md)
-2. [Qwen-Audio最佳实践](qwen-auidio最佳实践.md)
+2. [Qwen-Audio最佳实践](qwen-audio最佳实践.md)
 3. [Llava最佳实践](llava最佳实践.md)
 4. [Deepseek-VL最佳实践](../Multi-Modal/deepseek-vl最佳实践.md)
 5. [Yi-VL最佳实践.md](../Multi-Modal/yi-vl最佳实践.md)
