@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
   --model_type codeqwen1half-7b-chat-awq \
-  --dataset ms-agent \
+  --dataset leetcode-python-en \
   --train_dataset_mix_ratio 3 \
   --batch_size 4 \
   --max_length 1024 \
