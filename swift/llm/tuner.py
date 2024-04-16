@@ -77,7 +77,7 @@ def prepare_model(model, args: SftArguments):
                 'use_dora': args.use_dora,
                 'lorap_lr_ratio': args.lora_lr_ratio,
             }
-            if args.sft_type == 'lora':
+            if args.sft_type in ('lora', 'longlora'):
                 if args.tuner_backend == 'swift':
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
@@ -88,15 +88,10 @@ def prepare_model(model, args: SftArguments):
                         **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
-            elif args.sft_type == 'longlora':
-                assert args.tuner_backend == 'swift'
-                assert LongLoRAModelType.LLAMA in args.model_type
-                longlora_config = LongLoRAConfig(
-                    lora_dtype=args.lora_dtype,
-                    model_type=LongLoRAModelType.LLAMA,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, longlora_config)
-                logger.info(f'longlora_config: {longlora_config}')
+                if args.sft_type == 'longlora':
+                    from swift.tuners.longlora.llama import replace_llama_attn
+                    replace_llama_attn(model)
+                    model.config.group_size_ratio = 0.25
             elif args.sft_type == 'adalora':
                 lora_kwargs.pop('lorap_lr_ratio', None)
                 lora_kwargs['rank_pattern'] = None
