@@ -89,6 +89,8 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
                 if args.sft_type == 'longlora':
+                    assert LongLoRAModelType.LLAMA in args.model_type
+                    assert version.parse(transformers.__version__) >= version.parse('4.39.3')
                     from swift.tuners.longlora.llama import replace_llama_attn
                     replace_llama_attn(model)
                     model.config.group_size_ratio = 0.25
