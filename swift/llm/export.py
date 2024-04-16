@@ -145,7 +145,7 @@ def gptq_model_quantize(model, tokenizer):
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
     gptq_quantizer = GPTQQuantizer(
-        bits=_args.quant_bits, dataset=_args.dataset)
+        bits=_args.quant_bits, dataset=','.join(_args.dataset))
     _origin_get_dataset = quantizer.get_dataset
     quantizer.get_dataset = _get_dataset
     logger.info('Start quantizing the model...')
