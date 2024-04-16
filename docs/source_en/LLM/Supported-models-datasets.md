@@ -37,6 +37,7 @@ The table below introcudes all models supported by SWIFT:
 |qwen1half-14b|[qwen/Qwen1.5-14B](https://modelscope.cn/models/qwen/Qwen1.5-14B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-32b|[qwen/Qwen1.5-32B](https://modelscope.cn/models/qwen/Qwen1.5-32B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-72b|[qwen/Qwen1.5-72B](https://modelscope.cn/models/qwen/Qwen1.5-72B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
+|codeqwen1half-7b|[qwen/CodeQwen1.5-7B](https://modelscope.cn/models/qwen/CodeQwen1.5-7B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-moe-a2_7b|[qwen/Qwen1.5-MoE-A2.7B](https://modelscope.cn/models/qwen/Qwen1.5-MoE-A2.7B/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-0_5b-chat|[qwen/Qwen1.5-0.5B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-1_8b-chat|[qwen/Qwen1.5-1.8B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
@@ -46,6 +47,7 @@ The table below introcudes all models supported by SWIFT:
 |qwen1half-32b-chat|[qwen/Qwen1.5-32B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-32B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-72b-chat|[qwen/Qwen1.5-72B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-moe-a2_7b-chat|[qwen/Qwen1.5-MoE-A2.7B-Chat](https://modelscope.cn/models/qwen/Qwen1.5-MoE-A2.7B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
+|codeqwen1half-7b-chat|[qwen/CodeQwen1.5-7B-Chat](https://modelscope.cn/models/qwen/CodeQwen1.5-7B-Chat/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37|-|
 |qwen1half-0_5b-chat-int4|[qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-1_8b-chat-int4|[qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
 |qwen1half-4b-chat-int4|[qwen/Qwen1.5-4B-Chat-GPTQ-Int4](https://modelscope.cn/models/qwen/Qwen1.5-4B-Chat-GPTQ-Int4/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|auto_gptq>=0.5, transformers>=4.37|-|
@@ -66,6 +68,7 @@ The table below introcudes all models supported by SWIFT:
 |qwen1half-7b-chat-awq|[qwen/Qwen1.5-7B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-7B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
 |qwen1half-14b-chat-awq|[qwen/Qwen1.5-14B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-14B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
 |qwen1half-72b-chat-awq|[qwen/Qwen1.5-72B-Chat-AWQ](https://modelscope.cn/models/qwen/Qwen1.5-72B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
+|codeqwen1half-7b-chat-awq|[qwen/CodeQwen1.5-7B-Chat-AWQ](https://modelscope.cn/models/qwen/CodeQwen1.5-7B-Chat-AWQ/summary)|q_proj, k_proj, v_proj|qwen|&#x2714;|&#x2714;|transformers>=4.37, autoawq|-|
 |qwen-vl|[qwen/Qwen-VL](https://modelscope.cn/models/qwen/Qwen-VL/summary)|c_attn|default-generation|&#x2714;|&#x2718;||multi-modal, vision|
 |qwen-vl-chat|[qwen/Qwen-VL-Chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary)|c_attn|qwen|&#x2714;|&#x2718;||multi-modal, vision|
 |qwen-vl-chat-int4|[qwen/Qwen-VL-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2718;|auto_gptq>=0.5|multi-modal, vision|
