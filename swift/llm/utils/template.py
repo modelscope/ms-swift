@@ -943,11 +943,10 @@ register_template(
 
 
 class LLavaYiTemplate(LLavaTemplate):
+    llavayi_query_template = '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'
 
     def __init__(self):
-        Template.__init__(self, [], [[
-            -200
-        ], '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        Template.__init__(self, [], [[-200], self.llavayi_query_template],
                           None, ['<|im_end|>'])
 
 
