@@ -1,3 +1,5 @@
+# Experimental environment: 3090，A10，V100...
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type codeqwen1half-7b-chat \

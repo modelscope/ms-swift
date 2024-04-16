@@ -1531,7 +1531,6 @@ def get_model_tokenizer_aqlm(model_dir: str,
     'qwen/CodeQwen1.5-7B-Chat',
     LoRATM.qwen1half,
     TemplateType.qwen,
-    torch_dtype=torch.float16,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.37'])
