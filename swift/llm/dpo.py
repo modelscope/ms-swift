@@ -14,7 +14,7 @@ from swift.utils import (check_json_format, get_dist_setting, get_logger,
                          is_master, plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (DPOArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, set_generation_config, get_time_info)
+                    get_template, get_time_info, set_generation_config)
 
 logger = get_logger()
 
