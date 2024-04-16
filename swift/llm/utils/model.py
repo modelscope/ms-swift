@@ -359,7 +359,7 @@ def register_model(
     requires: Optional[List[str]] = None,
     torch_dtype: Optional[Dtype] = None,
     hf_model_id: Optional[str] = None,
-    revision: Optional[str] = None,
+    revision: Optional[str] = None,  # only modelscope
     ignore_file_pattern: Optional[List[str]] = None,
     function_kwargs: Optional[Dict[str, Any]] = None,
     exists_ok: bool = False,
@@ -3352,26 +3352,34 @@ def fix_gradient_checkpointing_warning() -> None:
 
 def safe_snapshot_download(model_type: str,
                            model_id_or_path: Optional[str] = None,
+                           revision: Optional[str] = None,
                            **kwargs) -> str:
     # Perform snapshot_download (ms or hf) based on model_type and model_id_or_path.
     model_info = MODEL_MAPPING[model_type]
+    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     if model_id_or_path is None:
         model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
         if model_dir is not None:
             model_id_or_path = model_dir
         else:
-            model_id_or_path = model_info['model_id_or_path']
+            model_id_or_path = model_info[
+                'hf_model_id' if use_hf else 'model_id_or_path']
 
     if is_dist() and not is_local_master():
         dist.barrier()
     if model_id_or_path is not None and not os.path.exists(model_id_or_path):
-        revision = model_info['revision']
-        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
         ignore_file_pattern = model_info['ignore_file_pattern']
         if use_hf:
+            if revision is None:
+                revision = 'main'
             logger.info(
                 f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
             )
+            use_hf_transfer = strtobool(
+                os.environ.get('USE_HF_TRANSFER', 'False'))
+            if use_hf_transfer:
+                import huggingface_hub._snapshot_download as hf_s
+                hf_s.HF_HUB_ENABLE_HF_TRANSFER = True
             from huggingface_hub import snapshot_download as hf_snapshot_download
             model_dir = hf_snapshot_download(
                 model_id_or_path,
@@ -3379,6 +3387,8 @@ def safe_snapshot_download(model_type: str,
                 revision=revision,
                 ignore_patterns=ignore_file_pattern)
         else:
+            if revision is None:
+                revision = model_info['revision']
             logger.info(
                 f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
             )
@@ -3414,6 +3424,7 @@ def get_model_tokenizer(
         load_model: bool = True,
         *,
         model_id_or_path: Optional[str] = None,
+        revision: Optional[str] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
@@ -3421,7 +3432,7 @@ def get_model_tokenizer(
     """
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     model_dir = safe_snapshot_download(
-        model_type, model_id_or_path, model_dir=model_dir)
+        model_type, model_id_or_path, revision=revision, model_dir=model_dir)
 
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']

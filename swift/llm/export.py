@@ -38,6 +38,7 @@ def prepare_awq_model_template(
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=model_id_or_path,
+        revision=args.model_revision,
         automodel_class=AutoAWQForCausalLM)
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(

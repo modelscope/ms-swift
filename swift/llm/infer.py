@@ -125,7 +125,8 @@ def merge_lora(args: InferArguments,
         args.model_type,
         args.torch_dtype,
         model_kwargs,
-        model_id_or_path=model_id_or_path)
+        model_id_or_path=model_id_or_path,
+        revision=args.model_revision)
     logger.info(f'model_config: {model.config}')
 
     # Preparing LoRA
@@ -189,6 +190,7 @@ def prepare_model_template(
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=model_id_or_path,
+        revision=args.model_revision,
         **kwargs)
     logger.info(f'model_config: {model.config}')
     if model.max_model_len is None:

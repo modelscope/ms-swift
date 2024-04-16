@@ -14,7 +14,7 @@ from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import (is_torch_bf16_gpu_available,
                                 is_torch_cuda_available,
-                                is_torch_npu_available)
+                                is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
@@ -1044,11 +1044,13 @@ def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
         raise ValueError(f"model_type: '{args.model_type}' is not registered. "
                          + error_msg)
     model_info = MODEL_MAPPING[args.model_type]
-    if args.model_revision is None:
-        args.model_revision = model_info['revision']
-    else:
+    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+    if args.model_revision is not None:
         model_info['revision'] = args.model_revision
         logger.info(f"Setting model_info['revision']: {args.model_revision}")
+    elif use_hf:
+        model_info['revision'] = 'main'
+    args.model_revision = model_info['revision']
     if args.model_id_or_path is None:
         args.model_id_or_path = model_info['model_id_or_path']
     requires = model_info['requires']
