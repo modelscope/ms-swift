@@ -200,6 +200,7 @@ class LLMTrain(BaseUI):
 
     choice_dict = BaseUI.get_choices_from_dataclass(SftArguments)
     default_dict = BaseUI.get_default_value_from_dataclass(SftArguments)
+    arguments = BaseUI.get_argument_names(SftArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -346,10 +347,11 @@ class LLMTrain(BaseUI):
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
+
         sft_args = SftArguments(
             **{
-                key: value.split(' ')
-                if key in kwargs_is_list and kwargs_is_list[key] else value
+                key: value.split(' ') if kwargs_is_list.get(key, False)
+                and isinstance(value, str) else value
                 for key, value in kwargs.items()
             })
         params = ''

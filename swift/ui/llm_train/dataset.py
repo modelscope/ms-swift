@@ -111,7 +111,7 @@ class Dataset(BaseUI):
                 minimum=0.0,
                 maximum=1.0,
                 step=0.05,
-                scale=10)
+                scale=20)
             gr.Slider(
                 elem_id='max_length',
                 minimum=32,
@@ -120,4 +120,4 @@ class Dataset(BaseUI):
                 scale=20)
             gr.Textbox(elem_id='train_dataset_sample', scale=20)
             gr.Textbox(elem_id='val_dataset_sample', scale=20)
-            gr.Dropdown(elem_id='truncation_strategy', scale=10)
+            gr.Dropdown(elem_id='truncation_strategy', scale=20)
