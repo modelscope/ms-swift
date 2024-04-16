@@ -520,8 +520,9 @@ class Linear(LoRAActivationMixin, _Linear):
 
         def device_hook(module, args):
             for active_adapter in self.active_adapters:
-                self.lora_A[active_adapter].to(args[0].device)
-                self.lora_B[active_adapter].to(args[0].device)
+                if active_adapter in self.lora_A:
+                    self.lora_A[active_adapter].to(args[0].device)
+                    self.lora_B[active_adapter].to(args[0].device)
 
         self.register_forward_pre_hook(device_hook)
 
