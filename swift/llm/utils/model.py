@@ -95,6 +95,7 @@ class ModelType:
     qwen1half_4b_chat_awq = 'qwen1half-4b-chat-awq'
     qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
     qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
+    qwen1half_32b_chat_awq = 'qwen1half-32b-chat-awq'
     qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
 
     # qwen-vl
@@ -127,6 +128,7 @@ class ModelType:
     yi_6b_200k = 'yi-6b-200k'
     yi_6b_chat = 'yi-6b-chat'
     yi_9b = 'yi-9b'
+    yi_9b_200k = 'yi-9b-200k'
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
