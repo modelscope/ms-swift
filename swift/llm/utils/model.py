@@ -1344,13 +1344,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-9B-200K')
 @register_model(
-    ModelType.yi_9b_200k,
-    '01ai/Yi-9B-200K',
-    LoRATM.llama2,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True)
-@register_model(
     ModelType.yi_6b,
     '01ai/Yi-6B',
     LoRATM.llama2,
@@ -1624,15 +1617,6 @@ def get_model_tokenizer_aqlm(model_dir: str,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen1.5-32B-Chat-AWQ')
-@register_model(
-    ModelType.qwen1half_32b_chat_awq,
-    'qwen/Qwen1.5-32B-Chat-AWQ',
-    LoRATM.qwen1half,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    function_kwargs={'is_awq': True},
-    requires=['transformers>=4.37', 'autoawq'])
 @register_model(
     ModelType.qwen1half_72b_chat_awq,
     'qwen/Qwen1.5-72B-Chat-AWQ',
