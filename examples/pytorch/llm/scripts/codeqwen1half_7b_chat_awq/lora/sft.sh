@@ -13,7 +13,7 @@ swift sft \
   --eval_steps 2000 \
   --save_steps 2000 \
   --train_dataset_sample -1 \
-  --num_train_epochs 1 \
+  --num_train_epochs 3 \
   --check_dataset_strategy none \
   --gradient_checkpointing true \
   --weight_decay 0.1 \

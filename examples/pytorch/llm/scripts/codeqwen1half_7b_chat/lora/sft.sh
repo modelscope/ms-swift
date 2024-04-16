@@ -11,7 +11,7 @@ swift sft \
     --ddp_backend nccl \
     --dataset leetcode-python-en \
     --train_dataset_sample -1 \
-    --num_train_epochs 1 \
+    --num_train_epochs 3 \
     --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
