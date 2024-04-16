@@ -1,6 +1,6 @@
 # Experimental environment: A100
 # 8*60GB GPU memory
-# modify 'model_id_or_path' in /swift/swift/llm/utils/model.py #line 1508
+# modify 'model_id_or_path' in /swift/swift/llm/utils/model.py #line 1522
 PYTHONPATH=/mnt/workspace/qwen_swift/swift \
 nproc_per_node=8
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
