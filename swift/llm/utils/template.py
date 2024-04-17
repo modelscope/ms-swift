@@ -446,7 +446,7 @@ class Template:
             'attention_mask': attention_mask,
             'labels': labels,
         }
-        if loss_scale:
+        if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
 
