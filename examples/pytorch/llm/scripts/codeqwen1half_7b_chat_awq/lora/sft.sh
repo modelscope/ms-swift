@@ -3,10 +3,8 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
   --model_type codeqwen1half-7b-chat-awq \
   --dataset leetcode-python-en \
-  --train_dataset_mix_ratio 3 \
   --batch_size 4 \
-  --max_length 1024 \
-  --use_loss_scale true \
+  --max_length 2048 \
   --gradient_accumulation_steps 2 \
   --learning_rate 5e-5 \
   --use_flash_attn true \
