@@ -84,8 +84,8 @@ def merge_lora(args: InferArguments,
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
     assert args.sft_type == 'lora', "Only supports sft_type == 'lora'"
-    assert 'int4' not in args.model_type, 'int4 model is not supported'
-    assert 'int8' not in args.model_type, 'int8 model is not supported'
+    for s in ['int4', 'int8', 'awq']:
+        assert s not in args.model_type, f'{s} model is not supported'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')

@@ -118,18 +118,18 @@ class ArgumentsBase:
             else:
                 raise ValueError(f'args.dtype: {self.dtype}')
         # cuda, npu
-        if self.dtype == 'AUTO' and not is_torch_bf16_gpu_available():
-            self.dtype = 'fp16'
-        if self.dtype == 'AUTO' and ('int4' in self.model_type
-                                     or 'int8' in self.model_type):
-            model_torch_dtype = MODEL_MAPPING[self.model_type]['torch_dtype']
-            if model_torch_dtype is not None:
-                self.dtype = dtype_mapping[model_torch_dtype]
         if self.dtype == 'AUTO':
-            if isinstance(self, SftArguments):
-                self.dtype = 'bf16'
+            if is_torch_bf16_gpu_available():
+                self.dtype = 'fp16'
             else:
-                return None, False, False
+                model_torch_dtype = MODEL_MAPPING[self.model_type].get(
+                    'torch_dtype')
+                if model_torch_dtype is not None:
+                    self.dtype = dtype_mapping[model_torch_dtype]
+                elif isinstance(self, SftArguments):
+                    self.dtype = 'bf16'
+                else:
+                    return None, False, False
 
         torch_dtype = dtype_mapping_reversed[self.dtype]
 
@@ -661,8 +661,8 @@ class SftArguments(ArgumentsBase):
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`'
             )
-            if 'int4' in self.model_type or 'int8' in self.model_type:
-                assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
+            if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
+                assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:

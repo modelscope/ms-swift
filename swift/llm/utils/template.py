@@ -61,6 +61,7 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
+    wizardlm2_awq = 'wizardlm2-awq'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -1362,6 +1363,11 @@ register_template(
     infer_media_type='round',
     use_model=True,
     lazy_tokenize=True)
+
+register_template(
+    TemplateType.wizardlm2_awq,
+    Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'],
+             ['</s>']))
 
 
 def get_template(

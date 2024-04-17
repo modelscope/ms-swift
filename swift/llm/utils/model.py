@@ -216,6 +216,9 @@ class ModelType:
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
     mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
+    # wizardlm
+    wizardlm2_7b_awq = 'wizardlm2-7b-awq'
+    wizardlm2_8x22b = 'wizardlm2-8x22b'
     # baichuan
     baichuan_7b = 'baichuan-7b'
     baichuan_13b = 'baichuan-13b'
@@ -413,6 +416,44 @@ def register_model(
     return _register_model
 
 
+def _check_awq_ext() -> None:
+    try:
+        from awq.utils.packing_utils import dequantize_gemm
+        import awq_ext  # with CUDA kernels (AutoAWQ_kernels)
+    except ImportError as e:
+        raise ImportError(
+            'You are training awq models, remember installing awq_ext by '
+            '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
+            '&& cd AutoAWQ_kernels && pip install -e .`') from e
+
+
+def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
+    assert model_kwargs.get('quantization_config') is None
+    if version.parse(transformers.__version__) >= version.parse('4.35'):
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=bits, use_exllama=False)
+    else:
+        model_kwargs['quantization_config'] = GPTQConfig(
+            bits=bits, disable_exllama=True)
+
+    # fix quantlinear bug
+    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
+    __old_forward = QuantLinear.forward
+
+    def _new_forward(self, x):
+        if not self.training or not self.autogptq_cuda_available:
+            return self.__old_forward(x)
+        # fix sft no grad
+        self.autogptq_cuda_available = False
+        res = self.__old_forward(x)
+        self.autogptq_cuda_available = True
+        return res
+
+    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
+        QuantLinear.__old_forward = __old_forward
+        QuantLinear.forward = _new_forward
+
+
 @register_model(
     ModelType.internlm_20b,
     'Shanghai_AI_Laboratory/internlm-20b',
@@ -564,6 +605,13 @@ def get_model_tokenizer_from_repo(model_dir: str,
                                   automodel_class=AutoModelForCausalLM,
                                   **kwargs):
     """load from an independent repository"""
+    is_awq = kwargs.pop('is_awq', False)
+    gptq_bits = kwargs.pop('gptq_bits', 0)
+    is_training = kwargs.pop('is_training', False)
+    if is_awq and is_training:
+        _check_awq_ext()
+    if gptq_bits > 0 and is_training:
+        _check_gptq_model(gptq_bits, model_kwargs)
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
@@ -585,6 +633,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 **model_kwargs)
+    if is_awq:
+        model.is_awq = is_awq
+    if gptq_bits > 0:
+        model.gptq_bits = gptq_bits
     return model, tokenizer
 
 
@@ -1027,6 +1079,17 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.wizardlm2_7b_awq,
+    'AI-ModelScope/WizardLM-2-7B-AWQ',
+    LoRATM.llama2,
+    TemplateType.wizardlm2_awq,
+    requires=['transformers>=4.34'],
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    hf_model_id='MaziyarPanahi/WizardLM-2-7B-AWQ')
+@register_model(
     ModelType.gemma_2b,
     'AI-ModelScope/gemma-2b',
     LoRATM.llama2,
@@ -1163,7 +1226,8 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/CodeQwen1.5-7B')
 @register_model(
     ModelType.qwen1half_moe_a2_7b,
     'qwen/Qwen1.5-MoE-A2.7B',
@@ -1577,6 +1641,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_1_8b_chat_awq,
@@ -1587,6 +1652,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_4b_chat_awq,
@@ -1597,6 +1663,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_7b_chat_awq,
@@ -1607,6 +1674,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_14b_chat_awq,
@@ -1617,6 +1685,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_32b_chat_awq,
@@ -1627,6 +1696,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_72b_chat_awq,
@@ -1637,6 +1707,7 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_vllm=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-AWQ')
 @register_model(
     ModelType.codeqwen1half_7b_chat_awq,
@@ -1646,7 +1717,9 @@ def get_model_tokenizer_aqlm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     function_kwargs={'is_awq': True},
-    requires=['transformers>=4.37', 'autoawq'])
+    requires=['transformers>=4.37', 'autoawq'],
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/CodeQwen1.5-7B-Chat-AWQ')
 @register_model(
     ModelType.qwen1half_0_5b_chat,
     'qwen/Qwen1.5-0.5B-Chat',
@@ -1726,24 +1799,14 @@ def get_model_tokenizer_aqlm(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'])
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/CodeQwen1.5-7B-Chat')
 def get_model_tokenizer_qwen1half(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    is_awq = kwargs.pop('is_awq', False)
-    is_training = kwargs.pop('is_training', False)
     kwargs['eos_token'] = '<|im_end|>'
-    if is_awq and is_training:
-        try:
-            from awq.utils.packing_utils import dequantize_gemm
-            import awq_ext  # with CUDA kernels (AutoAWQ_kernels)
-        except ImportError as e:
-            raise ImportError(
-                'You are training awq models, remember installing awq_ext by '
-                '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
-                '&& cd AutoAWQ_kernels && pip install -e .`') from e
     return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype,
                                                model_kwargs, load_model,
                                                **kwargs)
@@ -1756,7 +1819,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
@@ -1767,7 +1830,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8')
 @register_model(
@@ -1777,7 +1840,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4')
@@ -1788,7 +1851,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8')
 @register_model(
@@ -1798,7 +1861,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int4')
@@ -1809,7 +1872,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int8')
 @register_model(
@@ -1819,7 +1882,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int4')
@@ -1830,7 +1893,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int8')
 @register_model(
@@ -1840,7 +1903,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int4')
@@ -1851,7 +1914,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int8')
 @register_model(
@@ -1861,7 +1924,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-GPTQ-Int4')
@@ -1872,7 +1935,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
@@ -1883,7 +1946,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int8')
 @register_model(
@@ -1893,7 +1956,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4')
 def get_model_tokenizer_qwen1half_intx(model_dir: str,
@@ -2648,7 +2711,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat-Int8')
 @register_model(
@@ -2658,7 +2721,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat-Int4')
@@ -2669,7 +2732,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen-72B-Chat-Int8')
 @register_model(
@@ -2679,7 +2742,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-72B-Chat-Int4')
@@ -2690,7 +2753,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     tags=['financial'],
@@ -2704,7 +2767,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={
         'get_qwen_function': get_model_tokenizer_qwen_vl,
-        'bits': 4
+        'gptq_bits': 4
     },
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
@@ -2716,7 +2779,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen-14B-Chat-Int8')
 @register_model(
@@ -2726,7 +2789,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 8},
+    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen-7B-Chat-Int8')
 @register_model(
@@ -2736,7 +2799,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-14B-Chat-Int4')
@@ -2747,7 +2810,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'bits': 4},
+    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-7B-Chat-Int4')
@@ -2756,31 +2819,6 @@ def get_model_tokenizer_qwen_intx(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    logger.info('use gptq, ignore bnb arguments')
-    bits = kwargs.pop('bits')
-    if version.parse(transformers.__version__) >= version.parse('4.35'):
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, use_exllama=False)
-    else:
-        model_kwargs['quantization_config'] = GPTQConfig(
-            bits=bits, disable_exllama=True)
-
-    # fix quantlinear bug
-    from auto_gptq.nn_modules.qlinear.qlinear_cuda_old import QuantLinear
-    __old_forward = QuantLinear.forward
-
-    def _new_forward(self, x):
-        if not self.training or not self.autogptq_cuda_available:
-            return self.__old_forward(x)
-        # fix sft no grad
-        self.autogptq_cuda_available = False
-        res = self.__old_forward(x)
-        self.autogptq_cuda_available = True
-        return res
-
-    if not hasattr(QuantLinear, '__old_forward'):  # avoid double patching
-        QuantLinear.__old_forward = __old_forward
-        QuantLinear.forward = _new_forward
     get_qwen_function = kwargs.pop('get_qwen_function',
                                    get_model_tokenizer_qwen_chat)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs,
