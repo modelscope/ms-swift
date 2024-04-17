@@ -166,7 +166,7 @@ class TestPeft(unittest.TestCase):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
         model3 = copy.deepcopy(model)
-        lora_config = LoraConfig(
+        lora_config = LoRAConfig(
             target_modules=['query', 'key', 'value'], lora_dtype='fp16')
         model = Swift.prepare_model(model, lora_config)
         model.save_pretrained(self.tmp_dir, safe_serialization=False)

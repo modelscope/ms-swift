@@ -3,14 +3,12 @@ import shutil
 import tempfile
 import unittest
 
-import peft
 import torch
-from modelscope import AutoModel, AutoTokenizer, Preprocessor
-from packaging import version
+from modelscope import AutoModel, Preprocessor
 from peft.utils import WEIGHTS_NAME
 from transformers import PreTrainedModel
 
-from swift import LoraConfig, Swift
+from swift import LoRAConfig, Swift
 from swift.tuners import NEFTuneConfig
 
 
@@ -83,7 +81,7 @@ class TestNEFT(unittest.TestCase):
             'damo/nlp_structbert_sentence-similarity_chinese-base')
         inputs = preprocessor('how are you')
         config = NEFTuneConfig()
-        config2 = LoraConfig(target_modules=['query', 'key', 'value'])
+        config2 = LoRAConfig(target_modules=['query', 'key', 'value'])
 
         t1 = model.embeddings.word_embeddings(inputs['input_ids'])
         model = Swift.prepare_model(model, {'c1': config, 'c2': config2})
