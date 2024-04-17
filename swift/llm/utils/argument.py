@@ -222,61 +222,6 @@ class ArgumentsBase:
             if self.deepspeed_config_path is not None:
                 self.deepspeed = self.deepspeed_config_path
 
-    def set_model_type(self: Union[SftArguments, InferArguments]) -> None:
-        # compat with swift<1.7
-        if args.model_cache_dir is not None and args.model_id_or_path is None:
-            args.model_id_or_path = args.model_cache_dir
-            args.model_cache_dir = None
-
-        if args.model_id_or_path is not None:
-            model_mapping_reversed = {
-                v['model_id_or_path'].lower(): k
-                for k, v in MODEL_MAPPING.items()
-            }
-            model_id_or_path = args.model_id_or_path
-            model_id_or_path_lower = model_id_or_path.lower()
-            if model_id_or_path_lower not in model_mapping_reversed:
-                if (isinstance(args, InferArguments)
-                        and 'checkpoint' in model_id_or_path
-                        and 'merged' not in model_id_or_path
-                        and args.ckpt_dir is None):
-                    raise ValueError(
-                        'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
-                    )
-                if args.model_type is None:
-                    raise ValueError(
-                        f"model_id_or_path: '{model_id_or_path}' is not registered. "
-                        'Please set `--model_type <model_type>` additionally.')
-                assert args.model_cache_dir is None
-            else:
-                model_type = model_mapping_reversed[model_id_or_path_lower]
-                assert args.model_type is None or args.model_type == model_type
-                args.model_type = model_type
-                logger.info(f'Setting args.model_type: {model_type}')
-                if args.model_cache_dir is not None:
-                    args.model_id_or_path = args.model_cache_dir
-
-        error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
-        if args.model_type is None:
-            raise ValueError('please setting `--model_type <model_type>`. '
-                            + error_msg)
-        elif args.model_type not in MODEL_MAPPING:
-            raise ValueError(f"model_type: '{args.model_type}' is not registered. "
-                            + error_msg)
-        model_info = MODEL_MAPPING[args.model_type]
-        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-        if args.model_revision is not None:
-            model_info['revision'] = args.model_revision
-            logger.info(f"Setting model_info['revision']: {args.model_revision}")
-        elif use_hf:
-            model_info['revision'] = 'main'
-        args.model_revision = model_info['revision']
-        if args.model_id_or_path is None:
-            args.model_id_or_path = model_info['model_id_or_path']
-        requires = model_info['requires']
-        for require in requires:
-            require_version(require)
-
     def set_model_type(self: Union['SftArguments', 'InferArguments']) -> None:
         # compat with swift<1.7
         if self.model_cache_dir is not None and self.model_id_or_path is None:
@@ -316,16 +261,16 @@ class ArgumentsBase:
             raise ValueError('please setting `--model_type <model_type>`. '
                              + error_msg)
         elif self.model_type not in MODEL_MAPPING:
-            raise ValueError(
-                f"model_type: '{self.model_type}' is not registered. "
-                + error_msg)
+            raise ValueError(f"model_type: '{self.model_type}' is not registered. "
+                             + error_msg)
         model_info = MODEL_MAPPING[self.model_type]
-        if self.model_revision is None:
-            self.model_revision = model_info['revision']
-        else:
+        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+        if self.model_revision is not None:
             model_info['revision'] = self.model_revision
-            logger.info(
-                f"Setting model_info['revision']: {self.model_revision}")
+            logger.info(f"Setting model_info['revision']: {self.model_revision}")
+        elif use_hf:
+            model_info['revision'] = 'main'
+        self.model_revision = model_info['revision']
         if self.model_id_or_path is None:
             self.model_id_or_path = model_info['model_id_or_path']
         requires = model_info['requires']
