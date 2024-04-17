@@ -274,7 +274,8 @@ class ArgumentsBase:
             model_info['revision'] = 'main'
         self.model_revision = model_info['revision']
         if self.model_id_or_path is None:
-            self.model_id_or_path = model_info['model_id_or_path']
+            self.model_id_or_path = model_info[
+                'hf_model_id'] if use_hf else model_info['model_id_or_path']
         requires = model_info['requires']
         for require in requires:
             require_version(require)

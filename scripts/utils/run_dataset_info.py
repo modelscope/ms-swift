@@ -30,10 +30,10 @@ def write_dataset_info() -> None:
     res_text_list = []
 
     res_text_list.append(
-        '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags |'
+        '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |'
     )
     res_text_list.append(
-        '| ------------ | ---------- | ---------- | -------- | ----------------- | ---- |'
+        '| ------------ | ---------- | ---------- | -------- | ----------------- | ---- | ------------- |'
     )
     if len(text_list) >= 2:
         text_list = text_list[2:]
@@ -88,7 +88,7 @@ def write_dataset_info() -> None:
                 _token_len.append(len(input_ids[i]))
             stat = stat_array(_token_len)[0]
             stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
-        url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}/summary"
+        ms_url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}/summary"
 
         if '🔥' in tags:
             tags.remove('🔥')
@@ -96,9 +96,17 @@ def write_dataset_info() -> None:
         tags_str = ', '.join(tags)
         if len(tags_str) == 0:
             tags_str = '-'
+        hf_dataset_id = dataset_info.get('hf_dataset_id')
+        if hf_dataset_id is None:
+            hf_dataset_id = '-'
+            hf_dataset_id_str = '-'
+        else:
+            hf_url = f'https://huggingface.co/datasets/{hf_dataset_id}'
+            hf_dataset_id_str = f'[{hf_dataset_id}]({hf_url})'
+
         res_text_list.append(
-            f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({url})|{train_size}|"
-            f'{val_size}|{stat_str}|{tags_str}|')
+            f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{train_size}|"
+            f'{val_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
     print(f'数据集总数: {len(dataset_name_list)}')
 
     for idx in range(len(fpaths)):

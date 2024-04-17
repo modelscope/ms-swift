@@ -1554,10 +1554,16 @@ def get_dataset(
     for dataset_name in dataset_name_list:
         dataset_info = DATASET_MAPPING[dataset_name]
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+        dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
         if use_hf:
             dataset_id_or_path = dataset_info['hf_dataset_id']
+            dataset_str = dataset_str_f.format(
+                hub='HuggingFace', dataset_id=dataset_id_or_path)
         else:
             dataset_id_or_path = dataset_info['dataset_id_or_path']
+            dataset_str = dataset_str_f.format(
+                hub='ModelScope', dataset_id=dataset_id_or_path)
+        logger.info(dataset_str)
         assert dataset_id_or_path is not None, (
             f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
             f'dataset_id_or_path: {dataset_id_or_path}.')
