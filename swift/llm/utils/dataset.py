@@ -255,8 +255,7 @@ def load_hf_dataset(
             subset_split = (None, subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
-        dataset = load_dataset(
-            dataset_id, name=subset_name, split=split)
+        dataset = load_dataset(dataset_id, name=subset_name, split=split)
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -268,8 +267,7 @@ def load_hf_dataset(
     hf_dataset_id='Clinton/texttosqlv2_25000_v2')
 @register_dataset(
     DatasetName.school_math_zh,
-    'AI-ModelScope/school_math_0.25M',
-    ['train'],
+    'AI-ModelScope/school_math_0.25M', ['train'],
     tags=['chat', 'math'],
     hf_dataset_id='BelleGroup/school_math_0.25M')
 @register_dataset(
