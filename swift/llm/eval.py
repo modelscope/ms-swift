@@ -16,16 +16,23 @@ logger = get_logger()
 class EvalModel(CustomModel):
 
     def __init__(self, args: EvalArguments, model_name, config={}, **kwargs):
-        if args.merge_lora:
-            merge_lora(args, device_map=args.merge_device_map)
-        if args.infer_backend == 'vllm':
-            from .utils import prepare_vllm_engine_template
-            self.llm_engine, self.template = prepare_vllm_engine_template(args)
+        if args.eval_url is not None:
+            from openai import OpenAI
+            self.client = OpenAI(
+                api_key=args.eval_token,
+                base_url=args.eval_url,
+            )
         else:
-            self.model, self.template = prepare_model_template(args)
-            if args.overwrite_generation_config:
-                assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-                self.model.generation_config.save_pretrained(args.ckpt_dir)
+            if args.merge_lora:
+                merge_lora(args, device_map=args.merge_device_map)
+            if args.infer_backend == 'vllm':
+                from .utils import prepare_vllm_engine_template
+                self.llm_engine, self.template = prepare_vllm_engine_template(args)
+            else:
+                self.model, self.template = prepare_model_template(args)
+                if args.overwrite_generation_config:
+                    assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
+                    self.model.generation_config.save_pretrained(args.ckpt_dir)
 
         self.args = args
         super(EvalModel, self).__init__(
@@ -36,8 +43,40 @@ class EvalModel(CustomModel):
         self.model_name = model_name
         self.generation_info = {'time': 0, 'tokens': 0}
 
+    def call_openai_chat(self, query: str, history: List, **infer_args):
+        history = history or []
+        messages = history
+        messages.append({
+            'role': 'user',
+            'content': query
+        })
+        resp = self.client.chat.completions.create(
+            model=self.args.model_type,
+            messages=messages,
+            **infer_args)
+        response = resp.choices[0].message.content
+        return response
+
+    def call_openai_base(self, query: str, **infer_args):
+        resp = self.client.completions.create(
+            model=self.args.model_type,
+            prompt=query,
+            **infer_args)
+        response = resp.choices[0].message.content
+        return response
+
     def predict(self, prompt: str, **kwargs):
-        if self.args.infer_backend == 'vllm':
+        if self.args.eval_url is not None:
+            assert self.args.eval_is_chat_model is not None
+            if self.args.eval_is_chat_model:
+                system = kwargs.get('system')
+                history = kwargs.get('history') or []
+                if system:
+                    history.insert(0, {'role': 'system', 'content': 'system'})
+                response = self.call_openai_chat(prompt, history, **kwargs)
+            else:
+                response = self.call_openai_base(prompt, **kwargs)
+        elif self.args.infer_backend == 'vllm':
             from . import inference_vllm
             request_list = [{
                 'query': prompt,

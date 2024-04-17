@@ -782,6 +782,12 @@ class EvalArguments(InferArguments):
 
     name: Optional[str] = None
 
+    eval_url: Optional[str] = None
+
+    eval_token: Optional[str] = None
+
+    eval_is_chat_model: bool = None
+
     eval_dataset: List[str] = field(
         default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
 
