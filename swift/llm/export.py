@@ -5,7 +5,7 @@ from typing import List, Tuple, Union
 import torch
 from datasets import concatenate_datasets
 from modelscope import GenerationConfig
-from transformers import AwqConfig, PreTrainedModel
+from transformers import PreTrainedModel
 
 from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
                          seed_everything, show_layers)
@@ -118,6 +118,7 @@ def _get_dataset(*args, **kwargs):
 
 def awq_model_quantize(awq_model, tokenizer) -> None:
     from awq.quantize import quantizer
+    from transformers import AwqConfig
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
     _origin_get_calib_dataset = quantizer.get_calib_dataset
@@ -144,7 +145,7 @@ def gptq_model_quantize(model, tokenizer):
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
     gptq_quantizer = GPTQQuantizer(
-        bits=_args.quant_bits, dataset=_args.dataset)
+        bits=_args.quant_bits, dataset=','.join(_args.dataset))
     _origin_get_dataset = quantizer.get_dataset
     quantizer.get_dataset = _get_dataset
     logger.info('Start quantizing the model...')

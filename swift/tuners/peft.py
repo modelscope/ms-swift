@@ -9,7 +9,6 @@ import json
 import peft
 import torch
 import torch.nn
-import torch.nn.functional as F
 from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
                   LoKrConfig, LoraModel, OFTConfig, PeftConfig, PeftModel,
                   PeftModelForCausalLM, PeftModelForSeq2SeqLM,
@@ -20,7 +19,6 @@ from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
                   get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Embedding
-from peft.utils.other import transpose
 from transformers import Trainer
 
 from swift import get_logger
@@ -90,22 +88,6 @@ class LoraConfig(peft.LoraConfig):
                     setattr(self, key, value)
 
         return self
-
-
-def _apply_dora(self, x, lora_A, lora_B, scaling, active_adapter):
-    """
-    From LoraLayer._apply_dora, to support `weight.to(x.dtype)`
-    """
-    lora_weight = lora_B.weight @ lora_A.weight
-    magnitude = self.lora_magnitude_vector[active_adapter]
-    weight = self.get_base_layer().weight
-    weight_norm = self._get_weight_norm(weight, lora_weight, scaling)
-    weight_norm = weight_norm.detach()
-    mag_norm_scale = (magnitude / weight_norm).view(1, -1)
-    result_dora = (mag_norm_scale - 1) * (F.linear(
-        x, transpose(weight.to(x.dtype), self.fan_in_fan_out)
-    )) + mag_norm_scale * lora_B(lora_A(x)) * scaling
-    return result_dora
 
 
 def _create_and_replace_hook(self, *args, **kwargs):
@@ -209,6 +191,7 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
 
 
 def adalora_forward(self, *args, **kwargs):
+    from peft.utils.integrations import gather_params_ctx
     outputs = self.model.forward(*args, **kwargs)
 
     if (getattr(outputs, 'loss', None) is not None) and isinstance(
@@ -225,7 +208,11 @@ def adalora_forward(self, *args, **kwargs):
         for n, p in self.model.named_parameters():
             if ('lora_A' in n
                     or 'lora_B' in n) and self.trainable_adapter_name in n:
-                para_cov = p @ p.T if 'lora_A' in n else p.T @ p
+                if p.shape == torch.Size([0]):
+                    with gather_params_ctx(p, fwd_module=self):
+                        para_cov = p @ p.T if 'lora_A' in n else p.T @ p
+                else:
+                    para_cov = p @ p.T if 'lora_A' in n else p.T @ p
                 I = torch.eye(
                     *para_cov.size(),
                     out=torch.empty_like(para_cov))  # noqa: E741
@@ -308,9 +295,6 @@ def hot_patch_peft_module():
     # Fix Lora does not support NonDynamicallyQuantizableLinear
     LoraModel._create_and_replace_origin = LoraModel._create_and_replace
     LoraModel._create_and_replace = _create_and_replace_hook
-
-    # Fix dora dtype
-    LoraLayer._apply_dora = _apply_dora
 
     # Support type conversion
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig],

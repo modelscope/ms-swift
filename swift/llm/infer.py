@@ -34,7 +34,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
     tokenizer.save_pretrained(target_dir)
     model_type = getattr(tokenizer, 'model_type')
-    fname_list = ['generation_config.json']
+    fname_list = ['generation_config.json', 'preprocessor_config.json']
     if model_type is not None:
         fname_list += get_additional_saved_files(model_type)
 
@@ -107,10 +107,13 @@ def merge_lora(args: InferArguments,
     model_kwargs = {}
     if is_torch_npu_available():
         logger.info(f'device_count: {torch.npu.device_count()}')
-        device_map = 'npu:0'
+        if device_map is None:
+            device_map = 'npu:0'
     else:
         logger.info(f'device_count: {torch.cuda.device_count()}')
-        device_map = 'auto'
+        if device_map is None:
+            device_map = 'auto'
+    if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map
 
@@ -150,10 +153,13 @@ def prepare_model_template(
     model_kwargs = {}
     if is_torch_npu_available():
         logger.info(f'device_count: {torch.npu.device_count()}')
-        device_map = 'npu:0'
+        if device_map is None:
+            device_map = 'npu:0'
     else:
         logger.info(f'device_count: {torch.cuda.device_count()}')
-        device_map = 'auto'
+        if device_map is None:
+            device_map = 'auto'
+    if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map
 
