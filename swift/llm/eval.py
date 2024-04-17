@@ -44,6 +44,7 @@ class EvalModel(CustomModel):
         self.generation_info = {'time': 0, 'tokens': 0}
 
     def call_openai_chat(self, query: str, history: List, **infer_args):
+        infer_args.pop('best_of', None)
         history = history or []
         messages = history
         messages.append({
@@ -68,14 +69,30 @@ class EvalModel(CustomModel):
     def predict(self, prompt: str, **kwargs):
         if self.args.eval_url is not None:
             assert self.args.eval_is_chat_model is not None
+            infer_cfg = kwargs['infer_cfg']
+            infer_cfg.pop('max_length', None)
+            if 'max_new_tokens' in infer_cfg:
+                infer_cfg['max_tokens'] = infer_cfg.pop('max_new_tokens')
+            if 'do_sample' in infer_cfg:
+                infer_cfg['temperature'] = infer_cfg['temperature'] if infer_cfg['do_sample'] else 0.
+                infer_cfg.pop('do_sample', None)
+            if 'repetition_penalty' in infer_cfg:
+                infer_cfg['presence_penalty'] = infer_cfg.pop('repetition_penalty')
+            if infer_cfg.get('limit') is not None:
+                infer_cfg['n'] = infer_cfg.pop('limit')
+            infer_cfg.pop('limit', None)
+            if 'top_k' in infer_cfg:
+                infer_cfg['best_of'] = infer_cfg.pop('top_k')
+            infer_cfg.pop('top_k', None)
+            infer_cfg.pop('num_beams', None)
             if self.args.eval_is_chat_model:
                 system = kwargs.get('system')
                 history = kwargs.get('history') or []
                 if system:
                     history.insert(0, {'role': 'system', 'content': 'system'})
-                response = self.call_openai_chat(prompt, history, **kwargs)
+                response = self.call_openai_chat(prompt, history, **infer_cfg)
             else:
-                response = self.call_openai_base(prompt, **kwargs)
+                response = self.call_openai_base(prompt, **infer_cfg)
         elif self.args.infer_backend == 'vllm':
             from . import inference_vllm
             request_list = [{

@@ -784,7 +784,7 @@ class EvalArguments(InferArguments):
 
     eval_url: Optional[str] = None
 
-    eval_token: Optional[str] = None
+    eval_token: Optional[str] = 'EMPTY'
 
     eval_is_chat_model: bool = None
 
