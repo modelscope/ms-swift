@@ -261,13 +261,15 @@ class ArgumentsBase:
             raise ValueError('please setting `--model_type <model_type>`. '
                              + error_msg)
         elif self.model_type not in MODEL_MAPPING:
-            raise ValueError(f"model_type: '{self.model_type}' is not registered. "
-                             + error_msg)
+            raise ValueError(
+                f"model_type: '{self.model_type}' is not registered. "
+                + error_msg)
         model_info = MODEL_MAPPING[self.model_type]
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
         if self.model_revision is not None:
             model_info['revision'] = self.model_revision
-            logger.info(f"Setting model_info['revision']: {self.model_revision}")
+            logger.info(
+                f"Setting model_info['revision']: {self.model_revision}")
         elif use_hf:
             model_info['revision'] = 'main'
         self.model_revision = model_info['revision']
