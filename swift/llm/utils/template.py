@@ -421,10 +421,10 @@ class Template:
                                           'constant', 0)
                 labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
                                   -100)
-        if loss_scale:
-            loss_scale[0] = F.pad(loss_scale[0],
-                                  (0, padding_to - labels[0].shape[-1]),
-                                  'constant', 0.)
+                if loss_scale:
+                    loss_scale[0] = F.pad(
+                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
+                        'constant', 0.)
 
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
