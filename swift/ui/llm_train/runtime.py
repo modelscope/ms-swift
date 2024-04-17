@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
+import json
 import matplotlib.pyplot as plt
 import psutil
 from gradio import Accordion, Tab
@@ -392,6 +393,19 @@ class Runtime(BaseUI):
             space = args[i].find(' ')
             splits = args[i][:space], args[i][space + 1:]
             all_args[splits[0]] = splits[1]
+
+        output_dir = all_args['output_dir']
+        if os.path.exists(os.path.join(output_dir, 'sft_args.json')):
+            with open(os.path.join(output_dir, 'sft_args.json'), 'r') as f:
+                _json = json.load(f)
+            for key in all_args.keys():
+                all_args[key] = _json[key]
+                if isinstance(all_args[key], list):
+                    if any([' ' in value for value in all_args[key]]):
+                        all_args[key] = [
+                            f'"{value}"' for value in all_args[key]
+                        ]
+                    all_args[key] = ' '.join(all_args[key])
         return all_args
 
     @staticmethod

@@ -40,6 +40,8 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 2024.04.17: 支持OpenAI样式的接口评测, 可以查看[评测参数接口文档](docs/source/LLM/命令行参数.md#eval参数)来查看使用方法.
+- 🔥2024.04.17: 支持 **CodeQwen1.5-7B**系列: CodeQwen1.5-7B, CodeQwen1.5-7B-Chat,CodeQwen1.5-7B-Chat-AWQ, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/codeqwen1half_7b_chat/lora/sft.sh)来开始训练！
 - 2024.04.16: 支持llava-v1.6-34b的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 2024.04.13: 支持Mixtral-8x22B-v0.1模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mixtral_moe_8x22b_v1/lora_ddp_ds/sft.sh)来开始训练！
 - 2024.04.13: 支持新推出的**MiniCPM**系列: MiniCPM-V-2.0、MiniCPM-2B-128k、MiniCPM-MoE-8x2B和MiniCPM-1B。使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/minicpm_moe_8x2b/lora_ddp/sft.sh)来开始训练！
@@ -379,7 +381,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 模型类型                                            | 模型介绍                                                     | 语言       | 模型大小                  | 模型类型                                      |
 | --------------------------------------------------- | ------------------------------------------------------------ |----------| ------------------------- |-------------------------------------------|
-| Qwen<br>Qwen1.5                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-72B<br>包含量化版本     | base模型<br>chat模型<br>MoE模型             |                          |
+| Qwen<br>Qwen1.5                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-72B<br>包含量化版本     | base模型<br>chat模型<br>MoE模型<br>代码模型             |                          |
 | ChatGLM2<br>ChatGLM3<br>Codegeex2                         | [智谱ChatGLM系列模型](https://github.com/THUDM/)             | 中文<br>英文 | 6B                        | base模型<br>chat模型<br>代码模型                  |
 | Baichuan<br>Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文<br>英文 | 7B-13B<br>包含量化版本         | base模型<br>chat模型                          |
 | Yuan2                                               | [浪潮源系列模型](https://github.com/IEIT-Yuan)               | 中文<br>英文 | 2B-102B                   | instruct模型                                |

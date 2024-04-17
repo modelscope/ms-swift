@@ -20,9 +20,6 @@ from swift import (AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig,
                    SideConfig, Swift, SwiftModel)
 
 
-@unittest.skipIf(
-    version.parse(peft.__version__) >= version.parse('0.10.0'),
-    reason='version not match')
 class TestSwift(unittest.TestCase):
 
     def setUp(self):
