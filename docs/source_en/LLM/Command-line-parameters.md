@@ -234,11 +234,24 @@ export parameters inherit from infer parameters, with the following added parame
 The eval parameters inherit from the infer parameters, and additionally include the following parameters:
 
 - `--name`: Default is `None`. The name of the evaluation, the final evaluation results will be stored in a folder named `{{model_type}-{name}}`.
+
 - `--eval_dataset`: The official dataset for evaluation, the default value is `['ceval', 'gsm8k', 'arc']`, and `mmlu` and `bbh` datasets are also supported. If you only need to evaluate a custom dataset, you can set this parameter to `no`.
+
 - `--eval_limit`: The number of samples for each sub-dataset of the evaluation set, default is `None` which means full evaluation.
+
 - `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
+
 - `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
-- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
+
+- `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
+
+  ```shell
+  swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true --model_type gpt4 --eval_token xxx
+  ```
+
+- `--eval_is_chat_model`: If `eval_url` is not None, `eval_is_chat_model` must be passed to tell the url calls a chat or a base model.
+- `--eval_token`: The token of the `eval_url`, default value `EMPTY` means token is not needed.
+
 ## app-ui Parameters
 
 app-ui parameters inherit from infer parameters, with the following added parameters:

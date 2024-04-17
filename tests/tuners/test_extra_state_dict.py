@@ -3,18 +3,13 @@ import shutil
 import tempfile
 import unittest
 
-import peft
 import torch
 from modelscope import Model
-from packaging import version
 
 from swift import LoRAConfig, Swift
 from swift.tuners.utils import ModulesToSaveWrapper
 
 
-@unittest.skipIf(
-    version.parse(peft.__version__) >= version.parse('0.10.0'),
-    reason='version not match')
 class TestExtraStateDict(unittest.TestCase):
 
     def setUp(self):
