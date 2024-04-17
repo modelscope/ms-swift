@@ -973,9 +973,7 @@ class InferArguments(ArgumentsBase):
         self.handle_generation_config()
 
         self.torch_dtype, _, _ = self.select_dtype()
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
+        self.prepare_template()
         has_dataset = (
             len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
             or len(self.custom_val_dataset_path) > 0)
@@ -989,6 +987,7 @@ class InferArguments(ArgumentsBase):
             raise ValueError(
                 'Please provide the dataset or set `--load_dataset_config true`.'
             )
+        
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(
         )
 
@@ -1004,6 +1003,15 @@ class InferArguments(ArgumentsBase):
             )
         if self.ckpt_dir is None:
             self.sft_type = 'full'
+        
+        self.prepare_vllm()
+
+    def prepare_template(self):
+        if self.template_type == 'AUTO':
+            self.template_type = get_default_template_type(self.model_type)
+            logger.info(f'Setting template_type: {self.template_type}')
+
+    def prepare_vllm(self):
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
         self.vllm_lora_request_list = None
@@ -1129,7 +1137,19 @@ class EvalArguments(InferArguments):
 
     def set_model_type(self) -> None:
         if self.eval_url is None:
-            return super().set_model_type()
+            super().set_model_type()
+    
+    def check_flash_attn(self) -> None:
+        if self.eval_url is None:
+            super().check_flash_attn()
+    
+    def prepare_template(self) -> None:
+        if self.eval_url is None:
+            super().prepare_template()
+    
+    def prepare_vllm(self) -> None:
+        if self.eval_url is None:
+            super().prepare_vllm()
 
 
 @dataclass
