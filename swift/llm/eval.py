@@ -27,7 +27,8 @@ class EvalModel(CustomModel):
                 merge_lora(args, device_map=args.merge_device_map)
             if args.infer_backend == 'vllm':
                 from .utils import prepare_vllm_engine_template
-                self.llm_engine, self.template = prepare_vllm_engine_template(args)
+                self.llm_engine, self.template = prepare_vllm_engine_template(
+                    args)
             else:
                 self.model, self.template = prepare_model_template(args)
                 if args.overwrite_generation_config:
@@ -47,22 +48,15 @@ class EvalModel(CustomModel):
         infer_args.pop('best_of', None)
         history = history or []
         messages = history
-        messages.append({
-            'role': 'user',
-            'content': query
-        })
+        messages.append({'role': 'user', 'content': query})
         resp = self.client.chat.completions.create(
-            model=self.args.model_type,
-            messages=messages,
-            **infer_args)
+            model=self.args.model_type, messages=messages, **infer_args)
         response = resp.choices[0].message.content
         return response
 
     def call_openai_base(self, query: str, **infer_args):
         resp = self.client.completions.create(
-            model=self.args.model_type,
-            prompt=query,
-            **infer_args)
+            model=self.args.model_type, prompt=query, **infer_args)
         response = resp.choices[0].message.content
         return response
 
@@ -74,10 +68,12 @@ class EvalModel(CustomModel):
             if 'max_new_tokens' in infer_cfg:
                 infer_cfg['max_tokens'] = infer_cfg.pop('max_new_tokens')
             if 'do_sample' in infer_cfg:
-                infer_cfg['temperature'] = infer_cfg['temperature'] if infer_cfg['do_sample'] else 0.
+                infer_cfg['temperature'] = infer_cfg[
+                    'temperature'] if infer_cfg['do_sample'] else 0.
                 infer_cfg.pop('do_sample', None)
             if 'repetition_penalty' in infer_cfg:
-                infer_cfg['presence_penalty'] = infer_cfg.pop('repetition_penalty')
+                infer_cfg['presence_penalty'] = infer_cfg.pop(
+                    'repetition_penalty')
             if infer_cfg.get('limit') is not None:
                 infer_cfg['n'] = infer_cfg.pop('limit')
             infer_cfg.pop('limit', None)
