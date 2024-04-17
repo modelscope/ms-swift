@@ -131,11 +131,15 @@ class ModelType:
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
     yi_6b_chat = 'yi-6b-chat'
+    yi_6b_chat_awq = 'yi-6b-chat-awq'
+    yi_6b_chat_int8 = 'yi-6b-chat-int8'
     yi_9b = 'yi-9b'
     yi_9b_200k = 'yi-9b-200k'
     yi_34b = 'yi-34b'
     yi_34b_200k = 'yi-34b-200k'
     yi_34b_chat = 'yi-34b-chat'
+    yi_34b_chat_awq = 'yi-34b-chat-awq'
+    yi_34b_chat_int8 = 'yi-34b-chat-int8'
     # yi-vl
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
@@ -633,9 +637,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 **model_kwargs)
-    if is_awq:
+    if load_model and is_awq:
         model.is_awq = is_awq
-    if gptq_bits > 0:
+    if load_model and gptq_bits > 0:
         model.gptq_bits = gptq_bits
     return model, tokenizer
 
@@ -1370,6 +1374,30 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-6B-Chat')
 @register_model(
+    ModelType.yi_6b_chat_awq,
+    '01ai/Yi-6B-Chat-4bits',
+    LoRATM.llama2,
+    TemplateType.yi,
+    eos_token='<|im_end|>',
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-6B-Chat-4bits')
+@register_model(
+    ModelType.yi_6b_chat_int8,
+    '01ai/Yi-6B-Chat-8bits',
+    LoRATM.llama2,
+    TemplateType.yi,
+    eos_token='<|im_end|>',
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 8},
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-6B-Chat-8bits')
+@register_model(
     ModelType.yi_34b_chat,
     '01ai/Yi-34B-Chat',
     LoRATM.llama2,
@@ -1378,6 +1406,30 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-34B-Chat')
+@register_model(
+    ModelType.yi_34b_chat_awq,
+    '01ai/Yi-34B-Chat-4bits',
+    LoRATM.llama2,
+    TemplateType.yi,
+    eos_token='<|im_end|>',
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-34B-Chat-4bits')
+@register_model(
+    ModelType.yi_34b_chat_int8,
+    '01ai/Yi-34B-Chat-8bits',
+    LoRATM.llama2,
+    TemplateType.yi,
+    eos_token='<|im_end|>',
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 8},
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-34B-Chat-8bits')
 @register_model(
     ModelType.yi_34b_200k,
     '01ai/Yi-34B-200K',
@@ -2925,7 +2977,7 @@ def get_model_tokenizer_telechat(model_dir: str,
                                  **kwargs):
     if torch_dtype == torch.bfloat16:
         logger.info(
-            'telechat-7b does not support the bfl16 dtype; the dtype is converted to fp16.'
+            'telechat-7b does not support the bf16 dtype; the dtype is converted to fp16.'
         )
         torch_dtype = torch.float16
     model_config = AutoConfig.from_pretrained(
