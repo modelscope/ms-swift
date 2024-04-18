@@ -1445,7 +1445,6 @@ register_dataset(
     tags=['chat', 'medical', '🔥'],
     hf_dataset_id='Flmc/DISC-Med-SFT')
 
-# hf_dataset_id='ShengbinYue/DISC-Law-SFT'
 register_dataset(
     DatasetName.disc_law_sft_zh,
     'AI-ModelScope/DISC-Law-SFT', ['train'],
@@ -1455,7 +1454,8 @@ register_dataset(
         'output': 'response'
     }),
     get_dataset_from_repo,
-    tags=['chat', 'law', '🔥'])
+    tags=['chat', 'law', '🔥'],
+    hf_dataset_id='ShengbinYue/DISC-Law-SFT')
 
 register_dataset(
     DatasetName.pileval,
