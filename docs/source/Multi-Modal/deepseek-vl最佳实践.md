@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
 <<< 你是谁？
 我是一个人工智能助手，专门设计来帮助用户解答问题和提供信息。我可以帮助你了解各种主题，从语言学习到视觉识别技术。有什么我可以帮助你的吗？
 --------------------------------------------------
-<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>, <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>这两张图片有什么区别
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>这两张图片有什么区别
 这两张图片的主要区别在于它们描绘的动物和场景。
 
 第一张图片展示了一只小猫，它有着醒目的蓝色眼睛和灰白色的毛皮。小猫坐在一个模糊的背景前，看起来像是一张白色的床单或毯子。小猫的目光直直地对着相机，给人一种好奇和警觉的印象。
