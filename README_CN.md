@@ -40,6 +40,8 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 2024.04.18: 支持模型: wizardlm2-7b-awq, wizardlm2-8x22b, yi-6b-chat-awq, yi-6b-chat-int8, yi-34b-chat-awq, yi-34b-chat-int8. 支持`--deepspeed zero3-offload`, 提供了默认zero3-offload配置文件来使用zero3+cpu offload.
+- 2024.04.18: 支持使用环境变量`USE_HF`兼容HuggingFace生态, 切换成使用HF中的模型和数据集, 可以查看[HuggingFace生态兼容文档](https://github.com/modelscope/swift/tree/main/docs/source/LLM/HuggingFace生态兼容.md).
 - 2024.04.17: 支持OpenAI样式的接口评测, 可以查看[评测参数接口文档](docs/source/LLM/命令行参数.md#eval参数)来查看使用方法.
 - 🔥2024.04.17: 支持 **CodeQwen1.5-7B**系列: CodeQwen1.5-7B, CodeQwen1.5-7B-Chat,CodeQwen1.5-7B-Chat-AWQ, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/codeqwen1half_7b_chat/lora/sft.sh)来开始训练！
 - 2024.04.16: 支持llava-v1.6-34b的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
@@ -55,7 +57,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 - 🔥2024.04.02: 支持Mengzi3-13B-Base模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/mengzi3_13b_base/lora_ddp_ds/sft.sh)来开始训练！
 - 🔥2024.04.01: 支持**dbrx**系列, dbrx-base和dbrx-instruct, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/dbrx-instruct/lora_mp/sft.sh)来开始训练！.
 - 🔥2024.03.29: 支持**Qwen1.5-MoE**系列: Qwen1.5-MoE-A2.7B, Qwen1.5-MoE-A2.7B-Chat, Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4.
-- 🔥2024.03.29: 支持**Grok-1**300B MoE模型的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/Grok训练和推理.md).
+- 🔥2024.03.29: 支持**Grok-1** 300B MoE模型的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/Grok训练和推理.md).
 - 🔥2024.03.25: 支持TeleChat-7b和TeleChat-12b模型的训练和推理, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/telechat_12b/lora/sft.sh)来开始训练！.
 - 🔥2024.03.20: 支持**llava**系列的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.03.12: 支持**deepseek-vl**系列推理和微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/deepseek-vl最佳实践.md).
@@ -316,6 +318,22 @@ swift sft \
     --deepspeed default-zero3 \
 ```
 
+ZeRO3-Offload:
+```shell
+# 实验环境: 4 * A100
+# 显存需求: 4 * 12GB
+# 运行时长: 60小时
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_id_or_path AI-ModelScope/WizardLM-2-8x22B \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed zero3-offload \
+```
+
 ### 推理
 原始模型:
 ```shell
@@ -388,7 +406,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | XVerse                                              | [元象系列模型](https://github.com/xverse-ai)                 | 中文<br>英文 | 7B-65B                    | base模型<br>chat模型<br>长文本模型<br>MoE模型             |                |
 | LLaMA2                                              | [LLaMA2系列模型](https://github.com/facebookresearch/llama)  | 英文       | 7B-70B<br>包含量化版本      | base模型<br>chat模型                          |
 | Mistral<br>Mixtral                                 | [Mistral系列模型](https://github.com/mistralai/mistral-src)  | 英文       | 7B-8x22B | base模型<br>instruct模型<br>MoE模型             |
-| YI                                                  | [01AI的YI系列模型](https://github.com/01-ai)                 | 中文<br>英文 | 6B-34B                    | base模型<br>chat模型<br>长文本模型                 |
+| YI                                                  | [01AI的YI系列模型](https://github.com/01-ai)                 | 中文<br>英文 | 6B-34B<br>包含量化版本          | base模型<br>chat模型<br>长文本模型                 |
 | InternLM<br>InternLM2<br>InternLM2-Math                   | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 1.8B-20B                  | base模型<br>chat模型<br>数学模型                  |
 | DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math               | [幻方系列模型](https://github.com/deepseek-ai)               | 中文<br>英文 | 1.3B-67B                  | base模型<br>chat模型<br>MoE模型<br>代码模型<br>数学模型 |
 | MAMBA                                               | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)   | 英文       | 130M-2.8B                 | base模型                                    |
@@ -411,6 +429,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | dbrx | [databricks](https://github.com/databricks/dbrx) | 英文 | 132B | base模型<br>chat模型  |
 | mengzi3 | [Langboat](https://github.com/Langboat/Mengzi3) | 中文<br>英文 | 13B | base模型  |
 | c4ai-command-r | [c4ai](https://cohere.com/command) | 多语种 | 35B-104B | chat模型  |
+| WizardLM2 | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM) | 多语种 | 7B-8x22B<br>包含量化版本 | chat模型<br>MoE模型 |
 
 
 #### 多模态大模型

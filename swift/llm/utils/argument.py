@@ -14,7 +14,7 @@ from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import (is_torch_bf16_gpu_available,
                                 is_torch_cuda_available,
-                                is_torch_npu_available)
+                                is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
@@ -118,18 +118,18 @@ class ArgumentsBase:
             else:
                 raise ValueError(f'args.dtype: {self.dtype}')
         # cuda, npu
-        if self.dtype == 'AUTO' and not is_torch_bf16_gpu_available():
-            self.dtype = 'fp16'
-        if self.dtype == 'AUTO' and ('int4' in self.model_type
-                                     or 'int8' in self.model_type):
-            model_torch_dtype = MODEL_MAPPING[self.model_type]['torch_dtype']
-            if model_torch_dtype is not None:
-                self.dtype = dtype_mapping[model_torch_dtype]
         if self.dtype == 'AUTO':
-            if isinstance(self, SftArguments):
-                self.dtype = 'bf16'
+            if is_torch_bf16_gpu_available():
+                self.dtype = 'fp16'
             else:
-                return None, False, False
+                model_torch_dtype = MODEL_MAPPING[self.model_type].get(
+                    'torch_dtype')
+                if model_torch_dtype is not None:
+                    self.dtype = dtype_mapping[model_torch_dtype]
+                elif isinstance(self, SftArguments):
+                    self.dtype = 'bf16'
+                else:
+                    return None, False, False
 
         torch_dtype = dtype_mapping_reversed[self.dtype]
 
@@ -265,14 +265,17 @@ class ArgumentsBase:
                 f"model_type: '{self.model_type}' is not registered. "
                 + error_msg)
         model_info = MODEL_MAPPING[self.model_type]
-        if self.model_revision is None:
-            self.model_revision = model_info['revision']
-        else:
+        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+        if self.model_revision is not None:
             model_info['revision'] = self.model_revision
             logger.info(
                 f"Setting model_info['revision']: {self.model_revision}")
+        elif use_hf:
+            model_info['revision'] = 'main'
+        self.model_revision = model_info['revision']
         if self.model_id_or_path is None:
-            self.model_id_or_path = model_info['model_id_or_path']
+            self.model_id_or_path = model_info[
+                'hf_model_id'] if use_hf else model_info['model_id_or_path']
         requires = model_info['requires']
         for require in requires:
             require_version(require)
@@ -397,7 +400,7 @@ class SftArguments(ArgumentsBase):
     neftune_backend: Literal['swift', 'transformers'] = None
 
     gradient_checkpointing: Optional[bool] = None
-    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -584,12 +587,16 @@ class SftArguments(ArgumentsBase):
         if is_pai_training_job():
             self._handle_pai_compat()
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
-        if self.deepspeed == 'default-zero2':
-            self.deepspeed = os.path.abspath(
-                os.path.join(ds_config_folder, 'zero2.json'))
-        elif self.deepspeed == 'default-zero3':
-            self.deepspeed = os.path.abspath(
-                os.path.join(ds_config_folder, 'zero3.json'))
+        deepspeed_mapping = {
+            'default-zero2': 'zero2.json',
+            'default-zero3': 'zero3.json',
+            'zero3-offload': 'zero3_offload.json'
+        }
+        for ds_name, ds_config in deepspeed_mapping.items():
+            if self.deepspeed == ds_name:
+                self.deepspeed = os.path.abspath(
+                    os.path.join(ds_config_folder, ds_config))
+                break
 
         self.handle_path()
         self.set_model_type()
@@ -658,8 +665,8 @@ class SftArguments(ArgumentsBase):
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`'
             )
-            if 'int4' in self.model_type or 'int8' in self.model_type:
-                assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
+            if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
+                assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:

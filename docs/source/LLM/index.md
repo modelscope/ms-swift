@@ -25,3 +25,4 @@
 2. [微调推理的命令行参数](命令行参数.md)
 3. [支持的模型和数据集列表](支持的模型和数据集.md)
 4. [运行速度与显存的Benchmark](Benchmark.md)
+5. [HuggingFace生态兼容](HuggingFace生态兼容.md)

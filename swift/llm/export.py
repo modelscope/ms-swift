@@ -38,6 +38,7 @@ def prepare_awq_model_template(
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=model_id_or_path,
+        revision=args.model_revision,
         automodel_class=AutoAWQForCausalLM)
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
@@ -180,7 +181,7 @@ def llm_export(args: ExportArguments) -> None:
                 ckpt_dir,
                 f'{ckpt_name}-{args.quant_method}-int{args.quant_bits}')
         logger.info(f'Setting quant_path: {quant_path}')
-        assert not os.path.exists(quant_path)
+        assert not os.path.exists(quant_path), f'quant_path: {quant_path}'
         if args.quant_method == 'awq':
             awq_model, template = prepare_awq_model_template(args)
             awq_model_quantize(awq_model, template.tokenizer)

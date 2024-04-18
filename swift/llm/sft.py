@@ -77,6 +77,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
+        revision=args.model_revision,
         is_training=True,
         **kwargs)
     logger.info(f'model_config: {model.config}')

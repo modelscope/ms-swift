@@ -33,6 +33,7 @@ def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
                     model_id_or_path: Optional[str] = None,
+                    revision: Optional[str] = None,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     max_model_len: Optional[int] = None,
@@ -47,7 +48,8 @@ def get_vllm_engine(model_type: str,
         model_type,
         load_model=False,
         model_id_or_path=model_id_or_path,
-        model_dir=model_dir)[1]
+        model_dir=model_dir,
+        revision=revision)[1]
     model_dir = tokenizer.model_dir
 
     if engine_kwargs is None:
