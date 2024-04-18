@@ -75,6 +75,10 @@ class DatasetName:
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
+    toolbench_for_alpha_umi_backbone = 'toolbench-for-alpha-umi-backbone'
+    toolbench_for_alpha_umi_caller = 'toolbench-for-alpha-umi-caller'
+    toolbench_for_alpha_umi_planner = 'toolbench-for-alpha-umi-planner'
+    toolbench_for_alpha_umi_summarizer = 'toolbench-for-alpha-umi-summarizer'
     # coding
     code_alpaca_en = 'code-alpaca-en'
     leetcode_python_en = 'leetcode-python-en'
@@ -1118,6 +1122,37 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
 
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_backbone,
+    'shenweizhou/alpha-umi-toolbench-processed', [('backbone','train')],
+    None,
+    ConversationsPreprocessor('system'),
+    get_dataset_from_repo,
+    tags=['agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_caller,
+    'shenweizhou/alpha-umi-toolbench-processed', [('caller','train')],
+    None,
+    ConversationsPreprocessor(),
+    get_dataset_from_repo,
+    tags=['agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_planner,
+    'shenweizhou/alpha-umi-toolbench-processed', [('planner','train')],
+    None,
+    ConversationsPreprocessor(),
+    get_dataset_from_repo,
+    tags=['agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_summarizer,
+    'shenweizhou/alpha-umi-toolbench-processed', [('summarizer','train')],
+    None,
+    ConversationsPreprocessor('system','conclusion'),
+    get_dataset_from_repo,
+    tags=['agent'])
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
     response = []
