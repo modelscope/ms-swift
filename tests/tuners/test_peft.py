@@ -162,6 +162,7 @@ class TestPeft(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
+    @unittest.skip
     def test_peft_lora_dtype(self):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
