@@ -78,6 +78,8 @@ def prepare_model(model, args: SftArguments):
                 'lorap_lr_ratio': args.lora_lr_ratio,
             }
             if args.sft_type in ('lora', 'longlora'):
+                if args.lora_dtype == 'AUTO':
+                    args.lora_dtype = None
                 if args.tuner_backend == 'swift':
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)

@@ -14,7 +14,7 @@ GPU设备: A10, 3090, V100, A100均可.
 # 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # 使用awq量化:
 # autoawq和cuda版本有对应关系，请按照`https://github.com/casper-hansen/AutoAWQ`选择版本

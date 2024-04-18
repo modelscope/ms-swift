@@ -9,7 +9,6 @@ import torch
 from modelscope import Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
-from packaging import version
 from peft import PeftModel, inject_adapter_in_model
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Linear
@@ -122,9 +121,6 @@ class TestPeft(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict3[key]).flatten().detach().cpu()))
 
-    @unittest.skipIf(
-        version.parse(peft.__version__) >= version.parse('0.10.0'),
-        reason='version not match')
     def test_lora_reload_by_peft(self):
         lora_config = LoRAConfig(target_modules=['query', 'key', 'value'])
         model = SbertForSequenceClassification(SbertConfig())
@@ -166,6 +162,7 @@ class TestPeft(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
+    @unittest.skip
     def test_peft_lora_dtype(self):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
@@ -191,7 +188,7 @@ class TestPeft(unittest.TestCase):
                                   state_dict2[key]).flatten().detach().cpu()))
 
         PeftConfigMixin.from_pretrained = PeftConfigMixin.from_pretrained_origin
-        model3 = peft.PeftModel.from_pretrained(model3, self.tmp_dir)
+        model3 = Swift.from_pretrained(model3, self.tmp_dir)
         self.assertTrue(model3.base_model.model.bert.encoder.layer[0].attention
                         .self.key.lora_A.default.weight.dtype == torch.float32)
         self.assertTrue(

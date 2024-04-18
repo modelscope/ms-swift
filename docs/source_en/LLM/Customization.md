@@ -256,8 +256,7 @@ if __name__ == '__main__':
 - `get_function`: Default value is `None`. The function to get model and tokenizer. If passed `None`, the decorator approach will be used to register the model. If passed a function, the normal approach will be used to register.
 - `requires`: Default is `[]`. Represents the dependencies required by the model that differ from other models. This parameter generally does not need to be set.
 - `torch_dtype`: Default is `None`. Represents the recommended torch_dtype for the model to use. This parameter generally does not need to be set.
-- `use_hf`: Default is `False`, i.e. set to modelscope hub. If you want to use huggingface hub, you can set it to True.
-- `revision`: Default is `None`. Used to specify the version number of the model. If `use_hf` is False, it is set to 'master', if `use_hf` is True, it is set to 'main'. If `model_id_or_path` is a local model directory, this parameter is not effective. This parameter generally does not need to be set.
+- `revision`: Default is `None`. Used to specify the version number of the model. If `model_id_or_path` is a local model directory, this parameter is not effective. This parameter generally does not need to be set.
 - `ignore_file_pattern`: Default is `None`. Represents the regular pattern of file names to be ignored when downloading, this parameter will be passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter generally does not need to be set.
 - `**kwargs`: Other parameters used to annotate model capabilities. This parameter generally does not need to be set.
 

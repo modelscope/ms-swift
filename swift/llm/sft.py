@@ -25,7 +25,6 @@ from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
-from .utils.argument import handle_dataset_mixture
 
 logger = get_logger()
 
@@ -78,6 +77,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
+        revision=args.model_revision,
         is_training=True,
         **kwargs)
     logger.info(f'model_config: {model.config}')
@@ -153,7 +153,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             val_idxs = random_state.permutation(val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)
 
-    train_dataset = handle_dataset_mixture(args, train_dataset)
+    train_dataset = args.handle_dataset_mixture(train_dataset)
 
     # add self-cognition dataset
     if args.self_cognition_sample > 0:

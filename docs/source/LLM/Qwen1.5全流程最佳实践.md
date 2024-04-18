@@ -21,7 +21,7 @@
 
 ## 环境准备
 ```shell
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # autoawq和cuda版本有对应关系，请按照`https://github.com/casper-hansen/AutoAWQ`选择版本
 pip install autoawq

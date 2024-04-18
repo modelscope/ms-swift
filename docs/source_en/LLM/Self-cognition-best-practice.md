@@ -14,7 +14,7 @@ Fine-tune your own large model in just 10 minutes!
 # Set the global pip mirror (for faster downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # Environment alignment (usually not necessary to run. If you encounter errors, you can run the following code to test with the latest environment in the repository)
 pip install -r requirements/framework.txt  -U
@@ -122,7 +122,7 @@ Fine-tune your own large model in just 10 minutes!
 # Set up the global pip mirror (for faster downloading)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # Align the environment (usually not necessary to run. If you get an error, you can run the following code, which has been tested with the latest environment in the repository)
 pip install -r requirements/framework.txt  -U
