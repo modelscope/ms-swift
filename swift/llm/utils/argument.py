@@ -590,7 +590,7 @@ class SftArguments(ArgumentsBase):
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
-            'zero3-offload': 'zero3-offload.json'
+            'zero3-offload': 'zero3_offload.json'
         }
         for ds_name, ds_config in deepspeed_mapping.items():
             if self.deepspeed == ds_name:
