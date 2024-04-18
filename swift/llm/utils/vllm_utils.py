@@ -232,6 +232,10 @@ def inference_stream_vllm(
     if isinstance(template.suffix[-1],
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
+    if isinstance(template.suffix[-1], list):
+        token_str = tokenizer.decode(template.suffix[-1])
+        if token_str not in generation_config.stop:
+            generation_config.stop.append(token_str)
 
     parameters = inspect.signature(llm_engine.add_request).parameters
     add_request_kwargs = {}
@@ -328,6 +332,10 @@ def inference_vllm(llm_engine: LLMEngine,
     if isinstance(template.suffix[-1],
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
+    if isinstance(template.suffix[-1], list):
+        token_str = tokenizer.decode(template.suffix[-1])
+        if token_str not in generation_config.stop:
+            generation_config.stop.append(token_str)
 
     parameters = inspect.signature(llm_engine.add_request).parameters
     add_request_kwargs = {}
