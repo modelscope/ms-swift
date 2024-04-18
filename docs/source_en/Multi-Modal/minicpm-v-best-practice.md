@@ -1,4 +1,5 @@
 # MiniCPM-V Best Practices
+Using minicpm-v-3b-chat as an example, if you want to use the updated version of the MiniCPM-V multimodal model (v2), you can switch `--model_type minicpm-v-3b-chat` to `--model_type minicpm-v-v2`.
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -10,6 +11,10 @@
 ```shell
 pip install ms-swift[llm] -U
 ```
+
+Model:
+- minicpm-v-3b-chat: [https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary)
+- minicpm-v-v2: [https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary)
 
 ## Inference
 

@@ -16,7 +16,7 @@ pip install ms-swift[llm] -U
 
 模型链接:
 - minicpm-v-3b-chat: [https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary)
-- minicpm-v-v2: [https://modelscope.cn/models/OpenBMB/MiniCPM-V-2.0/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2.0/summary)
+- minicpm-v-v2: [https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary)
 
 
 ## 推理
