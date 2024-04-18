@@ -318,6 +318,23 @@ swift sft \
     --deepspeed default-zero3 \
 ```
 
+ZeRO3-Offload:
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 12GB
+# Runtime: 60 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_id_or_path AI-ModelScope/WizardLM-2-8x22B \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed zero3-offload \
+```
+
+
 ### Inference
 Original model:
 ```shell

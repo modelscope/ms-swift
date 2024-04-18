@@ -316,6 +316,22 @@ swift sft \
     --deepspeed default-zero3 \
 ```
 
+ZeRO3-Offload:
+```shell
+# 实验环境: 4 * A100
+# 显存需求: 4 * 12GB
+# 运行时长: 60小时
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model_id_or_path AI-ModelScope/WizardLM-2-8x22B \
+    --dataset blossom-math-zh \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+    --deepspeed zero3-offload \
+```
+
 ### 推理
 原始模型:
 ```shell
