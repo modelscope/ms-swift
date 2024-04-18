@@ -684,7 +684,6 @@ register_template(
         '<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'
     ]))
 
-
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
     'Always answer as helpfully and logically as possible, while being safe. '
