@@ -1124,23 +1124,23 @@ register_dataset(
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_backbone,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('backbone','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('backbone', 'train')],
     None,
-    ConversationsPreprocessor('system'),
+    ConversationsPreprocessor('system', system_role=None),
     get_dataset_from_repo,
     tags=['agent'])
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_caller,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('caller','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('caller', 'train')],
     None,
-    ConversationsPreprocessor(),
+    ConversationsPreprocessor('system', 'caller', None),
     get_dataset_from_repo,
     tags=['agent'])
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_planner,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
     None,
     ConversationsPreprocessor(),
     get_dataset_from_repo,
@@ -1148,11 +1148,12 @@ register_dataset(
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_summarizer,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('summarizer','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('summarizer', 'train')],
     None,
-    ConversationsPreprocessor('system','conclusion'),
+    ConversationsPreprocessor('system', 'conclusion', None),
     get_dataset_from_repo,
     tags=['agent'])
+
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
     response = []

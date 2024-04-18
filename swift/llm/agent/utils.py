@@ -56,9 +56,7 @@ def calculate_loss_scale(response: str,
             agent_content.append(c['content'])
         return agent_content, weights
     elif ('Action' in response or 'Next:' in response) and use_loss_scale:
-        agent_keyword = [
-            'Next:', 'Action:', 'Action Input:'
-        ]
+        agent_keyword = ['Next:', 'Action:', 'Action Input:']
         agent_parts = split_str_parts_by(response, agent_keyword)
         weights = []
         agent_content = []
@@ -66,7 +64,7 @@ def calculate_loss_scale(response: str,
             if c['key'] in ('Action:', 'Action Input:', 'Next:'):
                 weights += [2.0]
                 weights += [2.0]
-            elif c['key'] in ('Thought:', 'Final Answer:',''):
+            elif c['key'] in ('Thought:', 'Final Answer:', ''):
                 weights += [1.0]
                 weights += [1.0]
             elif c['key'] in ('Observation:', ):
