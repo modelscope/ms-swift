@@ -610,12 +610,20 @@ def get_model_tokenizer_from_repo(model_dir: str,
                                   **kwargs):
     """load from an independent repository"""
     is_awq = kwargs.pop('is_awq', False)
+    is_aqlm = kwargs.pop('is_aqlm', False)
     gptq_bits = kwargs.pop('gptq_bits', 0)
     is_training = kwargs.pop('is_training', False)
     if is_awq and is_training:
         _check_awq_ext()
     if gptq_bits > 0 and is_training:
         _check_gptq_model(gptq_bits, model_kwargs)
+    context = kwargs.get('context', None)
+    if is_aqlm and is_training:
+        require_version('transformers>=4.39')
+        import aqlm
+        context = aqlm.optimize_for_training()
+    if context is None:
+        context = nullcontext()
     if model_config is None:
         model_config = AutoConfig.from_pretrained(
             model_dir, trust_remote_code=True)
@@ -628,7 +636,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if eos_token is not None:
         tokenizer.eos_token = eos_token
     model = None
-    context = kwargs.get('context', nullcontext())
     if load_model:
         with context:
             model = automodel_class.from_pretrained(
@@ -1658,42 +1665,6 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
-    ModelType.llama2_7b_aqlm_2bit_1x16,
-    'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
-    LoRATM.llama2,
-    TemplateType.default_generation_bos,
-    ignore_file_pattern=[r'.+\.bin$'],
-    support_flash_attn=True,
-    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
-    support_vllm=False,
-    hf_model_id='ISTA-DASLab/Llama-2-7b-AQLM-2Bit-1x16-hf')
-@register_model(
-    ModelType.mixtral_moe_7b_aqlm_2bit_1x16,
-    'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
-    LoRATM.llama2,
-    TemplateType.default_generation_bos,
-    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
-    support_flash_attn=True,
-    support_vllm=False,
-    support_gradient_checkpointing=False,
-    hf_model_id='ISTA-DASLab/Mixtral-8x7b-AQLM-2Bit-1x16-hf')
-def get_model_tokenizer_aqlm(model_dir: str,
-                             torch_dtype: Dtype,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             **kwargs):
-    import aqlm
-    context = aqlm.optimize_for_training()
-    return get_model_tokenizer_llama2(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        context=context,
-        **kwargs)
-
-
-@register_model(
     ModelType.qwen1half_0_5b_chat_awq,
     'qwen/Qwen1.5-0.5B-Chat-AWQ',
     LoRATM.qwen1half,
@@ -2358,6 +2329,29 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     return model, tokenizer
 
 
+
+@register_model(
+    ModelType.llama2_7b_aqlm_2bit_1x16,
+    'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    ignore_file_pattern=[r'.+\.bin$'],
+    support_flash_attn=True,
+    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
+    support_vllm=False,
+    function_kwargs={'is_aqlm': True},
+    hf_model_id='ISTA-DASLab/Llama-2-7b-AQLM-2Bit-1x16-hf')
+@register_model(
+    ModelType.mixtral_moe_7b_aqlm_2bit_1x16,
+    'AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
+    support_flash_attn=True,
+    support_vllm=False,
+    support_gradient_checkpointing=False,
+    function_kwargs={'is_aqlm': True},
+    hf_model_id='ISTA-DASLab/Mixtral-8x7b-AQLM-2Bit-1x16-hf')
 @register_model(
     ModelType.llama2_7b,
     'modelscope/Llama-2-7b-ms',
