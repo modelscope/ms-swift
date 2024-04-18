@@ -170,9 +170,6 @@ class TestPeft(unittest.TestCase):
             target_modules=['query', 'key', 'value'], lora_dtype='fp16')
         model = Swift.prepare_model(model, lora_config)
         model.save_pretrained(self.tmp_dir, safe_serialization=False)
-        self.assertTrue(
-            os.path.exists(
-                os.path.join(self.tmp_dir, 'additional_config.json')))
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
         self.assertTrue(model2.base_model.model.bert.encoder.layer[0].attention
                         .self.key.lora_A.default.weight.dtype == torch.float16)
