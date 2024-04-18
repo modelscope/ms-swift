@@ -186,8 +186,8 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
-- `--custom_train_dataset_path`: Default is `[]`. See README.md `Custom Datasets` module for details.
-- `--custom_val_dataset_path`: Default is `[]`. See README.md `Custom Datasets` module for details.
+- `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
 - `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.

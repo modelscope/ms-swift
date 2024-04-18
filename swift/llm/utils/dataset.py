@@ -1445,7 +1445,6 @@ register_dataset(
     tags=['chat', 'medical', '🔥'],
     hf_dataset_id='Flmc/DISC-Med-SFT')
 
-# hf_dataset_id='ShengbinYue/DISC-Law-SFT'
 register_dataset(
     DatasetName.disc_law_sft_zh,
     'AI-ModelScope/DISC-Law-SFT', ['train'],
@@ -1455,7 +1454,8 @@ register_dataset(
         'output': 'response'
     }),
     get_dataset_from_repo,
-    tags=['chat', 'law', '🔥'])
+    tags=['chat', 'law', '🔥'],
+    hf_dataset_id='ShengbinYue/DISC-Law-SFT')
 
 register_dataset(
     DatasetName.pileval,
@@ -1666,12 +1666,12 @@ def load_dataset_from_local(
     return concatenate_datasets(dataset_list)
 
 
-def get_custom_dataset(_: str, train_dataset_path_list: Union[str, List[str]],
-                       val_dataset_path_list: Optional[Union[str, List[str]]],
+def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
+                       val_subset_split_list: Optional[Union[str, List[str]]],
                        preprocess_func: PreprocessFunc,
                        **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    train_dataset = load_dataset_from_local(train_dataset_path_list,
+    train_dataset = load_dataset_from_local(train_subset_split_list,
                                             preprocess_func)
-    val_dataset = load_dataset_from_local(val_dataset_path_list,
+    val_dataset = load_dataset_from_local(val_subset_split_list,
                                           preprocess_func)
     return train_dataset, val_dataset
