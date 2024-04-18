@@ -1124,7 +1124,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_backbone,
-    'shenweizhou/alpha-umi-toolbench-processed', [('backbone','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('backbone','train')],
     None,
     ConversationsPreprocessor('system'),
     get_dataset_from_repo,
@@ -1132,7 +1132,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_caller,
-    'shenweizhou/alpha-umi-toolbench-processed', [('caller','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('caller','train')],
     None,
     ConversationsPreprocessor(),
     get_dataset_from_repo,
@@ -1140,7 +1140,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_planner,
-    'shenweizhou/alpha-umi-toolbench-processed', [('planner','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner','train')],
     None,
     ConversationsPreprocessor(),
     get_dataset_from_repo,
@@ -1148,7 +1148,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_summarizer,
-    'shenweizhou/alpha-umi-toolbench-processed', [('summarizer','train')],
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('summarizer','train')],
     None,
     ConversationsPreprocessor('system','conclusion'),
     get_dataset_from_repo,
