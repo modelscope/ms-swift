@@ -71,6 +71,7 @@ class DatasetName:
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
     ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric-addition'
+    ms_agent_multirole = 'ms-agent-multirole'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -1276,6 +1277,37 @@ register_dataset(
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
+
+
+def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
+    res_prompt = """\n\n【注意事项】\n1. 这是聊天室，不要发送私信给任何人\n2. 仅代表你个人说话,不要扮演其他人，
+    只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
+    history_prompt = '\n\n【chat history】'
+    conv_prompt = '\n {name}:{content}'
+    query = []
+    response = []
+
+    for d in dataset:
+        conv = d['conversations']
+        system = conv[0]['value']
+        if '【注意事项】' not in system:
+            system += res_prompt
+        system += history_prompt
+        response.append(conv[-1]['value'])
+        for i in range(1, len(conv) - 1):
+            system += conv_prompt.format(
+                name=conv[i]['from'], content=conv[i]['value'])
+        query.append(system)
+    return HfDataset.from_dict({'query': query, 'response': response})
+
+
+register_dataset(
+    DatasetName.ms_agent_multirole,
+    'iic/MSAgent-MultiRole', [('default', 'train')],
+    None,
+    _preprocess_msagent_multirole_dataset,
+    get_dataset_from_repo,
+    tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
 
 register_dataset(
     DatasetName.codefuse_evol_instruction_zh,
