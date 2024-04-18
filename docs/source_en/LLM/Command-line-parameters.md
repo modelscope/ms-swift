@@ -243,6 +243,8 @@ The eval parameters inherit from the infer parameters, and additionally include 
 
 - `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
 
+- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
+
 - `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
 
   ```shell
