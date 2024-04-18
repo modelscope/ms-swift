@@ -1,5 +1,6 @@
 import collections
 import os.path
+import sys
 import time
 from datetime import datetime
 from typing import Dict, List, Tuple, Type
@@ -186,7 +187,7 @@ class Runtime(BaseUI):
     @staticmethod
     def refresh_tasks(running_task=None):
         log_file = running_task if not running_task or 'pid:' not in running_task else None
-        process_name = 'swift'
+        process_name = 'swift '
         cmd_name = 'deploy'
         process = []
         selected = None
@@ -240,8 +241,11 @@ class Runtime(BaseUI):
 
     @staticmethod
     def parse_info_from_cmdline(task):
+        pid = None
         for i in range(3):
             slash = task.find('/')
+            if i == 0:
+                pid = task[:slash].split(':')[1]
             task = task[slash + 1:]
         args = task.split('swift deploy')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
@@ -250,20 +254,23 @@ class Runtime(BaseUI):
             space = args[i].find(' ')
             splits = args[i][:space], args[i][space + 1:]
             all_args[splits[0]] = splits[1]
-        return all_args
+        return pid, all_args
 
     @staticmethod
     def kill_task(task):
-        all_args = Runtime.parse_info_from_cmdline(task)
+        pid, all_args = Runtime.parse_info_from_cmdline(task)
         log_file = all_args['log_file']
-        os.system(f'pkill -9 -f {log_file}')
+        if sys.platform == 'win32':
+            os.system(f'taskkill /f /t /pid "{pid}"')
+        else:
+            os.system(f'pkill -9 -f {log_file}')
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)]
 
     @staticmethod
     def task_changed(task, base_tab):
         if task:
-            all_args = Runtime.parse_info_from_cmdline(task)
+            _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
         elements = [

@@ -1,5 +1,6 @@
 import collections
 import os.path
+import sys
 import time
 import webbrowser
 from datetime import datetime
@@ -329,7 +330,7 @@ class Runtime(BaseUI):
     @staticmethod
     def refresh_tasks(running_task=None):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
-        process_name = 'swift'
+        process_name = 'swift '
         cmd_name = 'sft'
         process = []
         selected = None
@@ -383,8 +384,11 @@ class Runtime(BaseUI):
 
     @staticmethod
     def parse_info_from_cmdline(task):
+        pid = None
         for i in range(3):
             slash = task.find('/')
+            if i == 0:
+                pid = task[:slash].split(':')[1]
             task = task[slash + 1:]
         args = task.split('swift sft')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
@@ -406,13 +410,16 @@ class Runtime(BaseUI):
                             f'"{value}"' for value in all_args[key]
                         ]
                     all_args[key] = ' '.join(all_args[key])
-        return all_args
+        return pid, all_args
 
     @staticmethod
     def kill_task(task):
-        all_args = Runtime.parse_info_from_cmdline(task)
+        pid, all_args = Runtime.parse_info_from_cmdline(task)
         output_dir = all_args['output_dir']
-        os.system(f'pkill -9 -f {output_dir}')
+        if sys.platform == 'win32':
+            os.system(f'taskkill /f /t /pid "{pid}"')
+        else:
+            os.system(f'pkill -9 -f {output_dir}')
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (
             len(Runtime.sft_plot) + 1)
@@ -424,7 +431,7 @@ class Runtime(BaseUI):
     @staticmethod
     def task_changed(task, base_tab):
         if task:
-            all_args = Runtime.parse_info_from_cmdline(task)
+            _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
         elements = [
@@ -447,7 +454,7 @@ class Runtime(BaseUI):
     def plot(task):
         if not task:
             return [None] * len(Runtime.sft_plot)
-        all_args = Runtime.parse_info_from_cmdline(task)
+        _, all_args = Runtime.parse_info_from_cmdline(task)
         tb_dir = all_args['logging_dir']
         fname = [
             fname for fname in os.listdir(tb_dir)
