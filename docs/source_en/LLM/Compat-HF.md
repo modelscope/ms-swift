@@ -9,7 +9,7 @@ Here is an example inference script for qwen1.5-7b-chat:
 USE_HF=1 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
 ```
 
-微调脚本:
+Fine-tuning script:
 ```shell
 # Experimental Environment: 2 * A100
 # GPU Memory Requirement: 2 * 30GB
