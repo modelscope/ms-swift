@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
 <<< 你是谁？
 我是一个人工智能助手，专门设计来帮助用户解答问题和提供信息。我可以帮助你了解各种主题，从语言学习到视觉识别技术。有什么我可以帮助你的吗？
 --------------------------------------------------
-<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>这两张图片有什么区别
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>, <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>这两张图片有什么区别
 这两张图片的主要区别在于它们描绘的动物和场景。
 
 第一张图片展示了一只小猫，它有着醒目的蓝色眼睛和灰白色的毛皮。小猫坐在一个模糊的背景前，看起来像是一张白色的床单或毯子。小猫的目光直直地对着相机，给人一种好奇和警觉的印象。
@@ -175,12 +175,27 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(支持多轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 支持每轮对话含多张图片或不含图片, 支持传入本地路径或URL)
 
-```jsonl
-{"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path", "image_path2", "image_path3"]}
+```json
+[
+    {"conversations": [
+        {"from": "user", "value": "<img>img_path</img>11111"},
+        {"from": "assistant", "value": "22222"}
+    ]},
+    {"conversations": [
+        {"from": "user", "value": "<img>img_path</img><img>img_path2</img><img>img_path3</img>aaaaa"},
+        {"from": "assistant", "value": "bbbbb"},
+        {"from": "user", "value": "<img>img_path</img>ccccc"},
+        {"from": "assistant", "value": "ddddd"}
+    ]},
+    {"conversations": [
+        {"from": "user", "value": "AAAAA"},
+        {"from": "assistant", "value": "BBBBB"},
+        {"from": "user", "value": "CCCCC"},
+        {"from": "assistant", "value": "DDDDD"}
+    ]}
+]
 ```
 
 
