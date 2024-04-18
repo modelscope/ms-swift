@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -713,6 +714,19 @@ register_template(
         ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
+def replace_img_tab(query: str, history: History,
+                    replace_token: str) -> Tuple[str, History, List[str]]:
+    images_path = []
+    pattern = r'<img>(.+?)</img>'
+    new_history = []
+    for i, h in enumerate(history):
+        images_path += re.findall(pattern, h[0])
+        new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
+    images_path += re.findall(pattern, query)
+    new_query = re.sub(pattern, replace_token, query)
+    return new_query, new_history, images_path
+
+
 class InternLMXComposer2(Template):
     INTERNLM_XCOMPOSER2_SYSTEM = (
         'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
@@ -738,26 +752,17 @@ class InternLMXComposer2(Template):
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        import re
-        images_path = []
         example = example.copy()
         history = example.pop('history', [])
-        pattern = r'<img>(.+?)</img>'
-        replace_token = '</s>'
-        new_history = []
-        for i, h in enumerate(history):
-            images_path += re.findall(pattern, h[0])
-            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-        history = new_history
-        images_path += re.findall(pattern, example['query'])
-        example['query'] = re.sub(pattern, replace_token, example['query'])
+        example['query'], example['history'], images_path = replace_img_tab(
+            example['query'], history, '</s>')
+
         images = []
         dtype = self.model.dtype
         for image_path in images_path:
             image = _read_from_path(image_path)
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
-        example['history'] = history
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
@@ -980,17 +985,26 @@ class DeepseekVLTemplate(Template):
         'and assist the user with a variety of tasks using natural language.')
 
     def __init__(self):
-        return super().__init__(
-            ['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
-            ['User: <image_placeholder>{{QUERY}}\n\nAssistant:'],
-            ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'],
-            self.DEEPSEEK_VL_SYSTEM)
+        return super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
+                                ['User: {{QUERY}}\n\nAssistant:'],
+                                ['<｜end▁of▁sentence｜>'],
+                                ['<｜end▁of▁sentence｜>'],
+                                self.DEEPSEEK_VL_SYSTEM)
 
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        images = example.pop('images', None)
+        assert images is None, (
+            'Please read the best practices: https://github.com/modelscope/swift/blob/main/'
+            'docs/source/Multi-Modal/deepseek-vl最佳实践.md')
+
+        example = example.copy()
+        history = example.pop('history', [])
+        example['query'], example['history'], images_path = replace_img_tab(
+            example['query'], history, '<image_placeholder>')
+
         inputs, _ = super().encode(example)
-        images_path = example['images']
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1067,7 +1081,6 @@ register_template(
     DeepseekVLTemplate(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)  # only 'cpu' can pin_memory
 

@@ -116,7 +116,6 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type qwen-audio-chat \
     --dataset aishell1-mini-zh \
-    --train_dataset_sample -1 \
     --sft_type full \
 
 # ZeRO2
@@ -125,7 +124,6 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type qwen-audio-chat \
     --dataset aishell1-mini-zh \
-    --train_dataset_sample -1 \
     --sft_type full \
     --use_flash_attn true \
     --deepspeed default-zero2
