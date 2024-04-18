@@ -11,7 +11,7 @@ Swift supports using AWQ and GPTQ techniques to quantize models. These two quant
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
 # Install ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # Using AWQ quantization:
 # AutoAWQ and CUDA versions have a corresponding relationship, please select the version according to `https://github.com/casper-hansen/AutoAWQ`

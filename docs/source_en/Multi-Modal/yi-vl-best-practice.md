@@ -10,7 +10,7 @@
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 ```
 
 ## Inference

@@ -14,7 +14,7 @@ GPU devices: A10, 3090, V100, A100 are all suitable.
 # Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # If you want to use deepspeed.
 pip install deepspeed -U
