@@ -11,9 +11,14 @@
 pip install 'ms-swift[llm]' -U
 ```
 
+Model Link:
+- deepseek-vl-1_3b-chat: [https://www.modelscope.cn/models/deepseek-ai/deepseek-vl-1.3b-chat/summary](https://www.modelscope.cn/models/deepseek-ai/deepseek-vl-1.3b-chat/summary)
+- deepseek-vl-7b-chat: [https://www.modelscope.cn/models/deepseek-ai/deepseek-vl-7b-chat/summary](https://www.modelscope.cn/models/deepseek-ai/deepseek-vl-7b-chat/summary)
+
+
 ## Inference
 
-Inference for [deepseek-vl-7b-chat](https://www.modelscope.cn/models/deepseek-ai/deepseek-vl-7b-chat/summary):
+Inference for deepseek-vl-7b-chat:
 
 ```shell
 # Experimental environment: A100
@@ -27,29 +32,41 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
 7b model effect demonstration: (supports passing local paths or URLs)
 ```python
 """
-<<< Describe this kind of picture
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This picture captures the charming scene of a little kitten with its eyes wide open, full of curiosity. The kitten's fur is a mix of white and gray, giving it an almost ethereal appearance. Its ears are pointed and alertly pointing upward, while its nose is a soft pink. The kitten's eyes are a striking blue, full of innocence and curiosity. The kitten is comfortably sitting on a piece of white fabric, beautifully contrasting with its gray and white fur. The background is blurred, focusing people's attention on the kitten's face, highlighting the fine details of its features. This picture exudes a sense of warmth and softness, capturing the purity and charm of the kitten.
+<<< Who are you?
+I am an AI language model, designed to understand and generate human-like text based on the input I receive. I am not a human, but I am here to help answer your questions and assist you with any tasks you may have.
 --------------------------------------------------
-<<< How many sheep are there in the picture?
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two images?
+The image provided is a close-up of a kitten with big blue eyes, looking directly at the camera. The kitten appears to be a domestic cat, specifically a kitten, given its small size and youthful features. The image is a high-resolution, detailed photograph that captures the kitten's facial features and fur texture.
+
+The second image is a cartoon illustration of three sheep standing in a grassy field with mountains in the background. The sheep are white with brown faces and legs, and they have large, round eyes. The illustration is stylized with a flat, two-dimensional appearance, and the colors are bright and vibrant. The sheep are evenly spaced and facing forward, giving the impression of a peaceful, pastoral scene.
+
+The differences between the two images are primarily in their artistic styles and subjects. The first image is a realistic photograph of a kitten, while the second image is a stylized cartoon illustration of sheep. The first image is a photograph with a focus on the kitten's facial features and fur texture, while the second image is a cartoon with a focus on the sheep's characters and the setting. The first image is a single subject, while the second image features multiple subjects in a group.
+--------------------------------------------------
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>How many sheep are there in the picture?
 There are four sheep in the picture.
 --------------------------------------------------
-<<< What is the calculation result
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The result of adding 1452 and 45304 is 1452 + 45304 = 46756.
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png</img>What is the result of the calculation?
+The result of the calculation is 1452 + 45304 = 46756.
 --------------------------------------------------
-<<< Write a poem based on the content in the picture
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-Starlight sprinkled on the tranquil lake surface,
-A lone boat gently swaying in the night breeze.
-Flickering lights accompany the stars,
-Shimmering waves reflect the mountain shadows.
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>Write a poem based on the content of the In the tranquil waters, a boat gently floats,
+A beacon of light, a lone candle's soft glow.
+The night is vast, a canvas of stars above,
+A serene scene, a moment of peace, it seems to offer.
 
-Green bamboo gently brushes the dense night colors,
-The Milky Way hangs upside down in the clear sky and water.
-Fishing lights dot the dream,
-One boat, one person, talking about the stars.
+The boat, a vessel of wood and a mast so tall,
+Carries a passenger, a figure so still.
+The water's surface, a mirror of the night sky,
+Reflects the boat's silhouette, a sight so divine.
+
+The trees, standing tall, their forms in the distance,
+A forest of mystery, a silent chorus.
+The stars, scattered like diamonds in the heavens,
+Illuminate the night, a celestial dance.
+
+The boat, a symbol of journey and adventure,
+In the quiet of the night, it's a sight to behold.
+A moment frozen in time, a memory to cherish,
+In the picture of the night, a boat on the water.
 """
 ```
 
@@ -95,16 +112,14 @@ model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
-images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = 'How far from each city?'
-response, history = inference(model, template, query, images=images)
+query = '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it from each city?'
+response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # Streaming
 query = 'Which city is the farthest?'
-images = images * 2
-gen = inference_stream(model, template, query, history, images=images)
+gen = inference_stream(model, template, query, history)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, history in gen:
@@ -113,18 +128,19 @@ for response, history in gen:
     print_idx = len(response)
 print()
 print(f'history: {history}')
+
 """
-query: How far from each city?
-response: This sign shows the distances from the current location to the following cities:
+query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it from each city?
+response: The distance from each city is as follows:
 
-- Mata: 14 kilometers
-- Yangjiang: 62 kilometers
-- Guangzhou: 293 kilometers
+- From "Mata", it is 14 km away.
+- From "Yangjiang", it is 62 km away.
+- From "Guangzhou", it is 293 km away.
 
-This information is provided based on the sign in the image.
+These distances are clearly indicated on the green road sign with white text, providing the necessary information for travelers to gauge the distance to each city from the current location.
 query: Which city is the farthest?
-response: The farthest city is Guangzhou. According to the sign, the distance from the current location to Guangzhou is 293 kilometers.
-history: [['How far from each city?', 'This sign shows the distances from the current location to the following cities:\n\n- Mata: 14 kilometers\n- Yangjiang: 62 kilometers\n- Guangzhou: 293 kilometers\n\nThis information is provided based on the sign in the image.'], ['Which city is the farthest?', 'The farthest city is Guangzhou. According to the sign, the distance from the current location to Guangzhou is 293 kilometers.']]
+response: The farthest city from the current location is "Guangzhou", which is 293 km away. This is indicated by the longest number on the green road sign, which is larger than the distances to the other cities listed.
+history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it from each city?', 'The distance from each city is as follows:\n\n- From "Mata", it is 14 km away.\n- From "Yangjiang", it is 62 km away.\n- From "Guangzhou", it is 293 km away.\n\nThese distances are clearly indicated on the green road sign with white text, providing the necessary information for travelers to gauge the distance to each city from the current location.'], ['Which city is the farthest?', 'The farthest city from the current location is "Guangzhou", which is 293 km away. This is indicated by the longest number on the green road sign, which is larger than the distances to the other cities listed.']]
 """
 ```
 
@@ -146,7 +162,7 @@ LoRA fine-tuning:
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type deepseek-vl-7b-chat \
-    --dataset coco-mini-en-2 \
+    --dataset coco-mini-en \
 ```
 
 Full parameter fine-tuning:
@@ -155,8 +171,7 @@ Full parameter fine-tuning:
 # 4 * 70GB GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type deepseek-vl-7b-chat \
-    --dataset coco-mini-en-2 \
-    --train_dataset_sample -1 \
+    --dataset coco-mini-en \
     --sft_type full \
     --use_flash_attn true \
     --deepspeed default-zero2
@@ -164,12 +179,27 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles. The following is an example of a custom dataset:
 
-(Supports multi-turn conversations, each turn must include an image, and supports passing local paths or URLs)
+(Supports multi-turn conversations, supports multiple images per turn or no images, supports input of local paths or URLs)
 
-```jsonl
-{"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path", "image_path2", "image_path3"]}
+```json
+[
+    {"conversations": [
+        {"from": "user", "value": "<img>img_path</img>11111"},
+        {"from": "assistant", "value": "22222"}
+    ]},
+    {"conversations": [
+        {"from": "user", "value": "<img>img_path</img><img>img_path2</img><img>img_path3</img>aaaaa"},
+        {"from": "assistant", "value": "bbbbb"},
+        {"from": "user", "value": "<img>img_path</img>ccccc"},
+        {"from": "assistant", "value": "ddddd"}
+    ]},
+    {"conversations": [
+        {"from": "user", "value": "AAAAA"},
+        {"from": "assistant", "value": "BBBBB"},
+        {"from": "user", "value": "CCCCC"},
+        {"from": "assistant", "value": "DDDDD"}
+    ]}
+]
 ```
 
 
