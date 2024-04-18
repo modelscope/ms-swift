@@ -400,7 +400,7 @@ class SftArguments(ArgumentsBase):
     neftune_backend: Literal['swift', 'transformers'] = None
 
     gradient_checkpointing: Optional[bool] = None
-    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -587,12 +587,16 @@ class SftArguments(ArgumentsBase):
         if is_pai_training_job():
             self._handle_pai_compat()
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
-        if self.deepspeed == 'default-zero2':
-            self.deepspeed = os.path.abspath(
-                os.path.join(ds_config_folder, 'zero2.json'))
-        elif self.deepspeed == 'default-zero3':
-            self.deepspeed = os.path.abspath(
-                os.path.join(ds_config_folder, 'zero3.json'))
+        deepspeed_mapping = {
+            'default-zero2': 'zero2.json',
+            'default-zero3': 'zero3.json',
+            'zero3-offload': 'zero3-offload.json'
+        }
+        for ds_name, ds_config in deepspeed_mapping.items():
+            if self.deepspeed == ds_name:
+                self.deepspeed = os.path.abspath(
+                    os.path.join(ds_config_folder, ds_config))
+                break
 
         self.handle_path()
         self.set_model_type()

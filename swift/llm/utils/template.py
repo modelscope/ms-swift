@@ -62,6 +62,7 @@ class TemplateType:
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
+    wizardlm2 = 'wizardlm2'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -1368,6 +1369,15 @@ register_template(
     TemplateType.wizardlm2_awq,
     Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'],
              ['</s>']))
+
+_wizardlm2_system = (
+    'A chat between a curious user and an artificial intelligence assistant. '
+    'The assistant gives helpful, detailed, and polite answers to the user\'s questions. '
+)
+register_template(
+    TemplateType.wizardlm2,
+    Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'],
+             ['</s>'], _wizardlm2_system))
 
 
 def get_template(

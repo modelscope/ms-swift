@@ -1083,6 +1083,15 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
+    ModelType.wizardlm2_8x22b,
+    'AI-ModelScope/WizardLM-2-8x22B',
+    LoRATM.llama2,
+    TemplateType.wizardlm2,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='alpindale/WizardLM-2-8x22B')
+@register_model(
     ModelType.wizardlm2_7b_awq,
     'AI-ModelScope/WizardLM-2-7B-AWQ',
     LoRATM.llama2,
