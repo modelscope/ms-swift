@@ -146,7 +146,6 @@ Full parameter fine-tuning:
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type qwen-vl-chat \
     --dataset coco-mini-en \
-    --train_dataset_sample -1 \
     --sft_type full \
 ```
 

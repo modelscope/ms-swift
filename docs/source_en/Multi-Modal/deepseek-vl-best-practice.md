@@ -156,7 +156,6 @@ Full parameter fine-tuning:
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type deepseek-vl-7b-chat \
     --dataset coco-mini-en-2 \
-    --train_dataset_sample -1 \
     --sft_type full \
     --use_flash_attn true \
     --deepspeed default-zero2
