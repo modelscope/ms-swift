@@ -34,8 +34,8 @@
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
 - `--truncation_strategy`: Default is `'delete'` which removes sentences exceeding max_length from dataset. `'truncation_left'` will truncate excess text from the left, which may truncate special tokens and affect performance, not recommended.
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
-- `--custom_train_dataset`: Default is `[]`. See [Customization](Customization.md) for details.
-- `--custom_val_dataset`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--self_cognition_sample`: Sampling number for self-cognition dataset. Default is `0`. When setting this to >0, you also need to specify `--model_name`, `--model_author`. See [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md) for more info.
 - `--model_name`: Default is `[None, None]`. If self-cognition dataset sampling is enabled (i.e. self_cognition_sample>0), you need to pass two values, representing the model's Chinese and English names respectively. E.g. `--model_name 小黄 'Xiao Huang'`.
 - `--model_author`: Default is `[None, None]`. If self-cognition dataset sampling is enabled, you need to pass two values, representing the author's Chinese and English names respectively. E.g. `--model_author 魔搭 ModelScope`.
@@ -186,8 +186,8 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
-- `--custom_train_dataset`: Default is `[]`. See [Customization](Customization.md) for details.
-- `--custom_val_dataset`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
 - `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
