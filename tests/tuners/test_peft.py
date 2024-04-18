@@ -174,8 +174,8 @@ class TestPeft(unittest.TestCase):
             os.path.exists(
                 os.path.join(self.tmp_dir, 'additional_config.json')))
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
-        self.assertTrue(model2.bert.encoder.layer[0].attention.self.key.lora_A.
-                        default.weight.dtype == torch.float16)
+        self.assertTrue(model2.base_model.model.bert.encoder.layer[0].attention
+                        .self.key.lora_A.default.weight.dtype == torch.float16)
         self.assertTrue(model2.peft_config['default'].lora_dtype == 'fp16')
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
@@ -188,7 +188,7 @@ class TestPeft(unittest.TestCase):
 
         PeftConfigMixin.from_pretrained = PeftConfigMixin.from_pretrained_origin
         model3 = Swift.from_pretrained(model3, self.tmp_dir)
-        self.assertTrue(model3.bert.encoder.layer[0].attention.self.key.lora_A.
-                        default.weight.dtype == torch.float32)
+        self.assertTrue(model3.base_model.model.bert.encoder.layer[0].attention
+                        .self.key.lora_A.default.weight.dtype == torch.float32)
         self.assertTrue(
             isinstance(model3.peft_config['default'], peft.LoraConfig))
