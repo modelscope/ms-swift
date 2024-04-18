@@ -140,11 +140,11 @@ SWIFT runs in the Python environment. Please ensure your Python version is highe
 
 ```shell
 # Full capabilities
-pip install ms-swift[all] -U
+pip install 'ms-swift[all]' -U
 # LLM only
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 # AIGC only
-pip install ms-swift[aigc] -U
+pip install 'ms-swift[aigc]' -U
 # Adapters only
 pip install ms-swift -U
 ```
@@ -154,7 +154,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 ```
 
 SWIFT depends on torch>=1.13, recommend torch>=2.0.0.

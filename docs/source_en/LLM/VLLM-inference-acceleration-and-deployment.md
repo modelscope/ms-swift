@@ -12,7 +12,7 @@ GPU devices: A10, 3090, V100, A100 are all supported.
 # Set pip global mirror (speeds up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # Install ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # vllm version corresponds to cuda version, please select version according to `https://docs.vllm.ai/en/latest/getting_started/installation.html`
 pip install vllm -U

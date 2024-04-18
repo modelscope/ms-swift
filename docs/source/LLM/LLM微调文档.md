@@ -17,7 +17,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # 如果你想要使用deepspeed.
 pip install deepspeed -U

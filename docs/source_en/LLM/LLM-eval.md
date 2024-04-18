@@ -54,7 +54,7 @@ or install from source code:
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[eval]
+pip install -e '.[eval]'
 ```
 
 ## Evaluation
