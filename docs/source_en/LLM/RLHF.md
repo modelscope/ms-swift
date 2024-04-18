@@ -10,7 +10,7 @@ GPU devices: A10, 3090, V100, A100 are all acceptable. For GPUs with memory <=24
 # Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # Environment alignment (usually not necessary. If you encounter errors, you can run the following code, the repository uses the latest environment for testing)
 pip install -r requirements/framework.txt  -U

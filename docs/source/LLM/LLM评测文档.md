@@ -54,7 +54,7 @@ pip install ms-swift[eval] -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[eval]
+pip install -e '.[eval]'
 ```
 
 ## 评测

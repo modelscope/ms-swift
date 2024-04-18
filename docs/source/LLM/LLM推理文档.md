@@ -12,7 +12,7 @@ GPU设备: A10, 3090, V100, A100均可.
 # 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # 如果你想要使用基于auto_gptq的模型进行推理.
 # 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`

@@ -9,7 +9,7 @@ Using minicpm-v-3b-chat as an example, if you want to use the updated version of
 
 ## Environment Setup
 ```shell
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 ```
 
 Model:

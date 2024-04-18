@@ -8,7 +8,7 @@
 
 ## Environment Preparation
 ```shell
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 ```
 
 ## Inference

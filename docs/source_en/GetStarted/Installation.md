@@ -6,11 +6,11 @@ You can use pip to install:
 
 ```shell
 # Full capabilities
-pip install ms-swift[all] -U
+pip install 'ms-swift[all]' -U
 # Only use LLM
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 # Only use AIGC
-pip install ms-swift[aigc] -U
+pip install 'ms-swift[aigc]' -U
 # Only use adapters
 pip install ms-swift -U
 ```
@@ -20,7 +20,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[all]
+pip install -e '.[all]'
 ```
 
 ## Notebook Environment

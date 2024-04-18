@@ -141,11 +141,11 @@ SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 
 ```shell
 # 全量能力
-pip install ms-swift[all] -U
+pip install 'ms-swift[all]' -U
 # 仅使用LLM
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 # 仅使用AIGC
-pip install ms-swift[aigc] -U
+pip install 'ms-swift[aigc]' -U
 # 仅使用Adapters
 pip install ms-swift -U
 ```
@@ -155,7 +155,7 @@ pip install ms-swift -U
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 ```
 
 SWIFT依赖torch>=1.13，建议torch>=2.0.0。
