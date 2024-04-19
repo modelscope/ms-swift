@@ -55,7 +55,7 @@ def calculate_loss_scale(response: str,
             agent_content.append(c['key'])
             agent_content.append(c['content'])
         return agent_content, weights
-    elif ('Action' in response or 'Next:' in response) and use_loss_scale:
+    elif ('Action:' in response or 'Next:' in response) and use_loss_scale: # alpha-umi
         agent_keyword = ['Next:', 'Action:', 'Action Input:']
         agent_parts = split_str_parts_by(response, agent_keyword)
         weights = []
