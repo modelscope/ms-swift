@@ -130,7 +130,7 @@ class ModelType:
     llama3_70b = 'llama3-70b'
     llama3_70b_instruct = 'llama3-70b-instruct'
     # atom
-    atom_7b = 'atom_7b'
+    atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
     llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
@@ -477,7 +477,7 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     ModelType.atom_7b_chat,
     'FlagAlpha/Atom-7B-Chat',
     LoRATM.llama2,
-    TemplateType.llama,
+    TemplateType.atom,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='FlagAlpha/Atom-7B-Chat')

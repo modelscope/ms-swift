@@ -65,6 +65,7 @@ class TemplateType:
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
+    atom = 'atom'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -1403,6 +1404,10 @@ register_template(
     Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'],
              ['</s>'], _wizardlm2_system))
 
+register_template(
+    TemplateType.atom,
+    Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'],
+             ['</s>']))
 
 def get_template(
     template_type: str,
