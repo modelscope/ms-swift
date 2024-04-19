@@ -559,7 +559,7 @@ def _repair_agent_conversations(conversations: str,
 
 
 def _repair_ms_bench(conversations: str) -> Dict[str, str]:
-    if isinstance(conversations,str):
+    if isinstance(conversations, str):
         conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
     if conversations[0]['from'] == 'system' and conversations[0][
