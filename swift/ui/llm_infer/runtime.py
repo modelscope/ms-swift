@@ -126,7 +126,7 @@ class Runtime(BaseUI):
     def wait(cls, task):
         if not task:
             return [None]
-        args = cls.parse_info_from_cmdline(task)
+        _, args = cls.parse_info_from_cmdline(task)
         log_file = args['log_file']
         offset = 0
         latest_data = ''
@@ -178,7 +178,7 @@ class Runtime(BaseUI):
                     ports.add(
                         int(
                             Runtime.parse_info_from_cmdline(
-                                Runtime.construct_running_task(proc)).get(
+                                Runtime.construct_running_task(proc))[1].get(
                                     'port', 8000)))
                 except IndexError:
                     pass
@@ -198,10 +198,12 @@ class Runtime(BaseUI):
             except (psutil.ZombieProcess, psutil.AccessDenied,
                     psutil.NoSuchProcess):
                 cmdlines = []
-            if any([process_name in cmdline
-                    for cmdline in cmdlines]) and not any([negative_name in cmdline
-                    for cmdline in cmdlines]) and any(  # noqa
-                        [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
+            if any([
+                    process_name in cmdline for cmdline in cmdlines
+            ]) and not any([negative_name in cmdline
+                            for cmdline in cmdlines]) and any(  # noqa
+                                [cmd_name == cmdline
+                                 for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if log_file is not None and any(  # noqa
                     [log_file == cmdline for cmdline in cmdlines]):  # noqa

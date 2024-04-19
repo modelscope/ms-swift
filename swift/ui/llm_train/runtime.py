@@ -341,10 +341,12 @@ class Runtime(BaseUI):
             except (psutil.ZombieProcess, psutil.AccessDenied,
                     psutil.NoSuchProcess):
                 cmdlines = []
-            if any([process_name in cmdline
-                    for cmdline in cmdlines]) and not any([negative_name in cmdline
-                    for cmdline in cmdlines]) and any(  # noqa
-                        [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
+            if any([
+                    process_name in cmdline for cmdline in cmdlines
+            ]) and not any([negative_name in cmdline
+                            for cmdline in cmdlines]) and any(  # noqa
+                                [cmd_name == cmdline
+                                 for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if output_dir is not None and any(  # noqa
                     [output_dir == cmdline for cmdline in cmdlines]):  # noqa
