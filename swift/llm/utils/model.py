@@ -129,6 +129,9 @@ class ModelType:
     llama3_8b_instruct = 'llama3-8b-instruct'
     llama3_70b = 'llama3-70b'
     llama3_70b_instruct = 'llama3-70b-instruct'
+    # atom
+    atom_7b = 'atom_7b'
+    atom_7b_chat = 'atom-7b-chat'
     # llava
     llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
     llava1d6_yi_34b_instruct = 'llava1d6-yi-34b-instruct'
