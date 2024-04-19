@@ -7,11 +7,14 @@
 
 ## Environment Preparation
 
-Experimental environment: 8 * Ascend 910B3
+Experimental environment: 8 * Ascend 910B3 (The device is provided by [@chuanzhubin](https://github.com/chuanzhubin), thanks for the support to modelscope and swift ~)
 
 ```shell
-pip install ms-swift -U
 pip install torch-npu
+
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 Verify the installation of the testing environment:

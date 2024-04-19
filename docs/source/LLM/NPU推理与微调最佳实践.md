@@ -8,11 +8,14 @@
 
 ## 环境准备
 
-实验环境：8 * 昇腾910B3
+实验环境：8 * 昇腾910B3 (设备由[@chuanzhubin](https://github.com/chuanzhubin)提供, 感谢对modelscope和swift的支持～)
 
 ```shell
-pip install ms-swift -U
 pip install torch-npu
+
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 测试环境是否安装正确：
