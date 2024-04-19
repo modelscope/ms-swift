@@ -1,4 +1,4 @@
-# Experimental environment: 3090, A10
+# Experimental environment: 3090, A10, V100
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir "output/llama3-8b-instruct/vx-xxx/checkpoint-xxx" \
