@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn import Module
+from transformers.utils import is_torch_npu_available
 
 from .logger import get_logger, is_master
 
@@ -152,15 +153,17 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     """
     assert dist.is_initialized()
     rank, local_rank, _, _ = get_dist_setting()
+    device = f'npu:{local_rank}' if is_torch_npu_available(
+    ) else f'cuda:{local_rank}'
     assert rank >= 0
     if rank == 0:
         assert string is not None
         tensor = torch.tensor(
             [ord(c) for c in string] + [0] * (buffer_size - len(string)),
             dtype=torch.int64,
-            device=local_rank)
+            device=device)
     else:
-        tensor = torch.zeros(buffer_size, dtype=torch.int64, device=local_rank)
+        tensor = torch.zeros(buffer_size, dtype=torch.int64, device=device)
     dist.broadcast(tensor, 0)
     first_zero = (tensor == 0).nonzero()[0].item()
     res = tensor.tolist()[:first_zero]
