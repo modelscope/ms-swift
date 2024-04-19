@@ -465,7 +465,22 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
         QuantLinear.__old_forward = __old_forward
         QuantLinear.forward = _new_forward
 
-
+@register_model(
+    ModelType.atom_7b,
+    'FlagAlpha/Atom-7B',
+    LoRATM.llama2,
+    TemplateType.default_generation_bos,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='FlagAlpha/Atom-7B')
+@register_model(
+    ModelType.atom_7b_chat,
+    'FlagAlpha/Atom-7B-Chat',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='FlagAlpha/Atom-7B-Chat')
 @register_model(
     ModelType.internlm_20b,
     'Shanghai_AI_Laboratory/internlm-20b',
