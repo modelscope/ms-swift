@@ -1,4 +1,4 @@
-# Experimental environment: 2 * A100
+# Experimental environment: 2 * 3090
 # 2 * 22GB GPU memory
 nproc_per_node=2
 
@@ -34,6 +34,5 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn true \
     --deepspeed default-zero2 \
     --save_only_model true \
