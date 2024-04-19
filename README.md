@@ -339,6 +339,36 @@ swift sft \
 ```
 
 
+#### Multi-node Multi-GPU
+```shell
+# node0
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NNODES=2 \
+NODE_RANK=0 \
+MASTER_ADDR=127.0.0.1 \
+NPROC_PER_NODE=8 \
+swift sft \
+    --model_id_or_path qwen1half-32b-chat \
+    --sft_type full \
+    --dataset blossom-math-zh \
+    --output_dir output \
+    --deepspeed default-zero3 \
+
+# node1
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NNODES=2 \
+NODE_RANK=1 \
+MASTER_ADDR=xxx.xxx.xxx.xxx \
+NPROC_PER_NODE=8 \
+swift sft \
+    --model_id_or_path qwen1half-32b-chat \
+    --sft_type full \
+    --dataset blossom-math-zh \
+    --output_dir output \
+    --deepspeed default-zero3 \
+```
+
+
 ### Inference
 Original model:
 ```shell
