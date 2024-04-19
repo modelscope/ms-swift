@@ -653,7 +653,10 @@ class SftArguments(ArgumentsBase):
         world_size = 1
         if is_dist():
             rank, local_rank, world_size, _ = get_dist_setting()
-            torch.cuda.set_device(local_rank)
+            if is_torch_npu_available():
+                torch.npu.set_device(local_rank)
+            else:
+                torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')

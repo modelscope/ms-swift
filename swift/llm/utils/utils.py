@@ -36,7 +36,7 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase, StoppingCriteriaList,
                           TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
-from transformers.utils import strtobool
+from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
@@ -600,7 +600,14 @@ def inference_stream(model: PreTrainedModel,
         'stopping_criteria': stopping_criteria,
         **inputs
     }
-    thread = Thread(target=model.generate, kwargs=generation_kwargs)
+    _model_generate = model.generate
+    if is_torch_npu_available():
+
+        def _model_generate(*args, **kwargs):
+            torch.npu.set_device(model.device)
+            return model.generate(*args, **kwargs)
+
+    thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
     raw_generate_ids, generate_ids = [], []
     response, safe_response = '', ''
