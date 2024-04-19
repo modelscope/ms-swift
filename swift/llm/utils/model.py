@@ -2336,7 +2336,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 @register_model(
     ModelType.llama3_70b_instruct,
-    'huangjintao/Meta-Llama-3-70B-Instruct',
+    'LLM-Research/Meta-Llama-3-70B-Instruct',
     LoRATM.llama2,
     TemplateType.llama3,
     support_flash_attn=True,
@@ -2344,7 +2344,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='meta-llama/Meta-Llama-3-70B-Instruct')
 @register_model(
     ModelType.llama3_70b,
-    'huangjintao/Meta-Llama-3-70B',
+    'LLM-Research/Meta-Llama-3-70B',
     LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True,
@@ -2352,7 +2352,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='meta-llama/Meta-Llama-3-70B')
 @register_model(
     ModelType.llama3_8b_instruct,
-    'huangjintao/Meta-Llama-3-8B-Instruct',
+    'LLM-Research/Meta-Llama-3-8B-Instruct',
     LoRATM.llama2,
     TemplateType.llama3,
     support_flash_attn=True,
@@ -2360,7 +2360,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='meta-llama/Meta-Llama-3-8B-Instruct')
 @register_model(
     ModelType.llama3_8b,
-    'huangjintao/Meta-Llama-3-8B',
+    'LLM-Research/Meta-Llama-3-8B',
     LoRATM.llama2,
     TemplateType.default_generation,
     support_flash_attn=True,
