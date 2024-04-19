@@ -48,10 +48,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                 device=device_id)
 
     # Loading Model and Tokenizer
-    if is_torch_npu_available():
-        model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
-    elif is_deepspeed_zero3_enabled():
+    if is_deepspeed_zero3_enabled():
         model_kwargs = {'device_map': None}
+    elif is_torch_npu_available():
+        model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
