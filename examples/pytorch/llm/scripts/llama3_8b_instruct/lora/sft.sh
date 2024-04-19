@@ -1,10 +1,7 @@
-# Experimental environment: 2 * A100
-# 2 * 22GB GPU memory
-nproc_per_node=2
+# Experimental environment: A100
+# 20GB GPU memory
 
-NPROC_PER_NODE=$nproc_per_node \
-MASTER_PORT=29500 \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_id_or_path LLM-Research/Meta-Llama-3-8B-Instruct \
     --model_revision master \
@@ -13,7 +10,6 @@ swift sft \
     --template_type llama3 \
     --dtype AUTO \
     --output_dir output \
-    --ddp_backend nccl \
     --dataset blossom-math-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 5 \
@@ -27,7 +23,7 @@ swift sft \
     --batch_size 1 \
     --weight_decay 0.1 \
     --learning_rate 1e-4 \
-    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
+    --gradient_accumulation_steps 16 \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
@@ -35,5 +31,3 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --deepspeed default-zero2 \
-    --save_only_model true \
