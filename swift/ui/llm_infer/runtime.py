@@ -187,7 +187,8 @@ class Runtime(BaseUI):
     @staticmethod
     def refresh_tasks(running_task=None):
         log_file = running_task if not running_task or 'pid:' not in running_task else None
-        process_name = 'swift '
+        process_name = 'swift'
+        negative_name = 'swift.exe'
         cmd_name = 'deploy'
         process = []
         selected = None
@@ -198,6 +199,7 @@ class Runtime(BaseUI):
                     psutil.NoSuchProcess):
                 cmdlines = []
             if any([process_name in cmdline
+                    for cmdline in cmdlines]) and not any([negative_name in cmdline
                     for cmdline in cmdlines]) and any(  # noqa
                         [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
