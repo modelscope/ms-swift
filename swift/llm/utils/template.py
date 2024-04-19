@@ -1406,8 +1406,9 @@ register_template(
 
 register_template(
     TemplateType.atom,
-    Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'],
-             ['</s>']))
+    Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '],
+             ['</s>'], ['</s>']))
+
 
 def get_template(
     template_type: str,

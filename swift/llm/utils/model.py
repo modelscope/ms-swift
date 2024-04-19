@@ -465,6 +465,7 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
         QuantLinear.__old_forward = __old_forward
         QuantLinear.forward = _new_forward
 
+
 @register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
