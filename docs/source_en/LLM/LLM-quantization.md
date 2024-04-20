@@ -40,7 +40,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 # GPTQ: Use `ms-bench-mini` as the quantization dataset
 # For GPTQ quantization, please first refer to this issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
-CUDA_VISIBLE_DEVICES=0 swift export \
+OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method gptq
 
