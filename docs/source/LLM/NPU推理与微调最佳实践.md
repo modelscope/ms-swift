@@ -37,7 +37,6 @@ pip install -r requirements/llm.txt  -U
 ```python
 from transformers.utils import is_torch_npu_available
 import torch
-import torch_npu
 
 print(is_torch_npu_available())  # True
 print(torch.npu.device_count())  # 8

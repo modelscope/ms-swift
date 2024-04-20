@@ -29,6 +29,7 @@ import torch
 
 print(is_torch_npu_available())  # True
 print(torch.npu.device_count())  # 8
+print(torch.randn(10, device='npu:0'))
 ```
 
 ## Fine-tuning
@@ -76,7 +77,7 @@ ZeRO2:
 ```shell
 # Experimental Environment: 4 * Ascend 910B3
 # GPU Memory Requirement: 4 * 28GB
-# Runtime: 3 hours
+# Runtime: 3.5 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
@@ -92,7 +93,7 @@ ZeRO3:
 ```shell
 # Experimental Environment: 4 * Ascend 910B3
 # GPU Memory Requirement: 4 * 25GB
-# Runtime: 8 hours
+# Runtime: 8.5 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
