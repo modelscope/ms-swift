@@ -147,9 +147,9 @@ def merge_lora(args: InferArguments,
 
 def prepare_model_template(
         args: InferArguments,
-        device_map: Optional[str] = None) -> Tuple[PreTrainedModel, Template]:
-
-    seed_everything(args.seed)
+        *,
+        device_map: Optional[str] = None,
+        automodel_class=None) -> Tuple[PreTrainedModel, Template]:
 
     model_kwargs = {}
     if is_torch_npu_available():
@@ -184,6 +184,8 @@ def prepare_model_template(
         model_id_or_path = args.ckpt_dir
     elif args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
+    if automodel_class is not None:
+        kwargs['automodel_class'] = automodel_class
 
     model, tokenizer = get_model_tokenizer(
         args.model_type,
@@ -255,6 +257,7 @@ def read_media_file(
 
 def llm_infer(args: InferArguments) -> None:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':

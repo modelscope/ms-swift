@@ -399,7 +399,6 @@ def prepare_vllm_engine_template(
         args: InferArguments,
         use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
-    seed_everything(args.seed)
 
     assert args.quantization_bit == 0, 'not support bnb'
     assert not (args.sft_type == 'lora'

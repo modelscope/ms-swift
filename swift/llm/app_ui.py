@@ -110,6 +110,7 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
 
 def llm_app_ui(args: AppUIArguments) -> None:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     args.eval_human = True
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)

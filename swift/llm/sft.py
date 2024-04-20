@@ -31,6 +31,7 @@ logger = get_logger()
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     training_args = args.training_args
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
@@ -39,7 +40,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
-    seed_everything(args.seed)
 
     if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
