@@ -47,7 +47,6 @@ torch.npu.set_device(0)
 
 print(is_torch_npu_available())  # True
 print(torch.npu.device_count())  # 8
-print(is_torch_npu_available())  # True
 ```
 查看NPU的P2P连接,这里看到每个NPU都通过7条HCCS与其他NPU互联
 ```shell
