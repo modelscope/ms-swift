@@ -246,7 +246,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids,
                     output.finished(),
-                    True,
+                    return_delta=True,
                     print_idx=print_idx_list[output.index])
 
             if isinstance(request, ChatCompletionRequest):

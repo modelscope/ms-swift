@@ -71,7 +71,7 @@ def get_vllm_engine(model_type: str,
         llm_engine_cls = LLMEngine
 
     parameters = inspect.signature(engine_args_cls.__init__).parameters
-    if 'enable_lora' in parameters:
+    if 'enable_lora' in parameters and enable_lora:
         engine_kwargs['enable_lora'] = enable_lora
         engine_kwargs['max_loras'] = max_loras
         engine_kwargs['max_lora_rank'] = max_lora_rank
@@ -419,7 +419,7 @@ def prepare_vllm_engine_template(
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
-        max_loras=len(args.vllm_lora_modules),
+        max_loras=min(len(args.vllm_lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
     tokenizer = llm_engine.hf_tokenizer
     if use_async:

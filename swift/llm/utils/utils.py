@@ -435,7 +435,7 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
 def to_device(inputs: Any, device: Device) -> Any:
     if callable(getattr(inputs, 'to', None)):
         return inputs.to(device=device)
-    #
+
     if isinstance(inputs, Mapping):
         res = {}
         for k, v in inputs.items():
@@ -582,35 +582,35 @@ def inference_stream(model: PreTrainedModel,
     thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
     raw_generate_ids, generate_ids = [], []
-    safe_response = ''
+
     if not is_observation:
         history.append(None)  # dummy
 
     print_idx = [0]
     first_num_space = [-1]
-    _iter = iter(streamer)
+
     is_finished = False
-    while is_finished:
+    while not is_finished:
         try:
-            token = next(_iter)
+            token = next(streamer)
+            raw_generate_ids.append(token)
         except StopIteration:
             is_finished = True
-        raw_generate_ids.append(token)
         generate_ids = template.get_generate_ids(
             torch.tensor(raw_generate_ids)[None], token_len)
         if generation_info is not None:
             generation_info['num_generated_tokens'] = len(generate_ids)
-            safe_response = template.generate_ids_to_response(
-                generate_ids,
-                is_finished,
-                tokenizer_kwargs=tokenizer_kwargs,
-                print_idx=print_idx,
-                first_num_space=first_num_space)
-            if not is_observation:
-                history[-1] = [query, safe_response]
-            else:
-                history[-1][-1] = history[-1][-1][:act_length] + safe_response
-            yield safe_response, history
+        response = template.generate_ids_to_response(
+            generate_ids,
+            is_finished,
+            tokenizer_kwargs=tokenizer_kwargs,
+            print_idx=print_idx,
+            first_num_space=first_num_space)
+        if not is_observation:
+            history[-1] = [query, response]
+        else:
+            history[-1][-1] = history[-1][-1][:act_length] + response
+        yield response, history
 
 
 def inference(model: PreTrainedModel,

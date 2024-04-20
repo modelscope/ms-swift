@@ -494,9 +494,10 @@ class Template:
         self,
         generate_ids: List[int],
         is_finished: bool = True,
-        return_delta: bool = False,
         *,
         tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        # only stream=True
+        return_delta: bool = False,
         print_idx: Optional[List[int]] = None,
         first_num_space: Optional[List[int]] = None,
     ):
@@ -525,15 +526,17 @@ class Template:
                 not is_finished or is_finished
                 and response[-len(self.suffix[-1]):] == self.suffix[-1]):
             response = response[:-len(self.suffix[-1])]
-        if not is_finished and print_idx is not None:
-            # avoid printing incomplete words
-            res_print_idx = print_idx
-            print_idx = print_idx[0]
-            new_print_idx = self._get_safe_print_idx(response, print_idx)
-            response = response[:new_print_idx]
-            res_print_idx[0] = new_print_idx
-        if return_delta:
-            response = response[print_idx:]
+
+        if print_idx is not None:
+            old_print_idx = print_idx[0]
+            if not is_finished:
+                # avoid printing incomplete words
+                print_idx[0] = self._get_safe_print_idx(response, print_idx[0])
+                response = response[:print_idx[0]]
+            if return_delta:
+                response = response[old_print_idx:]
+        else:
+            assert is_finished and not return_delta
         return response
 
 
