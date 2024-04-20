@@ -29,9 +29,9 @@ pip install -r requirements/llm.txt -U
 ## Original Model
 Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 ```bash
-# AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 12GB)
+# AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 13GB)
 # If OOM occurs during quantization, you can appropriately reduce `--quant_n_samples` (default 256) and `--quant_seqlen` (default 2048).
-# GPTQ-INT4 quantization (takes about 15 minutes using A100, memory usage: 6GB)
+# GPTQ-INT4 quantization (takes about 20 minutes using A100, memory usage: 10GB)
 
 # AWQ: Use `ms-bench-mini` as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
