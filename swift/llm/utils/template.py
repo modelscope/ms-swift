@@ -308,9 +308,9 @@ class Template:
         for i, (context,
                 loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
             if isinstance(context, str):
-                curr_tokenizer_kwargs = self.get_tokenizer_kwargs(context)
-                self.concat_tokenizer_kwargs(tokenizer_kwargs,
-                                             curr_tokenizer_kwargs)
+                curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
+                self._concat_tokenizer_kwargs(tokenizer_kwargs,
+                                              curr_tokenizer_kwargs)
                 token_list = tokenizer(
                     context,
                     return_attention_mask=False,
@@ -386,11 +386,11 @@ class Template:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
 
-    def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
         return {}
 
-    def concat_tokenizer_kwargs(
+    def _concat_tokenizer_kwargs(
             self, old_tokenizer_kwargs: Dict[str, Any],
             curr_tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         assert len(old_tokenizer_kwargs) == 0
@@ -459,6 +459,82 @@ class Template:
                          input_token_len: int) -> List[int]:
         return generate_ids[0, input_token_len:].tolist()
 
+    @staticmethod
+    def _is_chinese_char(cp: int) -> bool:
+        """Checks whether CP is the codepoint of a CJK character."""
+        # copy from transformers.generation.streamers.TextStreamer
+        if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF)
+                or (cp >= 0x20000 and cp <= 0x2A6DF)
+                or (cp >= 0x2A700 and cp <= 0x2B73F)
+                or (cp >= 0x2B740 and cp <= 0x2B81F)
+                or (cp >= 0x2B820 and cp <= 0x2CEAF)
+                or (cp >= 0xF900 and cp <= 0xFAFF)
+                or (cp >= 0x2F800 and cp <= 0x2FA1F)):
+            return True
+
+        return False
+
+    @classmethod
+    def _get_safe_print_idx(cls,
+                            response: str,
+                            print_idx: int,
+                            is_finished: bool = False) -> int:
+        if is_finished:
+            return len(response)
+        if response.endswith(
+                '\n') or len(response) > 0 and cls._is_chinese_char(
+                    ord(response[-1])):
+            print_idx = len(response)
+        else:
+            print_idx = max(response.rfind(' ') + 1, print_idx)
+        return print_idx
+
+    def generate_ids_to_response(
+        self,
+        generate_ids: List[int],
+        is_finished: bool = True,
+        return_delta: bool = False,
+        *,
+        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        print_idx: Optional[List[int]] = None,
+        first_num_space: Optional[List[int]] = None,
+    ):
+        if tokenizer_kwargs is None:
+            tokenizer_kwargs = {}
+        tokenizer = self.tokenizer
+        # avoid printing template.suffix[-1])
+        if isinstance(self.suffix[-1], list) and (
+                not is_finished or is_finished
+                and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):
+            generate_ids = generate_ids[:-len(self.suffix[-1])]
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+        if first_num_space is not None:
+            # Avoid the occurrence of repeated words in sentence.
+            res_fns = first_num_space  # res_first_num_space
+            first_num_space = first_num_space[0]
+            cur_num_space = len(response) - len(response.lstrip(' '))
+            if not is_finished and first_num_space == -1:
+                first_num_space = cur_num_space
+                res_fns[0] = first_num_space
+            if cur_num_space < first_num_space:
+                response = ' ' * (first_num_space - cur_num_space) + response
+            elif cur_num_space > first_num_space:
+                response = response[cur_num_space - first_num_space:]
+        if isinstance(self.suffix[-1], str) and (
+                not is_finished or is_finished
+                and response[-len(self.suffix[-1]):] == self.suffix[-1]):
+            response = response[:-len(self.suffix[-1])]
+        if not is_finished and print_idx is not None:
+            # avoid printing incomplete words
+            res_print_idx = print_idx
+            print_idx = print_idx[0]
+            new_print_idx = self._get_safe_print_idx(response, print_idx)
+            response = response[:new_print_idx]
+            res_print_idx[0] = new_print_idx
+        if return_delta:
+            response = response[print_idx:]
+        return response
+
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -519,11 +595,12 @@ class _QwenAudioTemplateMixin:
         inputs.update(tokenizer_kwargs)
         return inputs, tokenizer_kwargs
 
-    def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         return {'audio_info': self.tokenizer.process_audio(context)}
 
-    def concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any],
-                                curr_tokenizer_kwargs: Dict[str, Any]) -> None:
+    def _concat_tokenizer_kwargs(
+            self, tokenizer_kwargs: Dict[str, Any],
+            curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         audio_info = curr_tokenizer_kwargs.get('audio_info')
         old_audio_info = tokenizer_kwargs.get('audio_info')
         if old_audio_info is None:

@@ -19,7 +19,6 @@ from swift.utils import get_logger, seed_everything
 from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template
-from .utils import _get_safe_print_idx
 
 try:
     from vllm.lora.request import LoRARequest
@@ -271,33 +270,18 @@ def inference_stream_vllm(
         llm_engine.add_request(
             str(i), None, generation_config, input_ids, **add_request_kwargs)
 
-    batch_size = len(request_list)
-    resp_list = [None] * batch_size
-    print_idx_list = [0] * batch_size
-    prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
+    resp_list = [None] * len(request_list)
+    print_idx_list = [[0] for _ in range(len(request_list))]
+    prog_bar = tqdm(
+        total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
         for output in step_outputs:
             i = int(output.request_id)
             request = request_list[i]
             generate_ids = output.outputs[0].token_ids
-            # avoid printing template.suffix[-1])
-            if isinstance(template.suffix[-1],
-                          list) and (not output.finished or output.finished and
-                                     generate_ids[-len(template.suffix[-1]):]
-                                     == template.suffix[-1]):
-                generate_ids = generate_ids[:-len(template.suffix[-1])]
-            response = tokenizer.decode(generate_ids, True)
-            if isinstance(template.suffix[-1],
-                          str) and (not output.finished or output.finished
-                                    and response[-len(template.suffix[-1]):]
-                                    == template.suffix[-1]):
-                response = response[:-len(template.suffix[-1])]
-            # avoid printing incomplete words
-            print_idx_list[i] = _get_safe_print_idx(response,
-                                                    print_idx_list[i],
-                                                    output.finished)
-            safe_response = response[:print_idx_list[i]]
+            safe_response = template.generate_ids_to_response(
+                generate_ids, output.finished, print_idx=print_idx_list[i])
             query = request['query']
             history = request['history']
             if resp_list[i] is None and not request_temp[i][0]:
@@ -378,10 +362,10 @@ def inference_vllm(llm_engine: LLMEngine,
         llm_engine.add_request(
             str(i), None, generation_config, input_ids, **add_request_kwargs)
 
-    batch_size = len(request_list)
     if use_tqdm is True:
         assert verbose is False
-    prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(
+        total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -390,21 +374,12 @@ def inference_vllm(llm_engine: LLMEngine,
                 outputs.append(output)
                 prog_bar.update()
 
-    resp_list = [None] * batch_size
+    resp_list = [None] * len(request_list)
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]
         generate_ids = output.outputs[0].token_ids
-        # avoid printing template.suffix[-1])
-        if (isinstance(template.suffix[-1], list)
-                and generate_ids[-len(template.suffix[-1]):]
-                == template.suffix[-1]):
-            generate_ids = generate_ids[:-len(template.suffix[-1])]
-        response = tokenizer.decode(generate_ids, True)
-        if isinstance(
-                template.suffix[-1], str
-        ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
-            response = response[:-len(template.suffix[-1])]
+        response = template.generate_ids_to_response(generate_ids)
         query = request['query']
         history = request['history']
         if not is_observation:

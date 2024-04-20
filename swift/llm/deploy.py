@@ -22,7 +22,6 @@ from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
                     CompletionStreamResponse, DeltaMessage, DeployArguments,
                     Model, ModelList, UsageInfo, inference, inference_stream,
                     messages_to_history, random_uuid)
-from .utils.utils import _get_safe_print_idx
 
 logger = get_logger()
 
@@ -197,29 +196,13 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             total_tokens=num_prompt_tokens + num_generated_tokens,
         )
 
-        # avoid printing template.suffix[-1])
-        for output in result.outputs:
-            generate_ids = output.token_ids
-            if isinstance(template.suffix[-1],
-                          list) and (not output.finished or output.finished and
-                                     generate_ids[-len(template.suffix[-1]):]
-                                     == template.suffix[-1]):
-                generate_ids = generate_ids[:-len(template.suffix[-1])]
-            response = tokenizer.decode(generate_ids, True)
-            if isinstance(template.suffix[-1],
-                          str) and (not output.finished or output.finished
-                                    and response[-len(template.suffix[-1]):]
-                                    == template.suffix[-1]):
-                response = response[:-len(template.suffix[-1])]
-            output.response = response
-
         if isinstance(request, ChatCompletionRequest):
             choices = []
             for output in result.outputs:
+                response = template.generate_ids_to_response(output.token_ids)
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
-                    message=ChatMessage(
-                        role='assistant', content=output.response),
+                    message=ChatMessage(role='assistant', content=response),
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
@@ -232,9 +215,10 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         else:
             choices = []
             for output in result.outputs:
+                response = template.generate_ids_to_response(output.token_ids)
                 choice = CompletionResponseChoice(
                     index=output.index,
-                    text=output.response,
+                    text=response,
                     finish_reason=output.finish_reason,
                 )
                 choices.append(choice)
@@ -247,7 +231,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         return response
 
     async def _generate_stream():
-        print_idx_list = [0] * request.n
+        print_idx_list = [[0] for _ in range(request.n)]
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
             num_generated_tokens = sum(
@@ -259,33 +243,15 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             )
 
             for output in result.outputs:
-                # avoid printing template.suffix[-1])
-                generate_ids = output.token_ids
-                if isinstance(
-                        template.suffix[-1],
-                        list) and (not output.finished() or output.finished()
-                                   and generate_ids[-len(template.suffix[-1]):]
-                                   == template.suffix[-1]):
-                    generate_ids = generate_ids[:-len(template.suffix[-1])]
-                response = tokenizer.decode(generate_ids, True)
-                if isinstance(
-                        template.suffix[-1],
-                        str) and (not output.finished() or output.finished()
-                                  and response[-len(template.suffix[-1]):]
-                                  == template.suffix[-1]):
-                    response = response[:-len(template.suffix[-1])]
-                # avoid printing incomplete words
-                text = response
-                new_print_idx = _get_safe_print_idx(
-                    text, print_idx_list[output.index], output.finished())
-                delta_text = text[print_idx_list[output.index]:new_print_idx]
-                print_idx_list[output.index] = new_print_idx
-                output.delta_text = delta_text
+                output.delta_text = template.generate_ids_to_response(
+                    output.token_ids,
+                    output.finished(),
+                    True,
+                    print_idx=print_idx_list[output.index])
 
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
-
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
                         delta=DeltaMessage(
