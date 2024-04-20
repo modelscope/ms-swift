@@ -106,11 +106,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     model, callbacks = prepare_model(model, args)
 
     show_layers(model)
+    logger.info(model)
     model_info = None
     if not is_deepspeed_zero3_enabled():
         model_info = get_model_info(model)
         logger.info(model_info)
-    logger.info(model)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36

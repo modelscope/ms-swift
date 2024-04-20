@@ -16,59 +16,6 @@ from .utils import (ExportArguments, Template, get_dataset,
 
 logger = get_logger()
 
-
-def prepare_awq_model_template(
-        args: ExportArguments) -> Tuple[PreTrainedModel, Template]:
-    from awq import AutoAWQForCausalLM
-    logger.info(f'device_count: {torch.cuda.device_count()}')
-    seed_everything(args.seed)
-
-    # Loading Model and Tokenizer
-    model_kwargs = {
-        'low_cpu_mem_usage': True,
-        'device_map': args.quant_device_map
-    }
-    model_id_or_path = None
-    if args.sft_type == 'full' and args.ckpt_dir is not None:
-        model_id_or_path = args.ckpt_dir
-    elif args.model_id_or_path is not None:
-        model_id_or_path = args.model_id_or_path
-    model, tokenizer = get_model_tokenizer(
-        args.model_type,
-        args.torch_dtype,
-        model_kwargs,
-        model_id_or_path=model_id_or_path,
-        revision=args.model_revision,
-        automodel_class=AutoAWQForCausalLM)
-    logger.info(f'model_config: {model.config}')
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
-    set_generation_config(model, generation_config)
-
-    logger.info(get_model_info(model))
-    show_layers(model)
-
-    template: Template = get_template(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        args.truncation_strategy,
-        model=model)
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
-    return model, template
-
-
 _args = None
 template = None
 
@@ -161,6 +108,7 @@ def gptq_model_quantize(model, tokenizer):
 def llm_export(args: ExportArguments) -> None:
     global _args, template
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     if args.to_peft_format:
         assert args.sft_type == 'lora'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
@@ -183,23 +131,24 @@ def llm_export(args: ExportArguments) -> None:
         logger.info(f'Setting quant_path: {quant_path}')
         assert not os.path.exists(quant_path), f'quant_path: {quant_path}'
         if args.quant_method == 'awq':
-            awq_model, template = prepare_awq_model_template(args)
+            from awq import AutoAWQForCausalLM
+            model, template = prepare_model_template(
+                args,
+                device_map=args.quant_device_map,
+                verbose=False,
+                automodel_class=AutoAWQForCausalLM)
             awq_model_quantize(awq_model, template.tokenizer)
-            logger.info(get_model_info(awq_model))
-            show_layers(awq_model)
-            logger.info('Saving quantized weights...')
-            awq_model.save_quantized(quant_path)
-            model_cache_dir = awq_model.model_dir
+            model.save_quantized(quant_path)
         else:  # gptq
             model, template = prepare_model_template(
-                args, device_map=args.quant_device_map)
+                args, device_map=args.quant_device_map, verbose=False)
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
-            logger.info(get_model_info(model))
-            show_layers(model)
-            logger.info('Saving quantized weights...')
             gptq_quantizer.save(model, quant_path)
-            model_cache_dir = model.model_dir
 
+        logger.info(get_model_info(model))
+        show_layers(model)
+        logger.info('Saving quantized weights...')
+        model_cache_dir = model.model_dir
         save_checkpoint(None, template.tokenizer, model_cache_dir,
                         args.ckpt_dir, quant_path)
         logger.info(
