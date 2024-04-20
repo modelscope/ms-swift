@@ -11,11 +11,16 @@
 实验环境：8 * 昇腾910B3 (设备由[@chuanzhubin](https://github.com/chuanzhubin)提供, 感谢对modelscope和swift的支持～)
 
 ```shell
-pip install torch-npu
-
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
+
+pip install torch-npu decorator
+pip install deepspeed
+
+# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+pip install -r requirements/framework.txt  -U
+pip install -r requirements/llm.txt  -U
 ```
 
 测试环境是否安装正确：

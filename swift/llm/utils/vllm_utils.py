@@ -280,11 +280,23 @@ def inference_stream_vllm(
         for output in step_outputs:
             i = int(output.request_id)
             request = request_list[i]
-            response = tokenizer.decode(output.outputs[0].token_ids, True)
+            generate_ids = output.outputs[0].token_ids
+            # avoid printing template.suffix[-1])
+            if isinstance(template.suffix[-1],
+                          list) and (not output.finished or output.finished and
+                                     generate_ids[-len(template.suffix[-1]):]
+                                     == template.suffix[-1]):
+                generate_ids = generate_ids[:-len(template.suffix[-1])]
+            response = tokenizer.decode(generate_ids, True)
+            if isinstance(template.suffix[-1],
+                          str) and (not output.finished or output.finished
+                                    and response[-len(template.suffix[-1]):]
+                                    == template.suffix[-1]):
+                response = response[:-len(template.suffix[-1])]
+            # avoid printing incomplete words
             print_idx_list[i] = _get_safe_print_idx(response,
                                                     print_idx_list[i],
                                                     output.finished)
-            # avoid printing incomplete words
             safe_response = response[:print_idx_list[i]]
             query = request['query']
             history = request['history']
@@ -382,7 +394,17 @@ def inference_vllm(llm_engine: LLMEngine,
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]
-        response = tokenizer.decode(output.outputs[0].token_ids, True)
+        generate_ids = output.outputs[0].token_ids
+        # avoid printing template.suffix[-1])
+        if (isinstance(template.suffix[-1], list)
+                and generate_ids[-len(template.suffix[-1]):]
+                == template.suffix[-1]):
+            generate_ids = generate_ids[:-len(template.suffix[-1])]
+        response = tokenizer.decode(generate_ids, True)
+        if isinstance(
+                template.suffix[-1], str
+        ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
+            response = response[:-len(template.suffix[-1])]
         query = request['query']
         history = request['history']
         if not is_observation:

@@ -635,8 +635,8 @@ def inference_stream(model: PreTrainedModel,
             response = response[cur_num_space - first_num_space:]
         if isinstance(template.suffix[-1], str):
             response = response[:-len(template.suffix[-1])]
-        print_idx = _get_safe_print_idx(response, print_idx)
         # avoid printing incomplete words
+        print_idx = _get_safe_print_idx(response, print_idx)
         if safe_response != response[:print_idx]:
             safe_response = response[:print_idx]
             if not is_observation:

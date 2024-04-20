@@ -10,11 +10,16 @@
 Experimental environment: 8 * Ascend 910B3 (The device is provided by [@chuanzhubin](https://github.com/chuanzhubin), thanks for the support to modelscope and swift ~)
 
 ```shell
-pip install torch-npu
-
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
+
+pip install torch-npu decorator
+pip install deepspeed
+
+# Align environment (usually not necessary to run. If you encounter errors, you can run the following code, the repository is tested with the latest environment)
+pip install -r requirements/framework.txt -U
+pip install -r requirements/llm.txt -U
 ```
 
 Verify the installation of the testing environment:

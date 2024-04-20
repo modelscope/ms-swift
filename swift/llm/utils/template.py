@@ -650,8 +650,7 @@ register_template(
 register_template(
     TemplateType.chatglm3,
     Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n'], [],
-             [[64795]], None,
-             [[64790, 64792, 64794], '\n {{SYSTEM}}']))
+             [[64795]], None, [[64790, 64792, 64794], '\n {{SYSTEM}}']))
 
 register_template(
     TemplateType.deepseek,
