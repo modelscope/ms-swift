@@ -9,7 +9,7 @@ swift sft \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset leetcode-python-en \
+    --dataset ms-bench \
     --train_dataset_sample -1 \
     --num_train_epochs 3 \
     --max_length 2048 \
