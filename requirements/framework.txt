@@ -1,6 +1,6 @@
 accelerate
 dacite
-datasets
+datasets<=2.18
 jieba
 matplotlib
 modelscope>=1.13.3
