@@ -119,7 +119,7 @@ class ArgumentsBase:
                 raise ValueError(f'args.dtype: {self.dtype}')
         # cuda, npu
         if self.dtype == 'AUTO':
-            if is_torch_bf16_gpu_available():
+            if not is_torch_bf16_gpu_available():
                 self.dtype = 'fp16'
             else:
                 model_torch_dtype = MODEL_MAPPING[self.model_type].get(
