@@ -1,18 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Tuple, Union
 
 import torch
-from datasets import concatenate_datasets
-from modelscope import GenerationConfig
-from transformers import PreTrainedModel
 
 from swift.utils import (get_logger, get_main, get_model_info, push_to_ms_hub,
                          seed_everything, show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import (ExportArguments, Template, get_dataset,
-                    get_model_tokenizer, get_template, set_generation_config,
-                    swift_to_peft_format)
+from .utils import ExportArguments, get_dataset, swift_to_peft_format
 
 logger = get_logger()
 
@@ -137,7 +131,7 @@ def llm_export(args: ExportArguments) -> None:
                 device_map=args.quant_device_map,
                 verbose=False,
                 automodel_class=AutoAWQForCausalLM)
-            awq_model_quantize(awq_model, template.tokenizer)
+            awq_model_quantize(model, template.tokenizer)
             model.save_quantized(quant_path)
         else:  # gptq
             model, template = prepare_model_template(
