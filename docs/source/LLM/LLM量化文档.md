@@ -42,6 +42,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --dataset ms-bench-mini --quant_method awq
 
 # gptq: 使用`ms-bench-mini`作为量化数据集
+# gptq量化请先查看此issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method gptq

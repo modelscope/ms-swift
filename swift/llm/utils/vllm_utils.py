@@ -14,8 +14,7 @@ from transformers import PreTrainedTokenizerBase
 from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
                   SamplingParams)
 
-from swift.tuners import Swift
-from swift.utils import get_logger, seed_everything
+from swift.utils import get_logger
 from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template

@@ -20,7 +20,6 @@ import numpy as np
 import requests
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 import transformers
 from accelerate.utils.modeling import (get_balanced_memory,
                                        infer_auto_device_map)
@@ -41,7 +40,7 @@ from transformers.utils import is_torch_npu_available, strtobool
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, stat_array, upper_bound,
+                         is_local_master, stat_array, upper_bound,
                          use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
