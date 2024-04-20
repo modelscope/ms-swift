@@ -19,7 +19,7 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 # Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # Align environment (usually don't need to run. If you get errors, you can run the code below, the repo tests with the latest environment)
 pip install -r requirements/framework.txt  -U

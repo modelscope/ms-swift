@@ -10,7 +10,7 @@
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 ```
 
 ## Inference
@@ -181,7 +181,6 @@ Full parameter fine-tuning:
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type llava1d6-mistral-7b-instruct \
     --dataset coco-mini-en-2 \
-    --train_dataset_sample -1 \
     --sft_type full \
     --deepspeed default-zero2
 
@@ -189,7 +188,6 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
     --model_type llava1d6-yi-34b-instruct \
     --dataset coco-mini-en-2 \
-    --train_dataset_sample -1 \
     --sft_type full \
 ```
 

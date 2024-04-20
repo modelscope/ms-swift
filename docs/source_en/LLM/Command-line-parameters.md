@@ -186,8 +186,8 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
-- `--custom_train_dataset_path`: Default is `[]`. See README.md `Custom Datasets` module for details.
-- `--custom_val_dataset_path`: Default is `[]`. See README.md `Custom Datasets` module for details.
+- `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
 - `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
@@ -242,6 +242,8 @@ The eval parameters inherit from the infer parameters, and additionally include 
 - `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
 
 - `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
+
+- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
 
 - `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
 

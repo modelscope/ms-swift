@@ -19,7 +19,7 @@ This introduces how to perform inference, self-cognition fine-tuning, quantizati
 
 ## Environment Preparation
 ```shell
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # autoawq version corresponds to cuda version, please choose based on `https://github.com/casper-hansen/AutoAWQ`
 pip install autoawq

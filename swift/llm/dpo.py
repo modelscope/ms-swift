@@ -55,6 +55,7 @@ def llm_dpo(args: DPOArguments) -> str:
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
+        revision=args.model_revision,
         **kwargs)
     if args.ref_model_type is not None:
         ref_model, _ = get_model_tokenizer(
@@ -62,6 +63,7 @@ def llm_dpo(args: DPOArguments) -> str:
             args.torch_dtype,
             model_kwargs,
             model_id_or_path=args.ref_model_id_or_path,
+            revision=args.model_revision,
             **kwargs)
     else:
         ref_model = None

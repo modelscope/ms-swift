@@ -25,7 +25,6 @@ import transformers
 from accelerate.utils.modeling import (get_balanced_memory,
                                        infer_auto_device_map)
 from datasets import Dataset as HfDataset
-from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
@@ -37,6 +36,7 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase, StoppingCriteriaList,
                           TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
+from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
@@ -92,20 +92,25 @@ def download_dataset(model_id: str,
     return local_dir
 
 
-_old_msdataset_load = MsDataset.load
+use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+if not use_hf:
+    from modelscope import MsDataset
+    _old_msdataset_load = MsDataset.load
 
+    @wraps(_old_msdataset_load)
+    def _msdataset_ddp_load(*args, **kwargs):
+        if is_dist() and not is_local_master():
+            dist.barrier()
+        dataset = _old_msdataset_load(*args, **kwargs)
+        if is_dist() and is_local_master():
+            dist.barrier()
 
-@wraps(_old_msdataset_load)
-def _msdataset_ddp_load(*args, **kwargs):
-    if is_dist() and not is_local_master():
-        dist.barrier()
-    dataset = _old_msdataset_load(*args, **kwargs)
-    if is_dist() and is_local_master():
-        dist.barrier()
+        if is_dist():
+            dist.barrier()
+        return dataset
 
-    if is_dist():
-        dist.barrier()
-    return dataset
+    # monkey patching
+    MsDataset.load = _msdataset_ddp_load
 
 
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
@@ -595,7 +600,14 @@ def inference_stream(model: PreTrainedModel,
         'stopping_criteria': stopping_criteria,
         **inputs
     }
-    thread = Thread(target=model.generate, kwargs=generation_kwargs)
+    _model_generate = model.generate
+    if is_torch_npu_available():
+
+        def _model_generate(*args, **kwargs):
+            torch.npu.set_device(model.device)
+            return model.generate(*args, **kwargs)
+
+    thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
     raw_generate_ids, generate_ids = [], []
     response, safe_response = '', ''
@@ -899,8 +911,6 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     return max_model_len
 
 
-# monkey patching
-MsDataset.load = _msdataset_ddp_load
 if is_ddp_plus_mp():
     _old_ddp_init = DDP.__init__
     accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (

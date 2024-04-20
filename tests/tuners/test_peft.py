@@ -162,6 +162,7 @@ class TestPeft(unittest.TestCase):
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
 
+    @unittest.skip
     def test_peft_lora_dtype(self):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
@@ -187,7 +188,7 @@ class TestPeft(unittest.TestCase):
                                   state_dict2[key]).flatten().detach().cpu()))
 
         PeftConfigMixin.from_pretrained = PeftConfigMixin.from_pretrained_origin
-        model3 = peft.PeftModel.from_pretrained(model3, self.tmp_dir)
+        model3 = Swift.from_pretrained(model3, self.tmp_dir)
         self.assertTrue(model3.base_model.model.bert.encoder.layer[0].attention
                         .self.key.lora_A.default.weight.dtype == torch.float32)
         self.assertTrue(

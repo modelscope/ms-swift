@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -32,7 +33,8 @@ class TemplateType:
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
-    llama = 'llama'
+    llama = 'llama'  # llama2
+    llama3 = 'llama3'
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
     openbuddy = 'openbuddy'
@@ -61,6 +63,9 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
+    wizardlm2_awq = 'wizardlm2-awq'
+    wizardlm2 = 'wizardlm2'
+    atom = 'atom'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -670,6 +675,16 @@ register_template(
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '],
              ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+register_template(
+    TemplateType.llama3,
+    Template(['<|begin_of_text|>'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ], ['<|eot_id|>'], ['<|eot_id|>'], None, [
+        '<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'
+    ]))
+
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
     'Always answer as helpfully and logically as possible, while being safe. '
@@ -711,6 +726,19 @@ register_template(
         ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
+def replace_img_tab(query: str, history: History,
+                    replace_token: str) -> Tuple[str, History, List[str]]:
+    images_path = []
+    pattern = r'<img>(.+?)</img>'
+    new_history = []
+    for i, h in enumerate(history):
+        images_path += re.findall(pattern, h[0])
+        new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
+    images_path += re.findall(pattern, query)
+    new_query = re.sub(pattern, replace_token, query)
+    return new_query, new_history, images_path
+
+
 class InternLMXComposer2(Template):
     INTERNLM_XCOMPOSER2_SYSTEM = (
         'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
@@ -736,26 +764,17 @@ class InternLMXComposer2(Template):
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        import re
-        images_path = []
         example = example.copy()
         history = example.pop('history', [])
-        pattern = r'<img>(.+?)</img>'
-        replace_token = '</s>'
-        new_history = []
-        for i, h in enumerate(history):
-            images_path += re.findall(pattern, h[0])
-            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-        history = new_history
-        images_path += re.findall(pattern, example['query'])
-        example['query'] = re.sub(pattern, replace_token, example['query'])
+        example['query'], example['history'], images_path = replace_img_tab(
+            example['query'], history, '</s>')
+
         images = []
         dtype = self.model.dtype
         for image_path in images_path:
             image = _read_from_path(image_path)
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
-        example['history'] = history
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
@@ -978,17 +997,26 @@ class DeepseekVLTemplate(Template):
         'and assist the user with a variety of tasks using natural language.')
 
     def __init__(self):
-        return super().__init__(
-            ['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
-            ['User: <image_placeholder>{{QUERY}}\n\nAssistant:'],
-            ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'],
-            self.DEEPSEEK_VL_SYSTEM)
+        return super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
+                                ['User: {{QUERY}}\n\nAssistant:'],
+                                ['<｜end▁of▁sentence｜>'],
+                                ['<｜end▁of▁sentence｜>'],
+                                self.DEEPSEEK_VL_SYSTEM)
 
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        images = example.pop('images', None)
+        assert images is None, (
+            'Please read the best practices: https://github.com/modelscope/swift/blob/main/'
+            'docs/source/Multi-Modal/deepseek-vl最佳实践.md')
+
+        example = example.copy()
+        history = example.pop('history', [])
+        example['query'], example['history'], images_path = replace_img_tab(
+            example['query'], history, '<image_placeholder>')
+
         inputs, _ = super().encode(example)
-        images_path = example['images']
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1065,7 +1093,6 @@ register_template(
     DeepseekVLTemplate(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)  # only 'cpu' can pin_memory
 
@@ -1362,6 +1389,25 @@ register_template(
     infer_media_type='round',
     use_model=True,
     lazy_tokenize=True)
+
+register_template(
+    TemplateType.wizardlm2_awq,
+    Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'],
+             ['</s>']))
+
+_wizardlm2_system = (
+    'A chat between a curious user and an artificial intelligence assistant. '
+    'The assistant gives helpful, detailed, and polite answers to the user\'s questions. '
+)
+register_template(
+    TemplateType.wizardlm2,
+    Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'],
+             ['</s>'], _wizardlm2_system))
+
+register_template(
+    TemplateType.atom,
+    Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '],
+             ['</s>'], ['</s>']))
 
 
 def get_template(
