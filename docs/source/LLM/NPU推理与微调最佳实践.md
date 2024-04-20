@@ -72,7 +72,7 @@ Legend:
   NA   = Unknown relationship.
 
 ```
-查看NPU状态, 
+查看NPU状态,
 [npu-smi命令详解](https://support.huawei.com/enterprise/zh/doc/EDOC1100079287/10dcd668)
 ```shell
 (valle) root@valle:~/src# npu-smi info
@@ -124,7 +124,7 @@ Legend:
 | 14B  | 8     | zero3       | 8 * 31 GB |
 ### 单卡训练
 
-通过如下命令启动单卡微调：
+通过如下命令启动单卡微调:
 
 ```shell
 # 实验环境: 昇腾910B3
