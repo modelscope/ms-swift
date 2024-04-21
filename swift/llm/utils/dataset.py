@@ -1112,7 +1112,13 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
-
+def _repair_planner(conversations:list)->list:
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
+    if len(conversations) == 2 and conversations[0]['from'] != 'user':
+        conversations[0]['from'] = 'user'
+    return conversations
+    
 register_dataset(
     DatasetName.capcha_images,
     'AI-ModelScope/captcha-images', [('default', 'train')],
@@ -1175,8 +1181,7 @@ register_dataset(
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_planner,
     'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
-    None,
-    ConversationsPreprocessor(),
+    ConversationsPreprocessor('system',repair_conversations=_repair_planner, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['agent'])
 
