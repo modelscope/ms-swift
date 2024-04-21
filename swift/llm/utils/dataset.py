@@ -237,8 +237,14 @@ def load_ms_dataset(
             subset_split = ('default', subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
+        force_redownload = strtobool(
+            os.environ.get('FORCE_REDOWNLOAD', 'False'))
+        download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         dataset = MsDataset.load(
-            dataset_id, subset_name=subset_name, split=split)
+            dataset_id,
+            subset_name=subset_name,
+            split=split,
+            download_mode=download_mode)
         if hasattr(dataset, 'to_hf_dataset'):
             dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)

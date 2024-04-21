@@ -1,5 +1,5 @@
 # LLM量化文档
-swift支持使用awq, gptq技术对模型进行量化. 这两种量化技术支持vllm进行推理加速.
+swift支持使用awq, gptq技术对模型进行量化. 这两种量化技术支持vllm进行推理加速, 且量化后的模型支持qlora微调.
 
 
 ## 目录
@@ -32,9 +32,9 @@ pip install -r requirements/llm.txt  -U
 ## 原始模型
 这里展示对qwen1half-7b-chat进行awq, gptq量化.
 ```bash
-# awq-int4量化 (使用A100大约需要18分钟, 显存占用: 12GB)
+# awq-int4量化 (使用A100大约需要18分钟, 显存占用: 13GB)
 # 如果出现量化的时候OOM, 可以适度降低`--quant_n_samples`(默认256)和`--quant_seqlen`(默认2048).
-# gptq-int4量化 (使用A100大约需要15分钟, 显存占用: 6GB)
+# gptq-int4量化 (使用A100大约需要20分钟, 显存占用: 7GB)
 
 # awq: 使用`ms-bench-mini`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
@@ -42,7 +42,8 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --dataset ms-bench-mini --quant_method awq
 
 # gptq: 使用`ms-bench-mini`作为量化数据集
-CUDA_VISIBLE_DEVICES=0 swift export \
+# gptq量化请先查看此issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
+OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method gptq
 

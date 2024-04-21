@@ -115,6 +115,7 @@ class ModelType:
     chatglm3_6b_base = 'chatglm3-6b-base'
     chatglm3_6b = 'chatglm3-6b'
     chatglm3_6b_32k = 'chatglm3-6b-32k'
+    chatglm3_6b_128k = 'chatglm3-6b-128k'
     codegeex2_6b = 'codegeex2-6b'
     # llama2
     llama2_7b = 'llama2-7b'
@@ -532,30 +533,35 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     'xverse/XVERSE-13B-Chat',
     LoRATM.llama2,
     TemplateType.xverse,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-13B-Chat')
 @register_model(
     ModelType.xverse_13b,
     'xverse/XVERSE-13B',
     LoRATM.llama2,
     TemplateType.default_generation,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-13B')
 @register_model(
     ModelType.xverse_65b,
     'xverse/XVERSE-65B',
     LoRATM.llama2,
     TemplateType.default_generation,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-65B')
 @register_model(
     ModelType.xverse_65b_v2,
     'xverse/XVERSE-65B-2',
     LoRATM.llama2,
     TemplateType.default_generation,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-65B-2')
 @register_model(
     ModelType.xverse_65b_chat,
     'xverse/XVERSE-65B-Chat',
     LoRATM.llama2,
     TemplateType.xverse,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-65B-Chat')
 @register_model(
     ModelType.xverse_13b_256k,
@@ -563,18 +569,21 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     LoRATM.llama2,
     TemplateType.default_generation,
     revision='v1.0.0',
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-13B-256K')
 @register_model(
     ModelType.xverse_7b_chat,
     'xverse/XVERSE-7B-Chat',
     LoRATM.llama2,
     TemplateType.xverse,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-7B-Chat')
 @register_model(
     ModelType.xverse_7b,
     'xverse/XVERSE-7B',
     LoRATM.llama2,
     TemplateType.default_generation,
+    support_vllm=True,
     hf_model_id='xverse/XVERSE-7B')
 @register_model(
     ModelType.xverse_moe_a4_2b,
@@ -1043,6 +1052,13 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase],
     support_vllm=True,
     hf_model_id='THUDM/chatglm3-6b-32k')
 @register_model(
+    ModelType.chatglm3_6b_128k,
+    'ZhipuAI/chatglm3-6b-128k',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True,
+    hf_model_id='THUDM/chatglm3-6b-128k')
+@register_model(
     ModelType.chatglm3_6b,
     'ZhipuAI/chatglm3-6b',
     LoRATM.chatglm,
@@ -1279,7 +1295,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'],
+    requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B')
 @register_model(
     ModelType.deepseek_coder_1_3b,
@@ -1846,7 +1862,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'],
+    requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B-Chat')
 @register_model(
     ModelType.codeqwen1half_7b_chat,
@@ -2010,7 +2026,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     'qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4',
     LoRATM.qwen1half,
     TemplateType.qwen,
-    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
@@ -3421,14 +3437,15 @@ def get_model_tokenizer_llava(model_dir: str,
         automodel_class=automodel_class,
         **kwargs)
 
-    model.resize_token_embeddings(len(tokenizer))
-    vision_tower = model.get_vision_tower()
-    device_map = str(model_kwargs.get('device_map', str(model.device)))
-    if not vision_tower.is_loaded:
-        vision_tower.load_model(device_map=device_map)
-    if not hasattr(model.config, 'max_sequence_length'):
-        model.config.max_sequence_length = 2048
-    _patch_llava(model)
+    if model is not None:
+        model.resize_token_embeddings(len(tokenizer))
+        vision_tower = model.get_vision_tower()
+        device_map = str(model_kwargs.get('device_map', str(model.device)))
+        if not vision_tower.is_loaded:
+            vision_tower.load_model(device_map=device_map)
+        if not hasattr(model.config, 'max_sequence_length'):
+            model.config.max_sequence_length = 2048
+        _patch_llava(model)
     return model, tokenizer
 
 

@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Iterator, Tuple
 
-from swift.utils import get_logger, get_main
+from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import (AppUIArguments, History, inference_stream,
                     limit_history_length)
@@ -110,6 +110,7 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
 
 def llm_app_ui(args: AppUIArguments) -> None:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     args.eval_human = True
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)

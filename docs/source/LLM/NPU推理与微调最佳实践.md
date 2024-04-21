@@ -8,12 +8,13 @@
 
 ## 环境准备
 
-实验环境：8 * 昇腾910B3 64G
+实验环境：8 * 昇腾910B3 64G (设备由[@chuanzhubin](https://github.com/chuanzhubin)提供, 感谢对modelscope和swift的支持～)
 
 ```shell
 # 创建新的conda虚拟环境(可选)
-conda create -n npu python=3.10.12 -y
-conda activate npu
+conda create -n swift-npu python=3.10 -y
+conda activate swift-npu
+
 # 设置pip全局镜像 (可选,加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 
@@ -21,34 +22,28 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
-# 安装torch-npu
-pip install torch-npu
-# 如果你想要使用deepspeed(控制显存占用,训练速度会有一定下降)
-pip install deepspeed -U
-# datasets==2.19.0不向下兼容,需指定安装2.18.0版本
-pip install datasets==2.18.0
-# 安装依赖缺失的包
-pip install decorator
 
-# 环境对齐 (可选,通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
+# 安装torch-npu
+pip install torch-npu decorator
+# 如果你想要使用deepspeed (控制显存占用,训练速度会有一定下降)
+pip install deepspeed
+
+# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
-
 ```
 
-测试环境是否安装正确,NPU能否被正常加载：
+测试环境是否安装正确，NPU能否被正常加载：
 ```python
 from transformers.utils import is_torch_npu_available
 import torch
-import torch_npu
-
-torch.randn((10,), device='npu:0')
-torch.npu.set_device(0)
 
 print(is_torch_npu_available())  # True
 print(torch.npu.device_count())  # 8
+print(torch.randn(10, device='npu:0'))
 ```
-查看NPU的P2P连接,这里看到每个NPU都通过7条HCCS与其他NPU互联
+
+查看NPU的P2P连接，这里看到每个NPU都通过7条HCCS与其他NPU互联
 ```shell
 (valle) root@valle:~/src# npu-smi info -t topo
 	   NPU0       NPU1       NPU2       NPU3       NPU4       NPU5       NPU6       NPU7       CPU Affinity
@@ -70,10 +65,9 @@ Legend:
   PXB  = Path traversing multipul PCIe switches
   HCCS = Connection traversing HCCS.
   NA   = Unknown relationship.
-
 ```
-查看NPU状态,
-[npu-smi命令详解](https://support.huawei.com/enterprise/zh/doc/EDOC1100079287/10dcd668)
+
+查看NPU状态, npu-smi命令详解可以查看[官方文档](https://support.huawei.com/enterprise/zh/doc/EDOC1100079287/10dcd668)
 ```shell
 (valle) root@valle:~/src# npu-smi info
 +------------------------------------------------------------------------------------------------+
@@ -106,8 +100,8 @@ Legend:
 | 7     910B3               | OK            | 98.2        44                0    / 0             |
 | 0                         | 0000:42:00.0  | 0           0    / 0          3315 / 65536         |
 +===========================+===============+====================================================+
-
 ```
+
 ## 微调
 以下介绍LoRA的微调, 全参数微调设置参数`--sft_type full`即可.
 
@@ -122,6 +116,7 @@ Legend:
 | 14B  | 8     | None        | 8 * 51 GB |
 | 14B  | 8     | zero2       | 8 * 49 GB |
 | 14B  | 8     | zero3       | 8 * 31 GB |
+
 ### 单卡训练
 
 通过如下命令启动单卡微调:
@@ -140,7 +135,8 @@ swift sft \
 ```
 
 
-### 数据并行训练,4卡ddp, qwen1.5-7B-Chat
+### 数据并行训练
+我们使用其中的4卡进行ddp训练
 
 ```shell
 # 实验环境: 4 * 昇腾910B3
