@@ -1,5 +1,5 @@
 # LLM Quantization Documentation
-Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration.
+Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration, and the quantized models also support QLORA fine-tuning.
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
