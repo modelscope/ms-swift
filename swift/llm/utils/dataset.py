@@ -1181,7 +1181,7 @@ register_dataset(
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_planner,
     'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
-    ConversationsPreprocessor('system',repair_conversations=_repair_planner, error_strategy='delete'),
+    ConversationsPreprocessor(repair_conversations=_repair_planner, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['agent'])
 
