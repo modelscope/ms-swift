@@ -137,6 +137,7 @@ def llm_export(args: ExportArguments) -> None:
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map, verbose=False)
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
+            model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, quant_path)
 
         logger.info(get_model_info(model))
