@@ -1170,7 +1170,7 @@ register_dataset(
     None,
     ConversationsPreprocessor('system', system_role=None),
     get_dataset_from_repo,
-    tags=['agent'])
+    tags=['chat', 'agent'])
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_caller,
@@ -1178,7 +1178,7 @@ register_dataset(
     None,
     ConversationsPreprocessor('system', 'caller', None),
     get_dataset_from_repo,
-    tags=['agent'])
+    tags=['chat', 'agent'])
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_planner,
@@ -1187,7 +1187,7 @@ register_dataset(
     ConversationsPreprocessor(
         repair_conversations=_repair_planner, error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['agent'])
+    tags=['chat', 'agent'])
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi_summarizer,
@@ -1195,7 +1195,7 @@ register_dataset(
     None,
     ConversationsPreprocessor('system', 'conclusion', None),
     get_dataset_from_repo,
-    tags=['agent'])
+    tags=['chat', 'agent'])
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
