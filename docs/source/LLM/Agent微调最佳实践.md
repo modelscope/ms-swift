@@ -440,7 +440,7 @@ print()
 
 
 ### 微调
-将`dataset`换为`ms-agent-for-agentfabric`和`ms-agent-for-agentfabric-default`
+将`dataset`换为`ms-agent-for-agentfabric-default`和`ms-agent-for-agentfabric-addition`
 ```shell
 # Experimental environment: 8GPU
 nproc_per_node=8
