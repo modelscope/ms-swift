@@ -14,7 +14,9 @@ GPU设备: A10, 3090, V100, A100均可.
 # 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 
 # 使用awq量化:
 # autoawq和cuda版本有对应关系，请按照`https://github.com/casper-hansen/AutoAWQ`选择版本
@@ -209,6 +211,14 @@ curl http://localhost:8000/v1/chat/completions \
 假设你使用lora微调了qwen1half-4b-chat, 模型权重目录为: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
 
 ```shell
+# 推送原始量化模型
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat \
+    --model_id_or_path qwen1half-7b-chat-gptq-int4 \
+    --push_to_hub true \
+    --hub_model_id qwen1half-7b-chat-gptq-int4 \
+    --hub_token '<your-sdk-token>'
+
 # 推送lora增量模型
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \

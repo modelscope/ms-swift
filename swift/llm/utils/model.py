@@ -128,8 +128,15 @@ class ModelType:
     # llama3
     llama3_8b = 'llama3-8b'
     llama3_8b_instruct = 'llama3-8b-instruct'
+    llama3_8b_instruct_int4 = 'llama3-8b-instruct-int4'
+    llama3_8b_instruct_int8 = 'llama3-8b-instruct-int8'
+    llama3_8b_instruct_awq = 'llama3-8b-instruct-awq'
     llama3_70b = 'llama3-70b'
     llama3_70b_instruct = 'llama3-70b-instruct'
+    llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
+    llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
+    llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
+
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -2369,6 +2376,66 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.llama3_70b_instruct_awq,
+    'huangjintao/Meta-Llama-3-70B-Instruct-AWQ',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_70b_instruct_int8,
+    'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_70b_instruct_int4,
+    'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_8b_instruct_awq,
+    'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_8b_instruct_int8,
+    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_8b_instruct_int4,
+    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
 @register_model(
     ModelType.llama3_70b_instruct,
     'LLM-Research/Meta-Llama-3-70B-Instruct',
