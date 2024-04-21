@@ -21,12 +21,12 @@ logger = get_logger()
 
 def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     training_args = args.training_args
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
-    seed_everything(args.seed)
 
     # Loading Model and Tokenizer
     if is_deepspeed_zero3_enabled():

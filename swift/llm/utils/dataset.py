@@ -237,8 +237,14 @@ def load_ms_dataset(
             subset_split = ('default', subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
+        force_redownload = strtobool(
+            os.environ.get('FORCE_REDOWNLOAD', 'False'))
+        download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         dataset = MsDataset.load(
-            dataset_id, subset_name=subset_name, split=split)
+            dataset_id,
+            subset_name=subset_name,
+            split=split,
+            download_mode=download_mode)
         if hasattr(dataset, 'to_hf_dataset'):
             dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
@@ -559,7 +565,8 @@ def _repair_agent_conversations(conversations: str,
 
 
 def _repair_ms_bench(conversations: str) -> Dict[str, str]:
-    conversations = ast.literal_eval(conversations)
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
     if conversations[0]['from'] == 'system' and conversations[0][
             'value'] == default_system:

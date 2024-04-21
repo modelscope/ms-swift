@@ -7,7 +7,7 @@ import json
 from llmuses.models.custom import CustomModel
 from modelscope import GenerationConfig
 
-from swift.utils import get_logger, get_main
+from swift.utils import get_logger, get_main, seed_everything
 from . import EvalArguments, inference, merge_lora, prepare_model_template
 
 logger = get_logger()
@@ -196,6 +196,8 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
 
 
 def llm_eval(args: EvalArguments) -> None:
+    logger.info(f'args: {args}')
+    seed_everything(args.seed)
     model_name = args.model_type
     if args.name:
         model_name += f'-{args.name}'

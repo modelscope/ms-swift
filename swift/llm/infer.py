@@ -15,9 +15,8 @@ from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info,
                          read_multi_line, seed_everything, show_layers)
-from .utils import (TEMPLATE_MAPPING, InferArguments, Template,
-                    get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, inference,
+from .utils import (InferArguments, Template, get_additional_saved_files,
+                    get_dataset, get_model_tokenizer, get_template, inference,
                     inference_stream, is_adapter, set_generation_config)
 
 logger = get_logger()
@@ -89,67 +88,43 @@ def merge_lora(args: InferArguments,
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
-    old_ckpt_dir = args.ckpt_dir
     ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
     merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
     logger.info(f'merged_lora_path: `{merged_lora_path}`')
-    logger.info("Setting args.sft_type: 'full'")
-    logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
-    args.sft_type = 'full'
-    args.ckpt_dir = merged_lora_path
-    if os.path.exists(args.ckpt_dir) and not replace_if_exists:
+    if os.path.exists(merged_lora_path) and not replace_if_exists:
         logger.info(
             f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
             'skipping the saving process. '
             'you can pass `replace_if_exists=True` to overwrite it.')
-        return
-
-    model_kwargs = {}
-    if is_torch_npu_available():
-        logger.info(f'device_count: {torch.npu.device_count()}')
-        if device_map is None:
-            device_map = 'npu:0'
     else:
-        logger.info(f'device_count: {torch.cuda.device_count()}')
-        if device_map is None:
-            device_map = 'auto'
-    if device_map == 'auto':
-        model_kwargs['low_cpu_mem_usage'] = True
-    model_kwargs['device_map'] = device_map
-
-    # Loading Model and Tokenizer
-    model_id_or_path = None
-    if args.model_id_or_path is not None:
-        model_id_or_path = args.model_id_or_path
-    model, tokenizer = get_model_tokenizer(
-        args.model_type,
-        args.torch_dtype,
-        model_kwargs,
-        model_id_or_path=model_id_or_path,
-        revision=args.model_revision)
-    logger.info(f'model_config: {model.config}')
-
-    # Preparing LoRA
-    model = Swift.from_pretrained(model, old_ckpt_dir, inference_mode=True)
-    Swift.merge_and_unload(model)
-    model = model.model
-    logger.info('Saving merged weights...')
-    save_checkpoint(
-        model,
-        tokenizer,
-        model.model_dir,
-        old_ckpt_dir,
-        merged_lora_path,
-        save_safetensors=args.save_safetensors)
-    logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
+        model, template = prepare_model_template(
+            args, device_map=args.merge_device_map, verbose=False)
+        logger.info('Merge lora...')
+        Swift.merge_and_unload(model)
+        model = model.model
+        logger.info('Saving merged weights...')
+        save_checkpoint(
+            model,
+            template.tokenizer,
+            model.model_dir,
+            args.ckpt_dir,
+            merged_lora_path,
+            save_safetensors=args.save_safetensors)
+        logger.info(
+            f'Successfully merged LoRA and saved in {merged_lora_path}.')
+    logger.info("Setting args.sft_type: 'full'")
+    logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
+    args.sft_type = 'full'
+    args.ckpt_dir = merged_lora_path
     return merged_lora_path
 
 
 def prepare_model_template(
         args: InferArguments,
-        device_map: Optional[str] = None) -> Tuple[PreTrainedModel, Template]:
-
-    seed_everything(args.seed)
+        *,
+        device_map: Optional[str] = None,
+        verbose: bool = True,
+        automodel_class=None) -> Tuple[PreTrainedModel, Template]:
 
     model_kwargs = {}
     if is_torch_npu_available():
@@ -184,6 +159,8 @@ def prepare_model_template(
         model_id_or_path = args.ckpt_dir
     elif args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
+    if automodel_class is not None:
+        kwargs['automodel_class'] = automodel_class
 
     model, tokenizer = get_model_tokenizer(
         args.model_type,
@@ -192,7 +169,22 @@ def prepare_model_template(
         model_id_or_path=model_id_or_path,
         revision=args.model_revision,
         **kwargs)
-    logger.info(f'model_config: {model.config}')
+    if verbose:
+        logger.info(f'model_config: {model.config}')
+
+    generation_config = GenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        do_sample=args.do_sample,
+        repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id)
+    logger.info(f'generation_config: {generation_config}')
+    set_generation_config(model, generation_config)
+
     if model.max_model_len is None:
         model.max_model_len = args.max_model_len
     elif args.max_model_len is not None:
@@ -210,21 +202,10 @@ def prepare_model_template(
         if args.sft_type == 'adalora':
             model = model.to(model.dtype)
 
+    if verbose:
+        show_layers(model)
+        logger.info(model)
     logger.info(get_model_info(model))
-    show_layers(model)
-
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
-    set_generation_config(model, generation_config)
 
     template: Template = get_template(
         args.template_type,
@@ -255,6 +236,7 @@ def read_media_file(
 
 def llm_infer(args: InferArguments) -> None:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':

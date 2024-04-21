@@ -119,7 +119,7 @@ class ArgumentsBase:
                 raise ValueError(f'args.dtype: {self.dtype}')
         # cuda, npu
         if self.dtype == 'AUTO':
-            if is_torch_bf16_gpu_available():
+            if not is_torch_bf16_gpu_available():
                 self.dtype = 'fp16'
             else:
                 model_torch_dtype = MODEL_MAPPING[self.model_type].get(
@@ -653,7 +653,10 @@ class SftArguments(ArgumentsBase):
         world_size = 1
         if is_dist():
             rank, local_rank, world_size, _ = get_dist_setting()
-            torch.cuda.set_device(local_rank)
+            if is_torch_npu_available():
+                torch.npu.set_device(local_rank)
+            else:
+                torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
@@ -1168,7 +1171,7 @@ class ExportArguments(InferArguments):
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
     quant_method: Literal['awq', 'gptq'] = 'awq'
-    quant_n_samples: Optional[int] = None
+    quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
@@ -1193,14 +1196,6 @@ class ExportArguments(InferArguments):
         if len(self.dataset) == 0:
             self.dataset = ['ms-bench-mini']
             logger.info(f'Setting args.dataset: {self.dataset}')
-        if self.quant_n_samples is None:
-            if self.quant_method == 'awq':
-                self.quant_n_samples = 256
-            elif self.quant_method == 'gptq':
-                self.quant_n_samples = 1024
-            else:
-                raise ValueError(
-                    f'args.quant_n_samples: {self.quant_n_samples}')
 
 
 @dataclass

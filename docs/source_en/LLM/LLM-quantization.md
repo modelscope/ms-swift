@@ -1,5 +1,5 @@
 # LLM Quantization Documentation
-Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration.
+Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration, and the quantized models also support QLORA fine-tuning.
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -29,9 +29,9 @@ pip install -r requirements/llm.txt -U
 ## Original Model
 Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 ```bash
-# AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 12GB)
+# AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 13GB)
 # If OOM occurs during quantization, you can appropriately reduce `--quant_n_samples` (default 256) and `--quant_seqlen` (default 2048).
-# GPTQ-INT4 quantization (takes about 15 minutes using A100, memory usage: 6GB)
+# GPTQ-INT4 quantization (takes about 20 minutes using A100, memory usage: 7GB)
 
 # AWQ: Use `ms-bench-mini` as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
@@ -39,7 +39,8 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --dataset ms-bench-mini --quant_method awq
 
 # GPTQ: Use `ms-bench-mini` as the quantization dataset
-CUDA_VISIBLE_DEVICES=0 swift export \
+# For GPTQ quantization, please first refer to this issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
+OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method gptq
 

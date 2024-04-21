@@ -52,7 +52,16 @@ def cli_main() -> None:
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
     if torchrun_args is None or method_name not in ('sft', 'dpo'):
-        args = ['python', file_path, *argv]
+        try:
+            python_cmd = 'python'
+            subprocess.run(
+                [python_cmd, '--version'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            python_cmd = 'python3'
+        args = [python_cmd, file_path, *argv]
     else:
         args = ['torchrun', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)

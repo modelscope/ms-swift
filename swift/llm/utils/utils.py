@@ -20,7 +20,6 @@ import numpy as np
 import requests
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 import transformers
 from accelerate.utils.modeling import (get_balanced_memory,
                                        infer_auto_device_map)
@@ -36,12 +35,12 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase, StoppingCriteriaList,
                           TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
-from transformers.utils import strtobool
+from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, stat_array, upper_bound,
+                         is_local_master, stat_array, upper_bound,
                          use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
@@ -432,38 +431,10 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
     return llm_dataset.select(idx)
 
 
-def _is_chinese_char(cp):
-    """Checks whether CP is the codepoint of a CJK character."""
-    # copy from transformers.generation.streamers.TextStreamer
-    if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF)
-            or (cp >= 0x20000 and cp <= 0x2A6DF)
-            or (cp >= 0x2A700 and cp <= 0x2B73F)
-            or (cp >= 0x2B740 and cp <= 0x2B81F)
-            or (cp >= 0x2B820 and cp <= 0x2CEAF)
-            or (cp >= 0xF900 and cp <= 0xFAFF)
-            or (cp >= 0x2F800 and cp <= 0x2FA1F)):
-        return True
-
-    return False
-
-
-def _get_safe_print_idx(response: str,
-                        print_idx: int,
-                        is_finished: bool = False) -> int:
-    if is_finished:
-        return len(response)
-    if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
-            ord(response[-1])):
-        print_idx = len(response)
-    else:
-        print_idx = max(response.rfind(' ') + 1, print_idx)
-    return print_idx
-
-
 def to_device(inputs: Any, device: Device) -> Any:
     if callable(getattr(inputs, 'to', None)):
         return inputs.to(device=device)
-    #
+
     if isinstance(inputs, Mapping):
         res = {}
         for k, v in inputs.items():
@@ -600,63 +571,45 @@ def inference_stream(model: PreTrainedModel,
         'stopping_criteria': stopping_criteria,
         **inputs
     }
-    thread = Thread(target=model.generate, kwargs=generation_kwargs)
+    _model_generate = model.generate
+    if is_torch_npu_available():
+
+        def _model_generate(*args, **kwargs):
+            torch.npu.set_device(model.device)
+            return model.generate(*args, **kwargs)
+
+    thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
     raw_generate_ids, generate_ids = [], []
-    response, safe_response = '', ''
-    print_idx = 0
+
     if not is_observation:
         history.append(None)  # dummy
-    # Avoid the occurrence of repeated words in sentence.
-    first_num_space = -1
-    for token in streamer:
-        raw_generate_ids.append(token)
+
+    print_idx = [0]
+    first_num_space = [-1]
+
+    is_finished = False
+    while not is_finished:
+        try:
+            token = next(streamer)
+            raw_generate_ids.append(token)
+        except StopIteration:
+            is_finished = True
         generate_ids = template.get_generate_ids(
             torch.tensor(raw_generate_ids)[None], token_len)
         if generation_info is not None:
             generation_info['num_generated_tokens'] = len(generate_ids)
-        # avoid printing template.suffix[-1])
-        if isinstance(template.suffix[-1], list):
-            generate_ids = generate_ids[:-len(template.suffix[-1])]
-        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-        cur_num_space = len(response) - len(response.lstrip(' '))
-        if first_num_space == -1:
-            first_num_space = cur_num_space
-        if cur_num_space < first_num_space:
-            response = ' ' * (first_num_space - cur_num_space) + response
-        elif cur_num_space > first_num_space:
-            response = response[cur_num_space - first_num_space:]
-        if isinstance(template.suffix[-1], str):
-            response = response[:-len(template.suffix[-1])]
-        print_idx = _get_safe_print_idx(response, print_idx)
-        # avoid printing incomplete words
-        if safe_response != response[:print_idx]:
-            safe_response = response[:print_idx]
-            if not is_observation:
-                history[-1] = [query, safe_response]
-            else:
-                history[-1][-1] = history[-1][-1][:act_length] + safe_response
-            yield safe_response, history
-    # avoid printing template.suffix[-1])
-    if (isinstance(template.suffix[-1], list) and
-            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
-        generate_ids = generate_ids[:-len(template.suffix[-1])]
-    response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-    if first_num_space > -1:
-        cur_num_space = len(response) - len(response.lstrip(' '))
-        if cur_num_space < first_num_space:
-            response = ' ' * (first_num_space - cur_num_space) + response
-        elif cur_num_space > first_num_space:
-            response = response[cur_num_space - first_num_space:]
-    if isinstance(
-            template.suffix[-1], str
-    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
-        response = response[:-len(template.suffix[-1])]
-    if not is_observation:
-        history[-1] = [query, response]
-    else:
-        history[-1][-1] = history[-1][-1][:act_length] + response
-    yield response, history
+        response = template.generate_ids_to_response(
+            generate_ids,
+            is_finished,
+            tokenizer_kwargs=tokenizer_kwargs,
+            print_idx=print_idx,
+            first_num_space=first_num_space)
+        if not is_observation:
+            history[-1] = [query, response]
+        else:
+            history[-1][-1] = history[-1][-1][:act_length] + response
+        yield response, history
 
 
 def inference(model: PreTrainedModel,
@@ -772,17 +725,8 @@ def inference(model: PreTrainedModel,
     if verbose and stream is False:
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
-    # avoid printing template.suffix[-1])
-    if (isinstance(template.suffix[-1], list) and
-            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
-        generate_ids = generate_ids[:-len(template.suffix[-1])]
-        response = None
-    if response is None:
-        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-    if isinstance(
-            template.suffix[-1], str
-    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
-        response = response[:-len(template.suffix[-1])]
+    response = template.generate_ids_to_response(
+        generate_ids, tokenizer_kwargs=tokenizer_kwargs)
     if not is_observation:
         history.append([query, response])
     else:

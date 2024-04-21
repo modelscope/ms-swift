@@ -5,6 +5,8 @@
 1. [自我认知微调最佳实践](自我认知微调最佳实践.md)
 2. [Agent训练与通用数据混合最佳实践](Agent微调最佳实践.md)
 3. [Qwen1.5全流程最佳实践](Qwen1.5全流程最佳实践.md)
+4. [NPU推理与微调最佳实践](NPU推理与微调最佳实践.md)
+5. [Grok-1训练和推理最佳实践](Grok训练和推理.md)
 
 
 ### 🍀Multi-Modal最佳实践系列
@@ -17,8 +19,11 @@
 2. [LLM微调文档](LLM微调文档.md)
 3. [DPO训练文档](LLM人类对齐训练文档.md)
 4. [界面训练与推理](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md)
-5. [LLM量化文档](LLM量化文档.md)
-6. [VLLM推理加速与部署](VLLM推理加速与部署.md)
+5. [LLM评测文档](LLM评测文档.md)
+6. [LLM量化文档](LLM量化文档.md)
+7. [VLLM推理加速与部署](VLLM推理加速与部署.md)
+8. [LLM实验文档](LLM实验文档.md)
+
 
 ### 🐔参考文档
 1. [自定义模型和数据集](自定义与拓展.md)
