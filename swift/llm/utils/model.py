@@ -655,6 +655,22 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_flash_attn=True,
     hf_model_id='hfl/chinese-llama-2-1.3b')
 @register_model(
+    ModelType.chinese_llama_2_7b,
+    'AI-ModelScope/chinese-llama-2-7b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-7b')
+@register_model(
+    ModelType.chinese_llama_2_13b,
+    'AI-ModelScope/chinese-llama-2-13b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-13b')
+@register_model(
     ModelType.chinese_alpaca_2_1_3b,
     'AI-ModelScope/chinese-alpaca-2-1.3b',
     LoRATM.llama2,
@@ -662,6 +678,14 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_vllm=True,
     support_flash_attn=True,
     hf_model_id='hfl/chinese-alpaca-2-1.3b')
+@register_model(
+    ModelType.chinese_alpaca_2_7b,
+    'AI-ModelScope/chinese-alpaca-2-7b',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b')
 @register_model(
     ModelType.chinese_alpaca_2_13b,
     'AI-ModelScope/chinese-alpaca-2-13b',
