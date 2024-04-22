@@ -136,7 +136,13 @@ class ModelType:
     llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
     llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
     llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
-
+    # chinese-llama-alpaca-2
+    chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
+    chinese_llama_2_7b = 'chinese-llama-2-7b'
+    chinese_llama_2_13b = 'chinese-llama-2-13b'
+    chinese_alpaca_2_1_3b = 'chinese-alpaca-2-1_3b'
+    chinese_alpaca_2_7b = 'chinese-alpaca-2-7b'
+    chinese_alpaca_2_13b = 'chinese-alpaca-2-13b'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -640,6 +646,22 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_vllm=False,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
+@register_model(
+    ModelType.chinese_llama_2_1_3b,
+    'AI-ModelScope/chinese-llama-2-1.3b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-1.3b')
+@register_model(
+    ModelType.chinese_alpaca_2_1_3b,
+    'AI-ModelScope/chinese-alpaca-2-1.3b',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-1.3b')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
