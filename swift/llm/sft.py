@@ -267,9 +267,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master() and not use_torchacc():
-        images_dir = os.path.join(args.output_dir, 'images')
-        logger.info(f'images_dir: {images_dir}')
-        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
+        if 'tensorboard' in args.training_args.report_to:
+            images_dir = os.path.join(args.output_dir, 'images')
+            logger.info(f'images_dir: {images_dir}')
+            plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
