@@ -75,6 +75,10 @@ class DatasetName:
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
+    toolbench_for_alpha_umi_backbone = 'toolbench-for-alpha-umi-backbone'
+    toolbench_for_alpha_umi_caller = 'toolbench-for-alpha-umi-caller'
+    toolbench_for_alpha_umi_planner = 'toolbench-for-alpha-umi-planner'
+    toolbench_for_alpha_umi_summarizer = 'toolbench-for-alpha-umi-summarizer'
     # coding
     code_alpaca_en = 'code-alpaca-en'
     leetcode_python_en = 'leetcode-python-en'
@@ -665,7 +669,8 @@ register_dataset(
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
         repair_conversations=partial(
-            _repair_agent_conversations, use_mini=True)),
+            _repair_agent_conversations, use_mini=True),
+        error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 register_dataset(
@@ -673,7 +678,9 @@ register_dataset(
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
         repair_conversations=partial(
-            _repair_agent_conversations, use_mini=False)),
+            _repair_agent_conversations,
+            use_mini=False,
+            error_strategy='delete')),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 
@@ -1115,6 +1122,14 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     return dataset
 
 
+def _repair_planner(conversations: list) -> list:
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
+    if len(conversations) == 2 and conversations[0]['from'] != 'user':
+        conversations[0]['from'] = 'user'
+    return conversations
+
+
 register_dataset(
     DatasetName.capcha_images,
     'AI-ModelScope/captcha-images', [('default', 'train')],
@@ -1157,6 +1172,39 @@ register_dataset(
         value_key='content'),
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_backbone,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('backbone', 'train')],
+    None,
+    ConversationsPreprocessor('system', system_role=None),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_caller,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('caller', 'train')],
+    None,
+    ConversationsPreprocessor('system', 'caller', None),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_planner,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
+    None,
+    ConversationsPreprocessor(
+        repair_conversations=_repair_planner, error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_summarizer,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('summarizer', 'train')],
+    None,
+    ConversationsPreprocessor('system', 'conclusion', None),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:

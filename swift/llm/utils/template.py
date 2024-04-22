@@ -30,6 +30,7 @@ class TemplateType:
     default = 'default'
     qwen = 'qwen'
     qwen_audio = 'qwen-audio'
+    modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -38,6 +39,7 @@ class TemplateType:
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
     openbuddy = 'openbuddy'
+    openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
@@ -588,6 +590,11 @@ class QwenTemplate(Template):
 register_template(TemplateType.qwen, QwenTemplate())
 register_template(TemplateType.chatml, QwenTemplate())
 
+register_template(
+    TemplateType.modelscope_agent,
+    Template([], [' \n\n<|user|>:{{QUERY}} \n\n<|assistant|>:'], [],
+             [' \n\n</s>'], DEFAULT_SYSTEM, [' \n\n<|system|>:{{SYSTEM}}']))
+
 
 class _QwenAudioTemplateMixin:
 
@@ -784,6 +791,24 @@ register_template(
     Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
              [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
+
+OPENBUDDY2_DEFAULT_SYSTEM = (
+    'You(assistant) are a helpful, respectful and honest INTP-T AI Assistant named Buddy. '
+    'You are talking to a human(user).\nAlways answer as helpfully and logically as possible, while being safe. '
+    'Your answers should not include any harmful, political, religious, unethical, racist, '
+    'sexist, toxic, dangerous, or illegal content. '
+    'Please ensure that your responses are socially unbiased and positive in nature.\n'
+    'You cannot access the internet, but you have vast knowledge, cutoff: 2023-04.\n'
+    'You are trained by OpenBuddy team, (https://openbuddy.ai, https://github.com/OpenBuddy/OpenBuddy), '
+    'not related to GPT or OpenAI')
+
+register_template(
+    TemplateType.openbuddy2,
+    Template(
+        [],
+        ['<|role|>user<|says|>{{QUERY}}<|end|>\n<|role|>assistant<|says|>'],
+        ['<|end|>\n'], ['<|end|>'], OPENBUDDY2_DEFAULT_SYSTEM,
+        ['<|role|>system<|says|>{{SYSTEM}}<|end|>\n']))
 
 INTERNLM_SYSTEM = (
     'You are an AI assistant whose name is InternLM (书生·浦语).\n'

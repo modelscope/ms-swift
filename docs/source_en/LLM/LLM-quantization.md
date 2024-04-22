@@ -11,7 +11,9 @@ Swift supports using AWQ and GPTQ techniques to quantize models. These two quant
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
 # Install ms-swift
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 
 # Using AWQ quantization:
 # AutoAWQ and CUDA versions have a corresponding relationship, please select the version according to `https://github.com/casper-hansen/AutoAWQ`
@@ -120,6 +122,14 @@ curl http://localhost:8000/v1/chat/completions \
 Assume you fine-tuned qwen1half-4b-chat using LoRA, and the model weights directory is: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
 
 ```shell
+# Push the original quantized model
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat \
+    --model_id_or_path qwen1half-7b-chat-gptq-int4 \
+    --push_to_hub true \
+    --hub_model_id qwen1half-7b-chat-gptq-int4 \
+    --hub_token '<your-sdk-token>'
+
 # Push LoRA incremental model
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \

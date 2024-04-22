@@ -56,6 +56,8 @@ class ModelType:
     qwen_72b_chat = 'qwen-72b-chat'
     qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
     qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
+    modelscope_agent_7b = 'modelscope-agent-7b'
+    modelscope_agent_14b = 'modelscope-agent-14b'
     # qwen1.5
     qwen1half_0_5b = 'qwen1half-0_5b'
     qwen1half_1_8b = 'qwen1half-1_8b'
@@ -128,8 +130,27 @@ class ModelType:
     # llama3
     llama3_8b = 'llama3-8b'
     llama3_8b_instruct = 'llama3-8b-instruct'
+    llama3_8b_instruct_int4 = 'llama3-8b-instruct-int4'
+    llama3_8b_instruct_int8 = 'llama3-8b-instruct-int8'
+    llama3_8b_instruct_awq = 'llama3-8b-instruct-awq'
     llama3_70b = 'llama3-70b'
     llama3_70b_instruct = 'llama3-70b-instruct'
+    llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
+    llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
+    llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
+    # chinese-llama-alpaca-2
+    chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
+    chinese_llama_2_7b = 'chinese-llama-2-7b'
+    chinese_llama_2_7b_16k = 'chinese-llama-2-7b-16k'
+    chinese_llama_2_7b_64k = 'chinese-llama-2-7b-64k'
+    chinese_llama_2_13b = 'chinese-llama-2-13b'
+    chinese_llama_2_13b_16k = 'chinese-llama-2-13b-16k'
+    chinese_alpaca_2_1_3b = 'chinese-alpaca-2-1_3b'
+    chinese_alpaca_2_7b = 'chinese-alpaca-2-7b'
+    chinese_alpaca_2_7b_16k = 'chinese-alpaca-2-7b-16k'
+    chinese_alpaca_2_7b_64k = 'chinese-alpaca-2-7b-64k'
+    chinese_alpaca_2_13b = 'chinese-alpaca-2-13b'
+    chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -214,6 +235,7 @@ class ModelType:
     minicpm_v_v2 = 'minicpm-v-v2'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
+    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
@@ -633,6 +655,102 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_vllm=False,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
+@register_model(
+    ModelType.chinese_llama_2_1_3b,
+    'AI-ModelScope/chinese-llama-2-1.3b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-1.3b')
+@register_model(
+    ModelType.chinese_llama_2_7b,
+    'AI-ModelScope/chinese-llama-2-7b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-7b')
+@register_model(
+    ModelType.chinese_llama_2_7b_16k,
+    'AI-ModelScope/chinese-llama-2-7b-16k',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-7b-16k')
+@register_model(
+    ModelType.chinese_llama_2_7b_64k,
+    'AI-ModelScope/chinese-llama-2-7b-64k',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-7b-64k')
+@register_model(
+    ModelType.chinese_llama_2_13b,
+    'AI-ModelScope/chinese-llama-2-13b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-13b')
+@register_model(
+    ModelType.chinese_llama_2_13b_16k,
+    'AI-ModelScope/chinese-llama-2-13b-16k',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-llama-2-13b-16k')
+@register_model(
+    ModelType.chinese_alpaca_2_1_3b,
+    'AI-ModelScope/chinese-alpaca-2-1.3b',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-1.3b')
+@register_model(
+    ModelType.chinese_alpaca_2_7b,
+    'AI-ModelScope/chinese-alpaca-2-7b',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b')
+@register_model(
+    ModelType.chinese_alpaca_2_7b_16k,
+    'AI-ModelScope/chinese-alpaca-2-7b-16k',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b-16k')
+@register_model(
+    ModelType.chinese_alpaca_2_7b_64k,
+    'AI-ModelScope/chinese-alpaca-2-7b-64k',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b-64k')
+@register_model(
+    ModelType.chinese_alpaca_2_13b,
+    'AI-ModelScope/chinese-alpaca-2-13b',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-13b')
+@register_model(
+    ModelType.chinese_alpaca_2_13b_16k,
+    'AI-ModelScope/chinese-alpaca-2-13b-16k',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-13b-16k')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
@@ -1586,6 +1704,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
 @register_model(
+    ModelType.openbuddy_llama3_8b_chat,
+    'OpenBuddy/openbuddy-llama3-8b-v21.1-8k',
+    LoRATM.llama2,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama3-8b-v21.1-8k')
+@register_model(
     ModelType.openbuddy_llama2_13b_chat,
     'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
     LoRATM.llama2,
@@ -2370,6 +2496,66 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 
 @register_model(
+    ModelType.llama3_70b_instruct_awq,
+    'huangjintao/Meta-Llama-3-70B-Instruct-AWQ',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_70b_instruct_int8,
+    'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_70b_instruct_int4,
+    'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_8b_instruct_awq,
+    'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_8b_instruct_int8,
+    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 8},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
+    ModelType.llama3_8b_instruct_int4,
+    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    requires=['auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    support_flash_attn=True,
+    support_vllm=True)
+@register_model(
     ModelType.llama3_70b_instruct,
     'LLM-Research/Meta-Llama-3-70B-Instruct',
     LoRATM.llama2,
@@ -2565,6 +2751,20 @@ def get_model_tokenizer_qwen(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.modelscope_agent_7b,
+    'iic/ModelScope-Agent-7B',
+    LoRATM.qwen,
+    TemplateType.modelscope_agent,
+    support_flash_attn=True,
+    support_vllm=False)
+@register_model(
+    ModelType.modelscope_agent_14b,
+    'iic/ModelScope-Agent-14B',
+    LoRATM.qwen,
+    TemplateType.modelscope_agent,
+    support_flash_attn=True,
+    support_vllm=False)
 @register_model(
     ModelType.codefuse_qwen_14b_chat,
     'codefuse-ai/CodeFuse-QWen-14B',
@@ -2784,7 +2984,16 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         if n_gpu // local_world_size >= 4:
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
+        # fix images cuda:1 bug
+        vision_transformer = model.transformer.visual
+        if not hasattr(vision_transformer, '__old_forward'):
+            _old_forward = vision_transformer.forward
 
+            def _new_forward(x: torch.Tensor):
+                return _old_forward(x).to(device=f'{x.device.type}:0')
+
+            vision_transformer.__old_forward = _old_forward
+            vision_transformer.forward = _new_forward
     return model, tokenizer
 
 

@@ -151,8 +151,11 @@ def llm_export(args: ExportArguments) -> None:
         args.ckpt_dir = quant_path
 
     if args.push_to_hub:
-        assert args.ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
-        push_to_ms_hub(args.ckpt_dir, args.hub_model_id, args.hub_token,
+        ckpt_dir = args.ckpt_dir
+        if ckpt_dir is None:
+            ckpt_dir = args.model_id_or_path
+        assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
+        push_to_ms_hub(ckpt_dir, args.hub_model_id, args.hub_token,
                        args.hub_private_repo, args.commit_message)
 
 
