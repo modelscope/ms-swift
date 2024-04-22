@@ -662,6 +662,14 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_vllm=True,
     support_flash_attn=True,
     hf_model_id='hfl/chinese-alpaca-2-1.3b')
+@register_model(
+    ModelType.chinese_alpaca_2_13b,
+    'AI-ModelScope/chinese-alpaca-2-13b',
+    LoRATM.llama2,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='hfl/chinese-alpaca-2-13b')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
