@@ -257,8 +257,8 @@ The table below introduces the datasets supported by SWIFT:
 
 | Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |
 | ------------ | ---------- | ---------- | -------- | ----------------- | ---- | ------------- |
-|🔥ms-bench|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|316228|0|345.0±441.3, min=22, max=30960|chat, general, multi-round|-|
-|🔥ms-bench-mini|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|19492|0|353.9±439.4, min=29, max=12078|chat, general, multi-round|-|
+|🔥ms-bench|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|316931|0|347.3±444.1, min=22, max=30960|chat, general, multi-round|-|
+|🔥ms-bench-mini|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|19960|0|356.6±443.3, min=29, max=12078|chat, general, multi-round|-|
 |🔥alpaca-en|[AI-ModelScope/alpaca-gpt4-data-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)|52002|0|176.2±125.8, min=26, max=740|chat, general|[vicgalle/alpaca-gpt4](https://huggingface.co/datasets/vicgalle/alpaca-gpt4)|
 |🔥alpaca-zh|[AI-ModelScope/alpaca-gpt4-data-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)|48818|0|162.1±93.9, min=26, max=856|chat, general|[c-s-ale/alpaca-gpt4-data-zh](https://huggingface.co/datasets/c-s-ale/alpaca-gpt4-data-zh)|
 |multi-alpaca-all|[damo/nlp_polylm_multialpaca_sft](https://modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary)|131867|0|112.9±50.6, min=26, max=1226|chat, general, multilingual|-|
@@ -298,7 +298,7 @@ The table below introduces the datasets supported by SWIFT:
 |🔥disc-med-sft-zh|[AI-ModelScope/DISC-Med-SFT](https://modelscope.cn/datasets/AI-ModelScope/DISC-Med-SFT/summary)|441767|0|354.1±193.1, min=25, max=2231|chat, medical|[Flmc/DISC-Med-SFT](https://huggingface.co/datasets/Flmc/DISC-Med-SFT)|
 |lawyer-llama-zh|[AI-ModelScope/lawyer_llama_data](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data/summary)|21476|0|194.4±91.7, min=27, max=924|chat, law|[Skepsun/lawyer_llama_data](https://huggingface.co/datasets/Skepsun/lawyer_llama_data)|
 |tigerbot-law-zh|[AI-ModelScope/tigerbot-law-plugin](https://modelscope.cn/datasets/AI-ModelScope/tigerbot-law-plugin/summary)|55895|0|109.9±126.4, min=37, max=18878|text-generation, law, pretrained|[TigerResearch/tigerbot-law-plugin](https://huggingface.co/datasets/TigerResearch/tigerbot-law-plugin)|
-|🔥disc-law-sft-zh|[AI-ModelScope/DISC-Law-SFT](https://modelscope.cn/datasets/AI-ModelScope/DISC-Law-SFT/summary)|166758|0|533.7±495.4, min=30, max=15169|chat, law|-|
+|🔥disc-law-sft-zh|[AI-ModelScope/DISC-Law-SFT](https://modelscope.cn/datasets/AI-ModelScope/DISC-Law-SFT/summary)|166758|0|533.7±495.4, min=30, max=15169|chat, law|[ShengbinYue/DISC-Law-SFT](https://huggingface.co/datasets/ShengbinYue/DISC-Law-SFT)|
 |🔥blossom-math-zh|[AI-ModelScope/blossom-math-v2](https://modelscope.cn/datasets/AI-ModelScope/blossom-math-v2/summary)|10000|0|169.3±58.7, min=35, max=563|chat, math|[Azure99/blossom-math-v2](https://huggingface.co/datasets/Azure99/blossom-math-v2)|
 |school-math-zh|[AI-ModelScope/school_math_0.25M](https://modelscope.cn/datasets/AI-ModelScope/school_math_0.25M/summary)|248480|0|157.6±72.1, min=33, max=3450|chat, math|[BelleGroup/school_math_0.25M](https://huggingface.co/datasets/BelleGroup/school_math_0.25M)|
 |open-platypus-en|[AI-ModelScope/Open-Platypus](https://modelscope.cn/datasets/AI-ModelScope/Open-Platypus/summary)|24926|0|367.9±254.8, min=30, max=3951|chat, math|[garage-bAInd/Open-Platypus](https://huggingface.co/datasets/garage-bAInd/Open-Platypus)|

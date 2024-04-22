@@ -669,7 +669,8 @@ register_dataset(
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
         repair_conversations=partial(
-            _repair_agent_conversations, use_mini=True)),
+            _repair_agent_conversations, use_mini=True),
+        error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 register_dataset(
@@ -677,7 +678,9 @@ register_dataset(
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
         repair_conversations=partial(
-            _repair_agent_conversations, use_mini=False)),
+            _repair_agent_conversations,
+            use_mini=False,
+            error_strategy='delete')),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 
