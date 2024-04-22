@@ -143,14 +143,12 @@ class ModelType:
     chinese_llama_2_7b_64k = 'chinese-llama-2-7b-64k'
     chinese_llama_2_13b = 'chinese-llama-2-13b'
     chinese_llama_2_13b_16k = 'chinese-llama-2-13b-16k'
-    chinese_llama_2_13b_64k = 'chinese-llama-2-13b-64k'
     chinese_alpaca_2_1_3b = 'chinese-alpaca-2-1_3b'
     chinese_alpaca_2_7b = 'chinese-alpaca-2-7b'
     chinese_alpaca_2_7b_16k = 'chinese-alpaca-2-7b-16k'
     chinese_alpaca_2_7b_64k = 'chinese-alpaca-2-7b-64k'
     chinese_alpaca_2_13b = 'chinese-alpaca-2-13b'
     chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
-    chinese_alpaca_2_13b_64k = 'chinese-alpaca-2-13b-64k'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -704,14 +702,6 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_flash_attn=True,
     hf_model_id='hfl/chinese-llama-2-13b-16k')
 @register_model(
-    ModelType.chinese_llama_2_13b_64k,
-    'AI-ModelScope/chinese-llama-2-13b-64k',
-    LoRATM.llama2,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    hf_model_id='hfl/chinese-llama-2-13b-64k')
-@register_model(
     ModelType.chinese_alpaca_2_1_3b,
     'AI-ModelScope/chinese-alpaca-2-1.3b',
     LoRATM.llama2,
@@ -759,14 +749,6 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
     support_vllm=True,
     support_flash_attn=True,
     hf_model_id='hfl/chinese-alpaca-2-13b-16k')
-@register_model(
-    ModelType.chinese_alpaca_2_13b_64k,
-    'AI-ModelScope/chinese-alpaca-2-13b-64k',
-    LoRATM.llama2,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    hf_model_id='hfl/chinese-alpaca-2-13b-64k')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
