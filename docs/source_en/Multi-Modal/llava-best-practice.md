@@ -8,6 +8,7 @@
 
 ## Environment Setup
 ```shell
+## install swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
