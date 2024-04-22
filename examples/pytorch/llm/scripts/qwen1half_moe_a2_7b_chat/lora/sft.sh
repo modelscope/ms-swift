@@ -6,7 +6,7 @@ PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0 \
 python llm_sft.py \
     --model_type qwen1half-moe-a2_7b-chat \
-    --sft_type full \
+    --sft_type lora \
     --tuner_backend peft \
     --dtype AUTO \
     --output_dir output \
