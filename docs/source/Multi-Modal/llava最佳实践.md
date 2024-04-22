@@ -10,9 +10,16 @@
 
 ## 环境准备
 ```shell
+## install swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
+
+## install llava
+git clone https://github.com/haotian-liu/LLaVA.git
+cd LLaVA
+pip install --upgrade pip  # enable PEP 660 support
+pip install -e .
 ```
 
 ## 推理
