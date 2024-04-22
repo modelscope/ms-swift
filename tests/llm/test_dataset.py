@@ -7,6 +7,7 @@ from swift.llm import DatasetName, get_dataset
 
 
 class TestDataset(unittest.TestCase):
+
     @unittest.skip('fix citest')
     def test_dataset(self):
         train_dataset, val_dataset = get_dataset(
