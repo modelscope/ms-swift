@@ -40,6 +40,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 2024.04.22: 支持**chinese-llama-alpaca-2**系列模型的推理与微调和部署等. 包括：chinese-llama-2-1.3b, chinese-llama-2-7b, chinese-llama-2-13b, chinese-alpaca-2-1.3b, chinese-alpaca-2-7b和chinese-alpaca-2-13b以及对应的16k和64k长文本模型.
 - 2024.04.22: 支持Llama3 GPTQ-Int4, GPTQ-Int8, AWQ系列模型的推理与微调. 支持chatglm3-6b-128k, Openbuddy-llama3的推理与微调.
 - 2024.04.20: 支持**Atom**系列模型的推理, 微调和部署等. 包括: Atom-7B and Atom-7B-Chat. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/atom_7b_chat/lora/sft.sh)来开始训练！
 - 2024.04.19: 支持NPU的单卡、DDP、ZeRO2和ZeRO3的训练与推理, 可以查看[NPU推理与微调最佳实践](docs/source/LLM/NPU推理与微调最佳实践.md).
@@ -466,6 +467,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | c4ai-command-r | [c4ai](https://cohere.com/command) | 多语种 | 35B-104B | chat模型  |
 | WizardLM2 | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM) | 多语种 | 7B-8x22B<br>包含量化版本 | chat模型<br>MoE模型 |
 | Atom | [Atom](https://github.com/LlamaFamily/Llama-Chinese) | 中文 | 7B| base模型<br>chat模型|
+| Chinese-LLaMA-Alpaca-2 | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文 | 1.3B-13B| base模型<br>chat模型<br>长文本模型|
 
 
 #### 多模态大模型
