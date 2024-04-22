@@ -782,8 +782,9 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'], [['eos_token_id']],
-             OPENBUDDY_DEFAULT_SYSTEM, [['bos_token_id'], '{{SYSTEM}}\n\n']))
+    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
+             [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
+             [['bos_token_id'], '{{SYSTEM}}\n\n']))
 
 OPENBUDDY2_DEFAULT_SYSTEM = (
     'You(assistant) are a helpful, respectful and honest INTP-T AI Assistant named Buddy. '
