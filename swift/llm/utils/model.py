@@ -221,6 +221,7 @@ class ModelType:
     minicpm_v_v2 = 'minicpm-v-v2'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
+    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
     openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
@@ -1592,6 +1593,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
+@register_model(
+    ModelType.openbuddy_llama3_8b_chat,
+    'OpenBuddy/openbuddy-llama3-8b-v21.1-8k',
+    LoRATM.llama2,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama3-8b-v21.1-8k')
 @register_model(
     ModelType.openbuddy_llama2_13b_chat,
     'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
