@@ -2851,7 +2851,16 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         if n_gpu // local_world_size >= 4:
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
+        # fix images cuda:1 bug
+        vision_transformer = model.transformer.visual
+        if not hasattr(vision_transformer, '__old_forward'):
+            _old_forward = vision_transformer.forward
 
+            def _new_forward(x: torch.Tensor):
+                return _old_forward(x).to(device=f'{x.device.type}:0')
+
+            vision_transformer.__old_forward = _old_forward
+            vision_transformer.forward = _new_forward
     return model, tokenizer
 
 
