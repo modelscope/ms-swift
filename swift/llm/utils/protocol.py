@@ -33,7 +33,8 @@ class XRequestConfig:
         repetition_penalty = 1.
     """
     max_tokens: Optional[int] = None  # None: max_model_len - num_tokens
-    temperature: Optional[float] = None  # None: use deploy_args
+    # None: use deploy_args
+    temperature: Optional[float] = None
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
 

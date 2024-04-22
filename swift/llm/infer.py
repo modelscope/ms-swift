@@ -99,7 +99,7 @@ def merge_lora(args: InferArguments,
     else:
         model, template = prepare_model_template(
             args, device_map=args.merge_device_map, verbose=False)
-        logger.info('Merge lora...')
+        logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
         logger.info('Saving merged weights...')
@@ -254,9 +254,15 @@ def llm_infer(args: InferArguments) -> None:
     # Inference
     result = []
     jsonl_path = None
-    if args.save_result and args.ckpt_dir is not None:
-        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-        jsonl_path = os.path.join(args.ckpt_dir, f'infer_result_{time}.jsonl')
+    if args.save_result:
+        result_dir = args.ckpt_dir
+        if result_dir is None:
+            result_dir = model.model_dir
+        if result_dir is not None:
+            result_dir = os.path.join(result_dir, 'infer_result')
+            os.makedirs(result_dir, exist_ok=True)
+            time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+            jsonl_path = os.path.join(result_dir, f'{time}.jsonl')
     if args.eval_human:
         input_mode: Literal['S', 'M'] = 'S'
         logger.info('Input `exit` or `quit` to exit the conversation.')
@@ -466,7 +472,7 @@ def llm_infer(args: InferArguments) -> None:
                     if images is not None:
                         print(f'[IMAGES]{images}')
                     print('-' * 50)
-    if args.save_result and args.ckpt_dir is not None:
+    if jsonl_path is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     if args.val_dataset_sample == 10:  # is default
         logger.info(

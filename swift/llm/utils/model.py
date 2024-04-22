@@ -56,6 +56,8 @@ class ModelType:
     qwen_72b_chat = 'qwen-72b-chat'
     qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
     qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
+    modelscope_agent_7b = 'modelscope-agent-7b'
+    modelscope_agent_14b = 'modelscope-agent-14b'
     # qwen1.5
     qwen1half_0_5b = 'qwen1half-0_5b'
     qwen1half_1_8b = 'qwen1half-1_8b'
@@ -2749,6 +2751,20 @@ def get_model_tokenizer_qwen(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.modelscope_agent_7b,
+    'iic/ModelScope-Agent-7B',
+    LoRATM.qwen,
+    TemplateType.modelscope_agent,
+    support_flash_attn=True,
+    support_vllm=False)
+@register_model(
+    ModelType.modelscope_agent_14b,
+    'iic/ModelScope-Agent-14B',
+    LoRATM.qwen,
+    TemplateType.modelscope_agent,
+    support_flash_attn=True,
+    support_vllm=False)
 @register_model(
     ModelType.codefuse_qwen_14b_chat,
     'codefuse-ai/CodeFuse-QWen-14B',

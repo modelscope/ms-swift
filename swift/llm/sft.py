@@ -161,9 +161,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                                                    args.self_cognition_sample,
                                                    args.model_name,
                                                    args.model_author)
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
@@ -202,6 +199,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         train_dataset = LazyLLMDataset(train_dataset, template)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)

@@ -30,6 +30,7 @@ class TemplateType:
     default = 'default'
     qwen = 'qwen'
     qwen_audio = 'qwen-audio'
+    modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -588,6 +589,11 @@ class QwenTemplate(Template):
 
 register_template(TemplateType.qwen, QwenTemplate())
 register_template(TemplateType.chatml, QwenTemplate())
+
+register_template(
+    TemplateType.modelscope_agent,
+    Template([], [' \n\n<|user|>:{{QUERY}} \n\n<|assistant|>:'], [],
+             [' \n\n</s>'], DEFAULT_SYSTEM, [' \n\n<|system|>:{{SYSTEM}}']))
 
 
 class _QwenAudioTemplateMixin:
