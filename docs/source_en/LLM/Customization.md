@@ -26,7 +26,7 @@ The corresponding example sh script can be found [here](https://github.com/model
 
 2. `--custom_val_dataset_path`: The default value is `[]`, indicating not to use a custom validation dataset. If you specify `custom_train_dataset_path`, then the validation set of the custom dataset will be split according to the command line argument `dataset_test_ratio`.
 
-The script supports file formats including `csv`, `json`, and `jsonl`. You need to ensure the passed in files conform to the following dataset formats. csv files only support instruction tuning, i.e. the case without history. json and jsonl files support system and history.
+The supported file formats for the script include `csv`, `json`, and `jsonl`. You need to ensure that the incoming files conform to the following dataset formats. Both `json` and `jsonl` formats support multi-turn dialogues (`csv` does not support this).
 
 **Format 1:**
 
