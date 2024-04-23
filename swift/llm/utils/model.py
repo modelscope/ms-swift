@@ -28,7 +28,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import (get_dist_setting, is_dist, is_local_master,
-                         use_torchacc, subprocess_run)
+                         subprocess_run, use_torchacc)
 from .template import TemplateType
 from .utils import get_max_model_len
 
@@ -2172,6 +2172,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-1_8b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-1_8b')
@@ -2181,6 +2182,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-1_8b-sft')
@@ -2190,6 +2192,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-1_8b')
@@ -2198,6 +2201,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-math-base-7b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -2207,6 +2211,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-math-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -2217,6 +2222,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -2227,6 +2233,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -2237,6 +2244,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-7b-sft')
@@ -2246,6 +2254,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-7b')
@@ -2255,6 +2264,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-20b-sft')
@@ -2264,6 +2274,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-20b')
@@ -2272,6 +2283,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-7b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-7b')
@@ -2280,6 +2292,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-base-7b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-base-7b')
@@ -2288,6 +2301,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-20b')
@@ -2296,6 +2310,7 @@ def get_model_tokenizer_qwen1half_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-base-20b')
@@ -2374,9 +2389,11 @@ def _git_clone_github(github_url: str,
     if not os.path.exists(local_repo_path):
         if not github_url.endswith('.git'):
             github_url = f'{github_url}.git'
-        command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
+        command = [
+            'git', '-C', git_cache_dir, 'clone', github_url, local_repo_name
+        ]
         command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
-        logger.info(f"Run the command: `{command_str}`")
+        logger.info(f'Run the command: `{command_str}`')
         subprocess_run(command)
     logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
