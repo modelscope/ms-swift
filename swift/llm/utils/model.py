@@ -2377,6 +2377,7 @@ def _git_clone_github(github_url: str,
         command = f'git -C {git_cache_dir} clone {github_url} {local_repo_name}'
         logger.info(f'Run the command: `{command}`')
         os.system(command)
+    logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 
 
