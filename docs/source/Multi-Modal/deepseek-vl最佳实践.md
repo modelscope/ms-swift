@@ -11,6 +11,8 @@
 ## 环境准备
 ```shell
 pip install 'ms-swift[llm]' -U
+
+pip install attrdict
 ```
 
 模型链接:

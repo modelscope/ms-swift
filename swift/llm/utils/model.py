@@ -28,7 +28,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import (get_dist_setting, is_dist, is_local_master,
-                         use_torchacc)
+                         use_torchacc, subprocess_run)
 from .template import TemplateType
 from .utils import get_max_model_len
 
@@ -2374,9 +2374,10 @@ def _git_clone_github(github_url: str,
     if not os.path.exists(local_repo_path):
         if not github_url.endswith('.git'):
             github_url = f'{github_url}.git'
-        command = f'git -C {git_cache_dir} clone {github_url} {local_repo_name}'
-        logger.info(f'Run the command: `{command}`')
-        os.system(command)
+        command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
+        command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+        logger.info(f"Run the command: `{command_str}`")
+        subprocess_run(command)
     logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 
@@ -3801,7 +3802,7 @@ def safe_snapshot_download(model_type: str,
                 ignore_file_pattern=ignore_file_pattern)
     else:
         model_dir = model_id_or_path
-        logger.info(f'Loading the model using model_dir: {model_dir}')
+    logger.info(f'Loading the model using model_dir: {model_dir}')
     if is_dist() and is_local_master():
         dist.barrier()
 
