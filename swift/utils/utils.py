@@ -172,7 +172,7 @@ def get_pai_tensorboard_dir() -> Optional[str]:
 def subprocess_run(command: List[str],
                    env: Optional[Dict[str, str]] = None,
                    stdout=None,
-                   stderr=None) -> None:
+                   stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
