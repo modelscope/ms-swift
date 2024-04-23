@@ -309,7 +309,7 @@ class SftArguments(ArgumentsBase):
         })
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
-    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = None
+    ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
 
@@ -658,6 +658,8 @@ class SftArguments(ArgumentsBase):
             else:
                 torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
+            if self.ddp_backend is None:
+                self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 

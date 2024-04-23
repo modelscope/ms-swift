@@ -290,6 +290,7 @@ swift sft \
 ```
 
 #### Deepspeed训练
+Deepspeed支持对GPTQ和AWQ量化模型进行训练.
 
 ZeRO2:
 ```shell
@@ -429,6 +430,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```
 
 ### 支持的模型
+完整的支持模型和数据集可以查看[支持的模型和数据集列表](docs/source/LLM/支持的模型和数据集.md).
 
 #### 大语言模型
 
@@ -467,7 +469,8 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | c4ai-command-r | [c4ai](https://cohere.com/command) | 多语种 | 35B-104B | chat模型  |
 | WizardLM2 | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM) | 多语种 | 7B-8x22B<br>包含量化版本 | chat模型<br>MoE模型 |
 | Atom | [Atom](https://github.com/LlamaFamily/Llama-Chinese) | 中文 | 7B| base模型<br>chat模型|
-| Chinese-LLaMA-Alpaca-2 | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文 | 1.3B-13B| base模型<br>chat模型<br>长文本模型|
+| Chinese-LLaMA-Alpaca-2 | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文 | 1.3B-13B| base模型<br>chat模型<br>长文本模型 |
+| ModelScope-Agent | [ModelScope Agent系列](https://github.com/modelscope/modelscope-agent) | 中文 | 7B-14B| agent模型 |
 
 
 #### 多模态大模型
