@@ -551,7 +551,7 @@ register_dataset(
 
 
 def _repair_agent_conversations(conversations: str,
-                                use_mini: bool) -> Dict[str, str]:
+                                use_mini: bool) -> List[Dict[str, str]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
     else:
@@ -571,7 +571,7 @@ def _repair_agent_conversations(conversations: str,
     return conversations
 
 
-def _repair_ms_bench(conversations: str) -> Dict[str, str]:
+def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
     if isinstance(conversations, str):
         conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
@@ -1336,7 +1336,7 @@ _agent_instruct_subset_list = [
 ]
 
 
-def _repair_conversations_agent_instruct(s: str) -> Dict[str, str]:
+def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
     s = s.replace('}\n {', '},\n {')
     if isinstance(s, str):
         s = ast.literal_eval(s)
