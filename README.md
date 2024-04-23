@@ -433,7 +433,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```
 
 ### Supported Models
-The complete list of supported models and datasets can be found at [Supported Models and Datasets List](https://idealab.alibaba-inc.com/docs/source/LLM/Supported-Models-and-Datasets.md).
+The complete list of supported models and datasets can be found at [Supported Models and Datasets List](docs/source_en/LLM/Supported-models-datasets.md).
 
 #### LLMs
 
