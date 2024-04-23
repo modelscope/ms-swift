@@ -869,7 +869,9 @@ class InternLMXComposer2(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
-        history = example.pop('history', [])
+        history = example.pop('history', None)
+        if history is None:
+            history = []
         example['query'], example['history'], images_path = replace_img_tab(
             example['query'], history, '</s>')
 
@@ -1116,7 +1118,9 @@ class DeepseekVLTemplate(Template):
             'docs/source/Multi-Modal/deepseek-vl最佳实践.md')
 
         example = example.copy()
-        history = example.pop('history', [])
+        history = example.pop('history', None)
+        if history is None:
+            history = []
         example['query'], example['history'], images_path = replace_img_tab(
             example['query'], history, '<image_placeholder>')
 
