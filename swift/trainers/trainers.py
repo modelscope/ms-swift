@@ -287,7 +287,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if not use_torchacc():
             origin_loader = super().get_train_dataloader()
             grad_acc_steps = self.args.gradient_accumulation_steps
-            if grad_acc_steps is None or grad_acc_steps <= 1:
+            if grad_acc_steps is None or grad_acc_steps <= 1 or len(
+                    origin_loader) < grad_acc_steps:
                 return origin_loader
 
             length = len(origin_loader) // grad_acc_steps * grad_acc_steps
