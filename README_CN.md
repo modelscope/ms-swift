@@ -429,6 +429,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```
 
 ### 支持的模型
+完整的支持模型和数据集可以查看[支持的模型和数据集列表](docs/source/LLM/支持的模型和数据集.md).
 
 #### 大语言模型
 

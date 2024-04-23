@@ -67,6 +67,8 @@ class DatasetName:
     open_orca_gpt4 = 'open-orca-gpt4'
     sharegpt_gpt4 = 'sharegpt-gpt4'
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
+    deepctrl_sft_zh = 'deepctrl-sft-zh'
+    deepctrl_sft_en = 'deepctrl-sft-en'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
@@ -562,7 +564,8 @@ def _repair_agent_conversations(conversations: str,
     find_list = re.findall(pattern, conversations[:idx])
     if len(set(find_list)) <= 1:
         return
-    conversations = ast.literal_eval(conversations)
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
     if len(conversations) == 1:
         return
     return conversations
@@ -683,6 +686,22 @@ register_dataset(
             error_strategy='delete')),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
+
+register_dataset(
+    DatasetName.deepctrl_sft_zh,
+    'AI-ModelScope/deepctrl-sft-data', [['default', 'train']],
+    None,
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    tags=['chat', 'general', 'sft', 'multi-round'])
+
+register_dataset(
+    DatasetName.deepctrl_sft_en,
+    'AI-ModelScope/deepctrl-sft-data', [['en', 'train']],
+    None,
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    tags=['chat', 'general', 'sft', 'multi-round'])
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
@@ -1066,7 +1085,8 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     response = []
     history: List[History] = []
     for d in tqdm(dataset):
-        conversation = ast.literal_eval(d['conversation'])
+        if isinstance(d['conversation'], str):
+            conversation = ast.literal_eval(d['conversation'])
         query.append(conversation[-1]['human'])
         response.append(conversation[-1]['assistant'])
         h = []
@@ -1316,9 +1336,11 @@ _agent_instruct_subset_list = [
 ]
 
 
-def _repair_conversations_agent_instruct(s: str) -> str:
+def _repair_conversations_agent_instruct(s: str) -> Dict[str, str]:
     s = s.replace('}\n {', '},\n {')
-    return ast.literal_eval(s)
+    if isinstance(s, str):
+        s = ast.literal_eval(s)
+    return s
 
 
 register_dataset(
