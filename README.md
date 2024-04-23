@@ -292,6 +292,7 @@ swift sft \
 ```
 
 #### Deepspeed Training
+Deepspeed supports training of quantized GPTQ and AWQ models.
 
 ZeRO2:
 ```shell

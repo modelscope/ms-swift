@@ -290,6 +290,7 @@ swift sft \
 ```
 
 #### Deepspeed训练
+Deepspeed支持对GPTQ和AWQ量化模型进行训练.
 
 ZeRO2:
 ```shell
