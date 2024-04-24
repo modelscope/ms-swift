@@ -293,6 +293,8 @@ The table below introduces the datasets supported by SWIFT:
 |open-orca-gpt4|[AI-ModelScope/OpenOrca](https://modelscope.cn/datasets/AI-ModelScope/OpenOrca/summary)|994896|0|382.3±417.4, min=31, max=8740|chat, multilingual, general|-|
 |sharegpt-gpt4|[AI-ModelScope/sharegpt_gpt4](https://modelscope.cn/datasets/AI-ModelScope/sharegpt_gpt4/summary)|103063|0|1286.2±2089.4, min=22, max=221080|chat, multilingual, general, multi-round|-|
 |🔥sharegpt-gpt4-mini|[AI-ModelScope/sharegpt_gpt4](https://modelscope.cn/datasets/AI-ModelScope/sharegpt_gpt4/summary)|6205|0|3511.6±6068.5, min=33, max=116018|chat, multilingual, general, multi-round, gpt4|-|
+|deepctrl-sft-zh|[AI-ModelScope/deepctrl-sft-data](https://modelscope.cn/datasets/AI-ModelScope/deepctrl-sft-data/summary)|11381621|0|274.2±311.5, min=21, max=9835|chat, general, sft, multi-round|-|
+|deepctrl-sft-en|[AI-ModelScope/deepctrl-sft-data](https://modelscope.cn/datasets/AI-ModelScope/deepctrl-sft-data/summary)|2767403|0|865.2±1157.6, min=22, max=626237|chat, general, sft, multi-round|-|
 |🔥ms-agent|[iic/ms_agent](https://modelscope.cn/datasets/iic/ms_agent/summary)|30000|0|647.7±217.1, min=199, max=2722|chat, agent, multi-round|-|
 |ms-agent-for-agentfabric-default|[AI-ModelScope/ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary)|30000|0|617.8±199.1, min=251, max=2657|chat, agent, multi-round|-|
 |ms-agent-for-agentfabric-addition|[AI-ModelScope/ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary)|488|0|2084.9±1514.8, min=489, max=7354|chat, agent, multi-round|-|
