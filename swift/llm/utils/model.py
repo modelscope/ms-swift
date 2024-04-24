@@ -1086,14 +1086,17 @@ def get_model_tokenizer_baichuan2(model_dir: str,
         load_model,
         model_config=model_config,
         **kwargs)
+    model_ori = model
     if model is not None:
+        if not hasattr(model, 'lm_head'):  # fix awq
+            model = model.model
         new_forward = MethodType(patch_baichuan2_lm_head_forward,
                                  model.lm_head)
         if hasattr(model, '_old_forward'):  # device_map
             model.lm_head._old_forward = new_forward
         else:
             model.lm_head.forward = new_forward
-    return model, tokenizer
+    return model_ori, tokenizer
 
 
 @register_model(
@@ -2523,7 +2526,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_70b_instruct_int8,
     'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
@@ -2533,7 +2537,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_70b_instruct_int4,
     'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
@@ -2543,7 +2548,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_8b_instruct_awq,
     'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
@@ -2553,7 +2559,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_8b_instruct_int8,
     'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
@@ -2563,7 +2570,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_8b_instruct_int4,
     'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
@@ -2573,7 +2581,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_70b_instruct,
     'LLM-Research/Meta-Llama-3-70B-Instruct',
