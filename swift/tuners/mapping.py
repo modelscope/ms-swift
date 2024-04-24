@@ -22,6 +22,7 @@ class SwiftTuners:
     LONGLORA = 'longlora'
     NEFTUNE = 'neftune'
     LLAMAPRO = 'LLAMAPRO'
+    LISA = 'LISA'
     SCETUNING = 'SCETuning'
 
 
