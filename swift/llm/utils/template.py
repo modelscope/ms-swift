@@ -1322,11 +1322,17 @@ class MiniCPMVTemlate(Template):
         ) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
             start = 0
             new_input_ids = []
+            new_labels = []
             for idx in img_start_idxs[1:]:
                 new_input_ids = new_input_ids + input_ids[start:idx]
+                if labels is not None:
+                    new_labels = new_labels + labels[start:idx]
                 start = idx + 4  # skip <image><unk></image>\n
             new_input_ids = new_input_ids + input_ids[start:]
             input_ids = new_input_ids
+            if labels is not None:
+                new_labels = new_labels + labels[start:]
+                labels = new_labels
 
         idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
