@@ -5,7 +5,6 @@ import importlib.util
 import logging
 import os
 import shutil
-import sys
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -39,9 +38,9 @@ from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, stat_array, upper_bound,
-                         use_torchacc)
+from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp,
+                         is_local_master, safe_ddp_context, stat_array,
+                         upper_bound, use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
@@ -98,14 +97,9 @@ if not use_hf:
 
     @wraps(_old_msdataset_load)
     def _msdataset_ddp_load(*args, **kwargs):
-        if is_dist() and not is_local_master():
-            dist.barrier()
-        dataset = _old_msdataset_load(*args, **kwargs)
-        if is_dist() and is_local_master():
-            dist.barrier()
+        with safe_ddp_context():
+            dataset = _old_msdataset_load(*args, **kwargs)
 
-        if is_dist():
-            dist.barrier()
         return dataset
 
     # monkey patching

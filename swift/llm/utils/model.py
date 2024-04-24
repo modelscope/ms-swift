@@ -28,7 +28,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import (get_dist_setting, is_dist, is_local_master,
-                         subprocess_run, use_torchacc)
+                         safe_ddp_context, subprocess_run, use_torchacc)
 from .template import TemplateType
 from .utils import get_max_model_len
 
@@ -2412,16 +2412,18 @@ def _git_clone_github(github_url: str,
         github_url = github_url.rstrip('/')
         local_repo_name = github_url.rsplit('/', 1)[1]
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    if not os.path.exists(local_repo_path):
-        if not github_url.endswith('.git'):
-            github_url = f'{github_url}.git'
-        command = [
-            'git', '-C', git_cache_dir, 'clone', github_url, local_repo_name
-        ]
-        command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
-        logger.info(f'Run the command: `{command_str}`')
-        subprocess_run(command)
-    logger.info(f'local_repo_path: {local_repo_path}')
+    with safe_ddp_context():
+        if not os.path.exists(local_repo_path):
+            if not github_url.endswith('.git'):
+                github_url = f'{github_url}.git'
+            command = [
+                'git', '-C', git_cache_dir, 'clone', github_url,
+                local_repo_name
+            ]
+            command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+            logger.info(f'Run the command: `{command_str}`')
+            subprocess_run(command)
+        logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 
 
@@ -3818,42 +3820,40 @@ def safe_snapshot_download(model_type: str,
             model_id_or_path = model_info[
                 'hf_model_id' if use_hf else 'model_id_or_path']
 
-    if is_dist() and not is_local_master():
-        dist.barrier()
-    if model_id_or_path is not None and not os.path.exists(model_id_or_path):
-        ignore_file_pattern = model_info['ignore_file_pattern']
-        if use_hf:
-            if revision is None:
-                revision = 'main'
-            logger.info(
-                f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
-            )
-            use_hf_transfer = strtobool(
-                os.environ.get('USE_HF_TRANSFER', 'False'))
-            if use_hf_transfer:
-                import huggingface_hub._snapshot_download as hf_s
-                hf_s.HF_HUB_ENABLE_HF_TRANSFER = True
-            from huggingface_hub import snapshot_download as hf_snapshot_download
-            model_dir = hf_snapshot_download(
-                model_id_or_path,
-                repo_type='model',
-                revision=revision,
-                ignore_patterns=ignore_file_pattern)
+    with safe_ddp_context():
+        if model_id_or_path is not None and not os.path.exists(
+                model_id_or_path):
+            ignore_file_pattern = model_info['ignore_file_pattern']
+            if use_hf:
+                if revision is None:
+                    revision = 'main'
+                logger.info(
+                    f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
+                )
+                use_hf_transfer = strtobool(
+                    os.environ.get('USE_HF_TRANSFER', 'False'))
+                if use_hf_transfer:
+                    import huggingface_hub._snapshot_download as hf_s
+                    hf_s.HF_HUB_ENABLE_HF_TRANSFER = True
+                from huggingface_hub import snapshot_download as hf_snapshot_download
+                model_dir = hf_snapshot_download(
+                    model_id_or_path,
+                    repo_type='model',
+                    revision=revision,
+                    ignore_patterns=ignore_file_pattern)
+            else:
+                if revision is None:
+                    revision = model_info['revision']
+                logger.info(
+                    f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
+                )
+                model_dir = snapshot_download(
+                    model_id_or_path,
+                    revision,
+                    ignore_file_pattern=ignore_file_pattern)
         else:
-            if revision is None:
-                revision = model_info['revision']
-            logger.info(
-                f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
-            )
-            model_dir = snapshot_download(
-                model_id_or_path,
-                revision,
-                ignore_file_pattern=ignore_file_pattern)
-    else:
-        model_dir = model_id_or_path
-    logger.info(f'Loading the model using model_dir: {model_dir}')
-    if is_dist() and is_local_master():
-        dist.barrier()
+            model_dir = model_id_or_path
+        logger.info(f'Loading the model using model_dir: {model_dir}')
 
     model_dir = os.path.expanduser(model_dir)
     assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
