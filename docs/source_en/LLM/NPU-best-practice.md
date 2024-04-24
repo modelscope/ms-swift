@@ -1,4 +1,5 @@
 # NPU Best Practice
+Authors: [chuanzhubin](https://github.com/chuanzhubin), [jintao](https://github.com/Jintao-Huang)
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)

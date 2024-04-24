@@ -68,6 +68,7 @@ class TemplateType:
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
+    phi3 = 'phi3'
     # compatibility. (Deprecated)
     chatml = 'chatml'
     telechat = 'telechat'
@@ -1511,6 +1512,15 @@ register_template(
     TemplateType.wizardlm2,
     Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'],
              ['</s>'], _wizardlm2_system))
+
+_default_phi3_system = (
+    'You are a helpful digital assistant. '
+    'Please provide safe, ethical and accurate information to the user.')
+register_template(
+    TemplateType.phi3,
+    Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'],
+             ['<|end|>'], _default_phi3_system,
+             '<s><|system|>{{SYSTEM}}<|end|>'))
 
 register_template(
     TemplateType.atom,

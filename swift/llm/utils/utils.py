@@ -5,7 +5,6 @@ import importlib.util
 import logging
 import os
 import shutil
-import sys
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -21,8 +20,6 @@ import requests
 import torch
 import torch.distributed as dist
 import transformers
-from accelerate.utils.modeling import (get_balanced_memory,
-                                       infer_auto_device_map)
 from datasets import Dataset as HfDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
@@ -40,8 +37,8 @@ from transformers.utils import is_torch_npu_available, strtobool
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, stat_array, upper_bound,
-                         use_torchacc)
+                         is_local_master, safe_ddp_context, stat_array,
+                         upper_bound, use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
@@ -98,13 +95,10 @@ if not use_hf:
 
     @wraps(_old_msdataset_load)
     def _msdataset_ddp_load(*args, **kwargs):
-        if is_dist() and not is_local_master():
-            dist.barrier()
-        dataset = _old_msdataset_load(*args, **kwargs)
-        if is_dist() and is_local_master():
-            dist.barrier()
+        with safe_ddp_context():
+            dataset = _old_msdataset_load(*args, **kwargs)
 
-        if is_dist():
+        if is_dist():  # sync
             dist.barrier()
         return dataset
 
@@ -147,25 +141,6 @@ def _sync_max_memory(
         if v > 0 and k != 'cpu':
             new_max_memory[k] = next(new_max_memory_iter)
     return new_max_memory
-
-
-@wraps(infer_auto_device_map)
-def _infer_auto_device_map_patch(
-        model: Module,
-        max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
-        **kwargs) -> Dict[str, Union[int, str, Device]]:
-    """The auxiliary function for supports DDP+MP. Monkey Patching.
-    add feat in accelerate to support DDP + MP"""
-    verbose = kwargs.pop('verbose', False)
-    n_gpu = torch.cuda.device_count()
-    _, local_rank, _, local_world_size = get_dist_setting()
-    device_ids = list(range(local_rank, n_gpu, local_world_size))
-    max_memory = _get_max_memory(device_ids)
-    max_memory = _sync_max_memory(max_memory)
-    max_memory = get_balanced_memory(
-        model, max_memory, low_zero=False, **kwargs)
-    max_memory = {k: v for k, v in max_memory.items() if v > 0}
-    return infer_auto_device_map(model, max_memory, verbose=verbose, **kwargs)
 
 
 class LLMDataset(Dataset):
@@ -849,6 +824,29 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
 
 
 if is_ddp_plus_mp():
+    from accelerate.utils.modeling import (get_balanced_memory,
+                                           infer_auto_device_map)
+
+    @wraps(infer_auto_device_map)
+    def _infer_auto_device_map_patch(
+            model: Module,
+            max_memory: Optional[Dict[Union[int, str], Union[int,
+                                                             str]]] = None,
+            **kwargs) -> Dict[str, Union[int, str, Device]]:
+        """The auxiliary function for supports DDP+MP. Monkey Patching.
+        add feat in accelerate to support DDP + MP"""
+        verbose = kwargs.pop('verbose', False)
+        n_gpu = torch.cuda.device_count()
+        _, local_rank, _, local_world_size = get_dist_setting()
+        device_ids = list(range(local_rank, n_gpu, local_world_size))
+        max_memory = _get_max_memory(device_ids)
+        max_memory = _sync_max_memory(max_memory)
+        max_memory = get_balanced_memory(
+            model, max_memory, low_zero=False, **kwargs)
+        max_memory = {k: v for k, v in max_memory.items() if v > 0}
+        return infer_auto_device_map(
+            model, max_memory, verbose=verbose, **kwargs)
+
     _old_ddp_init = DDP.__init__
     accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (
         lambda self, model, device_ids, output_device, *args, **kwargs:

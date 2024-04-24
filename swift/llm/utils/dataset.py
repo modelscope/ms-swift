@@ -15,14 +15,14 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import (get_logger, get_seed, read_from_jsonl,
-                         transform_jsonl_to_df)
+from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
+                         read_from_jsonl, transform_jsonl_to_df)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
-from .utils import dataset_map, download_dataset
+from .utils import download_dataset
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -243,8 +243,11 @@ def load_ms_dataset(
             subset_split = ('default', subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
-        force_redownload = strtobool(
-            os.environ.get('FORCE_REDOWNLOAD', 'False'))
+        if is_dist() and not is_local_master():
+            force_redownload = False
+        else:
+            force_redownload = strtobool(
+                os.environ.get('FORCE_REDOWNLOAD', 'False'))
         download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         dataset = MsDataset.load(
             dataset_id,
