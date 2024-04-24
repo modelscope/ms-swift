@@ -314,6 +314,8 @@ class ModelType:
     codefuse_qwen_14b_chat = 'codefuse-qwen-14b-chat'
     # phi
     phi2_3b = 'phi2-3b'
+    phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
+    phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
     # cogagent
     cogvlm_17b_instruct = 'cogvlm-17b-instruct'
     cogagent_18b_chat = 'cogagent-18b-chat'
@@ -368,6 +370,7 @@ class LoRATM(NamedTuple):
         'language_expert_query_key_value', 'language_expert_dense'
     ]
     phi = ['Wqkv']
+    phi3 = ['qkv_proj']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
     telechat = ['key_value', 'query']
@@ -1250,6 +1253,26 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.phi3_4b_128k_instruct,
+    'LLM-Research/Phi-3-mini-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-mini-128k-instruct')
+@register_model(
+    ModelType.phi3_4b_4k_instruct,
+    'LLM-Research/Phi-3-mini-4k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=False,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-mini-4k-instruct')
 @register_model(
     ModelType.wizardlm2_8x22b,
     'AI-ModelScope/WizardLM-2-8x22B',
