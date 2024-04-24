@@ -28,7 +28,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import (get_dist_setting, is_dist, is_local_master,
-                         subprocess_run, use_torchacc)
+                         safe_ddp_context, subprocess_run, use_torchacc)
 from .template import TemplateType
 from .utils import get_max_model_len
 
@@ -314,6 +314,8 @@ class ModelType:
     codefuse_qwen_14b_chat = 'codefuse-qwen-14b-chat'
     # phi
     phi2_3b = 'phi2-3b'
+    phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
+    phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
     # cogagent
     cogvlm_17b_instruct = 'cogvlm-17b-instruct'
     cogagent_18b_chat = 'cogagent-18b-chat'
@@ -368,6 +370,7 @@ class LoRATM(NamedTuple):
         'language_expert_query_key_value', 'language_expert_dense'
     ]
     phi = ['Wqkv']
+    phi3 = ['qkv_proj']
     internlm2 = ['wqkv']
     mamba = ['in_proj', 'x_proj', 'embeddings', 'out_proj']
     telechat = ['key_value', 'query']
@@ -1086,14 +1089,17 @@ def get_model_tokenizer_baichuan2(model_dir: str,
         load_model,
         model_config=model_config,
         **kwargs)
+    model_ori = model
     if model is not None:
+        if not hasattr(model, 'lm_head'):  # fix awq
+            model = model.model
         new_forward = MethodType(patch_baichuan2_lm_head_forward,
                                  model.lm_head)
         if hasattr(model, '_old_forward'):  # device_map
             model.lm_head._old_forward = new_forward
         else:
             model.lm_head.forward = new_forward
-    return model, tokenizer
+    return model_ori, tokenizer
 
 
 @register_model(
@@ -1247,6 +1253,26 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.phi3_4b_128k_instruct,
+    'LLM-Research/Phi-3-mini-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-mini-128k-instruct')
+@register_model(
+    ModelType.phi3_4b_4k_instruct,
+    'LLM-Research/Phi-3-mini-4k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=False,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-mini-4k-instruct')
 @register_model(
     ModelType.wizardlm2_8x22b,
     'AI-ModelScope/WizardLM-2-8x22B',
@@ -2386,16 +2412,18 @@ def _git_clone_github(github_url: str,
         github_url = github_url.rstrip('/')
         local_repo_name = github_url.rsplit('/', 1)[1]
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    if not os.path.exists(local_repo_path):
-        if not github_url.endswith('.git'):
-            github_url = f'{github_url}.git'
-        command = [
-            'git', '-C', git_cache_dir, 'clone', github_url, local_repo_name
-        ]
-        command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
-        logger.info(f'Run the command: `{command_str}`')
-        subprocess_run(command)
-    logger.info(f'local_repo_path: {local_repo_path}')
+    with safe_ddp_context():
+        if not os.path.exists(local_repo_path):
+            if not github_url.endswith('.git'):
+                github_url = f'{github_url}.git'
+            command = [
+                'git', '-C', git_cache_dir, 'clone', github_url,
+                local_repo_name
+            ]
+            command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+            logger.info(f'Run the command: `{command_str}`')
+            subprocess_run(command)
+        logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 
 
@@ -2523,7 +2551,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_70b_instruct_int8,
     'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
@@ -2533,7 +2562,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_70b_instruct_int4,
     'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
@@ -2543,7 +2573,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_8b_instruct_awq,
     'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
@@ -2553,7 +2584,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_8b_instruct_int8,
     'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
@@ -2563,7 +2595,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_8b_instruct_int4,
     'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
@@ -2573,7 +2606,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_70b_instruct,
     'LLM-Research/Meta-Llama-3-70B-Instruct',
@@ -3786,42 +3820,40 @@ def safe_snapshot_download(model_type: str,
             model_id_or_path = model_info[
                 'hf_model_id' if use_hf else 'model_id_or_path']
 
-    if is_dist() and not is_local_master():
-        dist.barrier()
-    if model_id_or_path is not None and not os.path.exists(model_id_or_path):
-        ignore_file_pattern = model_info['ignore_file_pattern']
-        if use_hf:
-            if revision is None:
-                revision = 'main'
-            logger.info(
-                f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
-            )
-            use_hf_transfer = strtobool(
-                os.environ.get('USE_HF_TRANSFER', 'False'))
-            if use_hf_transfer:
-                import huggingface_hub._snapshot_download as hf_s
-                hf_s.HF_HUB_ENABLE_HF_TRANSFER = True
-            from huggingface_hub import snapshot_download as hf_snapshot_download
-            model_dir = hf_snapshot_download(
-                model_id_or_path,
-                repo_type='model',
-                revision=revision,
-                ignore_patterns=ignore_file_pattern)
+    with safe_ddp_context():
+        if model_id_or_path is not None and not os.path.exists(
+                model_id_or_path):
+            ignore_file_pattern = model_info['ignore_file_pattern']
+            if use_hf:
+                if revision is None:
+                    revision = 'main'
+                logger.info(
+                    f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}'
+                )
+                use_hf_transfer = strtobool(
+                    os.environ.get('USE_HF_TRANSFER', 'False'))
+                if use_hf_transfer:
+                    import huggingface_hub._snapshot_download as hf_s
+                    hf_s.HF_HUB_ENABLE_HF_TRANSFER = True
+                from huggingface_hub import snapshot_download as hf_snapshot_download
+                model_dir = hf_snapshot_download(
+                    model_id_or_path,
+                    repo_type='model',
+                    revision=revision,
+                    ignore_patterns=ignore_file_pattern)
+            else:
+                if revision is None:
+                    revision = model_info['revision']
+                logger.info(
+                    f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
+                )
+                model_dir = snapshot_download(
+                    model_id_or_path,
+                    revision,
+                    ignore_file_pattern=ignore_file_pattern)
         else:
-            if revision is None:
-                revision = model_info['revision']
-            logger.info(
-                f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}'
-            )
-            model_dir = snapshot_download(
-                model_id_or_path,
-                revision,
-                ignore_file_pattern=ignore_file_pattern)
-    else:
-        model_dir = model_id_or_path
-    logger.info(f'Loading the model using model_dir: {model_dir}')
-    if is_dist() and is_local_master():
-        dist.barrier()
+            model_dir = model_id_or_path
+        logger.info(f'Loading the model using model_dir: {model_dir}')
 
     model_dir = os.path.expanduser(model_dir)
     assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
