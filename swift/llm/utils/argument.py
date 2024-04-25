@@ -46,28 +46,28 @@ class ArgumentsBase:
         dataset = []
         for d in self.dataset:
             if os.path.exists(d):
-                self.custom_train_dataset_path.append(d)
+                self.custom_train_dataset.append(d)
             else:
                 dataset.append(d)
         self.dataset = dataset
 
-        for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
+        for key in ['custom_train_dataset', 'custom_val_dataset']:
             value = getattr(self, key)
             if isinstance(value, str):
                 setattr(self, key, [value])
-        if len(self.custom_train_dataset_path) == 0 and len(
-                self.custom_val_dataset_path) == 0:
+        if len(self.custom_train_dataset) == 0 and len(
+                self.custom_val_dataset) == 0:
             return
 
         dataset_name = '_custom_dataset'
-        _register_local_dataset(dataset_name, self.custom_train_dataset_path,
+        _register_local_dataset(dataset_name, self.custom_train_dataset,
                                 self.custom_val_dataset_path)
         self.dataset.append(dataset_name)
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = [
-            'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset_path',
-            'custom_val_dataset_path'
+            'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset',
+            'custom_val_dataset'
         ]
         if self.model_id_or_path is not None and (
                 self.model_id_or_path.startswith('~')
@@ -322,19 +322,14 @@ class SftArguments(ArgumentsBase):
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    train_dataset_sample: int = -1  # -1: all dataset
-    train_dataset_mix_ratio: float = 0.
-    train_dataset_mix_ds: List[str] = field(
-        default_factory=lambda: ['ms-bench'])
-    val_dataset_sample: Optional[int] = None  # -1: all dataset
     use_loss_scale: bool = False
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none'
-    custom_train_dataset_path: List[str] = field(default_factory=list)
-    custom_val_dataset_path: List[str] = field(default_factory=list)
+    custom_train_dataset: List[str] = field(default_factory=list)
+    custom_val_dataset: List[str] = field(default_factory=list)
     self_cognition_sample: int = 0
     # Chinese name and English name
     model_name: List[str] = field(
@@ -473,6 +468,12 @@ class SftArguments(ArgumentsBase):
     top_p: float = 0.7
     repetition_penalty: float = 1.
     num_beams: int = 1
+
+    # fsdp option
+    fsdp: Optional[str] = ''
+    # fsdp config file
+    fsdp_config: Optional[str] = None
+
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
@@ -481,54 +482,6 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
-
-    # fsdp option
-    fsdp: Optional[str] = ''
-    # fsdp config file
-    fsdp_config: Optional[str] = None
-
-    def handle_dataset_mixture(self, train_dataset: HfDataset) -> None:
-        if train_dataset is None:
-            return train_dataset
-        if self.train_dataset_mix_ratio <= 0 or len(
-                self.train_dataset_mix_ds) == 0:
-            return train_dataset
-
-        random_state = np.random.RandomState(self.dataset_seed)
-        train_dataset_mix_ds = []
-        custom_mix_ds = []
-        for mix_ds in self.train_dataset_mix_ds:
-            if os.path.exists(mix_ds):
-                custom_mix_ds.append(mix_ds)
-            else:
-                train_dataset_mix_ds.append(mix_ds)
-
-        if len(custom_mix_ds) > 0:
-            dataset_name = '_custom_mixture'
-            _register_local_dataset(dataset_name, custom_mix_ds, [])
-            train_dataset_mix_ds.append(dataset_name)
-        mix_dataset_sample = int(
-            len(train_dataset) * self.train_dataset_mix_ratio)
-        logger.info(f'train_dataset_mix_ds: {train_dataset_mix_ds}')
-        logger.info(
-            f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}'
-        )
-        mixed_dataset = get_dataset(
-            train_dataset_mix_ds,
-            0.0,
-            random_state,
-            check_dataset_strategy=self.check_dataset_strategy)[0]
-        if len(mixed_dataset) < mix_dataset_sample:
-            logger.warn(
-                f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
-                'lesser than the ratio required by the `train_dataset_mix_ratio` '
-                f'argument: {self.train_dataset_mix_ratio}. '
-                f'the actual ratio is: {len(mixed_dataset) / len(train_dataset):.6}.'
-            )
-        else:
-            train_idxs = random_state.permutation(mix_dataset_sample)
-            mixed_dataset = mixed_dataset.select(train_idxs)
-        return concatenate_datasets([train_dataset, mixed_dataset])
 
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
@@ -700,9 +653,8 @@ class SftArguments(ArgumentsBase):
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
-                                       and len(
-                                           self.custom_val_dataset_path) == 0
+        if len(self.dataset) == 0 and (len(self.custom_train_dataset) == 0
+                                       and len(self.custom_val_dataset) == 0
                                        and self.self_cognition_sample == 0):
             raise ValueError(
                 f'self.dataset: {self.dataset}, Please input the training dataset.'
@@ -920,8 +872,8 @@ class InferArguments(ArgumentsBase):
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none'
-    custom_train_dataset_path: List[str] = field(default_factory=list)
-    custom_val_dataset_path: List[str] = field(default_factory=list)
+    custom_train_dataset: List[str] = field(default_factory=list)
+    custom_val_dataset: List[str] = field(default_factory=list)
 
     quantization_bit: Literal[0, 4, 8] = 0
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
@@ -987,8 +939,8 @@ class InferArguments(ArgumentsBase):
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
         has_dataset = (
-            len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
-            or len(self.custom_val_dataset_path) > 0)
+            len(self.dataset) > 0 or len(self.custom_train_dataset) > 0
+            or len(self.custom_val_dataset) > 0)
         if self.eval_human is None:
             if not has_dataset:
                 self.eval_human = True
@@ -1075,12 +1027,12 @@ class InferArguments(ArgumentsBase):
         if self.load_dataset_config:
             imported_keys += [
                 'dataset', 'dataset_seed', 'dataset_test_ratio',
-                'check_dataset_strategy', 'custom_train_dataset_path',
+                'check_dataset_strategy', 'custom_train_dataset',
                 'custom_val_dataset_path'
             ]
         for key in imported_keys:
             if (key in {
-                    'dataset', 'custom_train_dataset_path',
+                    'dataset', 'custom_train_dataset',
                     'custom_val_dataset_path'
             } and len(getattr(self, key)) > 0):
                 continue

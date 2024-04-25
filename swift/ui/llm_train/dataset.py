@@ -31,7 +31,7 @@ class Dataset(BaseUI):
                 'en': 'Set the max length input to the model',
             }
         },
-        'custom_train_dataset_path': {
+        'custom_train_dataset': {
             'label': {
                 'zh': '自定义训练数据集路径',
                 'en': 'Custom train dataset path'
@@ -101,10 +101,8 @@ class Dataset(BaseUI):
                 multiselect=True,
                 choices=list(DATASET_MAPPING.keys()),
                 scale=20)
-            gr.Textbox(
-                elem_id='custom_train_dataset_path', is_list=True, scale=20)
-            gr.Textbox(
-                elem_id='custom_val_dataset_path', is_list=True, scale=20)
+            gr.Textbox(elem_id='custom_train_dataset', is_list=True, scale=20)
+            gr.Textbox(elem_id='custom_val_dataset', is_list=True, scale=20)
         with gr.Row():
             gr.Slider(
                 elem_id='dataset_test_ratio',

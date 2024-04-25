@@ -38,6 +38,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
 
 GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
                                                          Optional[HfDataset]]]]
+SubsetSplit = Union[str, Tuple[str, str], List[str]]
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 logger = get_logger()
@@ -85,7 +86,6 @@ class DatasetName:
     # medical
     medical_en = 'medical-en'
     medical_zh = 'medical-zh'
-    medical_mini_zh = 'medical-mini-zh'
     disc_med_sft_zh = 'disc-med-sft-zh'
     # law
     lawyer_llama_zh = 'lawyer-llama-zh'
@@ -149,10 +149,10 @@ class DatasetName:
 def register_dataset(
         dataset_name: str,
         dataset_id_or_path: str,
-        subsets: Optional[List[str]] = None,
         preprocess_func: Optional[PreprocessFunc] = None,
         get_function: Optional[GetDatasetFunction] = None,
         *,
+        subsets: Optional[List[str]] = None,
         train_split: Optional[List[str]] = None,
         val_split: Optional[List[str]] = None,
         hf_dataset_id: Optional[str] = None,
@@ -261,7 +261,7 @@ def get_dataset_from_repo(
     dataset_list = []
     _iter = zip([train_split, val_split],
                 [train_dataset_sample, val_dataset_sample])
-    for subset_split_list, dataset_sample in _iter:
+    for split, dataset_sample in _iter:
         if use_hf:
             dataset = load_hf_dataset(dataset_id, subset_split_list)
         else:
@@ -286,8 +286,7 @@ def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
 
 register_dataset(
     DatasetName.alpaca_zh,
-    'AI-ModelScope/alpaca-gpt4-data-zh', ['train'],
-    None,
+    'AI-ModelScope/alpaca-gpt4-data-zh',
     AlpacaPreprocessor(concat_inst_inp=_concat_inst_inp_alpaca_zh),
     get_dataset_from_repo,
     tags=['chat', 'general', '🔥'],
@@ -314,22 +313,10 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.coco_en,
-    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
-    [('coco_2014_caption', 'validation')],
+    'modelscope/coco_2014_caption',
     _preprocess_vision_dataset,
     get_dataset_from_repo,
-    tags=['chat', 'multi-modal', 'vision'])
-
-register_dataset(
-    DatasetName.coco_mini_en,
-    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
-    [('coco_2014_caption', 'validation')],
-    _preprocess_vision_dataset,
-    get_dataset_from_repo,
-    function_kwargs={
-        'train_dataset_sample': 20000,
-        'val_dataset_sample': 200
-    },
+    subsets=['coco_2014_caption'],
     tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 
@@ -354,15 +341,11 @@ def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
 
 
 register_dataset(
-    DatasetName.coco_mini_en_2,
-    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
-    [('coco_2014_caption', 'validation')],
+    DatasetName.coco_en_2,
+    'modelscope/coco_2014_caption',
     _preprocess_vision_dataset2,
     get_dataset_from_repo,
-    function_kwargs={
-        'train_dataset_sample': 20000,
-        'val_dataset_sample': 200
-    },
+    subsets=['coco_2014_caption'],
     tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 
@@ -382,17 +365,20 @@ def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.aishell1_zh,
-    'speech_asr/speech_asr_aishell1_trainsets', ['train', 'validation'],
-    ['test'],
+    'speech_asr/speech_asr_aishell1_trainsets',
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
+    train_split=['train', 'validation'],
+    val_split=['test'],
     tags=['chat', 'multi-modal', 'audio'])
 
 register_dataset(
-    DatasetName.aishell1_mini_zh,
+    DatasetName.aishell1_zh_mini,
     'speech_asr/speech_asr_aishell1_trainsets', ['validation'], ['test'],
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
+    train_split=['validation'],
+    val_split=['test'],
     function_kwargs={'val_dataset_sample': 200},
     tags=['chat', 'multi-modal', 'audio', '🔥'])
 
@@ -447,7 +433,7 @@ def long_alpaca_preprocessor(dataset: HfDataset):
 
 register_dataset(
     DatasetName.long_alpaca_12k,
-    'AI-ModelScope/LongAlpaca-12k', ['train'], [],
+    'AI-ModelScope/LongAlpaca-12k',
     long_alpaca_preprocessor,
     get_dataset_from_repo,
     tags=['longlora', 'QA'],
@@ -481,24 +467,15 @@ register_dataset(
 
 register_dataset(
     DatasetName.ms_bench,
-    'iic/ms_bench', ['train'], [],
+    'iic/ms_bench',
     ConversationsPreprocessor(
         repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
-    DatasetName.ms_bench_mini,
-    'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(
-        repair_conversations=_repair_ms_bench, error_strategy='delete'),
-    get_dataset_from_repo,
-    function_kwargs={'train_dataset_sample': 20000},
-    tags=['chat', 'general', 'multi-round', '🔥'])
-
-register_dataset(
-    DatasetName.damo_agent_mini_zh,
-    'damo/MSAgent-Bench', ['train'], ['validation'],
+    DatasetName.damo_agent_zh_mini,
+    'damo/MSAgent-Bench',
     ConversationsPreprocessor(
         repair_conversations=partial(
             _repair_agent_conversations, use_mini=True),
@@ -507,7 +484,7 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round'])
 register_dataset(
     DatasetName.damo_agent_zh,
-    'damo/MSAgent-Bench', ['train'], ['validation'],
+    'damo/MSAgent-Bench',
     ConversationsPreprocessor(
         repair_conversations=partial(
             _repair_agent_conversations,
@@ -521,7 +498,7 @@ Keywords: {query}
 Advertisements:"""
 register_dataset(
     DatasetName.advertise_gen_zh,
-    'lvjianjin/AdvertiseGen', ['train'], ['validation'],
+    'lvjianjin/AdvertiseGen',
     TextGenerationPreprocessor(advertise_gen_prompt, 'content', 'summary'),
     get_dataset_from_repo,
     tags=['text-generation', '🔥'],
@@ -574,29 +551,17 @@ def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
 
 register_dataset(
     DatasetName.cmnli_zh,
-    'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
+    'modelscope/clue',
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
+    subsets=['cmnli'],
     tags=['text-generation', 'classification'],
     hf_dataset_id='clue')
 
 register_dataset(
-    DatasetName.cmnli_mini_zh,
-    'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
-    ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
-                    'Natural Language Inference', True),
-    get_dataset_from_repo,
-    function_kwargs={
-        'train_dataset_sample': 20000,
-        'val_dataset_sample': 200
-    },
-    tags=['text-generation', 'classification', '🔥'],
-    hf_dataset_id='clue')
-
-register_dataset(
     DatasetName.jd_sentiment_zh,
-    'DAMO_NLP/jd', ['train'], ['validation'],
+    'DAMO_NLP/jd',
     ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification',
                     False),
     get_dataset_from_repo,
@@ -620,33 +585,12 @@ Question:"""
 
 register_dataset(
     DatasetName.dureader_robust_zh,
-    'modelscope/DuReader_robust-QG', ['train', 'validation'], ['test'],
+    'modelscope/DuReader_robust-QG',
     _preprocess_dureader_robust,
     get_dataset_from_repo,
+    train_split=['train', 'validation'],
+    val_split=['test'],
     tags=['text-generation', '🔥'])
-
-register_dataset(
-    DatasetName.medical_en,
-    'huangjintao/medical_zh', [('en', 'train'), ('en', 'val')],
-    [('en', 'test')],
-    RenameColumnsPreprocessor({
-        'input': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'medical'])
-
-register_dataset(
-    DatasetName.medical_mini_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')],
-    [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    function_kwargs={'train_dataset_sample': 50000},
-    tags=['chat', 'medical'])
 
 
 def process_hh_rlhf(dataset):
@@ -817,26 +761,20 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     })
 
 
-_sharegpt_zh_subset_list = ['common-zh', 'computer-zh', 'unknow-zh']
-
-_sharegpt_en_subset_list = ['common-en', 'computer-en']
-
 register_dataset(
     DatasetName.sharegpt_zh,
     'huangjintao/sharegpt',
-    [(subset, 'train') for subset in _sharegpt_zh_subset_list],
-    None,
     _preprocess_sharegpt,
     get_dataset_from_repo,
+    subsets=['common-zh', 'computer-zh', 'unknow-zh'],
     tags=['chat', 'general', 'multi-round'])
 
 register_dataset(
     DatasetName.sharegpt_en,
     'huangjintao/sharegpt',
-    [(subset, 'train') for subset in _sharegpt_en_subset_list],
-    None,
     _preprocess_sharegpt,
     get_dataset_from_repo,
+    subsets=['common-en', 'computer-en'],
     tags=['chat', 'general', 'multi-round'])
 
 
@@ -869,8 +807,7 @@ def _repair_planner(conversations: list) -> list:
 
 register_dataset(
     DatasetName.capcha_images,
-    'AI-ModelScope/captcha-images', [('default', 'train')],
-    [('default', 'validation')],
+    'AI-ModelScope/captcha-images',
     _preprocess_capcha_images,
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'vision'])
@@ -906,8 +843,7 @@ def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.blossom_math_zh,
-    'AI-ModelScope/blossom-math-v2', ['train'],
-    None,
+    'AI-ModelScope/blossom-math-v2',
     _preprocess_blossom_math,
     get_dataset_from_repo,
     tags=['chat', 'math', '🔥'],
@@ -934,8 +870,7 @@ def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.tigerbot_law_zh,
-    'AI-ModelScope/tigerbot-law-plugin', ['train'],
-    None,
+    'AI-ModelScope/tigerbot-law-plugin',
     _preprocess_tigerbot_law,
     get_dataset_from_repo,
     tags=['text-generation', 'law', 'pretrained'],
@@ -962,15 +897,10 @@ def _preprocess_leetcode_python(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.leetcode_python_en,
-    'AI-ModelScope/leetcode-solutions-python', ['train'],
-    None,
+    'AI-ModelScope/leetcode-solutions-python',
     _preprocess_leetcode_python,
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
-
-_agent_instruct_subset_list = [
-    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
-]
 
 
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
@@ -983,13 +913,12 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 register_dataset(
     DatasetName.agent_instruct_all_en,
     'huangjintao/AgentInstruct_copy',
-    [(subset, 'train') for subset in _agent_instruct_subset_list],
-    None,
     ConversationsPreprocessor(
         'human',
         'gpt',
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
+    subsets=['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
     tags=['chat', 'agent', 'multi-round'])
 
 
@@ -1017,16 +946,10 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.ms_agent_multirole,
-    'iic/MSAgent-MultiRole', [('default', 'train')],
-    None,
+    'iic/MSAgent-MultiRole',
     _preprocess_msagent_multirole_dataset,
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
-
-hc3_chinese_subset = [
-    'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
-    'psychology'
-]
 
 
 def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
@@ -1051,18 +974,21 @@ Output:"""
 register_dataset(
     DatasetName.hc3_zh,
     'simpleai/HC3-Chinese',
-    [[subset, 'train'] for subset in hc3_chinese_subset], [],
     _preprocess_hc3,
     get_dataset_from_repo,
+    subsets=[
+        'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
+        'psychology'
+    ],
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3-Chinese')
 
 register_dataset(
     DatasetName.hc3_en,
-    'simpleai/HC3', [[subset, 'train'] for subset in ['finance', 'medicine']],
-    [],
+    'simpleai/HC3',
     _preprocess_hc3,
     get_dataset_from_repo,
+    subsets=['finance', 'medicine'],
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3')
 

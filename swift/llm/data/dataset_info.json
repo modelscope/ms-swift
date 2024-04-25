@@ -25,7 +25,7 @@
     "cot-en": {
         "dataset_id": "YorickHe/CoT",
         "tags": ["chat", "general"]
-    }, 
+    },
     "instinwild": {
         "dataset_id": "wyj123456/instinwild",
         "subsets": ["default", "subset"],
@@ -49,7 +49,7 @@
     },
     "coig-cqia": {
         "dataset_id": "AI-ModelScope/COIG-CQIA",
-        "subsets": ["chinese_traditional", "coig_pc", "exam", "finance", "douban", "human_value", "logi_qa", 
+        "subsets": ["chinese_traditional", "coig_pc", "exam", "finance", "douban", "human_value", "logi_qa",
                     "ruozhiba", "segmentfault", "wiki", "wikihow", "xhs", "zhihu"],
         "tags": ["general", "🔥"]
     },
@@ -174,7 +174,7 @@
             "user_role": "human",
             "assistant_role": "bot",
             "conversations_key": "chat_rounds",
-            "from_key": "role", 
+            "from_key": "role",
             "value_key": "content"
         },
         "tags": ["chat", "coding", "🔥"]
@@ -200,7 +200,29 @@
         },
         "tags": ["chat", "medical", "🔥"],
         "hf_dataset_id": "Flmc/DISC-Med-SFT"
+    },
+    "medical-en": {
+        "dataset_id": "huangjintao/medical_zh",
+        "subsets": ["en"],
+        "train_split": ["train", "val"],
+        "val_split": ["test"],
+        "columns": {
+            "input": "query",
+            "output": "response"
+        },
+        "tags": ["chat", "medical"]
+    },
+    "medical-zh": {
+        "dataset_id": "huangjintao/medical_zh",
+        "subsets": ["zh"],
+        "train_split": ["train", "val"],
+        "val_split": ["test"],
+        "columns": {
+            "instruction": "query",
+            "output": "response"
+        },
+        "tags": ["chat", "medical"]
+
     }
 
 }
-
