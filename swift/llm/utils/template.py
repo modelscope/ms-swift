@@ -356,8 +356,11 @@ class Template:
         res_context_list: List[Context] = []
         compute_loss_idx: List[float] = []
         if auto_add_bos:
-            res_context_list.append(self.tokenizer.encode(''))
-            compute_loss_idx.append(0.)
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id,
+                          int) and bos_token_id in self.tokenizer.encode(''):
+                res_context_list.append([bos_token_id])
+                compute_loss_idx.append(0.)
         if system is None:
             prefix = self.prefix
         else:
