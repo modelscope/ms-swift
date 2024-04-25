@@ -20,7 +20,7 @@ from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor, TextGenerationPreprocessor,SystemOnlyConversationsPreprocessor)
+                         SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
 
@@ -1364,26 +1364,35 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
     只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
     history_prompt = '\n\n【chat history】'
     conv_prompt = '\n {name}:{content}'
-    system,query,response = [],[],[]
+    system, query, response = [], [], []
 
     def process_conversation(conv):
-        query, response = "", conv[-1]['value']
-        system = conv[0]['value'] if conv[0]['from'] != 'user' else ""
+        query, response = '', conv[-1]['value']
+        system = conv[0]['value'] if conv[0]['from'] != 'user' else ''
         if conv[0]['from'] == 'user':
             query = conv[0]['value']
-        elif not "next_speakers:" in system:
+        elif not 'next_speakers:' in system:
             if '【注意事项】' not in system and system:
                 system += res_prompt
             system += history_prompt
-            system += ''.join([conv_prompt.format(name=c['from'], content=c['value']) for c in conv[1:-1]])
+            system += ''.join([
+                conv_prompt.format(name=c['from'], content=c['value'])
+                for c in conv[1:-1]
+            ])
 
         return system, query, response
+
     for d in dataset:
         sys, qry, resp = process_conversation(d['conversations'])
         system.append(sys)
         query.append(qry)
         response.append(resp)
-    return HfDataset.from_dict({'system':system, "query":query, 'response': response})
+    return HfDataset.from_dict({
+        'system': system,
+        'query': query,
+        'response': response
+    })
+
 
 register_dataset(
     DatasetName.ms_agent_multirole,
