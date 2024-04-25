@@ -1364,32 +1364,26 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
     只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
     history_prompt = '\n\n【chat history】'
     conv_prompt = '\n {name}:{content}'
-    system = []
-    query = []
-    response = []
+    system,query,response = [],[],[]
 
+    def process_conversation(conv):
+        query, response = "", conv[-1]['value']
+        system = conv[0]['value'] if conv[0]['from'] != 'user' else ""
+        if conv[0]['from'] == 'user':
+            query = conv[0]['value']
+        elif not "next_speakers:" in system:
+            if '【注意事项】' not in system and system:
+                system += res_prompt
+            system += history_prompt
+            system += ''.join([conv_prompt.format(name=c['from'], content=c['value']) for c in conv[1:-1]])
+
+        return system, query, response
     for d in dataset:
-        conv = d['conversations']
-        sys = conv[0]['value']
-        if '【注意事项】' not in sys:
-            sys += res_prompt
-        sys += history_prompt
-        for i in range(1, len(conv) - 1):
-            sys += conv_prompt.format(
-                name=conv[i]['from'], content=conv[i]['value'])
+        sys, qry, resp = process_conversation(d['conversations'])
         system.append(sys)
-        query.append("")
-        response.append(conv[-1]['value'])
-
+        query.append(qry)
+        response.append(resp)
     return HfDataset.from_dict({'system':system, "query":query, 'response': response})
-
-def _repair_multirole_json(conversations:list) -> list:
-    if isinstance(conversations, str):
-        conversations = ast.literal_eval(conversations)
-    if conversations[0]['from'] == 'system':
-        query = {"from":"user", "value":""}
-        conversations.insert(1,query)
-    return conversations
 
 register_dataset(
     DatasetName.ms_agent_multirole,
