@@ -198,6 +198,8 @@ class ModelType:
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # internlm-xcomposer2
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    # internvl
+    internvl_chat_v1_5 = 'internvl-chat-v1_5'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -2366,6 +2368,39 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
+@register_model(
+    ModelType.internvl_chat_v1_5,
+    'AI-ModelScope/InternVL-Chat-V1-5',
+    LoRATM.internlm2,
+    TemplateType.default_generation_bos,
+    requires=['transformers>=4.35'],
+    support_flash_attn=True,
+    hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
+def get_model_tokenizer_internlm2(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        model_config.attn_implementation = 'flash_attention_2'
+
+    eos_token = kwargs.pop('eos_token', None)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        **kwargs)
+    if eos_token is not None:
+        if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
+            del tokenizer.__class__.eos_token_id
+        tokenizer.eos_token = eos_token
+
+    return model, tokenizer
 
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
