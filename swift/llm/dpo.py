@@ -47,7 +47,7 @@ def llm_dpo(args: DPOArguments) -> str:
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
 
-    kwargs = {}
+    kwargs = {'max_length': args.max_length, 'use_unsloth': args.tuner_backend == 'unsloth'}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
     model, tokenizer = get_model_tokenizer(

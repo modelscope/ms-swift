@@ -300,7 +300,7 @@ class SftArguments(ArgumentsBase):
                       'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
-    tuner_backend: Literal['swift', 'peft'] = 'peft'
+    tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
         default='AUTO',
         metadata={

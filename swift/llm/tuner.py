@@ -84,13 +84,25 @@ def prepare_model(model, args: SftArguments):
                 if args.tuner_backend == 'swift':
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
+                    model = Swift.prepare_model(model, lora_config)
+                    logger.info(f'lora_config: {lora_config}')
                 elif args.tuner_backend == 'peft':
                     lora_config = LoraConfig(
                         task_type='CAUSAL_LM',
                         lora_dtype=args.lora_dtype,
                         **lora_kwargs)
-                model = Swift.prepare_model(model, lora_config)
-                logger.info(f'lora_config: {lora_config}')
+                    model = Swift.prepare_model(model, lora_config)
+                    logger.info(f'lora_config: {lora_config}')
+                elif args.tuner_backend == 'unsloth':
+                    from unsloth import FastLanguageModel
+                    assert args.sft_type == 'lora', 'Unsloth does not support LongLoRA'
+                    model = FastLanguageModel.get_peft_model(
+                        model,
+                        use_gradient_checkpointing=True,
+                        max_seq_length=args.max_length,
+                        **lora_kwargs,
+                    )
+                    logger.info(f'unsloth_config: {lora_kwargs}')
                 if args.sft_type == 'longlora':
                     assert LongLoRAModelType.LLAMA in args.model_type
                     assert version.parse(
