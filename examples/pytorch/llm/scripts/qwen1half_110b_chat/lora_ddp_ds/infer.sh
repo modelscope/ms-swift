@@ -1,5 +1,5 @@
-# Experimental environment: A100
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+# Experimental environment: 4*A100
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift infer \
     --ckpt_dir "output/qwen1half-110b-chat/vx-xxx/checkpoint-xxx" \
     --load_dataset_config true \
