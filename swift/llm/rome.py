@@ -15,11 +15,11 @@ logger = get_logger()
 
 def rome_infer(args: RomeArguments) -> None:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     logger.info(
         'Rome does not support quantization for now, all quantization args will be ignored.'
     )
     logger.info(f'device_count: {torch.cuda.device_count()}')
-    seed_everything(args.seed)
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}

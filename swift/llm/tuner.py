@@ -9,8 +9,8 @@ from packaging import version
 from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config,
-                          LongLoRAConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, NEFTuneConfig, Swift)
+                          LongLoRAModelType, LoraConfig, LoRAConfig,
+                          NEFTuneConfig, Swift)
 from swift.tuners.llamapro import LLaMAProConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (activate_model_parameters, freeze_model_parameters,
@@ -77,7 +77,9 @@ def prepare_model(model, args: SftArguments):
                 'use_dora': args.use_dora,
                 'lorap_lr_ratio': args.lora_lr_ratio,
             }
-            if args.sft_type == 'lora':
+            if args.sft_type in ('lora', 'longlora'):
+                if args.lora_dtype == 'AUTO':
+                    args.lora_dtype = None
                 if args.tuner_backend == 'swift':
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
@@ -88,15 +90,13 @@ def prepare_model(model, args: SftArguments):
                         **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
                 logger.info(f'lora_config: {lora_config}')
-            elif args.sft_type == 'longlora':
-                assert args.tuner_backend == 'swift'
-                assert LongLoRAModelType.LLAMA in args.model_type
-                longlora_config = LongLoRAConfig(
-                    lora_dtype=args.lora_dtype,
-                    model_type=LongLoRAModelType.LLAMA,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, longlora_config)
-                logger.info(f'longlora_config: {longlora_config}')
+                if args.sft_type == 'longlora':
+                    assert LongLoRAModelType.LLAMA in args.model_type
+                    assert version.parse(
+                        transformers.__version__) >= version.parse('4.39.3')
+                    from swift.tuners.longlora.llama import replace_llama_attn
+                    replace_llama_attn(model)
+                    model.config.group_size_ratio = 0.25
             elif args.sft_type == 'adalora':
                 lora_kwargs.pop('lorap_lr_ratio', None)
                 lora_kwargs['rank_pattern'] = None

@@ -105,6 +105,7 @@ class LLMInfer(BaseUI):
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(InferArguments)
+    arguments = BaseUI.get_argument_names(InferArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -391,7 +392,7 @@ class LLMInfer(BaseUI):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
-        args = Runtime.parse_info_from_cmdline(running_task)
+        _, args = Runtime.parse_info_from_cmdline(running_task)
         model_type, template = model_and_template
         old_history, history = history, []
         request_config = XRequestConfig(

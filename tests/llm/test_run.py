@@ -398,7 +398,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=100,
                 eval_steps=5,
                 custom_train_dataset_path=[
-                    os.path.join(folder, 'multi_modal.jsonl')
+                    os.path.join(folder, 'multi_modal2.jsonl')
                 ],
                 lazy_tokenize=False))
 

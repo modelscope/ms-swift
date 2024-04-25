@@ -10,7 +10,7 @@ If you want to use vllm for inference acceleration, you can check out [VLLM Infe
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
 # Install ms-swift
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 
 # If you want to use models based on auto_gptq for inference.
 # Models using auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/Supported Models and Datasets.md#Models`

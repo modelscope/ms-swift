@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from typing import Optional
 
@@ -46,15 +47,16 @@ def push_to_ms_hub(ckpt_dir: str,
                    hub_private_repo: bool = False,
                    commit_message: str = 'update files'):
     logger.info(f'Starting push to hub. ckpt_dir: {ckpt_dir}.')
+    tmp_file_name = tempfile.TemporaryDirectory().name
     subprocess_run(['git', 'lfs', 'env'],
                    stdout=subprocess.PIPE)  # check git-lfs install
 
     hub_model_id = create_ms_repo(hub_model_id, hub_token, hub_private_repo)
     git_token = ModelScopeConfig.get_token()
     ms_url = f'https://oauth2:{git_token}@www.modelscope.cn/{hub_model_id}.git'
-    subprocess_run(['git', '-C', ckpt_dir, 'clone', ms_url, 'tmp'],
+    subprocess_run(['git', '-C', ckpt_dir, 'clone', ms_url, tmp_file_name],
                    env={'GIT_LFS_SKIP_SMUDGE': '1'})
-    tmp_dir = os.path.join(ckpt_dir, 'tmp')
+    tmp_dir = os.path.join(ckpt_dir, tmp_file_name)
     subprocess_run(['git', '-C', tmp_dir, 'lfs', 'pull'])
     logger.info('Git clone the repo successfully.')
     # mv .git

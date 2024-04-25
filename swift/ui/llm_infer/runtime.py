@@ -1,5 +1,6 @@
 import collections
 import os.path
+import sys
 import time
 from datetime import datetime
 from typing import Dict, List, Tuple, Type
@@ -125,7 +126,7 @@ class Runtime(BaseUI):
     def wait(cls, task):
         if not task:
             return [None]
-        args = cls.parse_info_from_cmdline(task)
+        _, args = cls.parse_info_from_cmdline(task)
         log_file = args['log_file']
         offset = 0
         latest_data = ''
@@ -177,7 +178,7 @@ class Runtime(BaseUI):
                     ports.add(
                         int(
                             Runtime.parse_info_from_cmdline(
-                                Runtime.construct_running_task(proc)).get(
+                                Runtime.construct_running_task(proc))[1].get(
                                     'port', 8000)))
                 except IndexError:
                     pass
@@ -187,6 +188,7 @@ class Runtime(BaseUI):
     def refresh_tasks(running_task=None):
         log_file = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
+        negative_name = 'swift.exe'
         cmd_name = 'deploy'
         process = []
         selected = None
@@ -196,9 +198,12 @@ class Runtime(BaseUI):
             except (psutil.ZombieProcess, psutil.AccessDenied,
                     psutil.NoSuchProcess):
                 cmdlines = []
-            if any([process_name in cmdline
-                    for cmdline in cmdlines]) and any(  # noqa
-                        [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
+            if any([
+                    process_name in cmdline for cmdline in cmdlines
+            ]) and not any([negative_name in cmdline
+                            for cmdline in cmdlines]) and any(  # noqa
+                                [cmd_name == cmdline
+                                 for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if log_file is not None and any(  # noqa
                     [log_file == cmdline for cmdline in cmdlines]):  # noqa
@@ -240,8 +245,11 @@ class Runtime(BaseUI):
 
     @staticmethod
     def parse_info_from_cmdline(task):
+        pid = None
         for i in range(3):
             slash = task.find('/')
+            if i == 0:
+                pid = task[:slash].split(':')[1]
             task = task[slash + 1:]
         args = task.split('swift deploy')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
@@ -250,20 +258,23 @@ class Runtime(BaseUI):
             space = args[i].find(' ')
             splits = args[i][:space], args[i][space + 1:]
             all_args[splits[0]] = splits[1]
-        return all_args
+        return pid, all_args
 
     @staticmethod
     def kill_task(task):
-        all_args = Runtime.parse_info_from_cmdline(task)
+        pid, all_args = Runtime.parse_info_from_cmdline(task)
         log_file = all_args['log_file']
-        os.system(f'pkill -9 -f {log_file}')
+        if sys.platform == 'win32':
+            os.system(f'taskkill /f /t /pid "{pid}"')
+        else:
+            os.system(f'pkill -9 -f {log_file}')
         time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)]
 
     @staticmethod
     def task_changed(task, base_tab):
         if task:
-            all_args = Runtime.parse_info_from_cmdline(task)
+            _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
         elements = [

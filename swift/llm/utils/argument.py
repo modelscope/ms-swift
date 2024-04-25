@@ -14,7 +14,7 @@ from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import (is_torch_bf16_gpu_available,
                                 is_torch_cuda_available,
-                                is_torch_npu_available)
+                                is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
@@ -39,8 +39,250 @@ def is_adapter(sft_type: str) -> bool:
     }
 
 
+class ArgumentsBase:
+
+    def register_custom_dataset(
+            self: Union['SftArguments', 'InferArguments']) -> None:
+        dataset = []
+        for d in self.dataset:
+            if os.path.exists(d):
+                self.custom_train_dataset_path.append(d)
+            else:
+                dataset.append(d)
+        self.dataset = dataset
+
+        for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
+            value = getattr(self, key)
+            if isinstance(value, str):
+                setattr(self, key, [value])
+        if len(self.custom_train_dataset_path) == 0 and len(
+                self.custom_val_dataset_path) == 0:
+            return
+
+        dataset_name = '_custom_dataset'
+        _register_local_dataset(dataset_name, self.custom_train_dataset_path,
+                                self.custom_val_dataset_path)
+        self.dataset.append(dataset_name)
+
+    def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
+        check_exist_path = [
+            'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset_path',
+            'custom_val_dataset_path'
+        ]
+        if self.model_id_or_path is not None and (
+                self.model_id_or_path.startswith('~')
+                or self.model_id_or_path.startswith('/')):
+            check_exist_path.append('model_id_or_path')
+        check_exist_path_set = set(check_exist_path)
+        other_path = ['output_dir', 'logging_dir']
+        for k in check_exist_path + other_path:
+            value = getattr(self, k, None)
+            if value is None:
+                continue
+            value = _check_path(k, value, check_exist_path_set)
+            setattr(self, k, value)
+
+    def check_flash_attn(
+            self: Union['SftArguments', 'InferArguments']) -> None:
+        model_info = MODEL_MAPPING[self.model_type]
+        support_flash_attn = model_info.get('support_flash_attn', False)
+        if self.use_flash_attn and not support_flash_attn:
+            logger.warning(f'use_flash_attn: {self.use_flash_attn}, '
+                           f'but support_flash_attn: {support_flash_attn}')
+
+    def handle_generation_config(
+            self: Union['SftArguments', 'InferArguments']) -> None:
+        if self.do_sample is False:
+            # fix warning
+            self.temperature = 1.
+            self.top_p = 1.
+            self.top_k = 50
+            logger.info(
+                'Due to do_sample=False, the following settings are applied: args.temperature: '
+                f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.'
+            )
+
+    def select_dtype(
+        self: Union['SftArguments', 'InferArguments']
+    ) -> Tuple[Optional[Dtype], bool, bool]:
+        if not is_torch_cuda_available() and not is_torch_npu_available():
+            # cpu
+            if self.dtype == 'AUTO':
+                self.dtype = 'fp32'
+                logger.info(f'Setting args.dtype: {self.dtype}')
+            assert self.dtype != 'fp16', 'The CPU does not support matrix multiplication with FP16.'
+            if self.dtype == 'fp32':
+                return torch.float32, False, False
+            elif self.dtype == 'bf16':
+                return torch.bfloat16, False, True
+            else:
+                raise ValueError(f'args.dtype: {self.dtype}')
+        # cuda, npu
+        if self.dtype == 'AUTO':
+            if not is_torch_bf16_gpu_available():
+                self.dtype = 'fp16'
+            else:
+                model_torch_dtype = MODEL_MAPPING[self.model_type].get(
+                    'torch_dtype')
+                if model_torch_dtype is not None:
+                    self.dtype = dtype_mapping[model_torch_dtype]
+                elif isinstance(self, SftArguments):
+                    self.dtype = 'bf16'
+                else:
+                    return None, False, False
+
+        torch_dtype = dtype_mapping_reversed[self.dtype]
+
+        assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
+        if torch_dtype == torch.float16:
+            if isinstance(self, SftArguments) and self.sft_type == 'full':
+                self.dtype = 'fp32'
+                torch_dtype = torch.float32
+                logger.warning(
+                    'Fine-tuning with full parameters does not support fp16, and is prone to NaN. '
+                    'We will use the fp32 & AMP approach, which consumes approximately twice the memory of bf16.'
+                )
+                logger.info(f'Setting torch_dtype: {torch_dtype}')
+            fp16, bf16 = True, False
+        elif torch_dtype == torch.bfloat16:
+            support_bf16 = is_torch_bf16_gpu_available()
+            if not support_bf16:
+                logger.warning(f'support_bf16: {support_bf16}')
+            fp16, bf16 = False, True
+        else:
+            fp16, bf16 = False, False
+        return torch_dtype, fp16, bf16
+
+    def select_bnb(
+        self: Union['SftArguments', 'InferArguments']
+    ) -> Tuple[Optional[Dtype], bool, bool]:
+        if self.bnb_4bit_comp_dtype == 'AUTO':
+            self.bnb_4bit_comp_dtype = self.dtype
+
+        if self.bnb_4bit_comp_dtype != 'AUTO':
+            bnb_4bit_compute_dtype = dtype_mapping_reversed[
+                self.bnb_4bit_comp_dtype]
+            assert bnb_4bit_compute_dtype in {
+                torch.float16, torch.bfloat16, torch.float32
+            }
+        else:
+            bnb_4bit_compute_dtype = None
+        quantization_bit = self.quantization_bit
+        if quantization_bit == 4:
+            require_version('bitsandbytes')
+            load_in_4bit, load_in_8bit = True, False
+        elif quantization_bit == 8:
+            require_version('bitsandbytes')
+            load_in_4bit, load_in_8bit = False, True
+        else:
+            load_in_4bit, load_in_8bit = False, False
+
+        return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
+
+    def handle_compatibility(
+            self: Union['SftArguments', 'InferArguments']) -> None:
+        template_type_mapping = {
+            'chatglm2-generation': 'chatglm-generation',
+            'chatml': 'qwen'
+        }
+        model_type_mapping = {
+            'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
+            'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
+        }
+        for k, v in template_type_mapping.items():
+            if k == self.template_type:
+                self.template_type = v
+                break
+        for k, v in model_type_mapping.items():
+            if k == self.model_type:
+                self.model_type = v
+                break
+        if self.dataset is not None and len(
+                self.dataset) == 1 and ',' in self.dataset[0]:
+            self.dataset = self.dataset[0].split(',')
+        if self.truncation_strategy == 'ignore':
+            self.truncation_strategy = 'delete'
+        if isinstance(self, InferArguments):
+            if self.show_dataset_sample != 10 and self.val_dataset_sample == 10:
+                # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
+                self.val_dataset_sample = self.show_dataset_sample
+            if self.safe_serialization is not None:
+                self.save_safetensors = self.safe_serialization
+            if self.merge_lora_and_save is not None:
+                self.merge_lora = self.merge_lora_and_save
+        if isinstance(self, SftArguments):
+            if self.only_save_model is not None:
+                self.save_only_model = self.only_save_model
+            if self.neftune_alpha is not None:
+                self.neftune_noise_alpha = self.neftune_alpha
+            if self.per_device_train_batch_size is not None:
+                self.batch_size = self.per_device_train_batch_size
+            if self.per_device_eval_batch_size is not None:
+                self.eval_batch_size = self.per_device_eval_batch_size
+            if self.deepspeed_config_path is not None:
+                self.deepspeed = self.deepspeed_config_path
+
+    def set_model_type(self: Union['SftArguments', 'InferArguments']) -> None:
+        # compat with swift<1.7
+        if self.model_cache_dir is not None and self.model_id_or_path is None:
+            self.model_id_or_path = self.model_cache_dir
+            self.model_cache_dir = None
+
+        if self.model_id_or_path is not None:
+            model_mapping_reversed = {
+                v['model_id_or_path'].lower(): k
+                for k, v in MODEL_MAPPING.items()
+            }
+            model_id_or_path = self.model_id_or_path
+            model_id_or_path_lower = model_id_or_path.lower()
+            if model_id_or_path_lower not in model_mapping_reversed:
+                if (isinstance(self, InferArguments)
+                        and 'checkpoint' in model_id_or_path
+                        and 'merged' not in model_id_or_path
+                        and self.ckpt_dir is None):
+                    raise ValueError(
+                        'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
+                    )
+                if self.model_type is None:
+                    raise ValueError(
+                        f"model_id_or_path: '{model_id_or_path}' is not registered. "
+                        'Please set `--model_type <model_type>` additionally.')
+                assert self.model_cache_dir is None
+            else:
+                model_type = model_mapping_reversed[model_id_or_path_lower]
+                assert self.model_type is None or self.model_type == model_type
+                self.model_type = model_type
+                logger.info(f'Setting args.model_type: {model_type}')
+                if self.model_cache_dir is not None:
+                    self.model_id_or_path = self.model_cache_dir
+
+        error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
+        if self.model_type is None:
+            raise ValueError('please setting `--model_type <model_type>`. '
+                             + error_msg)
+        elif self.model_type not in MODEL_MAPPING:
+            raise ValueError(
+                f"model_type: '{self.model_type}' is not registered. "
+                + error_msg)
+        model_info = MODEL_MAPPING[self.model_type]
+        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+        if self.model_revision is not None:
+            model_info['revision'] = self.model_revision
+            logger.info(
+                f"Setting model_info['revision']: {self.model_revision}")
+        elif use_hf:
+            model_info['revision'] = 'main'
+        self.model_revision = model_info['revision']
+        if self.model_id_or_path is None:
+            self.model_id_or_path = model_info[
+                'hf_model_id'] if use_hf else model_info['model_id_or_path']
+        requires = model_info['requires']
+        for require in requires:
+            require_version(require)
+
+
 @dataclass
-class SftArguments:
+class SftArguments(ArgumentsBase):
     # You can specify the model by either using the model_type or model_id_or_path.
     model_type: Optional[str] = field(
         default=None,
@@ -67,7 +309,7 @@ class SftArguments:
         })
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
-    ddp_backend: Literal['nccl', 'gloo', 'mpi', 'ccl'] = None
+    ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
 
@@ -117,7 +359,7 @@ class SftArguments:
     lora_bias_trainable: Literal['none', 'all'] = 'none'
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
-    lora_dtype: Literal['fp16', 'bf16', 'fp32'] = 'fp32'
+    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
@@ -158,7 +400,7 @@ class SftArguments:
     neftune_backend: Literal['swift', 'transformers'] = None
 
     gradient_checkpointing: Optional[bool] = None
-    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -245,6 +487,66 @@ class SftArguments:
     # fsdp config file
     fsdp_config: Optional[str] = None
 
+    def handle_dataset_mixture(self, train_dataset: HfDataset) -> None:
+        if train_dataset is None:
+            return train_dataset
+        if self.train_dataset_mix_ratio <= 0 or len(
+                self.train_dataset_mix_ds) == 0:
+            return train_dataset
+
+        random_state = np.random.RandomState(self.dataset_seed)
+        train_dataset_mix_ds = []
+        custom_mix_ds = []
+        for mix_ds in self.train_dataset_mix_ds:
+            if os.path.exists(mix_ds):
+                custom_mix_ds.append(mix_ds)
+            else:
+                train_dataset_mix_ds.append(mix_ds)
+
+        if len(custom_mix_ds) > 0:
+            dataset_name = '_custom_mixture'
+            _register_local_dataset(dataset_name, custom_mix_ds, [])
+            train_dataset_mix_ds.append(dataset_name)
+        mix_dataset_sample = int(
+            len(train_dataset) * self.train_dataset_mix_ratio)
+        logger.info(f'train_dataset_mix_ds: {train_dataset_mix_ds}')
+        logger.info(
+            f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}'
+        )
+        mixed_dataset = get_dataset(
+            train_dataset_mix_ds,
+            0.0,
+            random_state,
+            check_dataset_strategy=self.check_dataset_strategy)[0]
+        if len(mixed_dataset) < mix_dataset_sample:
+            logger.warn(
+                f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
+                'lesser than the ratio required by the `train_dataset_mix_ratio` '
+                f'argument: {self.train_dataset_mix_ratio}. '
+                f'the actual ratio is: {len(mixed_dataset) / len(train_dataset):.6}.'
+            )
+        else:
+            train_idxs = random_state.permutation(mix_dataset_sample)
+            mixed_dataset = mixed_dataset.select(train_idxs)
+        return concatenate_datasets([train_dataset, mixed_dataset])
+
+    def prepare_push_ms_hub(self) -> None:
+        if not self.push_to_hub:
+            return
+        if self.hub_model_id is None:
+            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
+            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
+
+        api = HubApi()
+        if self.hub_token is None:
+            self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+        if self.hub_token is not None:
+            api.login(self.hub_token)
+        else:
+            assert ModelScopeConfig.get_token(
+            ) is not None, 'Please enter hub_token'
+        logger.info('hub login successful!')
+
     def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
@@ -281,26 +583,30 @@ class SftArguments:
         return modules_to_save
 
     def __post_init__(self) -> None:
-        handle_compatibility(self)
+        self.handle_compatibility()
         if is_pai_training_job():
             self._handle_pai_compat()
         ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
-        if self.deepspeed == 'default-zero2':
-            self.deepspeed = os.path.abspath(
-                os.path.join(ds_config_folder, 'zero2.json'))
-        elif self.deepspeed == 'default-zero3':
-            self.deepspeed = os.path.abspath(
-                os.path.join(ds_config_folder, 'zero3.json'))
+        deepspeed_mapping = {
+            'default-zero2': 'zero2.json',
+            'default-zero3': 'zero3.json',
+            'zero3-offload': 'zero3_offload.json'
+        }
+        for ds_name, ds_config in deepspeed_mapping.items():
+            if self.deepspeed == ds_name:
+                self.deepspeed = os.path.abspath(
+                    os.path.join(ds_config_folder, ds_config))
+                break
 
-        handle_path(self)
-        set_model_type(self)
+        self.handle_path()
+        self.set_model_type()
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
         if isinstance(self.train_dataset_mix_ds, str):
             self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
-        register_custom_dataset(self)
-        check_flash_attn(self)
-        handle_generation_config(self)
+        self.register_custom_dataset()
+        self.check_flash_attn()
+        self.handle_generation_config()
 
         self.lora_use_embedding = False
         self.lora_use_all = False
@@ -343,12 +649,17 @@ class SftArguments:
                     'If you have already added LoRA on MLP, please ignore this warning.'
                 )
 
-        self.torch_dtype, self.fp16, self.bf16 = select_dtype(self)
+        self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
         world_size = 1
         if is_dist():
             rank, local_rank, world_size, _ = get_dist_setting()
-            torch.cuda.set_device(local_rank)
+            if is_torch_npu_available():
+                torch.npu.set_device(local_rank)
+            else:
+                torch.cuda.set_device(local_rank)
             self.seed += rank  # Avoid the same dropout
+            if self.ddp_backend is None:
+                self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 
@@ -359,8 +670,8 @@ class SftArguments:
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`'
             )
-            if 'int4' in self.model_type or 'int8' in self.model_type:
-                assert self.quantization_bit == 0, 'int4 and int8 models do not need to be quantized again.'
+            if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
+                assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
@@ -399,14 +710,14 @@ class SftArguments:
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
-            self)
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(
+        )
 
         if self.neftune_backend is None:
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
                 else 'transformers'
 
-        prepare_push_ms_hub(self)
+        self.prepare_push_ms_hub()
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -571,7 +882,7 @@ class SftArguments:
 
 
 @dataclass
-class InferArguments:
+class InferArguments(ArgumentsBase):
     # You can specify the model by either using the model_type or model_id_or_path.
     model_type: Optional[str] = field(
         default=None,
@@ -654,8 +965,8 @@ class InferArguments:
             logger.warning(
                 f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                 'the dir contains a `configuration.json` file.')
-        handle_compatibility(self)
-        handle_path(self)
+        self.handle_compatibility()
+        self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
@@ -663,20 +974,18 @@ class InferArguments:
                 'Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.'
             )
         if self.load_args_from_ckpt_dir:
-            load_from_ckpt_dir(self)
+            self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-        set_model_type(self)
+        self.set_model_type()
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
-        register_custom_dataset(self)
-        check_flash_attn(self)
-        handle_generation_config(self)
+        self.register_custom_dataset()
+        self.check_flash_attn()
+        self.handle_generation_config()
 
-        self.torch_dtype, _, _ = select_dtype(self)
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
+        self.torch_dtype, _, _ = self.select_dtype()
+        self.prepare_template()
         has_dataset = (
             len(self.dataset) > 0 or len(self.custom_train_dataset_path) > 0
             or len(self.custom_val_dataset_path) > 0)
@@ -690,8 +999,9 @@ class InferArguments:
             raise ValueError(
                 'Please provide the dataset or set `--load_dataset_config true`.'
             )
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = select_bnb(
-            self)
+
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(
+        )
 
         if self.max_length == -1:
             self.max_length = None
@@ -705,6 +1015,15 @@ class InferArguments:
             )
         if self.ckpt_dir is None:
             self.sft_type = 'full'
+
+        self.prepare_vllm()
+
+    def prepare_template(self):
+        if self.template_type == 'AUTO':
+            self.template_type = get_default_template_type(self.model_type)
+            logger.info(f'Setting template_type: {self.template_type}')
+
+    def prepare_vllm(self):
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
         self.vllm_lora_request_list = None
@@ -740,6 +1059,35 @@ class InferArguments:
         self.infer_media_type = template_info.get('infer_media_type', 'none')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
+
+    def load_from_ckpt_dir(self) -> None:
+        sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
+        if not os.path.exists(sft_args_path):
+            logger.info(f'{sft_args_path} not found')
+            return
+        with open(sft_args_path, 'r', encoding='utf-8') as f:
+            sft_args = json.load(f)
+        imported_keys = [
+            'model_type', 'model_revision', 'sft_type', 'template_type',
+            'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+        ]
+        if self.load_dataset_config:
+            imported_keys += [
+                'dataset', 'dataset_seed', 'dataset_test_ratio',
+                'check_dataset_strategy', 'custom_train_dataset_path',
+                'custom_val_dataset_path'
+            ]
+        for key in imported_keys:
+            if (key in {
+                    'dataset', 'custom_train_dataset_path',
+                    'custom_val_dataset_path'
+            } and len(getattr(self, key)) > 0):
+                continue
+            setattr(self, key, sft_args.get(key))
+
+        if self.model_id_or_path is None:
+            self.model_id_or_path = sft_args.get('model_id_or_path')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -782,6 +1130,12 @@ class EvalArguments(InferArguments):
 
     name: Optional[str] = None
 
+    eval_url: Optional[str] = None
+
+    eval_token: Optional[str] = 'EMPTY'
+
+    eval_is_chat_model: bool = None
+
     eval_dataset: List[str] = field(
         default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
 
@@ -790,6 +1144,24 @@ class EvalArguments(InferArguments):
     eval_limit: Optional[int] = None
 
     custom_eval_config: Optional[str] = None
+
+    eval_use_cache: Optional[bool] = False
+
+    def set_model_type(self) -> None:
+        if self.eval_url is None:
+            super().set_model_type()
+
+    def check_flash_attn(self) -> None:
+        if self.eval_url is None:
+            super().check_flash_attn()
+
+    def prepare_template(self) -> None:
+        if self.eval_url is None:
+            super().prepare_template()
+
+    def prepare_vllm(self) -> None:
+        if self.eval_url is None:
+            super().prepare_vllm()
 
 
 @dataclass
@@ -801,7 +1173,7 @@ class ExportArguments(InferArguments):
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
     quant_method: Literal['awq', 'gptq'] = 'awq'
-    quant_n_samples: Optional[int] = None
+    quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
 
@@ -826,14 +1198,6 @@ class ExportArguments(InferArguments):
         if len(self.dataset) == 0:
             self.dataset = ['ms-bench-mini']
             logger.info(f'Setting args.dataset: {self.dataset}')
-        if self.quant_n_samples is None:
-            if self.quant_method == 'awq':
-                self.quant_n_samples = 256
-            elif self.quant_method == 'gptq':
-                self.quant_n_samples = 1024
-            else:
-                raise ValueError(
-                    f'args.quant_n_samples: {self.quant_n_samples}')
 
 
 @dataclass
@@ -863,12 +1227,12 @@ class RomeArguments(InferArguments):
         })
 
     def __post_init__(self) -> None:
-        handle_compatibility(self)
-        handle_path(self)
-        set_model_type(self)
-        check_flash_attn(self)
+        self.handle_compatibility()
+        self.handle_path()
+        self.set_model_type()
+        self.check_flash_attn()
 
-        self.torch_dtype, _, _ = select_dtype(self)
+        self.torch_dtype, _, _ = self.select_dtype()
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
@@ -878,200 +1242,6 @@ class RomeArguments(InferArguments):
 
 
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
-
-
-def select_dtype(
-    args: Union[SftArguments, InferArguments]
-) -> Tuple[Optional[Dtype], bool, bool]:
-    if not is_torch_cuda_available() and not is_torch_npu_available():
-        # cpu
-        if args.dtype == 'AUTO':
-            args.dtype = 'fp32'
-            logger.info(f'Setting args.dtype: {args.dtype}')
-        assert args.dtype != 'fp16', 'The CPU does not support matrix multiplication with FP16.'
-        if args.dtype == 'fp32':
-            return torch.float32, False, False
-        elif args.dtype == 'bf16':
-            return torch.bfloat16, False, True
-        else:
-            raise ValueError(f'args.dtype: {args.dtype}')
-    # cuda, npu
-    if args.dtype == 'AUTO' and not is_torch_bf16_gpu_available():
-        args.dtype = 'fp16'
-    if args.dtype == 'AUTO' and ('int4' in args.model_type
-                                 or 'int8' in args.model_type):
-        model_torch_dtype = MODEL_MAPPING[args.model_type]['torch_dtype']
-        if model_torch_dtype is not None:
-            args.dtype = dtype_mapping[model_torch_dtype]
-    if args.dtype == 'AUTO':
-        if isinstance(args, SftArguments):
-            args.dtype = 'bf16'
-        else:
-            return None, False, False
-
-    torch_dtype = dtype_mapping_reversed[args.dtype]
-
-    assert torch_dtype in {torch.float16, torch.bfloat16, torch.float32}
-    if torch_dtype == torch.float16:
-        if isinstance(args, SftArguments) and args.sft_type == 'full':
-            args.dtype = 'fp32'
-            torch_dtype = torch.float32
-            logger.warning(
-                'Fine-tuning with full parameters does not support fp16, and is prone to NaN. '
-                'We will use the fp32 & AMP approach, which consumes approximately twice the memory of bf16.'
-            )
-            logger.info(f'Setting torch_dtype: {torch_dtype}')
-        fp16, bf16 = True, False
-    elif torch_dtype == torch.bfloat16:
-        support_bf16 = is_torch_bf16_gpu_available()
-        if not support_bf16:
-            logger.warning(f'support_bf16: {support_bf16}')
-        fp16, bf16 = False, True
-    else:
-        fp16, bf16 = False, False
-    return torch_dtype, fp16, bf16
-
-
-def select_bnb(
-    args: Union[SftArguments, InferArguments]
-) -> Tuple[Optional[Dtype], bool, bool]:
-    if args.bnb_4bit_comp_dtype == 'AUTO':
-        args.bnb_4bit_comp_dtype = args.dtype
-
-    if args.bnb_4bit_comp_dtype != 'AUTO':
-        bnb_4bit_compute_dtype = dtype_mapping_reversed[
-            args.bnb_4bit_comp_dtype]
-        assert bnb_4bit_compute_dtype in {
-            torch.float16, torch.bfloat16, torch.float32
-        }
-    else:
-        bnb_4bit_compute_dtype = None
-    quantization_bit = args.quantization_bit
-    if quantization_bit == 4:
-        require_version('bitsandbytes')
-        load_in_4bit, load_in_8bit = True, False
-    elif quantization_bit == 8:
-        require_version('bitsandbytes')
-        load_in_4bit, load_in_8bit = False, True
-    else:
-        load_in_4bit, load_in_8bit = False, False
-
-    return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
-
-
-def handle_compatibility(args: Union[SftArguments, InferArguments]) -> None:
-    template_type_mapping = {
-        'chatglm2-generation': 'chatglm-generation',
-        'chatml': 'qwen'
-    }
-    model_type_mapping = {
-        'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
-        'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
-    }
-    for k, v in template_type_mapping.items():
-        if k == args.template_type:
-            args.template_type = v
-            break
-    for k, v in model_type_mapping.items():
-        if k == args.model_type:
-            args.model_type = v
-            break
-    if args.dataset is not None and len(
-            args.dataset) == 1 and ',' in args.dataset[0]:
-        args.dataset = args.dataset[0].split(',')
-    if args.truncation_strategy == 'ignore':
-        args.truncation_strategy = 'delete'
-    if isinstance(args, InferArguments):
-        if args.show_dataset_sample != 10 and args.val_dataset_sample == 10:
-            # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
-            args.val_dataset_sample = args.show_dataset_sample
-        if args.safe_serialization is not None:
-            args.save_safetensors = args.safe_serialization
-        if args.merge_lora_and_save is not None:
-            args.merge_lora = args.merge_lora_and_save
-    if isinstance(args, SftArguments):
-        if args.only_save_model is not None:
-            args.save_only_model = args.only_save_model
-        if args.neftune_alpha is not None:
-            args.neftune_noise_alpha = args.neftune_alpha
-        if args.per_device_train_batch_size is not None:
-            args.batch_size = args.per_device_train_batch_size
-        if args.per_device_eval_batch_size is not None:
-            args.eval_batch_size = args.per_device_eval_batch_size
-        if args.deepspeed_config_path is not None:
-            args.deepspeed = args.deepspeed_config_path
-
-
-def set_model_type(args: Union[SftArguments, InferArguments]) -> None:
-    # compat with swift<1.7
-    if args.model_cache_dir is not None and args.model_id_or_path is None:
-        args.model_id_or_path = args.model_cache_dir
-        args.model_cache_dir = None
-
-    if args.model_id_or_path is not None:
-        model_mapping_reversed = {
-            v['model_id_or_path'].lower(): k
-            for k, v in MODEL_MAPPING.items()
-        }
-        model_id_or_path = args.model_id_or_path
-        model_id_or_path_lower = model_id_or_path.lower()
-        if model_id_or_path_lower not in model_mapping_reversed:
-            if (isinstance(args, InferArguments)
-                    and 'checkpoint' in model_id_or_path
-                    and 'merged' not in model_id_or_path
-                    and args.ckpt_dir is None):
-                raise ValueError(
-                    'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
-                )
-            if args.model_type is None:
-                raise ValueError(
-                    f"model_id_or_path: '{model_id_or_path}' is not registered. "
-                    'Please set `--model_type <model_type>` additionally.')
-            assert args.model_cache_dir is None
-        else:
-            model_type = model_mapping_reversed[model_id_or_path_lower]
-            assert args.model_type is None or args.model_type == model_type
-            args.model_type = model_type
-            logger.info(f'Setting args.model_type: {model_type}')
-            if args.model_cache_dir is not None:
-                args.model_id_or_path = args.model_cache_dir
-
-    error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
-    if args.model_type is None:
-        raise ValueError('please setting `--model_type <model_type>`. '
-                         + error_msg)
-    elif args.model_type not in MODEL_MAPPING:
-        raise ValueError(f"model_type: '{args.model_type}' is not registered. "
-                         + error_msg)
-    model_info = MODEL_MAPPING[args.model_type]
-    if args.model_revision is None:
-        args.model_revision = model_info['revision']
-    else:
-        model_info['revision'] = args.model_revision
-        logger.info(f"Setting model_info['revision']: {args.model_revision}")
-    if args.model_id_or_path is None:
-        args.model_id_or_path = model_info['model_id_or_path']
-    requires = model_info['requires']
-    for require in requires:
-        require_version(require)
-
-
-def prepare_push_ms_hub(args: SftArguments) -> None:
-    if not args.push_to_hub:
-        return
-    if args.hub_model_id is None:
-        args.hub_model_id = f'{args.model_type}-{args.sft_type}'
-        logger.info(f'Setting hub_model_id: {args.hub_model_id}')
-
-    api = HubApi()
-    if args.hub_token is None:
-        args.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-    if args.hub_token is not None:
-        api.login(args.hub_token)
-    else:
-        assert ModelScopeConfig.get_token(
-        ) is not None, 'Please enter hub_token'
-    logger.info('hub login successful!')
 
 
 def _check_path(
@@ -1090,25 +1260,6 @@ def _check_path(
     return value
 
 
-def handle_path(args: Union[SftArguments, InferArguments]) -> None:
-    check_exist_path = [
-        'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset_path',
-        'custom_val_dataset_path'
-    ]
-    if args.model_id_or_path is not None and (
-            args.model_id_or_path.startswith('~')
-            or args.model_id_or_path.startswith('/')):
-        check_exist_path.append('model_id_or_path')
-    check_exist_path_set = set(check_exist_path)
-    other_path = ['output_dir', 'logging_dir']
-    for k in check_exist_path + other_path:
-        value = getattr(args, k, None)
-        if value is None:
-            continue
-        value = _check_path(k, value, check_exist_path_set)
-        setattr(args, k, value)
-
-
 def _register_local_dataset(dataset_name: str, train_dataset_path: List[str],
                             val_dataset_path: List[str]) -> None:
     register_dataset(
@@ -1118,124 +1269,6 @@ def _register_local_dataset(dataset_name: str, train_dataset_path: List[str],
         val_dataset_path,
         get_function=get_custom_dataset,
         exists_ok=True)
-
-
-def register_custom_dataset(args: Union[SftArguments, InferArguments]) -> None:
-    dataset = []
-    for d in args.dataset:
-        if os.path.exists(d):
-            args.custom_train_dataset_path.append(d)
-        else:
-            dataset.append(d)
-    args.dataset = dataset
-
-    for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
-        value = getattr(args, key)
-        if isinstance(value, str):
-            setattr(args, key, [value])
-    if len(args.custom_train_dataset_path) == 0 and len(
-            args.custom_val_dataset_path) == 0:
-        return
-
-    dataset_name = '_custom_dataset'
-    _register_local_dataset(dataset_name, args.custom_train_dataset_path,
-                            args.custom_val_dataset_path)
-    args.dataset.append(dataset_name)
-
-
-def load_from_ckpt_dir(args: InferArguments) -> None:
-    sft_args_path = os.path.join(args.ckpt_dir, 'sft_args.json')
-    if not os.path.exists(sft_args_path):
-        logger.info(f'{sft_args_path} not found')
-        return
-    with open(sft_args_path, 'r', encoding='utf-8') as f:
-        sft_args = json.load(f)
-    imported_keys = [
-        'model_type', 'model_revision', 'sft_type', 'template_type', 'system',
-        'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
-        'bnb_4bit_use_double_quant'
-    ]
-    if args.load_dataset_config:
-        imported_keys += [
-            'dataset', 'dataset_seed', 'dataset_test_ratio',
-            'check_dataset_strategy', 'custom_train_dataset_path',
-            'custom_val_dataset_path'
-        ]
-    for key in imported_keys:
-        if (key in {
-                'dataset', 'custom_train_dataset_path',
-                'custom_val_dataset_path'
-        } and len(getattr(args, key)) > 0):
-            continue
-        setattr(args, key, sft_args.get(key))
-
-    if args.model_id_or_path is None:
-        args.model_id_or_path = sft_args.get('model_id_or_path')
-
-
-def check_flash_attn(args: Union[SftArguments, InferArguments]) -> None:
-    model_info = MODEL_MAPPING[args.model_type]
-    support_flash_attn = model_info.get('support_flash_attn', False)
-    if args.use_flash_attn and not support_flash_attn:
-        logger.warning(f'use_flash_attn: {args.use_flash_attn}, '
-                       f'but support_flash_attn: {support_flash_attn}')
-
-
-def handle_generation_config(
-        args: Union[SftArguments, InferArguments]) -> None:
-    if args.do_sample is False:
-        # fix warning
-        args.temperature = 1.
-        args.top_p = 1.
-        args.top_k = 50
-        logger.info(
-            'Due to do_sample=False, the following settings are applied: args.temperature: '
-            f'{args.temperature}, args.top_p: {args.top_p}, args.top_k: {args.top_k}.'
-        )
-
-
-def handle_dataset_mixture(args: SftArguments,
-                           train_dataset: HfDataset) -> None:
-    if train_dataset is None:
-        return train_dataset
-    if args.train_dataset_mix_ratio <= 0 or len(
-            args.train_dataset_mix_ds) == 0:
-        return train_dataset
-
-    random_state = np.random.RandomState(args.dataset_seed)
-    train_dataset_mix_ds = []
-    custom_mix_ds = []
-    for mix_ds in args.train_dataset_mix_ds:
-        if os.path.exists(mix_ds):
-            custom_mix_ds.append(mix_ds)
-        else:
-            train_dataset_mix_ds.append(mix_ds)
-
-    if len(custom_mix_ds) > 0:
-        dataset_name = '_custom_mixture'
-        _register_local_dataset(dataset_name, custom_mix_ds, [])
-        train_dataset_mix_ds.append(dataset_name)
-    mix_dataset_sample = int(len(train_dataset) * args.train_dataset_mix_ratio)
-    logger.info(f'train_dataset_mix_ds: {train_dataset_mix_ds}')
-    logger.info(
-        f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}'
-    )
-    mixed_dataset = get_dataset(
-        train_dataset_mix_ds,
-        0.0,
-        random_state,
-        check_dataset_strategy=args.check_dataset_strategy)[0]
-    if len(mixed_dataset) < mix_dataset_sample:
-        logger.warn(
-            f'The length of dataset used for mixin: {train_dataset_mix_ds} are '
-            'lesser than the ratio required by the `train_dataset_mix_ratio` '
-            f'argument: {args.train_dataset_mix_ratio}. '
-            f'the actual ratio is: {len(mixed_dataset)/len(train_dataset):.6}.'
-        )
-    else:
-        train_idxs = random_state.permutation(mix_dataset_sample)
-        mixed_dataset = mixed_dataset.select(train_idxs)
-    return concatenate_datasets([train_dataset, mixed_dataset])
 
 
 def swift_to_peft_format(lora_checkpoint_path: str) -> str:

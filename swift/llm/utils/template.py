@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -22,19 +23,22 @@ History = List[Union[Tuple[str, str], List[str]]]
 class TemplateType:
     # text-generation
     default_generation = 'default-generation'
-    default_generation_bos = 'default-generation-bos'
     chatglm_generation = 'chatglm-generation'
     qwen_audio_generation = 'qwen-audio-generation'
     # chat
     default = 'default'
     qwen = 'qwen'
     qwen_audio = 'qwen-audio'
+    modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
-    llama = 'llama'
+    llama = 'llama'  # llama2
+    llama3 = 'llama3'
     llava_mistral_instruct = 'llava-mistral-instruct'
+    llava_yi_instruct = 'llava-yi-instruct'
     openbuddy = 'openbuddy'
+    openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
@@ -60,12 +64,17 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
-    # compatibility. (Deprecated)
-    chatml = 'chatml'
+    wizardlm2_awq = 'wizardlm2-awq'
+    wizardlm2 = 'wizardlm2'
+    atom = 'atom'
+    phi3 = 'phi3'
     telechat = 'telechat'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
+    chatml = 'chatml'
+    # compatibility. (Deprecated)
+    default_generation_bos = 'default-generation-bos'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -134,7 +143,12 @@ class Template:
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
                  default_system: Optional[str] = None,
-                 prefix_has_system: Optional[Prompt] = None) -> None:
+                 prefix_has_system: Optional[Prompt] = None,
+                 auto_add_bos: bool = False) -> None:
+        """
+        auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
+            whether to add it based on `tokenizer.encode('')`.
+        """
         if default_system == '':
             default_system = None
         if _has_system(prefix):
@@ -151,6 +165,7 @@ class Template:
         self.suffix = suffix
         self.default_system = default_system
         self.use_default_system = True
+        self.auto_add_bos = auto_add_bos
         self._is_init = False
 
     @staticmethod
@@ -223,9 +238,13 @@ class Template:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
         if query is None:
             query = ''
-        inputs, tokenizer_kwargs = self._encode(query, response, history,
-                                                system,
-                                                self.truncation_strategy)
+        inputs, tokenizer_kwargs = self._encode(
+            query,
+            response,
+            history,
+            system,
+            self.truncation_strategy,
+            auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -303,9 +322,9 @@ class Template:
         for i, (context,
                 loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
             if isinstance(context, str):
-                curr_tokenizer_kwargs = self.get_tokenizer_kwargs(context)
-                self.concat_tokenizer_kwargs(tokenizer_kwargs,
-                                             curr_tokenizer_kwargs)
+                curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
+                self._concat_tokenizer_kwargs(tokenizer_kwargs,
+                                              curr_tokenizer_kwargs)
                 token_list = tokenizer(
                     context,
                     return_attention_mask=False,
@@ -322,15 +341,26 @@ class Template:
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     def _encode(
-            self, query: str, response: Optional[str], history: History,
+            self,
+            query: str,
+            response: Optional[str],
+            history: History,
             system: Optional[str],
-            truncation_strategy: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            truncation_strategy: str,
+            auto_add_bos: bool = False
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
         history = history.copy()
         res_context_list: List[Context] = []
         compute_loss_idx: List[float] = []
+        if auto_add_bos:
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id,
+                          int) and bos_token_id in self.tokenizer.encode(''):
+                res_context_list.append([bos_token_id])
+                compute_loss_idx.append(0.)
         if system is None:
             prefix = self.prefix
         else:
@@ -381,11 +411,11 @@ class Template:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
 
-    def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
         return {}
 
-    def concat_tokenizer_kwargs(
+    def _concat_tokenizer_kwargs(
             self, old_tokenizer_kwargs: Dict[str, Any],
             curr_tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         assert len(old_tokenizer_kwargs) == 0
@@ -420,10 +450,10 @@ class Template:
                                           'constant', 0)
                 labels[0] = F.pad(labels[0], (0, padding_len), 'constant',
                                   -100)
-        if loss_scale:
-            loss_scale[0] = F.pad(loss_scale[0],
-                                  (0, padding_to - labels[0].shape[-1]),
-                                  'constant', 0.)
+                if loss_scale:
+                    loss_scale[0] = F.pad(
+                        loss_scale[0], (0, padding_to - labels[0].shape[-1]),
+                        'constant', 0.)
 
         input_ids = pad_sequence(
             input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
@@ -445,7 +475,7 @@ class Template:
             'attention_mask': attention_mask,
             'labels': labels,
         }
-        if loss_scale:
+        if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
 
@@ -453,6 +483,85 @@ class Template:
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
         return generate_ids[0, input_token_len:].tolist()
+
+    @staticmethod
+    def _is_chinese_char(cp: int) -> bool:
+        """Checks whether CP is the codepoint of a CJK character."""
+        # copy from transformers.generation.streamers.TextStreamer
+        if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF)
+                or (cp >= 0x20000 and cp <= 0x2A6DF)
+                or (cp >= 0x2A700 and cp <= 0x2B73F)
+                or (cp >= 0x2B740 and cp <= 0x2B81F)
+                or (cp >= 0x2B820 and cp <= 0x2CEAF)
+                or (cp >= 0xF900 and cp <= 0xFAFF)
+                or (cp >= 0x2F800 and cp <= 0x2FA1F)):
+            return True
+
+        return False
+
+    @classmethod
+    def _get_safe_print_idx(cls,
+                            response: str,
+                            print_idx: int,
+                            is_finished: bool = False) -> int:
+        if is_finished:
+            return len(response)
+        if response.endswith(
+                '\n') or len(response) > 0 and cls._is_chinese_char(
+                    ord(response[-1])):
+            print_idx = len(response)
+        else:
+            print_idx = max(response.rfind(' ') + 1, print_idx)
+        return print_idx
+
+    def generate_ids_to_response(
+        self,
+        generate_ids: List[int],
+        is_finished: bool = True,
+        *,
+        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        # only stream=True
+        return_delta: bool = False,
+        print_idx: Optional[List[int]] = None,
+        first_num_space: Optional[List[int]] = None,
+    ):
+        if tokenizer_kwargs is None:
+            tokenizer_kwargs = {}
+        tokenizer = self.tokenizer
+        # avoid printing template.suffix[-1])
+        if isinstance(self.suffix[-1], list) and (
+                not is_finished or is_finished
+                and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):
+            generate_ids = generate_ids[:-len(self.suffix[-1])]
+        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
+        if first_num_space is not None:
+            # Avoid the occurrence of repeated words in sentence.
+            res_fns = first_num_space  # res_first_num_space
+            first_num_space = first_num_space[0]
+            cur_num_space = len(response) - len(response.lstrip(' '))
+            if not is_finished and first_num_space == -1:
+                first_num_space = cur_num_space
+                res_fns[0] = first_num_space
+            if cur_num_space < first_num_space:
+                response = ' ' * (first_num_space - cur_num_space) + response
+            elif cur_num_space > first_num_space:
+                response = response[cur_num_space - first_num_space:]
+        if isinstance(self.suffix[-1], str) and (
+                not is_finished or is_finished
+                and response[-len(self.suffix[-1]):] == self.suffix[-1]):
+            response = response[:-len(self.suffix[-1])]
+
+        if print_idx is not None:
+            old_print_idx = print_idx[0]
+            if not is_finished:
+                # avoid printing incomplete words
+                print_idx[0] = self._get_safe_print_idx(response, print_idx[0])
+                response = response[:print_idx[0]]
+            if return_delta:
+                response = response[old_print_idx:]
+        else:
+            assert is_finished and not return_delta
+        return response
 
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -481,7 +590,9 @@ register_template(
 class DefaultGenerationTemplate(Template):
 
     def __init__(self):
-        super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
+        super().__init__([], ['{{QUERY}}'],
+                         None, [['eos_token_id']],
+                         auto_add_bos=True)
 
 
 register_template(TemplateType.default_generation, DefaultGenerationTemplate())
@@ -492,16 +603,22 @@ register_template(
 
 class QwenTemplate(Template):
 
-    def __init__(self):
+    def __init__(self, auto_add_bos: bool = False):
         super().__init__(
             [],
             ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-            ['<|im_end|>\n'], ['<|im_end|>'], DEFAULT_SYSTEM,
-            ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+            ['<|im_end|>\n'], ['<|im_end|>'],
+            DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+            auto_add_bos=auto_add_bos)
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.chatml, QwenTemplate())
+register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
+
+register_template(
+    TemplateType.modelscope_agent,
+    Template([], [' \n\n<|user|>:{{QUERY}} \n\n<|assistant|>:'], [],
+             [' \n\n</s>'], DEFAULT_SYSTEM, [' \n\n<|system|>:{{SYSTEM}}']))
 
 
 class _QwenAudioTemplateMixin:
@@ -514,11 +631,12 @@ class _QwenAudioTemplateMixin:
         inputs.update(tokenizer_kwargs)
         return inputs, tokenizer_kwargs
 
-    def get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         return {'audio_info': self.tokenizer.process_audio(context)}
 
-    def concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any],
-                                curr_tokenizer_kwargs: Dict[str, Any]) -> None:
+    def _concat_tokenizer_kwargs(
+            self, tokenizer_kwargs: Dict[str, Any],
+            curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         audio_info = curr_tokenizer_kwargs.get('audio_info')
         old_audio_info = tokenizer_kwargs.get('audio_info')
         if old_audio_info is None:
@@ -645,8 +763,7 @@ register_template(
 register_template(
     TemplateType.chatglm3,
     Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n'], [],
-             [['eos_token_id']], None,
-             [[64790, 64792, 64794], '\n {{SYSTEM}}']))
+             [[64795]], None, [[64790, 64792, 64794], '\n {{SYSTEM}}']))
 
 register_template(
     TemplateType.deepseek,
@@ -669,6 +786,16 @@ register_template(
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '],
              ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+register_template(
+    TemplateType.llama3,
+    Template(['<|begin_of_text|>'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ], ['<|eot_id|>'], ['<|eot_id|>'], None, [
+        '<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'
+    ]))
+
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
     'Always answer as helpfully and logically as possible, while being safe. '
@@ -686,9 +813,29 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
-             [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
-             [['bos_token_id'], '{{SYSTEM}}\n\n']))
+    Template([], ['User: {{QUERY}}\nAssistant:'], ['\n'], [['eos_token_id']],
+             OPENBUDDY_DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n'],
+             auto_add_bos=True))
+
+OPENBUDDY2_DEFAULT_SYSTEM = (
+    'You(assistant) are a helpful, respectful and honest INTP-T AI Assistant named Buddy. '
+    'You are talking to a human(user).\nAlways answer as helpfully and logically as possible, while being safe. '
+    'Your answers should not include any harmful, political, religious, unethical, racist, '
+    'sexist, toxic, dangerous, or illegal content. '
+    'Please ensure that your responses are socially unbiased and positive in nature.\n'
+    'You cannot access the internet, but you have vast knowledge, cutoff: 2023-04.\n'
+    'You are trained by OpenBuddy team, (https://openbuddy.ai, https://github.com/OpenBuddy/OpenBuddy), '
+    'not related to GPT or OpenAI')
+
+register_template(
+    TemplateType.openbuddy2,
+    Template(
+        [],
+        ['<|role|>user<|says|>{{QUERY}}<|end|>\n<|role|>assistant<|says|>'],
+        ['<|end|>\n'], ['<|end|>'],
+        OPENBUDDY2_DEFAULT_SYSTEM,
+        ['<|role|>system<|says|>{{SYSTEM}}<|end|>\n'],
+        auto_add_bos=True))
 
 INTERNLM_SYSTEM = (
     'You are an AI assistant whose name is InternLM (书生·浦语).\n'
@@ -708,6 +855,19 @@ register_template(
         ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
         ['<|im_end|>\n'], ['<|im_end|>'], INTERNLM_SYSTEM,
         ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+
+def replace_img_tab(query: str, history: History,
+                    replace_token: str) -> Tuple[str, History, List[str]]:
+    images_path = []
+    pattern = r'<img>(.+?)</img>'
+    new_history = []
+    for i, h in enumerate(history):
+        images_path += re.findall(pattern, h[0])
+        new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
+    images_path += re.findall(pattern, query)
+    new_query = re.sub(pattern, replace_token, query)
+    return new_query, new_history, images_path
 
 
 class InternLMXComposer2(Template):
@@ -735,26 +895,19 @@ class InternLMXComposer2(Template):
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        import re
-        images_path = []
         example = example.copy()
-        history = example.pop('history', [])
-        pattern = r'<img>(.+?)</img>'
-        replace_token = '</s>'
-        new_history = []
-        for i, h in enumerate(history):
-            images_path += re.findall(pattern, h[0])
-            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-        history = new_history
-        images_path += re.findall(pattern, example['query'])
-        example['query'] = re.sub(pattern, replace_token, example['query'])
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tab(
+            example['query'], history, '</s>')
+
         images = []
         dtype = self.model.dtype
         for image_path in images_path:
             image = _read_from_path(image_path)
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
-        example['history'] = history
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
@@ -941,6 +1094,22 @@ register_template(
     lazy_tokenize=True)
 
 
+class LLavaYiTemplate(LLavaTemplate):
+    llavayi_query_template = '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'
+
+    def __init__(self):
+        Template.__init__(self, [], [[-200], self.llavayi_query_template],
+                          None, ['<|im_end|>'])
+
+
+register_template(
+    TemplateType.llava_yi_instruct,
+    LLavaYiTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+
 def _findall(token_list: List[int], token: int) -> List[int]:
     """Find the index of a token in the token_list."""
     res = []
@@ -961,17 +1130,28 @@ class DeepseekVLTemplate(Template):
         'and assist the user with a variety of tasks using natural language.')
 
     def __init__(self):
-        return super().__init__(
-            ['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
-            ['User: <image_placeholder>{{QUERY}}\n\nAssistant:'],
-            ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'],
-            self.DEEPSEEK_VL_SYSTEM)
+        return super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
+                                ['User: {{QUERY}}\n\nAssistant:'],
+                                ['<｜end▁of▁sentence｜>'],
+                                ['<｜end▁of▁sentence｜>'],
+                                self.DEEPSEEK_VL_SYSTEM)
 
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        images = example.pop('images', None)
+        assert images is None, (
+            'Please read the best practices: https://github.com/modelscope/swift/blob/main/'
+            'docs/source/Multi-Modal/deepseek-vl最佳实践.md')
+
+        example = example.copy()
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tab(
+            example['query'], history, '<image_placeholder>')
+
         inputs, _ = super().encode(example)
-        images_path = example['images']
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1048,7 +1228,6 @@ register_template(
     DeepseekVLTemplate(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)  # only 'cpu' can pin_memory
 
@@ -1169,11 +1348,17 @@ class MiniCPMVTemlate(Template):
         ) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
             start = 0
             new_input_ids = []
+            new_labels = []
             for idx in img_start_idxs[1:]:
                 new_input_ids = new_input_ids + input_ids[start:idx]
+                if labels is not None:
+                    new_labels = new_labels + labels[start:idx]
                 start = idx + 4  # skip <image><unk></image>\n
             new_input_ids = new_input_ids + input_ids[start:]
             input_ids = new_input_ids
+            if labels is not None:
+                new_labels = new_labels + labels[start:]
+                labels = new_labels
 
         idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
@@ -1345,6 +1530,34 @@ register_template(
     infer_media_type='round',
     use_model=True,
     lazy_tokenize=True)
+
+register_template(
+    TemplateType.wizardlm2_awq,
+    Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'],
+             ['</s>']))
+
+_wizardlm2_system = (
+    'A chat between a curious user and an artificial intelligence assistant. '
+    'The assistant gives helpful, detailed, and polite answers to the user\'s questions. '
+)
+register_template(
+    TemplateType.wizardlm2,
+    Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'],
+             ['</s>'], _wizardlm2_system))
+
+_default_phi3_system = (
+    'You are a helpful digital assistant. '
+    'Please provide safe, ethical and accurate information to the user.')
+register_template(
+    TemplateType.phi3,
+    Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'],
+             ['<|end|>'], _default_phi3_system,
+             '<s><|system|>{{SYSTEM}}<|end|>'))
+
+register_template(
+    TemplateType.atom,
+    Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '],
+             ['</s>'], ['</s>']))
 
 
 def get_template(

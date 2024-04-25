@@ -11,7 +11,7 @@ This documentation introduces the process of finetuning and inferencing the Grok
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 ```
 
 ## Finetuning

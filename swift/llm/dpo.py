@@ -12,22 +12,21 @@ from swift.trainers.dpo_trainers import DPOTrainer
 from swift.utils import (check_json_format, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist,
                          is_master, plot_images, seed_everything, show_layers)
-from . import get_time_info
 from .tuner import prepare_model
 from .utils import (DPOArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, set_generation_config)
+                    get_template, get_time_info, set_generation_config)
 
 logger = get_logger()
 
 
 def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     training_args = args.training_args
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
-    seed_everything(args.seed)
 
     # Loading Model and Tokenizer
     if is_deepspeed_zero3_enabled():
@@ -56,6 +55,7 @@ def llm_dpo(args: DPOArguments) -> str:
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
+        revision=args.model_revision,
         **kwargs)
     if args.ref_model_type is not None:
         ref_model, _ = get_model_tokenizer(
@@ -63,6 +63,7 @@ def llm_dpo(args: DPOArguments) -> str:
             args.torch_dtype,
             model_kwargs,
             model_id_or_path=args.ref_model_id_or_path,
+            revision=args.model_revision,
             **kwargs)
     else:
         ref_model = None

@@ -1,5 +1,5 @@
 # LLM Quantization Documentation
-Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration.
+Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration, and the quantized models also support QLORA fine-tuning.
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -11,7 +11,9 @@ Swift supports using AWQ and GPTQ techniques to quantize models. These two quant
 GPU devices: A10, 3090, V100, A100 are all supported.
 ```bash
 # Install ms-swift
-pip install ms-swift[llm] -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 
 # Using AWQ quantization:
 # AutoAWQ and CUDA versions have a corresponding relationship, please select the version according to `https://github.com/casper-hansen/AutoAWQ`
@@ -29,9 +31,9 @@ pip install -r requirements/llm.txt -U
 ## Original Model
 Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 ```bash
-# AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 12GB)
+# AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 13GB)
 # If OOM occurs during quantization, you can appropriately reduce `--quant_n_samples` (default 256) and `--quant_seqlen` (default 2048).
-# GPTQ-INT4 quantization (takes about 15 minutes using A100, memory usage: 6GB)
+# GPTQ-INT4 quantization (takes about 20 minutes using A100, memory usage: 7GB)
 
 # AWQ: Use `ms-bench-mini` as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
@@ -39,7 +41,8 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --dataset ms-bench-mini --quant_method awq
 
 # GPTQ: Use `ms-bench-mini` as the quantization dataset
-CUDA_VISIBLE_DEVICES=0 swift export \
+# For GPTQ quantization, please first refer to this issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
+OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset ms-bench-mini --quant_method gptq
 
@@ -119,6 +122,14 @@ curl http://localhost:8000/v1/chat/completions \
 Assume you fine-tuned qwen1half-4b-chat using LoRA, and the model weights directory is: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
 
 ```shell
+# Push the original quantized model
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model_type qwen1half-7b-chat \
+    --model_id_or_path qwen1half-7b-chat-gptq-int4 \
+    --push_to_hub true \
+    --hub_model_id qwen1half-7b-chat-gptq-int4 \
+    --hub_token '<your-sdk-token>'
+
 # Push LoRA incremental model
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx \

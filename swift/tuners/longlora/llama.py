@@ -431,7 +431,13 @@ def sdpa_forward(
 
 
 def replace_llama_attn(model: nn.Module):
-    for idx, m in enumerate(model.model.layers):
+    layers = None
+    for module in model.modules():
+        if isinstance(module, torch.nn.ModuleList):
+            layers = module
+            break
+    assert layers is not None
+    for idx, m in enumerate(layers):
         if model.config._attn_implementation == 'flash_attention_2':
             cuda_major, cuda_minor = torch.cuda.get_device_capability()
             if cuda_major < 8:

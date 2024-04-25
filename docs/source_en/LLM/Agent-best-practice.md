@@ -19,7 +19,7 @@ SWIFT supports open-source models, especially small and medium-sized models (7B,
 # Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # Align environment (usually don't need to run. If you get errors, you can run the code below, the repo tests with the latest environment)
 pip install -r requirements/framework.txt  -U
@@ -430,7 +430,7 @@ This section focuses on the interactive framework AgentFabric within Modelscope-
 Due to the mismatch between the system prompt in ms-agent and that in Modelscope-Agent, direct training yields suboptimal results. To address this, we have created a new dataset [ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric/summary) by converting the format from ms-agent, which is now integrated into SWIFT. The `ms-agent-for-agentfabric-default` includes 30,000 entries converted from ms-agent data, while `ms-agent-for-agentfabric-additional` contains 488 entries filtered from actual function call access data by the open-source AgentFabric framework.
 
 ### Fine-tuning
-Replace `dataset` with `ms-agent-for-agentfabric` and `ms-agent-for-agentfabric-default`:
+Replace `dataset` with `ms-agent-for-agentfabric-default` and `ms-agent-for-agentfabric-addition`:
 ```shell
 # Experimental environment: 8GPU
 nproc_per_node=8
