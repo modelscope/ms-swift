@@ -12,7 +12,7 @@ torchrun \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type default-generation-bos \
+    --template_type default-generation \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
