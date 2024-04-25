@@ -1,5 +1,4 @@
 # Experimental environment: A100
-PYTHONPATH=/mnt/workspace/qwen_swift/swift \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift infer \
     --ckpt_dir "output/qwen1half-110b-chat/vx-xxx/checkpoint-xxx" \

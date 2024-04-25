@@ -1,13 +1,8 @@
 # Experimental environment: A100
 # 8*60GB GPU memory
-# modify 'model_id_or_path' in /swift/swift/llm/utils/model.py （line 1522）
-# Alternatively, you can add a new parameter --model_id_or_path and set it to the local path.
-
-PYTHONPATH=/path/to/swift \
 nproc_per_node=8
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=$nproc_per_node \
-MASTER_PORT=29500 \
 swift sft \
     --model_type qwen1half-110b-chat \
     --sft_type lora \
@@ -16,7 +11,7 @@ swift sft \
     --output_dir output \
     --ddp_backend nccl \
     --dataset ms-bench-mini \
-    --train_dataset_sample 5000 \
+    --train_dataset_sample -1 \
     --num_train_epochs 2 \
     --max_length 1024 \
     --check_dataset_strategy warning \
@@ -35,9 +30,5 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
-    --self_cognition_sample 1000 \
-    --model_name 卡卡罗特 \
-    --model_author 陶白白 \
     --use_flash_attn false \
     --deepspeed default-zero3

@@ -2046,7 +2046,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     hf_model_id='Qwen/Qwen1.5-72B-Chat')
 @register_model(
     ModelType.qwen1half_110b_chat,
-    '/mnt/workspace/.cache/modelscope/qwen/Qwen1___5-110B-Chat/home/admin/resource/model/33e6d810.qwen1.5-110b-chat-merged-dare-ties-0.7/1.0/',
+    'qwen/Qwen1.5-110B',
     LoRATM.qwen1half,
     TemplateType.qwen,
     support_flash_attn=True,
