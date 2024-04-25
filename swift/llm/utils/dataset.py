@@ -428,7 +428,7 @@ def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
     # skip MOSS
     for c in conversations:
         value = c['value'].lower()
-        if 'moss' in value or 'human:' in value or 'assistant:' in value:
+        if 'moss' in value or 'human:' in value or 'assistant:' in value or 'user:' in value:
             return
     return conversations
 

@@ -828,7 +828,9 @@ def get_model_tokenizer_grok(model_dir: str,
         model_config.torch_dtype = torch_dtype
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/grok-1-tokenizer', trust_remote_code=True)
+            'AI-ModelScope/grok-1-tokenizer',
+            revision='master',
+            trust_remote_code=True)
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token
@@ -1253,6 +1255,40 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.minicpm_2b_sft_chat,
+    'OpenBMB/MiniCPM-2B-sft-fp32',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='openbmb/MiniCPM-2B-sft-fp32')
+@register_model(
+    ModelType.minicpm_2b_chat,
+    'OpenBMB/MiniCPM-2B-dpo-fp32',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='openbmb/MiniCPM-2B-dpo-fp32')
+@register_model(
+    ModelType.minicpm_1b_sft_chat,
+    'OpenBMB/MiniCPM-1B-sft-bf16',
+    LoRATM.llama2,
+    TemplateType.minicpm,
+    requires=['transformers>=4.36.0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='openbmb/MiniCPM-1B-sft-bf16')
+@register_model(
+    ModelType.minicpm_2b_128k,
+    'OpenBMB/MiniCPM-2B-128k',
+    LoRATM.llama2,
+    TemplateType.chatml,
+    requires=['transformers>=4.36.0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='openbmb/MiniCPM-2B-128k')
 @register_model(
     ModelType.phi3_4b_128k_instruct,
     'LLM-Research/Phi-3-mini-128k-instruct',
@@ -3546,59 +3582,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
 
 @register_model(
-    ModelType.minicpm_2b_sft_chat,
-    'OpenBMB/MiniCPM-2B-sft-fp32',
-    LoRATM.llama2,
-    TemplateType.minicpm,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='openbmb/MiniCPM-2B-sft-fp32')
-@register_model(
-    ModelType.minicpm_2b_chat,
-    'OpenBMB/MiniCPM-2B-dpo-fp32',
-    LoRATM.llama2,
-    TemplateType.minicpm,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='openbmb/MiniCPM-2B-dpo-fp32')
-@register_model(
-    ModelType.minicpm_1b_sft_chat,
-    'OpenBMB/MiniCPM-1B-sft-bf16',
-    LoRATM.llama2,
-    TemplateType.minicpm,
-    requires=['transformers>=4.36.0'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='openbmb/MiniCPM-1B-sft-bf16')
-@register_model(
-    ModelType.minicpm_2b_128k,
-    'OpenBMB/MiniCPM-2B-128k',
-    LoRATM.llama2,
-    TemplateType.chatml,
-    requires=['transformers>=4.36.0'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='openbmb/MiniCPM-2B-128k')
-def get_model_tokenizer_minicpm(model_dir: str,
-                                torch_dtype: Dtype,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    model_config = AutoConfig.from_pretrained(
-        model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config._attn_implementation = 'flash_attention_2'
-    return get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        **kwargs)
-
-
-@register_model(
     ModelType.minicpm_v_3b_chat,
     'OpenBMB/MiniCPM-V',
     LoRATM.llama2,
@@ -3812,7 +3795,7 @@ def fix_gradient_checkpointing_warning() -> None:
 def safe_snapshot_download(model_type: str,
                            model_id_or_path: Optional[str] = None,
                            revision: Optional[str] = None,
-                           load_model: bool = True,
+                           download_model: bool = True,
                            **kwargs) -> str:
     # Perform snapshot_download (ms or hf) based on model_type and model_id_or_path.
     model_info = MODEL_MAPPING[model_type]
@@ -3829,7 +3812,7 @@ def safe_snapshot_download(model_type: str,
         if model_id_or_path is not None and not os.path.exists(
                 model_id_or_path):
             ignore_file_pattern = model_info['ignore_file_pattern']
-            if load_model is False:
+            if download_model is False:
                 if ignore_file_pattern is None:
                     ignore_file_pattern = []
                 if use_hf:
@@ -3896,11 +3879,12 @@ def get_model_tokenizer(
         However, if torch.float32 is retrieved, torch.float16 will be used.
     """
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
+    download_model = kwargs.pop('download_model', load_model)
     model_dir = safe_snapshot_download(
         model_type,
         model_id_or_path,
         revision=revision,
-        load_model=load_model,
+        download_model=download_model,
         model_dir=model_dir)
 
     model_info = MODEL_MAPPING[model_type]

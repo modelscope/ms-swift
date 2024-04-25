@@ -356,8 +356,11 @@ class Template:
         res_context_list: List[Context] = []
         compute_loss_idx: List[float] = []
         if auto_add_bos:
-            res_context_list.append(self.tokenizer.encode(''))
-            compute_loss_idx.append(0.)
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id,
+                          int) and bos_token_id in self.tokenizer.encode(''):
+                res_context_list.append([bos_token_id])
+                compute_loss_idx.append(0.)
         if system is None:
             prefix = self.prefix
         else:
@@ -1345,11 +1348,17 @@ class MiniCPMVTemlate(Template):
         ) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
             start = 0
             new_input_ids = []
+            new_labels = []
             for idx in img_start_idxs[1:]:
                 new_input_ids = new_input_ids + input_ids[start:idx]
+                if labels is not None:
+                    new_labels = new_labels + labels[start:idx]
                 start = idx + 4  # skip <image><unk></image>\n
             new_input_ids = new_input_ids + input_ids[start:]
             input_ids = new_input_ids
+            if labels is not None:
+                new_labels = new_labels + labels[start:]
+                labels = new_labels
 
         idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
