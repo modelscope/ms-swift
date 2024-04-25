@@ -20,7 +20,7 @@ from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor, TextGenerationPreprocessor)
+                         SmartPreprocessor, TextGenerationPreprocessor,SystemOnlyConversationsPreprocessor)
 from .template import History
 from .utils import download_dataset
 
@@ -1364,22 +1364,32 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
     只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
     history_prompt = '\n\n【chat history】'
     conv_prompt = '\n {name}:{content}'
+    system = []
     query = []
     response = []
 
     for d in dataset:
         conv = d['conversations']
-        system = conv[0]['value']
-        if '【注意事项】' not in system:
-            system += res_prompt
-        system += history_prompt
-        response.append(conv[-1]['value'])
+        sys = conv[0]['value']
+        if '【注意事项】' not in sys:
+            sys += res_prompt
+        sys += history_prompt
         for i in range(1, len(conv) - 1):
-            system += conv_prompt.format(
+            sys += conv_prompt.format(
                 name=conv[i]['from'], content=conv[i]['value'])
-        query.append(system)
-    return HfDataset.from_dict({'query': query, 'response': response})
+        system.append(sys)
+        query.append("")
+        response.append(conv[-1]['value'])
 
+    return HfDataset.from_dict({'system':system, "query":query, 'response': response})
+
+def _repair_multirole_json(conversations:list) -> list:
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
+    if conversations[0]['from'] == 'system':
+        query = {"from":"user", "value":""}
+        conversations.insert(1,query)
+    return conversations
 
 register_dataset(
     DatasetName.ms_agent_multirole,
