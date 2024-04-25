@@ -264,11 +264,9 @@ def prepare_model(model, args: SftArguments):
                 self.freeze_all_layers()
 
                 # Randomly select n_layers to activate
-                layers = eval('self.' + self.layers_attribute)  # Re-fetch layer references
+                layers = self.model.get_submodule(self.layers_attribute)
                 self.active_layers_indices = np.random.choice(range(self.total_layers), self.n_layers,
                                                               replace=False)
-                print(f"Activating layers at indices: {self.active_layers_indices} for the next steps.")
-
                 # Enable gradients only for the selected layers
                 for idx in self.active_layers_indices:
                     for param in layers[idx].parameters():
