@@ -399,25 +399,9 @@ class SftArguments(ArgumentsBase):
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
     neftune_backend: Literal['swift', 'transformers'] = None
 
-    # lisa
-    use_lisa: bool = field(
-        default=False,
-        metadata={
-            "help": "whether to use LISA training strategy."
-        }
-    )
-    lisa_activated_layers: int = field(
-        default=2,
-        metadata={
-            "help": "the number of activated layers in LISA."
-        }
-    )
-    lisa_step_interval: int = field(
-        default=20,
-        metadata={
-            "help": "the interval of LISA."
-        }
-    )
+    #lisa
+    lisa_activated_layers: int = 0
+    lisa_step_interval: int = 20
 
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'

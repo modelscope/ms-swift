@@ -304,7 +304,7 @@ def load_hf_dataset(
     hf_dataset_id='vicgalle/alpaca-gpt4')
 @register_dataset(
     DatasetName.coig_cqia_chinese_traditional,
-    'wiki', [('chinese_traditional', 'train')],
+    'AI-ModelScope/COIG-CQIA', [('chinese_traditional', 'train')],
     tags=['general', '🔥'])
 @register_dataset(
     DatasetName.coig_cqia_coig_pc,
