@@ -1,7 +1,7 @@
-# Experimental environment: A100
-# 8*60GB GPU memory
-nproc_per_node=8
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+# Experimental environment: 4*A100
+# 4*60GB GPU memory
+nproc_per_node=4
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model_type qwen1half-110b-chat \
@@ -10,10 +10,10 @@ swift sft \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh \
     --train_dataset_sample -1 \
     --num_train_epochs 2 \
-    --max_length 1024 \
+    --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -30,5 +30,5 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
+    --use_flash_attn true \
     --deepspeed default-zero3
