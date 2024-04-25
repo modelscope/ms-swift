@@ -18,8 +18,7 @@ from transformers.utils import strtobool
 from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
                          read_from_jsonl, transform_jsonl_to_df)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
-                         ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor,
+                         ConversationsPreprocessor, PreprocessFunc,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
@@ -39,7 +38,6 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
 
 GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
                                                          Optional[HfDataset]]]]
-SubsetSplit = Union[str, Tuple[str, str], List[str]]
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 logger = get_logger()
@@ -49,38 +47,36 @@ class DatasetName:
     # general
     ms_bench = 'ms-bench'  # used for mixed training
     ms_bench_mini = 'ms-bench-mini'
-    alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
-    multi_alpaca_all = 'multi-alpaca-all'
-    instinwild_en = 'instinwild-en'
-    instinwild_zh = 'instinwild-zh'
+    alpaca_en = 'alpaca-en'
+    multi_alpaca = 'multi-alpaca'
+    instinwild = 'instinwild'
     cot_en = 'cot-en'
     cot_zh = 'cot-zh'
-    firefly_all_zh = 'firefly-all-zh'
     instruct_en = 'instruct-en'
+    firefly_all_zh = 'firefly-all-zh'
     gpt4all_en = 'gpt4all-en'
     sharegpt_en = 'sharegpt-en'
     sharegpt_zh = 'sharegpt-zh'
     tulu_v2_sft_mixture = 'tulu-v2-sft-mixture'
     wikipedia_zh = 'wikipedia-zh'
     open_orca = 'open-orca'
-    open_orca_gpt4 = 'open-orca-gpt4'
     sharegpt_gpt4 = 'sharegpt-gpt4'
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
-    deepctrl_sft_zh = 'deepctrl-sft-zh'
-    deepctrl_sft_en = 'deepctrl-sft-en'
+    deepctrl_sft = 'deepctrl-sft'
+    coig_cqia = 'coig-cqia'
+    ruozhiba = 'ruozhiba'
+    long_alpaca_12k = 'long-alpaca-12k'
+
     # agent
     ms_agent = 'ms-agent'
-    ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
-    ms_agent_for_agentfabric_addition = 'ms-agent-for-agentfabric-addition'
+    ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
     ms_agent_multirole = 'ms-agent-multirole'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
-    toolbench_for_alpha_umi_backbone = 'toolbench-for-alpha-umi-backbone'
-    toolbench_for_alpha_umi_caller = 'toolbench-for-alpha-umi-caller'
-    toolbench_for_alpha_umi_planner = 'toolbench-for-alpha-umi-planner'
-    toolbench_for_alpha_umi_summarizer = 'toolbench-for-alpha-umi-summarizer'
+    alpha_umi_toolbench = 'alpha-umi-toolbench'
+
     # coding
     code_alpaca_en = 'code-alpaca-en'
     leetcode_python_en = 'leetcode-python-en'
@@ -116,10 +112,10 @@ class DatasetName:
     poetry_zh = 'poetry-zh'
     webnovel_zh = 'webnovel-zh'
     generated_chat_zh = 'generated-chat-zh'
+
     # example dataset for specific model
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
-    long_alpaca_12k = 'long-alpaca-12k'
 
     # multi-modal
     # for qwen-vl
@@ -133,40 +129,12 @@ class DatasetName:
     aishell1_mini_zh = 'aishell1-mini-zh'
 
     # dpo/hfrl dataset
-    hh_rlhf_harmless_base = 'hh-rlhf-harmless-base'
-    hh_rlhf_helpful_base = 'hh-rlhf-helpful-base'
-    hh_rlhf_helpful_online = 'hh-rlhf-helpful-online'
-    hh_rlhf_helpful_rejection_sampled = 'hh-rlhf-helpful-rejection-sampled'
-    hh_rlhf_red_team_attempts = 'hh-rlhf-red-team-attempts'
+    hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
-    hh_rlhf_cn_harmless_base_cn = 'hh-rlhf-cn-harmless-base-cn'
-    hh_rlhf_cn_helpful_base_cn = 'hh-rlhf-cn-helpful-base-cn'
-    hh_rlhf_cn_harmless_base_en = 'hh-rlhf-cn-harmless-base-en'
-    hh_rlhf_cn_helpful_base_en = 'hh-rlhf-cn-helpful-base-en'
     stack_exchange_paired = 'stack-exchange-paired'
 
     # for awq
     pileval = 'pileval'
-
-    # COIG-CQIA
-    coig_cqia_chinese_traditional = 'coig-cqia-chinese-traditional'
-    coig_cqia_coig_pc = 'coig-cqia-coig-pc'
-    coig_cqia_exam = 'coig-cqia-exam'
-    coig_cqia_finance = 'coig-cqia-finance'
-    coig_cqia_douban = 'coig-cqia-douban'
-    coig_cqia_human_value = 'coig-cqia-human-value'
-    coig_cqia_logi_qa = 'coig-cqia-logi-qa'
-    coig_cqia_ruozhiba = 'coig-cqia-ruozhiba'
-    coig_cqia_segmentfault = 'coig-cqia-segmentfault'
-    coig_cqia_wiki = 'coig-cqia-wiki'
-    coig_cqia_wikihow = 'coig-cqia-wikihow'
-    coig_cqia_xhs = 'coig-cqia-xhs'
-    coig_cqia_zhihu = 'coig-cqia-zhihu'
-
-    # ruozhiba
-    ruozhiba_post_annual = 'ruozhiba-post-annual'
-    ruozhiba_title_good = 'ruozhiba-title-good'
-    ruozhiba_title_norm = 'ruozhiba-title-norm'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -181,11 +149,12 @@ class DatasetName:
 def register_dataset(
         dataset_name: str,
         dataset_id_or_path: str,
-        train_subset_split_list: Optional[List[SubsetSplit]] = None,
-        val_subset_split_list: Optional[List[SubsetSplit]] = None,
+        subsets: Optional[List[str]] = None,
         preprocess_func: Optional[PreprocessFunc] = None,
         get_function: Optional[GetDatasetFunction] = None,
         *,
+        train_split: Optional[List[str]] = None,
+        val_split: Optional[List[str]] = None,
         hf_dataset_id: Optional[str] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
@@ -197,17 +166,20 @@ def register_dataset(
         raise ValueError(
             f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
         )
-    if train_subset_split_list is None:
-        train_subset_split_list = []
-    if val_subset_split_list is None:
-        val_subset_split_list = []
+    if subsets is None:
+        subsets = []
+    if train_split is None:
+        train_split = ['train']
+    if val_split is None:
+        val_split = ['val', 'validation']
     if function_kwargs is None:
         function_kwargs = {}
 
     dataset_info = {
         'dataset_id_or_path': dataset_id_or_path,
-        'train_subset_split_list': train_subset_split_list,
-        'val_subset_split_list': val_subset_split_list,
+        'subsets': subsets,
+        'train_split': train_split,
+        'val_split': val_split,
         'preprocess_func': preprocess_func,
         'hf_dataset_id': hf_dataset_id,
         **kwargs
@@ -276,118 +248,18 @@ def load_hf_dataset(
     return concatenate_datasets(dataset_list)
 
 
-@register_dataset(
-    DatasetName.text2sql_en,
-    'AI-ModelScope/texttosqlv2_25000_v2', ['train'],
-    tags=['chat', 'sql'],
-    hf_dataset_id='Clinton/texttosqlv2_25000_v2')
-@register_dataset(
-    DatasetName.school_math_zh,
-    'AI-ModelScope/school_math_0.25M', ['train'],
-    tags=['chat', 'math'],
-    hf_dataset_id='BelleGroup/school_math_0.25M')
-@register_dataset(
-    DatasetName.gpt4all_en,
-    'wyj123456/GPT4all', ['train'],
-    tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.cot_zh, 'YorickHe/CoT_zh', ['train'], tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.cot_en, 'YorickHe/CoT', ['train'], tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.instinwild_en,
-    'wyj123456/instinwild', [('subset', 'train')],
-    tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.instinwild_zh,
-    'wyj123456/instinwild', ['train'],
-    tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.code_alpaca_en,
-    'wyj123456/code_alpaca_en', ['train'],
-    tags=['chat', 'coding'],
-    hf_dataset_id='sahil2801/CodeAlpaca-20k')
-@register_dataset(
-    DatasetName.finance_en,
-    'wyj123456/finance_en', ['train'],
-    tags=['chat', 'financial'],
-    hf_dataset_id='ssbuild/alpaca_finance_en')
-@register_dataset(
-    DatasetName.alpaca_en,
-    'AI-ModelScope/alpaca-gpt4-data-en', ['train'],
-    tags=['chat', 'general', '🔥'],
-    hf_dataset_id='vicgalle/alpaca-gpt4')
-@register_dataset(
-    DatasetName.coig_cqia_chinese_traditional,
-    'AI-ModelScope/COIG-CQIA', [('chinese_traditional', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_coig_pc,
-    'AI-ModelScope/COIG-CQIA', [('coig_pc', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_exam,
-    'AI-ModelScope/COIG-CQIA', [('exam', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_finance,
-    'AI-ModelScope/COIG-CQIA', [('finance', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_douban,
-    'AI-ModelScope/COIG-CQIA', [('douban', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_human_value,
-    'AI-ModelScope/COIG-CQIA', [('human_value', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_logi_qa,
-    'AI-ModelScope/COIG-CQIA', [('logi_qa', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_ruozhiba,
-    'AI-ModelScope/COIG-CQIA', [('ruozhiba', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_segmentfault,
-    'AI-ModelScope/COIG-CQIA', [('segmentfault', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_wiki,
-    'AI-ModelScope/COIG-CQIA', [('wiki', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_wikihow,
-    'AI-ModelScope/COIG-CQIA', [('wikihow', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_xhs,
-    'AI-ModelScope/COIG-CQIA', [('xhs', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_zhihu,
-    'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.ms_agent_for_agentfabric_default,
-    'AI-ModelScope/ms_agent_for_agentfabric', [('default', 'train')],
-    tags=['chat', 'agent', 'multi-round'])
-@register_dataset(
-    DatasetName.ms_agent_for_agentfabric_addition,
-    'AI-ModelScope/ms_agent_for_agentfabric', [('addition', 'train')],
-    tags=['chat', 'agent', 'multi-round'])
 def get_dataset_from_repo(
         dataset_id: str,
-        train_subset_split_list: List[SubsetSplit],
-        val_subset_split_list: Optional[List[SubsetSplit]],
+        subsets: Optional[List[str]],
         preprocess_func: PreprocessFunc,
+        train_split: List[str],
+        val_split: List[str],
         remove_useless_columns: bool = True,
         train_dataset_sample: int = -1,
         val_dataset_sample: int = -1,
         use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
-    _iter = zip([train_subset_split_list, val_subset_split_list],
+    _iter = zip([train_split, val_split],
                 [train_dataset_sample, val_dataset_sample])
     for subset_split_list, dataset_sample in _iter:
         if use_hf:
@@ -404,34 +276,6 @@ def get_dataset_from_repo(
                 dataset = _remove_useless_columns(dataset)
         dataset_list.append(dataset)
     return tuple(dataset_list)
-
-
-_multi_alpaca_subset_list = [
-    'ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi'
-]
-
-register_dataset(
-    DatasetName.multi_alpaca_all,
-    'damo/nlp_polylm_multialpaca_sft',
-    [(subset, 'train') for subset in _multi_alpaca_subset_list],
-    None,
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'general', 'multilingual'],
-    help="""language_list
-    Language-key	Language	# examples
-    ar	Arabic	14,671
-    de	German	9,515
-    es	Spanish	9,958
-    fr	France	11,332
-    id	Indonesian	12,117
-    ja	Japanese	10,191
-    ko	Korean	14,402
-    pt	Portuguese	10,825
-    ru	Russian	14,286
-    th	Thai	11,496
-    vi	Vietnamese	13,908
-""")
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -628,22 +472,11 @@ def _preprocess_ruozhiba(dataset: HfDataset):
 
 
 register_dataset(
-    DatasetName.ruozhiba_post_annual,
-    'AI-ModelScope/ruozhiba', [('post-annual', 'train')], [],
+    DatasetName.ruozhiba,
+    'AI-ModelScope/ruozhiba',
     _preprocess_ruozhiba,
     get_dataset_from_repo,
-    tags=['pretrain', '🔥'])
-register_dataset(
-    DatasetName.ruozhiba_title_good,
-    'AI-ModelScope/ruozhiba', [('title-good', 'train')], [],
-    _preprocess_ruozhiba,
-    get_dataset_from_repo,
-    tags=['pretrain', '🔥'])
-register_dataset(
-    DatasetName.ruozhiba_title_norm,
-    'AI-ModelScope/ruozhiba', [('title-norm', 'train')], [],
-    _preprocess_ruozhiba,
-    get_dataset_from_repo,
+    subsets=['post-annual', 'title-good', 'title-norm'],
     tags=['pretrain', '🔥'])
 
 register_dataset(
@@ -664,13 +497,6 @@ register_dataset(
     tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
-    DatasetName.ms_agent,
-    'iic/ms_agent', ['train'], [],
-    ConversationsPreprocessor(error_strategy='delete'),
-    get_dataset_from_repo,
-    tags=['chat', 'agent', 'multi-round', '🔥'])
-
-register_dataset(
     DatasetName.damo_agent_mini_zh,
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
@@ -689,22 +515,6 @@ register_dataset(
             error_strategy='delete')),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
-
-register_dataset(
-    DatasetName.deepctrl_sft_zh,
-    'AI-ModelScope/deepctrl-sft-data', [['default', 'train']],
-    None,
-    SmartPreprocessor(),
-    get_dataset_from_repo,
-    tags=['chat', 'general', 'sft', 'multi-round'])
-
-register_dataset(
-    DatasetName.deepctrl_sft_en,
-    'AI-ModelScope/deepctrl-sft-data', [['en', 'train']],
-    None,
-    SmartPreprocessor(),
-    get_dataset_from_repo,
-    tags=['chat', 'general', 'sft', 'multi-round'])
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
@@ -761,24 +571,6 @@ def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
         dataset = json.loads(text)
     return preprocess_func(dataset, kind_list)
 
-
-register_dataset(
-    DatasetName.poetry_zh,
-    'modelscope/chinese-poetry-collection', ['train'], ['test'],
-    RenameColumnsPreprocessor({'text1': 'response'}),
-    get_dataset_from_repo,
-    tags=['text-generation', 'poetry'])
-
-register_dataset(
-    DatasetName.instruct_en,
-    'wyj123456/instruct', ['train'],
-    None,
-    RenameColumnsPreprocessor({
-        'prompt': 'query',
-        'completion': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'general'])
 
 register_dataset(
     DatasetName.cmnli_zh,
@@ -845,16 +637,16 @@ register_dataset(
     tags=['chat', 'medical'])
 
 register_dataset(
-    DatasetName.stack_exchange_paired,
-    'AI-ModelScope/stack-exchange-paired', [('default', 'train')],
-    None,
+    DatasetName.medical_mini_zh,
+    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')],
+    [('zh', 'test')],
     RenameColumnsPreprocessor({
-        'question': 'query',
-        'response_j': 'response',
-        'response_k': 'rejected_response',
+        'instruction': 'query',
+        'output': 'response'
     }),
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise'])
+    function_kwargs={'train_dataset_sample': 50000},
+    tags=['chat', 'medical'])
 
 
 def process_hh_rlhf(dataset):
@@ -924,43 +716,15 @@ def process_hh_rlhf(dataset):
 
 
 register_dataset(
-    DatasetName.hh_rlhf_harmless_base,
-    'AI-ModelScope/hh-rlhf', [('harmless-base', 'train')],
-    [('harmless-base', 'test')],
+    DatasetName.hh_rlhf,
+    'AI-ModelScope/hh-rlhf',
     process_hh_rlhf,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_helpful_base,
-    'AI-ModelScope/hh-rlhf', [('helpful-base', 'train')],
-    [('helpful-base', 'test')],
-    process_hh_rlhf,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_helpful_online,
-    'AI-ModelScope/hh-rlhf', [('helpful-online', 'train')],
-    [('helpful-online', 'test')],
-    process_hh_rlhf,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_helpful_rejection_sampled,
-    'AI-ModelScope/hh-rlhf', [('helpful-rejection-sampled', 'train')],
-    [('helpful-rejection-sampled', 'test')],
-    process_hh_rlhf,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_red_team_attempts,
-    'AI-ModelScope/hh-rlhf', [('red-team-attempts', 'train')],
-    [('red-team-attempts', 'test')],
-    process_hh_rlhf,
-    get_dataset_from_repo,
+    subsets=[
+        'harmless-base', 'helpful-base', 'helpful-online',
+        'helpful-rejection-sampled', 'red-team-attempts'
+    ],
+    val_split=['test'],
     tags=['rlhf', 'dpo', 'pairwise'])
 
 
@@ -1022,65 +786,15 @@ def process_hh_rlhf_cn(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('hh_rlhf', 'train')], [('hh_rlhf', 'test')],
+    'AI-ModelScope/hh_rlhf_cn',
     process_hh_rlhf_cn,
     get_dataset_from_repo,
+    subsets=[
+        'hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn',
+        'helpful_base_en'
+    ],
+    val_split=['test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_harmless_base_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')],
-    [('harmless_base_cn', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_harmless_base_en,
-    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_en', 'train')],
-    [('harmless_base_en', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_helpful_base_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_cn', 'train')],
-    [('helpful_base_cn', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_helpful_base_en,
-    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')],
-    [('helpful_base_en', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.medical_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')],
-    [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'medical'])
-
-register_dataset(
-    DatasetName.medical_mini_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')],
-    [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    function_kwargs={'train_dataset_sample': 50000},
-    tags=['chat', 'medical'])
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
@@ -1162,71 +876,20 @@ register_dataset(
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
-    DatasetName.cls_fudan_news_zh,
-    'damo/zh_cls_fudan-news', ['train'],
-    None,
-    RenameColumnsPreprocessor({
-        'prompt': 'query',
-        'answer': 'response'
-    }),
+    DatasetName.alpha_umi_toolbench,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', {
+        'backbone':
+        ConversationsPreprocessor('system', system_role='-'),
+        'caller':
+        ConversationsPreprocessor('system', 'caller', '-'),
+        'planner':
+        ConversationsPreprocessor(
+            repair_conversations=_repair_planner, error_strategy='delete'),
+        'summarizer':
+        ConversationsPreprocessor('system', 'conclusion', None),
+    },
     get_dataset_from_repo,
-    tags=['chat', 'classification'])
-
-register_dataset(
-    DatasetName.ner_java_zh,
-    'damo/zh_ner-JAVE', ['train'],
-    None,
-    RenameColumnsPreprocessor({
-        'prompt': 'query',
-        'answer': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'ner'])
-
-register_dataset(
-    DatasetName.codefuse_python_en,
-    'codefuse-ai/CodeExercise-Python-27k', ['train'],
-    None,
-    ConversationsPreprocessor(
-        'human',
-        'bot',
-        conversations_key='chat_rounds',
-        from_key='role',
-        value_key='content'),
-    get_dataset_from_repo,
-    tags=['chat', 'coding', '🔥'])
-
-register_dataset(
-    DatasetName.toolbench_for_alpha_umi_backbone,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('backbone', 'train')],
-    None,
-    ConversationsPreprocessor('system', system_role=None),
-    get_dataset_from_repo,
-    tags=['chat', 'agent'])
-
-register_dataset(
-    DatasetName.toolbench_for_alpha_umi_caller,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('caller', 'train')],
-    None,
-    ConversationsPreprocessor('system', 'caller', None),
-    get_dataset_from_repo,
-    tags=['chat', 'agent'])
-
-register_dataset(
-    DatasetName.toolbench_for_alpha_umi_planner,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
-    None,
-    ConversationsPreprocessor(
-        repair_conversations=_repair_planner, error_strategy='delete'),
-    get_dataset_from_repo,
-    tags=['chat', 'agent'])
-
-register_dataset(
-    DatasetName.toolbench_for_alpha_umi_summarizer,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', [('summarizer', 'train')],
-    None,
-    ConversationsPreprocessor('system', 'conclusion', None),
-    get_dataset_from_repo,
+    subsets=['backbone', 'caller', 'planner', 'summarizer'],
     tags=['chat', 'agent'])
 
 
@@ -1249,35 +912,6 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'math', '🔥'],
     hf_dataset_id='Azure99/blossom-math-v2')
-
-register_dataset(
-    DatasetName.sql_create_context_en,
-    'AI-ModelScope/sql-create-context', ['train'],
-    None,
-    ComposePreprocessor([
-        RenameColumnsPreprocessor({
-            'question': 'instruction',
-            'context': 'input',
-            'answer': 'output'
-        }),
-        AlpacaPreprocessor(),
-    ]),
-    get_dataset_from_repo,
-    tags=['chat', 'sql', '🔥'],
-    hf_dataset_id='b-mc2/sql-create-context')
-
-register_dataset(
-    DatasetName.lawyer_llama_zh,
-    'AI-ModelScope/lawyer_llama_data', ['train'],
-    None,
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response',
-        'history': '_'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'law'],
-    hf_dataset_id='Skepsun/lawyer_llama_data')
 
 
 def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
@@ -1389,17 +1023,6 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
 
-register_dataset(
-    DatasetName.codefuse_evol_instruction_zh,
-    'codefuse-ai/Evol-instruction-66k', ['train'],
-    None,
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'coding', '🔥'])
-
 hc3_chinese_subset = [
     'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
     'psychology'
@@ -1442,111 +1065,6 @@ register_dataset(
     get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3')
-
-register_dataset(
-    DatasetName.tulu_v2_sft_mixture,
-    'AI-ModelScope/tulu-v2-sft-mixture', ['train'], [],
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'multilingual', 'general', 'multi-round'],
-    hf_dataset_id='allenai/tulu-v2-sft-mixture')
-register_dataset(
-    DatasetName.webnovel_zh,
-    'AI-ModelScope/webnovel_cn', ['train'], [],
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'novel'],
-    hf_dataset_id='zxbsmk/webnovel_cn')
-register_dataset(
-    DatasetName.generated_chat_zh,
-    'AI-ModelScope/generated_chat_0.4M', ['train'], [],
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'character-dialogue'],
-    hf_dataset_id='BelleGroup/generated_chat_0.4M')
-register_dataset(
-    DatasetName.wikipedia_zh,
-    'AI-ModelScope/wikipedia-cn-20230720-filtered', ['train'],
-    None,
-    RenameColumnsPreprocessor({'completion': 'response'}),
-    get_dataset_from_repo,
-    tags=['text-generation', 'general', 'pretrained'],
-    hf_dataset_id='pleisto/wikipedia-cn-20230720-filtered')
-register_dataset(
-    DatasetName.open_platypus_en,
-    'AI-ModelScope/Open-Platypus', ['train'],
-    None,
-    None,
-    get_dataset_from_repo,
-    tags=['chat', 'math'],
-    hf_dataset_id='garage-bAInd/Open-Platypus')
-register_dataset(
-    DatasetName.open_orca_gpt4,
-    'AI-ModelScope/OpenOrca', ['train'],
-    None,
-    RenameColumnsPreprocessor({'question': 'query'}),
-    get_dataset_from_repo,
-    tags=['chat', 'multilingual', 'general'])
-register_dataset(
-    DatasetName.open_orca,
-    'AI-ModelScope/OpenOrca', [['3_5M', 'train']],
-    None,
-    RenameColumnsPreprocessor({'question': 'query'}),
-    get_dataset_from_repo,
-    tags=['chat', 'multilingual', 'general'])
-
-register_dataset(
-    DatasetName.sharegpt_gpt4_mini,
-    'AI-ModelScope/sharegpt_gpt4', ['train'],
-    None,
-    ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
-    get_dataset_from_repo,
-    tags=['chat', 'multilingual', 'general', 'multi-round', 'gpt4', '🔥'])
-register_dataset(
-    DatasetName.sharegpt_gpt4,
-    'AI-ModelScope/sharegpt_gpt4',
-    [[subset, 'train']
-     for subset in ['default', 'V3_format', 'zh_38K_format']],
-    None,
-    ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
-    get_dataset_from_repo,
-    tags=['chat', 'multilingual', 'general', 'multi-round'])
-
-register_dataset(
-    DatasetName.disc_med_sft_zh,
-    'AI-ModelScope/DISC-Med-SFT', ['train'],
-    None,
-    ConversationsPreprocessor(
-        conversations_key='conversation',
-        from_key='role',
-        value_key='content',
-        error_strategy='delete'),
-    get_dataset_from_repo,
-    tags=['chat', 'medical', '🔥'],
-    hf_dataset_id='Flmc/DISC-Med-SFT')
-
-register_dataset(
-    DatasetName.disc_law_sft_zh,
-    'AI-ModelScope/DISC-Law-SFT', ['train'],
-    None,
-    RenameColumnsPreprocessor({
-        'input': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'law', '🔥'],
-    hf_dataset_id='ShengbinYue/DISC-Law-SFT')
-
-register_dataset(
-    DatasetName.pileval,
-    'huangjintao/pile-val-backup', ['validation'],
-    None,
-    RenameColumnsPreprocessor({
-        'text': 'response',
-    }),
-    get_dataset_from_repo,
-    tags=['text-generation', 'awq'],
-    hf_dataset_id='mit-han-lab/pile-val-backup')
 
 
 def add_self_cognition_dataset(
@@ -1682,9 +1200,10 @@ def get_dataset(
         get_function: GetDatasetFunction = dataset_info['get_function']
         dataset = get_function(
             dataset_id_or_path,
-            train_subset_split_list=dataset_info['train_subset_split_list'],
-            val_subset_split_list=dataset_info['val_subset_split_list'],
+            subsets=dataset_info['subsets'],
             preprocess_func=dataset_info['preprocess_func'],
+            train_split=dataset_info['train_split'],
+            val_split=dataset_info['val_split'],
             use_hf=use_hf)
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
@@ -1746,9 +1265,9 @@ def load_dataset_from_local(
     return concatenate_datasets(dataset_list)
 
 
-def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
-                       val_subset_split_list: Optional[Union[str, List[str]]],
-                       preprocess_func: PreprocessFunc,
+def get_custom_dataset(_: str, subsets: Optional[List[str]],
+                       preprocess_func: PreprocessFunc, train_split: List[str],
+                       val_split: List[str],
                        **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     train_dataset = load_dataset_from_local(train_subset_split_list,
                                             preprocess_func)
