@@ -41,7 +41,7 @@ class Dataset(BaseUI):
                 'en': 'Extra train files, split by comma'
             }
         },
-        'custom_val_dataset_path': {
+        'custom_val_dataset': {
             'label': {
                 'zh': '自定义校验数据集路径',
                 'en': 'Custom val dataset path'

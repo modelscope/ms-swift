@@ -23,8 +23,8 @@ from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
                          get_pai_tensorboard_dir, is_dist, is_mp,
                          is_pai_training_job)
-from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
-                      register_dataset)
+from .dataset import (DATASET_MAPPING, get_dataset, get_local_dataset,
+                      register_dataset_info, register_local_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -41,28 +41,37 @@ def is_adapter(sft_type: str) -> bool:
 
 class ArgumentsBase:
 
-    def register_custom_dataset(
-            self: Union['SftArguments', 'InferArguments']) -> None:
-        dataset = []
-        for d in self.dataset:
-            if os.path.exists(d):
-                self.custom_train_dataset.append(d)
-            else:
-                dataset.append(d)
-        self.dataset = dataset
+    def register_dataset_info(self: Union['SftArguments', 'InferArguments'],
+                              dataset_info_path: Optional[str] = None) -> None:
+        if dataset_info_path is None:
+            dataset_info_path = os.path.abspath(
+                os.path.join(__file__, '..', '..', 'data',
+                             'dataset_info.json'))
 
+        with open(dataset_info_path, 'r') as f:
+            dataset_info = json.load(f)
+
+        # register _custom_dataset
         for key in ['custom_train_dataset', 'custom_val_dataset']:
             value = getattr(self, key)
             if isinstance(value, str):
                 setattr(self, key, [value])
-        if len(self.custom_train_dataset) == 0 and len(
-                self.custom_val_dataset) == 0:
-            return
+        if len(self.custom_train_dataset) > 0 or len(
+                self.custom_val_dataset) > 0:
+            dataset_info['_custom_dataset'] = {
+                'train_dataset_path': self.custom_train_dataset,
+                'val_dataset_path': self.custom_val_dataset
+            }
+            self.dataset.append('_custom_dataset')
+            logger.info('Registered `_custom_dataset` to dataset_info')
 
-        dataset_name = '_custom_dataset'
-        _register_local_dataset(dataset_name, self.custom_train_dataset,
-                                self.custom_val_dataset_path)
-        self.dataset.append(dataset_name)
+        for dataset_name, d_info in dataset_info.items():
+            if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
+                register_dataset_info(dataset_name, d_info)
+            elif 'train_dataset_path' in d_info or 'val_dataset_path' in d_info:
+                register_local_dataset(dataset_name,
+                                       d_info.get('train_dataset_path'),
+                                       d_info.get('val_dataset_path'))
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = [
@@ -537,9 +546,11 @@ class SftArguments(ArgumentsBase):
 
     def __post_init__(self) -> None:
         self.handle_compatibility()
+        self.register_dataset_info()
         if is_pai_training_job():
             self._handle_pai_compat()
-        ds_config_folder = os.path.join(__file__, '..', '..', 'ds_config')
+        ds_config_folder = os.path.abspath(
+            os.path.join(__file__, '..', '..', 'ds_config'))
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
@@ -547,17 +558,13 @@ class SftArguments(ArgumentsBase):
         }
         for ds_name, ds_config in deepspeed_mapping.items():
             if self.deepspeed == ds_name:
-                self.deepspeed = os.path.abspath(
-                    os.path.join(ds_config_folder, ds_config))
+                self.deepspeed = os.path.join(ds_config_folder, ds_config)
                 break
 
         self.handle_path()
         self.set_model_type()
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
-        if isinstance(self.train_dataset_mix_ds, str):
-            self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
-        self.register_custom_dataset()
         self.check_flash_attn()
         self.handle_generation_config()
 
@@ -918,6 +925,7 @@ class InferArguments(ArgumentsBase):
                 f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                 'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
+        self.register_dataset_info()
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
@@ -932,22 +940,18 @@ class InferArguments(ArgumentsBase):
         self.set_model_type()
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
-        self.register_custom_dataset()
         self.check_flash_attn()
         self.handle_generation_config()
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
-        has_dataset = (
-            len(self.dataset) > 0 or len(self.custom_train_dataset) > 0
-            or len(self.custom_val_dataset) > 0)
         if self.eval_human is None:
-            if not has_dataset:
+            if not len(self.dataset) > 0:
                 self.eval_human = True
             else:
                 self.eval_human = False
             logger.info(f'Setting self.eval_human: {self.eval_human}')
-        elif self.eval_human is False and not has_dataset:
+        elif self.eval_human is False and not len(self.dataset) > 0:
             raise ValueError(
                 'Please provide the dataset or set `--load_dataset_config true`.'
             )
@@ -1210,17 +1214,6 @@ def _check_path(
             res.append(_check_path(k, v, check_exist_path_set))
         value = res
     return value
-
-
-def _register_local_dataset(dataset_name: str, train_dataset_path: List[str],
-                            val_dataset_path: List[str]) -> None:
-    register_dataset(
-        dataset_name,
-        '_',
-        train_dataset_path,
-        val_dataset_path,
-        get_function=get_custom_dataset,
-        exists_ok=True)
 
 
 def swift_to_peft_format(lora_checkpoint_path: str) -> str:

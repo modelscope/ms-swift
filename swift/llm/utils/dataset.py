@@ -18,7 +18,8 @@ from transformers.utils import strtobool
 from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
                          read_from_jsonl, transform_jsonl_to_df)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
-                         ConversationsPreprocessor, PreprocessFunc,
+                         ComposePreprocessor, ConversationsPreprocessor,
+                         PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
@@ -63,7 +64,6 @@ class DatasetName:
     wikipedia_zh = 'wikipedia-zh'
     open_orca = 'open-orca'
     sharegpt_gpt4 = 'sharegpt-gpt4'
-    sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     deepctrl_sft = 'deepctrl-sft'
     coig_cqia = 'coig-cqia'
     ruozhiba = 'ruozhiba'
@@ -74,7 +74,7 @@ class DatasetName:
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
     ms_agent_multirole = 'ms-agent-multirole'
     damo_agent_zh = 'damo-agent-zh'
-    damo_agent_mini_zh = 'damo-agent-mini-zh'
+    damo_agent_zh_mini = 'damo-agent-zh-mini'
     agent_instruct_all_en = 'agent-instruct-all-en'
     alpha_umi_toolbench = 'alpha-umi-toolbench'
 
@@ -103,7 +103,6 @@ class DatasetName:
     dureader_robust_zh = 'dureader-robust-zh'
     # classification
     cmnli_zh = 'cmnli-zh'
-    cmnli_mini_zh = 'cmnli-mini-zh'
     jd_sentiment_zh = 'jd-sentiment-zh'
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
@@ -118,15 +117,16 @@ class DatasetName:
     ner_java_zh = 'ner-jave-zh'  # seqgpt-560m
 
     # multi-modal
-    # for qwen-vl
+    # <img></img>
     coco_en = 'coco-en'
-    coco_mini_en = 'coco-mini-en'
-    # for yi-vl, cogagnet
-    coco_mini_en_2 = 'coco-mini-en-2'
+    coco_en_mini = 'coco-en-mini'
+    # images
+    coco_en_2 = 'coco-en-2'
+    coco_en_2_mini = 'coco-en-2-mini'
     capcha_images = 'capcha-images'
     # for qwen-audio
     aishell1_zh = 'aishell1-zh'
-    aishell1_mini_zh = 'aishell1-mini-zh'
+    aishell1_zh_mini = 'aishell1-zh-mini'
 
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
@@ -149,20 +149,20 @@ class DatasetName:
 def register_dataset(
         dataset_name: str,
         dataset_id_or_path: str,
+        subsets: Optional[List[str]] = None,
         preprocess_func: Optional[PreprocessFunc] = None,
         get_function: Optional[GetDatasetFunction] = None,
         *,
-        subsets: Optional[List[str]] = None,
         train_split: Optional[List[str]] = None,
         val_split: Optional[List[str]] = None,
         hf_dataset_id: Optional[str] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
-        exists_ok: bool = False,
+        exist_ok: bool = False,
         **kwargs
 ) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
     if preprocess_func is None:
         preprocess_func = SmartPreprocessor()
-    if not exists_ok and dataset_name in DATASET_MAPPING:
+    if not exist_ok and dataset_name in DATASET_MAPPING:
         raise ValueError(
             f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
         )
@@ -201,6 +201,43 @@ def register_dataset(
         return _old_get_function
 
     return _register_dataset
+
+
+def register_local_dataset(
+        dataset_name: str,
+        train_dataset_path: Optional[List[str]] = None,
+        val_dataset_path: Optional[List[str]] = None) -> None:
+    if train_dataset_path is None:
+        train_dataset_path = []
+    if val_dataset_path is None:
+        val_dataset_path = []
+    assert len(train_dataset_path) > 0 or len(val_dataset_path) > 0
+
+    register_dataset(
+        dataset_name,
+        '_',
+        None,
+        get_local_dataset,
+        train_split=train_dataset_path,
+        val_split=val_dataset_path,
+        exist_ok=True)
+
+
+def register_dataset_info(dataset_name, d_info: Dict[str, Any]) -> None:
+    preprocess_func = None
+    if 'columns' in d_info:
+        preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
+        d_info.pop('columns')
+    elif 'conversations' in d_info:
+        preprocess_func = ConversationsPreprocessor(**d_info['conversations'])
+        d_info.pop('conversations')
+    dataset_id = d_info.pop('dataset_id')
+    register_dataset(
+        dataset_name,
+        dataset_id,
+        **d_info,
+        preprocess_func=preprocess_func,
+        exist_ok=True)
 
 
 def load_ms_dataset(
@@ -246,6 +283,10 @@ def load_hf_dataset(
         dataset = load_dataset(dataset_id, name=subset_name, split=split)
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
+
+
+def sample_dataset(dataset):
+    pass
 
 
 def get_dataset_from_repo(
@@ -313,10 +354,18 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.coco_en,
-    'modelscope/coco_2014_caption',
+    'modelscope/coco_2014_caption', ['coco_2014_caption'],
     _preprocess_vision_dataset,
     get_dataset_from_repo,
-    subsets=['coco_2014_caption'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.coco_en_mini,
+    'modelscope/coco_2014_caption', ['coco_2014_caption'],
+    _preprocess_vision_dataset,
+    get_dataset_from_repo,
+    train_split=['validation'],
+    val_split=[],
     tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 
@@ -342,10 +391,18 @@ def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.coco_en_2,
-    'modelscope/coco_2014_caption',
+    'modelscope/coco_2014_caption', ['coco_2014_caption'],
     _preprocess_vision_dataset2,
     get_dataset_from_repo,
-    subsets=['coco_2014_caption'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.coco_en_2_mini,
+    'modelscope/coco_2014_caption', ['coco_2014_caption'],
+    _preprocess_vision_dataset2,
+    get_dataset_from_repo,
+    train_split=['validation'],
+    val_split=[],
     tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 
@@ -374,7 +431,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.aishell1_zh_mini,
-    'speech_asr/speech_asr_aishell1_trainsets', ['validation'], ['test'],
+    'speech_asr/speech_asr_aishell1_trainsets',
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
     train_split=['validation'],
@@ -459,10 +516,9 @@ def _preprocess_ruozhiba(dataset: HfDataset):
 
 register_dataset(
     DatasetName.ruozhiba,
-    'AI-ModelScope/ruozhiba',
+    'AI-ModelScope/ruozhiba', ['post-annual', 'title-good', 'title-norm'],
     _preprocess_ruozhiba,
     get_dataset_from_repo,
-    subsets=['post-annual', 'title-good', 'title-norm'],
     tags=['pretrain', '🔥'])
 
 register_dataset(
@@ -551,11 +607,10 @@ def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
 
 register_dataset(
     DatasetName.cmnli_zh,
-    'modelscope/clue',
+    'modelscope/clue', ['cmnli'],
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
-    subsets=['cmnli'],
     tags=['text-generation', 'classification'],
     hf_dataset_id='clue')
 
@@ -661,13 +716,12 @@ def process_hh_rlhf(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf,
-    'AI-ModelScope/hh-rlhf',
-    process_hh_rlhf,
-    get_dataset_from_repo,
-    subsets=[
+    'AI-ModelScope/hh-rlhf', [
         'harmless-base', 'helpful-base', 'helpful-online',
         'helpful-rejection-sampled', 'red-team-attempts'
     ],
+    process_hh_rlhf,
+    get_dataset_from_repo,
     val_split=['test'],
     tags=['rlhf', 'dpo', 'pairwise'])
 
@@ -730,13 +784,12 @@ def process_hh_rlhf_cn(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf_cn,
-    'AI-ModelScope/hh_rlhf_cn',
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    subsets=[
+    'AI-ModelScope/hh_rlhf_cn', [
         'hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn',
         'helpful_base_en'
     ],
+    process_hh_rlhf_cn,
+    get_dataset_from_repo,
     val_split=['test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
 
@@ -763,18 +816,16 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.sharegpt_zh,
-    'huangjintao/sharegpt',
+    'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh'],
     _preprocess_sharegpt,
     get_dataset_from_repo,
-    subsets=['common-zh', 'computer-zh', 'unknow-zh'],
     tags=['chat', 'general', 'multi-round'])
 
 register_dataset(
     DatasetName.sharegpt_en,
-    'huangjintao/sharegpt',
+    'huangjintao/sharegpt', ['common-en', 'computer-en'],
     _preprocess_sharegpt,
     get_dataset_from_repo,
-    subsets=['common-en', 'computer-en'],
     tags=['chat', 'general', 'multi-round'])
 
 
@@ -814,6 +865,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.alpha_umi_toolbench,
+    ['backbone', 'caller', 'planner', 'summarizer'],
     'shenweizhou/alpha-umi-toolbench-processed-v2', {
         'backbone':
         ConversationsPreprocessor('system', system_role='-'),
@@ -826,7 +878,6 @@ register_dataset(
         ConversationsPreprocessor('system', 'conclusion', None),
     },
     get_dataset_from_repo,
-    subsets=['backbone', 'caller', 'planner', 'summarizer'],
     tags=['chat', 'agent'])
 
 
@@ -848,6 +899,21 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'math', '🔥'],
     hf_dataset_id='Azure99/blossom-math-v2')
+
+register_dataset(
+    DatasetName.sql_create_context_en,
+    'AI-ModelScope/sql-create-context',
+    ComposePreprocessor([
+        RenameColumnsPreprocessor({
+            'question': 'instruction',
+            'context': 'input',
+            'answer': 'output'
+        }),
+        AlpacaPreprocessor(),
+    ]),
+    get_dataset_from_repo,
+    tags=['chat', 'sql', '🔥'],
+    hf_dataset_id='b-mc2/sql-create-context')
 
 
 def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
@@ -913,12 +979,12 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 register_dataset(
     DatasetName.agent_instruct_all_en,
     'huangjintao/AgentInstruct_copy',
+    ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
     ConversationsPreprocessor(
         'human',
         'gpt',
         repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
-    subsets=['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
     tags=['chat', 'agent', 'multi-round'])
 
 
@@ -973,66 +1039,22 @@ Output:"""
 
 register_dataset(
     DatasetName.hc3_zh,
-    'simpleai/HC3-Chinese',
-    _preprocess_hc3,
-    get_dataset_from_repo,
-    subsets=[
+    'simpleai/HC3-Chinese', [
         'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
         'psychology'
     ],
+    _preprocess_hc3,
+    get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3-Chinese')
 
 register_dataset(
     DatasetName.hc3_en,
-    'simpleai/HC3',
+    'simpleai/HC3', ['finance', 'medicine'],
     _preprocess_hc3,
     get_dataset_from_repo,
-    subsets=['finance', 'medicine'],
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3')
-
-
-def add_self_cognition_dataset(
-        train_dataset: HfDataset, dataset_sample: int,
-        model_name: Tuple[str, Optional[str]],
-        model_author: Tuple[str, Optional[str]]) -> HfDataset:
-    assert model_name[0] is not None
-    assert model_author[0] is not None
-    if model_name[1] is None:
-        model_name = (model_name[0], model_name[0])
-    if model_author[1] is None:
-        model_author = (model_author[0], model_author[0])
-    dataset_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), 'data',
-        'self_cognition.jsonl')
-    assert os.path.exists(dataset_path)
-    dataset = load_dataset_from_local([dataset_path], SmartPreprocessor())
-    response = []
-    for d in dataset:
-        if d['tag'] == 'zh':
-            model_n, model_a = model_name[0], model_author[0]
-        else:
-            model_n, model_a = model_name[1], model_author[1]
-
-        r = d['response'].replace('{{NAME}}',
-                                  model_n).replace('{{AUTHOR}}', model_a)
-        response.append(r)
-    dataset = dataset.remove_columns('response').add_column(
-        'response', response).remove_columns('tag')
-
-    random_state = RandomState(42)
-    idx = random_state.permutation(len(dataset))[:dataset_sample]
-    dataset_sample -= len(idx)
-    if dataset_sample > 0:
-        idx2 = random_state.choice(len(dataset), dataset_sample)
-        idx = np.concatenate([idx, idx2], axis=0)
-    dataset = dataset.select(idx)
-    if train_dataset is None:
-        return dataset
-    else:
-        return concatenate_datasets([train_dataset, dataset])
-
 
 NoneType = type(None)
 
@@ -1092,12 +1114,88 @@ def _check_dataset(
     return dataset
 
 
+def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
+    # use_0: When the length of the part is 1, is it considered as part0 or part1.
+    if s is None:
+        return None, None
+    part = s.split(sep)
+    if len(part) == 1:
+        if use_0:
+            part = part[0], None
+        else:
+            part = None, part[0]
+    else:
+        assert len(part) == 2
+    return part
+
+
+def parse_dataset_name(
+        dataset_name: str) -> Tuple[Optional[str], str, List[str], int, int]:
+    # HF::dataset_name:subset1,subset2,subset3#train_sample,val_sample
+    use_hf, other = _safe_split(dataset_name, '::', False)
+    part1, part2 = _safe_split(other, '#', True)
+    dataset_name, subsets = _safe_split(part1, ':', True)
+    if subsets is not None:
+        subset_list = subsets.split(',')
+        subset_list = [subset.strip() for subset in subset_list]
+    else:
+        subset_list = None
+    train_sample, val_sample = _safe_split(part2, ',', True)
+    train_sample, val_sample = [
+        sample if sample is None else int(sample)
+        for sample in [train_sample, val_sample]
+    ]
+    return tuple(
+        t.strip() if isinstance(t, str) else t
+        for t in [use_hf, dataset_name, subset_list, train_sample, val_sample])
+
+
+def get_self_cognition_dataset(
+        model_name: Tuple[str, Optional[str]],
+        model_author: Tuple[str, Optional[str]],
+        dataset_sample: int,
+        dataset: Optional[HfDataset] = None) -> Tuple[HfDataset, NoneType]:
+    # model_name: Tuple[zh, en]
+    assert model_name[0] is not None
+    assert model_author[0] is not None
+    if model_name[1] is None:
+        model_name = (model_name[0], model_name[0])
+    if model_author[1] is None:
+        model_author = (model_author[0], model_author[0])
+    dataset = get_dataset(self_cognition)
+    response = []
+    for d in dataset:
+        if d['tag'] == 'zh':
+            model_n, model_a = model_name[0], model_author[0]
+        else:
+            model_n, model_a = model_name[1], model_author[1]
+
+        r = d['response'].replace('{{NAME}}',
+                                  model_n).replace('{{AUTHOR}}', model_a)
+        response.append(r)
+    dataset = dataset.remove_columns('response').add_column(
+        'response', response).remove_columns('tag')
+
+    random_state = RandomState(42)
+    idx = random_state.permutation(len(dataset))[:dataset_sample]
+    dataset_sample -= len(idx)
+    if dataset_sample > 0:
+        idx2 = random_state.choice(len(dataset), dataset_sample)
+        idx = np.concatenate([idx, idx2], axis=0)
+    dataset = dataset.select(idx)
+    return dataset, None
+
+
 def get_dataset(
     dataset_name_list: Union[List[str], str],
     dataset_test_ratio: float = 0.,
     dataset_seed: Union[RandomState, int] = 42,
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none',
+    *,
+    # for self-cognition
+    model_name: Tuple[str, Optional[str]],
+    model_author: Tuple[str, Optional[str]]
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
@@ -1108,29 +1206,38 @@ def get_dataset(
     if isinstance(dataset_seed, int):
         random_state = RandomState(dataset_seed)
     for dataset_name in dataset_name_list:
-        dataset_info = DATASET_MAPPING[dataset_name]
-        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-        dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
-        if use_hf:
-            dataset_id_or_path = dataset_info['hf_dataset_id']
-            dataset_str = dataset_str_f.format(
-                hub='HuggingFace', dataset_id=dataset_id_or_path)
+        use_hf, dataset_name, subsets, train_sample, val_sample = parse_dataset_name(
+            dataset_name)
+        if dataset_name == 'self_cognition':
+            dataset = get_self_cognition_dataset(model_name, model_author,
+                                                 train_sample)
         else:
-            dataset_id_or_path = dataset_info['dataset_id_or_path']
-            dataset_str = dataset_str_f.format(
-                hub='ModelScope', dataset_id=dataset_id_or_path)
-        logger.info(dataset_str)
-        assert dataset_id_or_path is not None, (
-            f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
-            f'dataset_id_or_path: {dataset_id_or_path}.')
-        get_function: GetDatasetFunction = dataset_info['get_function']
-        dataset = get_function(
-            dataset_id_or_path,
-            subsets=dataset_info['subsets'],
-            preprocess_func=dataset_info['preprocess_func'],
-            train_split=dataset_info['train_split'],
-            val_split=dataset_info['val_split'],
-            use_hf=use_hf)
+            dataset_info = DATASET_MAPPING[dataset_name]
+            if use_hf is None:
+                use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+            dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
+            if use_hf:
+                dataset_id_or_path = dataset_info['hf_dataset_id']
+                dataset_str = dataset_str_f.format(
+                    hub='HuggingFace', dataset_id=dataset_id_or_path)
+            else:
+                dataset_id_or_path = dataset_info['dataset_id_or_path']
+                dataset_str = dataset_str_f.format(
+                    hub='ModelScope', dataset_id=dataset_id_or_path)
+            logger.info(dataset_str)
+            assert dataset_id_or_path is not None, (
+                f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
+                f'dataset_id_or_path: {dataset_id_or_path}.')
+            get_function: GetDatasetFunction = dataset_info['get_function']
+            dataset = get_function(
+                dataset_id_or_path,
+                dataset_info['subsets'],
+                dataset_info['preprocess_func'],
+                train_split=dataset_info['train_split'],
+                val_split=dataset_info['val_split'],
+                train_dataset_sample=train_sample,
+                val_dataset_sample=val_sample,
+                use_hf=use_hf)
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
@@ -1191,10 +1298,14 @@ def load_dataset_from_local(
     return concatenate_datasets(dataset_list)
 
 
-def get_custom_dataset(_: str, subsets: Optional[List[str]],
-                       preprocess_func: PreprocessFunc, train_split: List[str],
-                       val_split: List[str],
-                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+def get_local_dataset(_: str,
+                      subsets: Optional[List[str]],
+                      preprocess_func: PreprocessFunc,
+                      train_split: List[str],
+                      val_split: List[str],
+                      train_dataset_sample: int = -1,
+                      val_dataset_sample: int = -1,
+                      **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     train_dataset = load_dataset_from_local(train_subset_split_list,
                                             preprocess_func)
     val_dataset = load_dataset_from_local(val_subset_split_list,

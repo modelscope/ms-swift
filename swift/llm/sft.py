@@ -21,8 +21,8 @@ from swift.utils import (check_json_format, compute_acc_metrics,
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
-                    add_self_cognition_dataset, dataset_map, get_dataset,
-                    get_model_tokenizer, get_template, get_time_info,
+                    dataset_map, get_dataset, get_model_tokenizer,
+                    get_self_cognition_dataset, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
 
@@ -135,29 +135,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         args.dataset,
         args.dataset_test_ratio,
         random_state,
-        check_dataset_strategy=args.check_dataset_strategy)
-    val_dataset_sample = args.val_dataset_sample
-    if train_dataset is not None and args.train_dataset_sample >= 0:
-        train_dataset_sample = min(args.train_dataset_sample,
-                                   train_dataset.shape[0])
-        if train_dataset.shape[0] > train_dataset_sample:
-            logger.info(f'train_dataset_sample: {train_dataset_sample}')
-            train_idxs = random_state.permutation(train_dataset_sample)
-            train_dataset = train_dataset.select(train_idxs)
-        if val_dataset_sample is None:
-            val_dataset_sample = max(
-                int(train_dataset_sample * args.dataset_test_ratio), 1)
-    if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
-        if val_dataset.shape[0] > val_dataset_sample:
-            logger.info(f'val_dataset_sample: {val_dataset_sample}')
-            val_idxs = random_state.permutation(val_dataset_sample)
-            val_dataset = val_dataset.select(val_idxs)
-
-    train_dataset = args.handle_dataset_mixture(train_dataset)
+        check_dataset_strategy=args.check_dataset_strategy,
+        model_name=args.model_name,
+        model_author=args.model_author)
 
     # add self-cognition dataset
     if args.self_cognition_sample > 0:
-        train_dataset = add_self_cognition_dataset(train_dataset,
+        train_dataset = get_self_cognition_dataset(train_dataset,
                                                    args.self_cognition_sample,
                                                    args.model_name,
                                                    args.model_author)

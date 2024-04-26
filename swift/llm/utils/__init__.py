@@ -5,9 +5,10 @@ from .argument import (AppUIArguments, DeployArguments, DPOArguments,
                        swift_to_peft_format)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
-                      HfDataset, add_self_cognition_dataset, get_dataset,
-                      get_dataset_from_repo, load_dataset_from_local,
-                      load_ms_dataset, register_dataset)
+                      HfDataset, get_dataset, get_dataset_from_repo,
+                      get_self_cognition_dataset, load_dataset_from_local,
+                      load_ms_dataset, register_dataset, register_dataset_info,
+                      register_local_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM,
                     ModelType, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type,

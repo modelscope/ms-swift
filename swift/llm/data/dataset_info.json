@@ -89,12 +89,6 @@
         "columns": {"prompt": "query", "answer": "response"},
         "tags": ["chat", "ner"]
     },
-    "sql-create-context-en": {
-        "dataset_id": "AI-ModelScope/sql-create-context",
-        "columns": {"question": "instruction", "context": "input", "answer": "output"},
-        "tags": ["chat", "sql", "🔥"],
-        "hf_dataset_id": "b-mc2/sql-create-context"
-    },
     "lawyer-llama-zh": {
         "dataset_id": "AI-ModelScope/lawyer_llama_data",
         "columns": {"instruction": "query", "output": "response", "history": "-"},
@@ -222,7 +216,9 @@
             "output": "response"
         },
         "tags": ["chat", "medical"]
-
+    },
+    "self_cognition": {
+        "train_dataset_path": "self_cognition.jsonl",
+        "tags": ["chat", "self_cognition", "🔥"]
     }
-
 }
