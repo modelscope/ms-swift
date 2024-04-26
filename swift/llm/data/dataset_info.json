@@ -217,7 +217,7 @@
         },
         "tags": ["chat", "medical"]
     },
-    "self_cognition": {
+    "self-cognition": {
         "train_dataset_path": "self_cognition.jsonl",
         "tags": ["chat", "self_cognition", "🔥"]
     }
