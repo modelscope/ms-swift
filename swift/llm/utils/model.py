@@ -12,7 +12,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+from modelscope import (AutoModel, AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                         BitsAndBytesConfig, GenerationConfig, GPTQConfig,
                         snapshot_download)
 from modelscope.hub.utils.utils import get_cache_dir
@@ -2394,6 +2394,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
         model_kwargs,
         load_model,
         model_config=model_config,
+        automodel_class=AutoModel,
         **kwargs)
     if eos_token is not None:
         if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:

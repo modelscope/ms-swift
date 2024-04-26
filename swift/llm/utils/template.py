@@ -984,7 +984,7 @@ class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n'[-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], '<|im_end|>\n',
+        super().__init__(['<s>'], ['<|im_start|>user\n', [-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>\n'],
                          ['<|im_end|>'],self.system,['<|im_start|>system\n{{SYSTEM}}'])
     def encode(
             self, example: Dict[str,
