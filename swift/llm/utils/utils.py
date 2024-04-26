@@ -866,6 +866,7 @@ if is_ddp_plus_mp() or use_torchacc():
 from torchvision.transforms.functional import InterpolationMode
 import torchvision.transforms as T
 from PIL import Image
+from io import BytesIO
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -937,8 +938,18 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(image_file, input_size=448, max_num=6):
-    image = Image.open(image_file).convert('RGB')
+def load_image(img_path, input_size=448, max_num=6):
+    if isinstance(img_path, str):
+        img_path = img_path.strip()
+        if img_path.startswith('http'):
+            content = requests.get(img_path).content
+            image = Image.open(BytesIO(content))
+        else:
+            image = Image.open(img_path)
+    else:
+        image = img_path
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
     pixel_values = [transform(image) for image in images]
