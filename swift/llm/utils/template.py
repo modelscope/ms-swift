@@ -13,19 +13,9 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
+from swift.llm.utils.utils import is_xtuner_available
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, use_torchacc
-
-SUPPORT_XTUNER = False
-
-try:
-    from xtuner.parallel.sequence import (pad_for_sequence_parallel,
-                                          split_for_sequence_parallel,
-                                          get_sequence_parallel_group,
-                                          get_sequence_parallel_world_size)
-    SUPPORT_XTUNER = True
-except ImportError:
-    pass
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -435,6 +425,9 @@ class Template:
     def _pad_and_split_for_sequence_parallel(self, tokenizer, input_ids,
                                              labels, position_ids,
                                              attention_mask, loss_scale):
+        from xtuner.parallel.sequence import (pad_for_sequence_parallel,
+                                              split_for_sequence_parallel,
+                                              get_sequence_parallel_group)
         input_ids = pad_for_sequence_parallel(
             input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
         labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
@@ -509,10 +502,15 @@ class Template:
         bs, seq_len = input_ids.shape
         position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
 
-        if get_sequence_parallel_world_size() > 1:
-            input_ids, labels, position_ids, attention_mask, loss_scale = \
-                self._pad_and_split_for_sequence_parallel(
-                    tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+        if is_xtuner_available():
+            from xtuner.parallel.sequence import (pad_for_sequence_parallel,
+                                                  split_for_sequence_parallel,
+                                                  get_sequence_parallel_group,
+                                                  get_sequence_parallel_world_size)
+            if get_sequence_parallel_world_size() > 1:
+                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                    self._pad_and_split_for_sequence_parallel(
+                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
 
         res = {
             'input_ids': input_ids,

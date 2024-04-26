@@ -33,19 +33,6 @@ except ImportError:
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
-SUPPORT_XTUNER = False
-
-try:
-    from xtuner.parallel.sequence import (init_sequence_parallel,
-                                          SequenceParallelSampler,
-                                          reduce_sequence_parallel_loss,
-                                          get_sequence_parallel_world_size,
-                                          get_sequence_parallel_group)
-    from mmengine.device.utils import get_max_cuda_memory
-    SUPPORT_XTUNER = True
-except ImportError:
-    pass
-
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
     pass
@@ -68,6 +55,11 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         }
         self._acc = torch.tensor(0.).to(self.args.device)
         if SUPPORT_XTUNER:
+            from xtuner.parallel.sequence import (init_sequence_parallel,
+                                                  SequenceParallelSampler,
+                                                  reduce_sequence_parallel_loss,
+                                                  get_sequence_parallel_world_size,
+                                                  get_sequence_parallel_group)
             self.sequence_parallel_size = sequence_parallel_size
             init_sequence_parallel(sequence_parallel_size)
 

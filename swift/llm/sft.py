@@ -11,7 +11,7 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
-
+from datasets import Dataset
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics,
@@ -26,17 +26,6 @@ from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
-
-SUPPORT_XTUNER = False
-
-try:
-    from xtuner.parallel.sequence import *
-    # datasets is required in Xtuner
-    from datasets import Dataset
-    from xtuner.dataset.huggingface import pack_dataset
-    SUPPORT_XTUNER = True
-except ImportError:
-    pass
 
 logger = get_logger()
 
@@ -209,9 +198,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
         if args.pack_to_max_length:
-            assert SUPPORT_XTUNER, \
+            from swift.llm.utils.utils import is_xtuner_available
+            assert is_xtuner_available(), \
                 ('Please install XTuner first to pack dataset to `max_length`.'
                  '`pip install -U \'xtuner[deepspeed]\'`')
+            assert dist.is_initialized(), 'pack_to_max_length is only available with distributed training.'
+            from xtuner.parallel.sequence import *
+            from xtuner.dataset.huggingface import pack_dataset
             if dist.get_rank() == 0:
                 ds = [i[0] for i in train_dataset.data]
                 train_dataset = Dataset.from_list(ds)

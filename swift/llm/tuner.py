@@ -5,6 +5,7 @@ import types
 import numpy as np
 import torch
 import transformers
+import torch.distributed as dist
 from packaging import version
 
 from swift.torchacc_utils import consolidate_checkpoint
@@ -18,15 +19,7 @@ from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger, use_torchacc)
 from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
                     is_adapter)
-
-SUPPORT_XTUNER = False
-
-try:
-    from xtuner.model.modules.dispatch import dispatch_modules
-    from xtuner.parallel.sequence import *
-    SUPPORT_XTUNER = True
-except ImportError:
-    pass
+from .utils.utils import is_xtuner_available
 
 logger = get_logger()
 
@@ -208,7 +201,13 @@ def prepare_model(model, args: SftArguments):
             model.load_state_dict(state_dict, False)
             # release memory
             del state_dict
-        if SUPPORT_XTUNER:
+        if args.sequence_parallel_size > 1:
+            assert is_xtuner_available(), \
+                ('Please install XTuner first to pack dataset to `max_length`.'
+                 '`pip install -U \'xtuner[deepspeed]\'`')
+            assert dist.is_initialized(), 'pack_to_max_length is only available with distributed training.'
+            from xtuner.model.modules.dispatch import dispatch_modules
+            from xtuner.parallel.sequence import *
             dispatch_modules(model)
             logger.info('Dispatch modules for sequence parallel.')
     else:
