@@ -1,7 +1,7 @@
-# Experimental environment: 8*A100
-# 8*60GB GPU memory
-nproc_per_node=8
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+# Experimental environment: 4*A100
+# 4*75GB GPU memory
+nproc_per_node=4
+CUDA_VISIBLE_DEVICES=0,1,2,3\
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model_type qwen1half-110b-chat \
