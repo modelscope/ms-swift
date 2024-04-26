@@ -2401,8 +2401,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     #         del tokenizer.__class__.eos_token_id
     #     tokenizer.eos_token = eos_token
     if load_model:
-        model.resampler.to(torch_dtype)  # fix float32
-        func_list = ['generate', 'get_input_embeddings', 'forward']
+        # func_list = ['generate', 'get_input_embeddings', 'forward']
+        func_list = ['get_input_embeddings']
+
         _use_submodel_func(model, 'llm', func_list)
     return model, tokenizer
 
