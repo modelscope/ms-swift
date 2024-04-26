@@ -1015,6 +1015,14 @@ class InternvlTemplate(Template):
 
 
         return inputs, {}
+register_template(
+    TemplateType.internvl,
+    InternvlTemplate(),
+    use_model=True,
+    lazy_tokenize=True,
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
 
 register_template(
     TemplateType.xverse,
