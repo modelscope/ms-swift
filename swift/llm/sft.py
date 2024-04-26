@@ -69,7 +69,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
 
-    kwargs = {'max_length': args.max_length, 'use_unsloth': args.tuner_backend == 'unsloth'}
+    kwargs = {'max_length': args.max_length, 'use_unsloth': args.tuner_backend == 'unsloth', 'load_in_4bit': args.quantization_bit == 4}
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
     model, tokenizer = get_model_tokenizer(

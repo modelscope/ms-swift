@@ -207,6 +207,24 @@
         }
       },
       {
+        "name": "full+lisa_2",
+        "info": "lisa 2layers + full",
+        "args": {
+          "sft_type": "full",
+          "lisa_activated_layers": 2,
+          "lisa_step_interval": 20
+        }
+      },
+      {
+        "name": "full+lisa_4",
+        "info": "lisa 4layers + full",
+        "args": {
+          "sft_type": "full",
+          "lisa_activated_layers": 4,
+          "lisa_step_interval": 20
+        }
+      },
+      {
         "name": "full+no_mix",
         "info": "全参无混合数据集",
         "requirements":{
@@ -216,6 +234,26 @@
         "args": {
           "sft_type": "full",
           "train_dataset_mix_ratio": 0.0
+        }
+      },
+      {
+        "name": "unsloth+lora+q4",
+        "info": "unsloth lora quantization bit 4",
+        "args": {
+          "sft_type": "lora",
+          "tuner_backend": "unsloth",
+          "quantization_bit": 4,
+          "model_type": "llama3-8b-instruct"
+        }
+      },
+      {
+        "name": "unsloth+q4",
+        "info": "unsloth full quantization bit 4",
+        "args": {
+          "sft_type": "full",
+          "tuner_backend": "unsloth",
+          "quantization_bit": 4,
+          "model_type": "llama3-8b-instruct"
         }
       }
     ]

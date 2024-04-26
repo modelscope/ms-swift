@@ -96,6 +96,7 @@ def prepare_model(model, args: SftArguments):
                 elif args.tuner_backend == 'unsloth':
                     from unsloth import FastLanguageModel
                     assert args.sft_type == 'lora', 'Unsloth does not support LongLoRA'
+                    lora_kwargs.pop('lorap_lr_ratio')
                     model = FastLanguageModel.get_peft_model(
                         model,
                         use_gradient_checkpointing=True,

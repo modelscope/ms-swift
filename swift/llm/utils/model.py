@@ -670,6 +670,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 max_seq_length=kwargs.get('max_length', None),
                 dtype=torch_dtype,
                 load_in_4bit=kwargs.get('load_in_4bit', True),
+                trust_remote_code=True,
             )
         else:
             with context:
