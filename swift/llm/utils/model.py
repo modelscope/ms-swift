@@ -2375,6 +2375,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
     TemplateType.internvl,
     requires=['transformers>=4.35'],
     support_flash_attn=True,
+    support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
 def get_model_tokenizer_internlm2(model_dir: str,
                                   torch_dtype: Dtype,

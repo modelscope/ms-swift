@@ -1006,8 +1006,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
             num_image_token = getattr(self,'num_image_token', 256)
             image_tokens = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * image_bs + '</img>'
-            question = image_tokens + '\n' + question
-        
+            # question = image_tokens + '\n' + question
+        inputs.pop("inputs_embeds", None)
         # else:
         #     for (old_question, old_answer) in history:
         #         template.append_message(template.roles[0], old_question)
