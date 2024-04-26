@@ -22,9 +22,8 @@ from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     dataset_map, get_dataset, get_model_tokenizer,
-                    get_self_cognition_dataset, get_template, get_time_info,
-                    print_example, set_generation_config, sort_by_max_length,
-                    stat_dataset)
+                    get_template, get_time_info, print_example,
+                    set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -139,12 +138,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_name=args.model_name,
         model_author=args.model_author)
 
-    # add self-cognition dataset
-    if args.self_cognition_sample > 0:
-        train_dataset = get_self_cognition_dataset(train_dataset,
-                                                   args.self_cognition_sample,
-                                                   args.model_name,
-                                                   args.model_author)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}

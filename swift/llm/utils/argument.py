@@ -52,15 +52,15 @@ class ArgumentsBase:
             dataset_info = json.load(f)
 
         # register _custom_dataset
-        for key in ['custom_train_dataset', 'custom_val_dataset']:
+        for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
             value = getattr(self, key)
             if isinstance(value, str):
                 setattr(self, key, [value])
-        if len(self.custom_train_dataset) > 0 or len(
-                self.custom_val_dataset) > 0:
+        if len(self.custom_train_dataset_path) > 0 or len(
+                self.custom_val_dataset_path) > 0:
             dataset_info['_custom_dataset'] = {
-                'train_dataset_path': self.custom_train_dataset,
-                'val_dataset_path': self.custom_val_dataset
+                'train_dataset_path': self.custom_train_dataset_path,
+                'val_dataset_path': self.custom_val_dataset_path
             }
             self.dataset.append('_custom_dataset')
             logger.info('Registered `_custom_dataset` to dataset_info')
@@ -75,8 +75,8 @@ class ArgumentsBase:
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = [
-            'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset',
-            'custom_val_dataset'
+            'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset_path',
+            'custom_val_dataset_path'
         ]
         if self.model_id_or_path is not None and (
                 self.model_id_or_path.startswith('~')
@@ -337,8 +337,8 @@ class SftArguments(ArgumentsBase):
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none'
-    custom_train_dataset: List[str] = field(default_factory=list)
-    custom_val_dataset: List[str] = field(default_factory=list)
+    custom_train_dataset_path: List[str] = field(default_factory=list)
+    custom_val_dataset_path: List[str] = field(default_factory=list)
     self_cognition_sample: int = 0
     # Chinese name and English name
     model_name: List[str] = field(
@@ -660,8 +660,8 @@ class SftArguments(ArgumentsBase):
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if len(self.dataset) == 0 and (len(self.custom_train_dataset) == 0
-                                       and len(self.custom_val_dataset) == 0
+        if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
+                                       and len(self.custom_val_dataset_path) == 0
                                        and self.self_cognition_sample == 0):
             raise ValueError(
                 f'self.dataset: {self.dataset}, Please input the training dataset.'
@@ -879,8 +879,8 @@ class InferArguments(ArgumentsBase):
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error',
                                     'warning'] = 'none'
-    custom_train_dataset: List[str] = field(default_factory=list)
-    custom_val_dataset: List[str] = field(default_factory=list)
+    custom_train_dataset_path: List[str] = field(default_factory=list)
+    custom_val_dataset_path: List[str] = field(default_factory=list)
 
     quantization_bit: Literal[0, 4, 8] = 0
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
@@ -1031,12 +1031,12 @@ class InferArguments(ArgumentsBase):
         if self.load_dataset_config:
             imported_keys += [
                 'dataset', 'dataset_seed', 'dataset_test_ratio',
-                'check_dataset_strategy', 'custom_train_dataset',
+                'check_dataset_strategy', 'custom_train_dataset_path',
                 'custom_val_dataset_path'
             ]
         for key in imported_keys:
             if (key in {
-                    'dataset', 'custom_train_dataset',
+                    'dataset', 'custom_train_dataset_path',
                     'custom_val_dataset_path'
             } and len(getattr(self, key)) > 0):
                 continue

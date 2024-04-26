@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import itertools
 import os
 import re
 from functools import partial
@@ -49,8 +50,8 @@ class DatasetName:
     # general
     ms_bench = 'ms-bench'  # used for mixed training
     ms_bench_mini = 'ms-bench-mini'
-    alpaca_zh = 'alpaca-zh'
     alpaca_en = 'alpaca-en'
+    alpaca_zh = 'alpaca-zh'
     multi_alpaca = 'multi-alpaca'
     instinwild = 'instinwild'
     cot_en = 'cot-en'
@@ -171,7 +172,7 @@ def register_dataset(
     if train_split is None:
         train_split = ['train']
     if val_split is None:
-        val_split = ['val', 'validation']
+        val_split = []
     if function_kwargs is None:
         function_kwargs = {}
 
@@ -232,11 +233,14 @@ def register_dataset_info(dataset_name, d_info: Dict[str, Any]) -> None:
         preprocess_func = ConversationsPreprocessor(**d_info['conversations'])
         d_info.pop('conversations')
     dataset_id = d_info.pop('dataset_id')
+    subsets = d_info.pop('subsets', None)
     register_dataset(
         dataset_name,
         dataset_id,
+        subsets,
+        preprocess_func,
+        get_dataset_from_repo,
         **d_info,
-        preprocess_func=preprocess_func,
         exist_ok=True)
 
 
@@ -285,8 +289,20 @@ def load_hf_dataset(
     return concatenate_datasets(dataset_list)
 
 
-def sample_dataset(dataset):
-    pass
+def sample_dataset(dataset: HfDataset,
+                   dataset_sample: int,
+                   random_state: Optional[RandomState] = None) -> HfDataset:
+    if dataset_sample in {None, -1}:
+        return dataset
+    if random_state is None:
+        random_state = RandomState(42)
+    idx = random_state.permutation(len(dataset))[:dataset_sample]
+    dataset_sample -= len(idx)
+    if dataset_sample > 0:
+        idx2 = random_state.choice(len(dataset), dataset_sample)
+        idx = np.concatenate([idx, idx2], axis=0)
+    dataset = dataset.select(idx)
+    return dataset
 
 
 def get_dataset_from_repo(
@@ -300,18 +316,22 @@ def get_dataset_from_repo(
         val_dataset_sample: int = -1,
         use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
+    if subsets is None:
+        subsets = []
     _iter = zip([train_split, val_split],
                 [train_dataset_sample, val_dataset_sample])
+    random_state = np.random.RandomState(42)
     for split, dataset_sample in _iter:
+        if len(subsets) == 0:
+            subset_split_list = split
+        else:
+            subset_split_list = list(itertools.product(subsets, split))
         if use_hf:
             dataset = load_hf_dataset(dataset_id, subset_split_list)
         else:
             dataset = load_ms_dataset(dataset_id, subset_split_list)
         if dataset is not None:
-            if dataset_sample > 0 and len(dataset) > dataset_sample:
-                random_state = np.random.RandomState(42)
-                idxs = random_state.permutation(dataset_sample)
-                dataset = dataset.select(idxs)
+            dataset = sample_dataset(dataset, dataset_sample, random_state)
             dataset = preprocess_func(dataset)
             if remove_useless_columns:
                 dataset = _remove_useless_columns(dataset)
@@ -328,6 +348,7 @@ def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
 register_dataset(
     DatasetName.alpaca_zh,
     'AI-ModelScope/alpaca-gpt4-data-zh',
+    None,
     AlpacaPreprocessor(concat_inst_inp=_concat_inst_inp_alpaca_zh),
     get_dataset_from_repo,
     tags=['chat', 'general', '🔥'],
@@ -357,6 +378,7 @@ register_dataset(
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
     _preprocess_vision_dataset,
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
@@ -365,7 +387,6 @@ register_dataset(
     _preprocess_vision_dataset,
     get_dataset_from_repo,
     train_split=['validation'],
-    val_split=[],
     tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 
@@ -394,6 +415,7 @@ register_dataset(
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
     _preprocess_vision_dataset2,
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
@@ -402,7 +424,6 @@ register_dataset(
     _preprocess_vision_dataset2,
     get_dataset_from_repo,
     train_split=['validation'],
-    val_split=[],
     tags=['chat', 'multi-modal', 'vision', '🔥'])
 
 
@@ -423,6 +444,7 @@ def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
 register_dataset(
     DatasetName.aishell1_zh,
     'speech_asr/speech_asr_aishell1_trainsets',
+    None,
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
     train_split=['train', 'validation'],
@@ -432,6 +454,7 @@ register_dataset(
 register_dataset(
     DatasetName.aishell1_zh_mini,
     'speech_asr/speech_asr_aishell1_trainsets',
+    None,
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
     train_split=['validation'],
@@ -491,6 +514,7 @@ def long_alpaca_preprocessor(dataset: HfDataset):
 register_dataset(
     DatasetName.long_alpaca_12k,
     'AI-ModelScope/LongAlpaca-12k',
+    None,
     long_alpaca_preprocessor,
     get_dataset_from_repo,
     tags=['longlora', 'QA'],
@@ -524,6 +548,7 @@ register_dataset(
 register_dataset(
     DatasetName.ms_bench,
     'iic/ms_bench',
+    None,
     ConversationsPreprocessor(
         repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
@@ -532,21 +557,25 @@ register_dataset(
 register_dataset(
     DatasetName.damo_agent_zh_mini,
     'damo/MSAgent-Bench',
+    None,
     ConversationsPreprocessor(
         repair_conversations=partial(
             _repair_agent_conversations, use_mini=True),
         error_strategy='delete'),
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['chat', 'agent', 'multi-round'])
 register_dataset(
     DatasetName.damo_agent_zh,
     'damo/MSAgent-Bench',
+    None,
     ConversationsPreprocessor(
         repair_conversations=partial(
             _repair_agent_conversations,
             use_mini=False,
             error_strategy='delete')),
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['chat', 'agent', 'multi-round'])
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
@@ -555,8 +584,10 @@ Advertisements:"""
 register_dataset(
     DatasetName.advertise_gen_zh,
     'lvjianjin/AdvertiseGen',
+    None,
     TextGenerationPreprocessor(advertise_gen_prompt, 'content', 'summary'),
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['text-generation', '🔥'],
     hf_dataset_id='shibing624/AdvertiseGen')
 
@@ -589,7 +620,8 @@ def _preprocess_firefly(dataset: List[Dict[str, str]],
 @register_dataset(
     DatasetName.firefly_all_zh,
     'wyj123456/firefly',
-    preprocess_func=_preprocess_firefly,
+    None,
+    _preprocess_firefly,
     tags=['chat', 'general'],
     function_kwargs={'kind_list': _firefly_kind_list})
 def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
@@ -611,15 +643,18 @@ register_dataset(
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                     'Natural Language Inference', True),
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['text-generation', 'classification'],
     hf_dataset_id='clue')
 
 register_dataset(
     DatasetName.jd_sentiment_zh,
     'DAMO_NLP/jd',
+    None,
     ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification',
                     False),
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['text-generation', 'classification', '🔥'])
 
 
@@ -641,6 +676,7 @@ Question:"""
 register_dataset(
     DatasetName.dureader_robust_zh,
     'modelscope/DuReader_robust-QG',
+    None,
     _preprocess_dureader_robust,
     get_dataset_from_repo,
     train_split=['train', 'validation'],
@@ -859,14 +895,16 @@ def _repair_planner(conversations: list) -> list:
 register_dataset(
     DatasetName.capcha_images,
     'AI-ModelScope/captcha-images',
+    None,
     _preprocess_capcha_images,
     get_dataset_from_repo,
+    val_split=['validation'],
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
     DatasetName.alpha_umi_toolbench,
-    ['backbone', 'caller', 'planner', 'summarizer'],
-    'shenweizhou/alpha-umi-toolbench-processed-v2', {
+    'shenweizhou/alpha-umi-toolbench-processed-v2',
+    ['backbone', 'caller', 'planner', 'summarizer'], {
         'backbone':
         ConversationsPreprocessor('system', system_role='-'),
         'caller':
@@ -895,6 +933,7 @@ def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
 register_dataset(
     DatasetName.blossom_math_zh,
     'AI-ModelScope/blossom-math-v2',
+    None,
     _preprocess_blossom_math,
     get_dataset_from_repo,
     tags=['chat', 'math', '🔥'],
@@ -903,6 +942,7 @@ register_dataset(
 register_dataset(
     DatasetName.sql_create_context_en,
     'AI-ModelScope/sql-create-context',
+    None,
     ComposePreprocessor([
         RenameColumnsPreprocessor({
             'question': 'instruction',
@@ -937,6 +977,7 @@ def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
 register_dataset(
     DatasetName.tigerbot_law_zh,
     'AI-ModelScope/tigerbot-law-plugin',
+    None,
     _preprocess_tigerbot_law,
     get_dataset_from_repo,
     tags=['text-generation', 'law', 'pretrained'],
@@ -964,6 +1005,7 @@ def _preprocess_leetcode_python(dataset: HfDataset) -> HfDataset:
 register_dataset(
     DatasetName.leetcode_python_en,
     'AI-ModelScope/leetcode-solutions-python',
+    None,
     _preprocess_leetcode_python,
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
@@ -1013,6 +1055,7 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
 register_dataset(
     DatasetName.ms_agent_multirole,
     'iic/MSAgent-MultiRole',
+    None,
     _preprocess_msagent_multirole_dataset,
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
@@ -1131,20 +1174,24 @@ def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
 
 def parse_dataset_name(
         dataset_name: str) -> Tuple[Optional[str], str, List[str], int, int]:
-    # HF::dataset_name:subset1,subset2,subset3#train_sample,val_sample
+    # HF::dataset_name:subset1|subset2|subset3#train_sample|val_sample
     use_hf, other = _safe_split(dataset_name, '::', False)
     part1, part2 = _safe_split(other, '#', True)
     dataset_name, subsets = _safe_split(part1, ':', True)
     if subsets is not None:
-        subset_list = subsets.split(',')
+        subset_list = subsets.split('|')
         subset_list = [subset.strip() for subset in subset_list]
     else:
         subset_list = None
-    train_sample, val_sample = _safe_split(part2, ',', True)
+    train_sample, val_sample = _safe_split(part2, '|', True)
     train_sample, val_sample = [
         sample if sample is None else int(sample)
         for sample in [train_sample, val_sample]
     ]
+    if train_sample is None:
+        train_sample = -1
+    if val_sample is None:
+        val_sample = -1
     return tuple(
         t.strip() if isinstance(t, str) else t
         for t in [use_hf, dataset_name, subset_list, train_sample, val_sample])
@@ -1176,13 +1223,6 @@ def get_self_cognition_dataset(
     dataset = dataset.remove_columns('response').add_column(
         'response', response).remove_columns('tag')
 
-    random_state = RandomState(42)
-    idx = random_state.permutation(len(dataset))[:dataset_sample]
-    dataset_sample -= len(idx)
-    if dataset_sample > 0:
-        idx2 = random_state.choice(len(dataset), dataset_sample)
-        idx = np.concatenate([idx, idx2], axis=0)
-    dataset = dataset.select(idx)
     return dataset, None
 
 

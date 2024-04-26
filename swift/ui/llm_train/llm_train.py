@@ -345,7 +345,7 @@ class LLMTrain(BaseUI):
             kwargs['model_type'] = model_type
 
         kwargs.update(more_params)
-        if 'dataset' not in kwargs and 'custom_train_dataset' not in kwargs:
+        if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
         sft_args = SftArguments(
