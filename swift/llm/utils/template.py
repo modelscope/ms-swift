@@ -43,6 +43,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
+    internvl = 'internvl'
     yi = 'yi'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
@@ -973,6 +974,47 @@ register_template(
     lazy_tokenize=True,
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
+
+class InternvlTemplate(Template):
+    # Template(
+    #     ['<s>'],
+    #     ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+    #     ['<|im_end|>\n'], ['<|im_end|>'], INTERNLM_SYSTEM,
+    #     ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+    system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
+    IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+    def __init__(self):
+        super().__init__(['<s>'], ['<|im_start|>user\n'[-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], '<|im_end|>\n',
+                         ['<|im_end|>'],self.system,['<|im_start|>system\n{{SYSTEM}}'])
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+
+        # image process‘
+        from .utils import load_image
+        images_path = example['images']
+        pixel_values = []
+        for image_path in images_path:
+            pixel_values.append(load_image(image_path))
+        pixel_values = torch.cat(pixel_values, dim=0)
+        inputs['pixel_values'] = pixel_values 
+
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+            image_bs = pixel_values.shape[0]
+            num_image_token = getattr(self,'num_image_token', 256)
+            image_tokens = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * image_bs + '</img>'
+            question = image_tokens + '\n' + question
+        
+        # else:
+        #     for (old_question, old_answer) in history:
+        #         template.append_message(template.roles[0], old_question)
+        #         template.append_message(template.roles[1], old_answer)
+
+
+        return inputs, {}
 
 register_template(
     TemplateType.xverse,

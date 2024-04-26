@@ -2372,7 +2372,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
     LoRATM.internlm2,
-    TemplateType.,
+    TemplateType.internvl,
     requires=['transformers>=4.35'],
     support_flash_attn=True,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
