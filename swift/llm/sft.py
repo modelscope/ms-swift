@@ -6,6 +6,7 @@ from typing import Any, Dict, Union
 import json
 import numpy as np
 import torch
+import torch.distributed as dist
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -25,6 +26,17 @@ from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template,
                     get_model_tokenizer, get_template, get_time_info,
                     print_example, set_generation_config, sort_by_max_length,
                     stat_dataset)
+
+SUPPORT_XTUNER = False
+
+try:
+    from xtuner.parallel.sequence import *
+    # datasets is required in Xtuner
+    from datasets import Dataset
+    from xtuner.dataset.huggingface import pack_dataset
+    SUPPORT_XTUNER = True
+except ImportError:
+    pass
 
 logger = get_logger()
 
@@ -196,6 +208,25 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
+        if args.pack_to_max_length:
+            assert SUPPORT_XTUNER, \
+                ('Please install XTuner first to pack dataset to `max_length`.'
+                 '`pip install -U \'xtuner[deepspeed]\'`')
+            if dist.get_rank() == 0:
+                ds = [i[0] for i in train_dataset.data]
+                train_dataset = Dataset.from_list(ds)
+                train_dataset = pack_dataset(
+                    train_dataset,
+                    max_length=args.max_length,
+                    use_varlen_attn=False,
+                    shuffle_before_pack=True,
+                    map_num_proc=16)
+                objects = [train_dataset]
+                train_dataset.save_to_disk('alpaca_pack')
+            else:
+                objects = [None]
+            dist.broadcast_object_list(objects, src=0)
+            train_dataset = objects[0]
     else:
         dataset_info = None
         td0, tkwargs0 = template.encode(train_dataset[0])
@@ -236,6 +267,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         trainer_kwargs['check_model'] = False
 
     trainer = Seq2SeqTrainer(
+        sequence_parallel_size=args.sequence_parallel_size,
         model=model,
         args=training_args,
         data_collator=data_collator,

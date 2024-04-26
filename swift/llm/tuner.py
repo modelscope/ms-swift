@@ -19,6 +19,15 @@ from swift.utils import (activate_model_parameters, freeze_model_parameters,
 from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
                     is_adapter)
 
+SUPPORT_XTUNER = False
+
+try:
+    from xtuner.model.modules.dispatch import dispatch_modules
+    from xtuner.parallel.sequence import *
+    SUPPORT_XTUNER = True
+except ImportError:
+    pass
+
 logger = get_logger()
 
 
@@ -199,6 +208,9 @@ def prepare_model(model, args: SftArguments):
             model.load_state_dict(state_dict, False)
             # release memory
             del state_dict
+        if SUPPORT_XTUNER:
+            dispatch_modules(model)
+            logger.info('Dispatch modules for sequence parallel.')
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
