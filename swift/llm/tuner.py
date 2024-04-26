@@ -2,6 +2,7 @@
 import os
 import types
 
+import numpy as np
 import torch
 import transformers
 from packaging import version
@@ -83,13 +84,26 @@ def prepare_model(model, args: SftArguments):
                 if args.tuner_backend == 'swift':
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
+                    model = Swift.prepare_model(model, lora_config)
+                    logger.info(f'lora_config: {lora_config}')
                 elif args.tuner_backend == 'peft':
                     lora_config = LoraConfig(
                         task_type='CAUSAL_LM',
                         lora_dtype=args.lora_dtype,
                         **lora_kwargs)
-                model = Swift.prepare_model(model, lora_config)
-                logger.info(f'lora_config: {lora_config}')
+                    model = Swift.prepare_model(model, lora_config)
+                    logger.info(f'lora_config: {lora_config}')
+                elif args.tuner_backend == 'unsloth':
+                    from unsloth import FastLanguageModel
+                    assert args.sft_type == 'lora', 'Unsloth does not support LongLoRA'
+                    lora_kwargs.pop('lorap_lr_ratio')
+                    model = FastLanguageModel.get_peft_model(
+                        model,
+                        use_gradient_checkpointing=True,
+                        max_seq_length=args.max_length,
+                        **lora_kwargs,
+                    )
+                    logger.info(f'unsloth_config: {lora_kwargs}')
                 if args.sft_type == 'longlora':
                     assert LongLoRAModelType.LLAMA in args.model_type
                     assert version.parse(
@@ -211,6 +225,65 @@ def prepare_model(model, args: SftArguments):
             optim_per_parameter=args.galore_optim_per_parameter,
         )
 
+    callbacks = []
+    if args.lisa_activated_layers > 0:
+        assert args.sft_type == 'full', 'LISA only supports full parameter training.'
+
+        class DynamicLayerActivationCallback(TrainerCallback):
+
+            def __init__(self, n_layers: int, step_interval: int,
+                         model: torch.nn.Module):
+                super().__init__()
+                self.n_layers = n_layers
+                self.step_interval = step_interval
+                self.model = model
+                layers_name = None
+                layers = None
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.ModuleList):
+                        layers_name = name
+                        layers = module
+                        break
+                assert layers_name is not None
+                self.layers_attribute = layers_name
+                self.total_layers = len(layers)
+
+                # Freeze all layers upon initialization
+                self.freeze_all_layers()
+                self.active_layers_indices = []
+
+            def freeze_all_layers(self):
+                layers = self.model.get_submodule(self.layers_attribute)
+                for layer in layers:
+                    for param in layer.parameters():
+                        param.requires_grad = False
+
+            def on_step_begin(self, args, state, control, **kwargs):
+                # Check if it's time to switch active layers, including at step 0
+                if state.global_step % self.step_interval == 0 or state.global_step == 1:
+                    self.switch_active_layers()
+
+            def switch_active_layers(self):
+                # First, disable gradients for all layers
+                self.freeze_all_layers()
+
+                # Randomly select n_layers to activate
+                layers = self.model.get_submodule(self.layers_attribute)
+                self.active_layers_indices = np.random.choice(
+                    range(self.total_layers), self.n_layers, replace=False)
+                # Enable gradients only for the selected layers
+                for idx in self.active_layers_indices:
+                    for param in layers[idx].parameters():
+                        param.requires_grad = True
+
+        callbacks.append(
+            DynamicLayerActivationCallback(
+                n_layers=args.
+                lisa_activated_layers,  # Number of layers to activate
+                step_interval=args.
+                lisa_step_interval,  # Step interval to update active layers
+                model=model))
+
     class TrainerAdapterCallback(TrainerCallback):
 
         def __init__(self):
@@ -234,7 +307,6 @@ def prepare_model(model, args: SftArguments):
             if args.sft_type == 'adalora':
                 self.global_step = state.global_step
 
-    callbacks = []
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback())
     return model, callbacks

@@ -139,7 +139,7 @@ class Model(BaseUI):
         def update_model_id_or_path(model_type, path, system, template_type,
                                     model_state):
             if not path or not os.path.exists(path):
-                return system, template_type, model_state
+                return gr.update(), gr.update(), gr.update()
             local_path = os.path.join(path, 'sft_args.json')
             if not os.path.exists(local_path):
                 default_system = getattr(

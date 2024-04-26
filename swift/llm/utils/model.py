@@ -25,6 +25,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import strtobool
 from transformers.utils.versions import require_version
+from trl.import_utils import is_unsloth_available
 
 from swift import get_logger
 from swift.utils import (get_dist_setting, is_dist, is_local_master,
@@ -793,17 +794,29 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        with context:
-            model = automodel_class.from_pretrained(
-                model_dir,
-                config=model_config,
-                torch_dtype=torch_dtype,
+        if kwargs.get('use_unsloth', False):
+            assert is_unsloth_available(
+            ), 'please install unsloth if using `use_unsloth=True`'
+            from unsloth import FastLanguageModel
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=model_dir,
+                max_seq_length=kwargs.get('max_length', None),
+                dtype=torch_dtype,
+                load_in_4bit=kwargs.get('load_in_4bit', True),
                 trust_remote_code=True,
-                **model_kwargs)
-    if load_model and is_awq:
-        model.is_awq = is_awq
-    if load_model and gptq_bits > 0:
-        model.gptq_bits = gptq_bits
+            )
+        else:
+            with context:
+                model = automodel_class.from_pretrained(
+                    model_dir,
+                    config=model_config,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True,
+                    **model_kwargs)
+        if load_model and is_awq:
+            model.is_awq = is_awq
+        if load_model and gptq_bits > 0:
+            model.gptq_bits = gptq_bits
     return model, tokenizer
 
 

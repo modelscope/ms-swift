@@ -25,6 +25,8 @@ class Experiment:
 
     cmd: str
 
+    group: str
+
     requirements: Dict = field(default_factory=dict)
 
     eval_requirements: Dict = field(default_factory=dict)
@@ -48,6 +50,7 @@ class Experiment:
     def __init__(self,
                  name,
                  cmd,
+                 group,
                  requirements=None,
                  eval_requirements=None,
                  eval_dataset=None,
@@ -56,6 +59,7 @@ class Experiment:
                  **kwargs):
         self.name = name
         self.cmd = cmd
+        self.group = group
         self.requirements = requirements or {}
         self.args = args or {}
         self.record = {}
