@@ -227,9 +227,12 @@ def prepare_model(model, args: SftArguments):
 
     callbacks = []
     if args.lisa_activated_layers > 0:
+        assert args.sft_type == 'full', 'LISA only supports full parameter training.'
 
         class DynamicLayerActivationCallback(TrainerCallback):
-            def __init__(self, n_layers: int, step_interval: int, model: torch.nn.Module):
+
+            def __init__(self, n_layers: int, step_interval: int,
+                         model: torch.nn.Module):
                 super().__init__()
                 self.n_layers = n_layers
                 self.step_interval = step_interval
@@ -266,18 +269,20 @@ def prepare_model(model, args: SftArguments):
 
                 # Randomly select n_layers to activate
                 layers = self.model.get_submodule(self.layers_attribute)
-                self.active_layers_indices = np.random.choice(range(self.total_layers), self.n_layers,
-                                                              replace=False)
+                self.active_layers_indices = np.random.choice(
+                    range(self.total_layers), self.n_layers, replace=False)
                 # Enable gradients only for the selected layers
                 for idx in self.active_layers_indices:
                     for param in layers[idx].parameters():
                         param.requires_grad = True
 
-        callbacks.append(DynamicLayerActivationCallback(
-            n_layers=args.lisa_activated_layers,  # Number of layers to activate
-            step_interval=args.lisa_step_interval,  # Step interval to update active layers
-            model=model)
-        )
+        callbacks.append(
+            DynamicLayerActivationCallback(
+                n_layers=args.
+                lisa_activated_layers,  # Number of layers to activate
+                step_interval=args.
+                lisa_step_interval,  # Step interval to update active layers
+                model=model))
 
     class TrainerAdapterCallback(TrainerCallback):
 

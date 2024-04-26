@@ -793,7 +793,8 @@ def get_model_tokenizer_from_repo(model_dir: str,
     model = None
     if load_model:
         if kwargs.get('use_unsloth', False):
-            assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
+            assert is_unsloth_available(
+            ), 'please install unsloth if using `use_unsloth=True`'
             from unsloth import FastLanguageModel
             model, tokenizer = FastLanguageModel.from_pretrained(
                 model_name=model_dir,
