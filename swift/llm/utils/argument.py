@@ -491,10 +491,6 @@ class SftArguments(ArgumentsBase):
     # fsdp config file
     fsdp_config: Optional[str] = None
 
-    # xtuner config
-    sequence_parallel_size: int = 1
-    pack_to_max_length: bool = False
-
     def handle_dataset_mixture(self, train_dataset: HfDataset) -> None:
         if train_dataset is None:
             return train_dataset

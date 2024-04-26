@@ -4,7 +4,6 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 from peft import PeftModel
 from torch import Tensor, nn
 from torch.nn import CrossEntropyLoss
@@ -15,8 +14,7 @@ from transformers import trainer
 from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import \
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
-from transformers.trainer_utils import seed_worker
-from transformers.utils import is_peft_available, is_torch_xla_available
+from transformers.utils import is_peft_available
 
 from swift.torchacc_utils import (ta_eval_dataloader, ta_test_dataloader,
                                   ta_train_dataloader)
@@ -30,22 +28,6 @@ try:
 except ImportError:
     from transformers.deepspeed import is_deepspeed_zero3_enabled
 
-if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm
-
-SUPPORT_XTUNER = False
-
-try:
-    from xtuner.parallel.sequence import (init_sequence_parallel,
-                                          SequenceParallelSampler,
-                                          reduce_sequence_parallel_loss,
-                                          get_sequence_parallel_world_size,
-                                          get_sequence_parallel_group)
-    from mmengine.device.utils import get_max_cuda_memory
-    SUPPORT_XTUNER = True
-except ImportError:
-    pass
-
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
     pass
@@ -53,7 +35,7 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
-    def __init__(self, sequence_parallel_size=1, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # performance
         self.perf: Dict[str, Any] = {
@@ -67,9 +49,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 self.model, 'get_trainable_parameters') else None,
         }
         self._acc = torch.tensor(0.).to(self.args.device)
-        if SUPPORT_XTUNER:
-            self.sequence_parallel_size = sequence_parallel_size
-            init_sequence_parallel(sequence_parallel_size)
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
@@ -226,7 +205,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return loss.mean()
 
     def compute_loss(self, model, inputs, return_outputs=None):
-        assert 'labels' in inputs
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
 
@@ -262,17 +240,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
+        preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']
-
-        if SUPPORT_XTUNER:
-            # reduce loss for logging correctly
-            num_tokens = (labels != -100).sum()
-            loss = reduce_sequence_parallel_loss(loss, num_tokens,
-                                                 get_sequence_parallel_group())
-
-        preds = outputs.logits.argmax(dim=2)[..., :-1]
-
         labels = labels[..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
@@ -296,90 +266,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 'acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
-    # Support logging cuda memory usage
-    # hacky: Override Trainer's private method
-    def _maybe_log_save_evaluate(self, tr_loss, grad_norm, model, trial, epoch,
-                                 ignore_keys_for_eval):
-        if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
-            if is_torch_xla_available():
-                xm.mark_step()
-
-            logs: Dict[str, float] = {}
-
-            # all_gather + mean() to get average loss over all processes
-            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
-
-            # reset tr_loss to zero
-            tr_loss -= tr_loss
-
-            logs['loss'] = round(
-                tr_loss_scalar /
-                (self.state.global_step - self._globalstep_last_logged), 4)
-            if grad_norm is not None:
-                logs['grad_norm'] = grad_norm.detach().item() if isinstance(
-                    grad_norm, torch.Tensor) else grad_norm
-            logs['learning_rate'] = self._get_learning_rate()
-            logs['memory'] = get_max_cuda_memory()
-
-            self._total_loss_scalar += tr_loss_scalar
-            self._globalstep_last_logged = self.state.global_step
-            self.store_flos()
-
-            self.log(logs)
-
-        metrics = None
-        if self.control.should_evaluate:
-            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
-            self._report_to_hp_search(trial, self.state.global_step, metrics)
-
-            # Run delayed LR scheduler now that metrics are populated
-            if isinstance(self.lr_scheduler,
-                          torch.optim.lr_scheduler.ReduceLROnPlateau):
-                metric_to_check = self.args.metric_for_best_model
-                if not metric_to_check.startswith('eval_'):
-                    metric_to_check = f'eval_{metric_to_check}'
-                self.lr_scheduler.step(metrics[metric_to_check])
-
-        if self.control.should_save:
-            self._save_checkpoint(model, trial, metrics=metrics)
-            self.control = self.callback_handler.on_save(
-                self.args, self.state, self.control)
-
     def get_train_dataloader(self):
 
         if not use_torchacc():
-            # modified from HFTrainer.get_train_dataloader
-            # RandomSampler -> SequenceParallelSampler
-            if trainer.is_datasets_available():
-                import datasets
-            if self.train_dataset is None:
-                raise ValueError('Trainer: training requires a train_dataset.')
-
-            train_dataset = self.train_dataset
-            data_collator = self.data_collator
-            if trainer.is_datasets_available() and isinstance(
-                    train_dataset, datasets.Dataset):
-                train_dataset = self._remove_unused_columns(
-                    train_dataset, description='training')
-            else:
-                data_collator = self._get_collator_with_removed_columns(
-                    data_collator, description='training')
-
-            dataloader_params = {
-                'batch_size': self._train_batch_size,
-                'collate_fn': data_collator,
-                'num_workers': self.args.dataloader_num_workers,
-                'pin_memory': self.args.dataloader_pin_memory,
-                'persistent_workers': self.args.dataloader_persistent_workers,
-            }
-
-            if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-                dataloader_params['sampler'] = SequenceParallelSampler(
-                    train_dataset, seed=1024)
-                dataloader_params['drop_last'] = self.args.dataloader_drop_last
-                dataloader_params['worker_init_fn'] = seed_worker
-
-            return DataLoader(train_dataset, **dataloader_params)
+            return super().get_train_dataloader()
 
         else:
             if trainer.is_datasets_available():
