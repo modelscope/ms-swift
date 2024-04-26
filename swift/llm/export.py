@@ -24,6 +24,7 @@ def _get_dataset(*args, **kwargs):
 
     # only use train_dataset
     dataset = get_dataset(data)[0]
+    logger.info(f'quant_dataset: {dataset}')
     dataset = dataset.shuffle()
 
     samples = []
