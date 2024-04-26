@@ -2387,7 +2387,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
     if use_flash_attn:
         model_config.attn_implementation = 'flash_attention_2'
 
-    eos_token = kwargs.pop('eos_token', None)
+    # eos_token = kwargs.pop('eos_token', None)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -2396,11 +2396,14 @@ def get_model_tokenizer_internlm2(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
-    if eos_token is not None:
-        if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
-            del tokenizer.__class__.eos_token_id
-        tokenizer.eos_token = eos_token
-
+    # if eos_token is not None:
+    #     if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
+    #         del tokenizer.__class__.eos_token_id
+    #     tokenizer.eos_token = eos_token
+    if load_model:
+        model.resampler.to(torch_dtype)  # fix float32
+        func_list = ['generate', 'get_input_embeddings', 'forward']
+        _use_submodel_func(model, 'llm', func_list)
     return model, tokenizer
 
 @register_model(
