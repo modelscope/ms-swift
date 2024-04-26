@@ -39,9 +39,16 @@ class AlpacaPreprocessor:
     def __call__(self, dataset: HfDataset) -> HfDataset:
         query: List[str] = []
         response = []
-        for d in tqdm(dataset):
-            inst, inp, output = d['instruction'], d.get('input',
-                                                        None), d['output']
+        system = None
+        history = None
+        for i, d in tqdm(enumerate(dataset)):
+            inst, inp = d['instruction'], d.get('input', None)
+            h, output = d.pop('history', None), d['output']
+            sys = d.pop('system', None)
+            if history is None and h is not None:
+                history = [None for _ in range(i - 1)]
+            if system is None and sys is not None:
+                system = [None for _ in range(i - 1)]
             if output is None:
                 continue
             if inp is None or len(inp) == 0:
@@ -52,7 +59,16 @@ class AlpacaPreprocessor:
                 q = f'{inst}\n{inp}'
             query.append(q)
             response.append(output)
-        dataset = HfDataset.from_dict({'query': query, 'response': response})
+            if history is not None:
+                history.append(h)
+            if system is not None:
+                system.append(sys)
+        d_dict = {'query': query, 'response': response}
+        if history is not None:
+            d_dict['history'] = history
+        if system is not None:
+            d_dict['system'] = system
+        dataset = HfDataset.from_dict(d_dict)
         return dataset
 
 

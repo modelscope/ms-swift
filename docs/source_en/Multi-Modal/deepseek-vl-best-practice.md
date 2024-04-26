@@ -9,6 +9,8 @@
 ## Environment Preparation
 ```shell
 pip install 'ms-swift[llm]' -U
+
+pip install attrdict
 ```
 
 Model Link:

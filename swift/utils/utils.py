@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
                     Tuple, Type, TypeVar)
 
@@ -15,9 +16,18 @@ from transformers import HfArgumentParser, enable_full_determinism, set_seed
 
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import broadcast_string, is_dist
+from .torch_utils import broadcast_string, is_dist, is_local_master
 
 logger = get_logger()
+
+
+@contextmanager
+def safe_ddp_context():
+    if is_dist() and not is_local_master():
+        dist.barrier()
+    yield
+    if is_dist() and is_local_master():
+        dist.barrier()
 
 
 def check_json_format(obj: Any) -> Any:
@@ -172,7 +182,7 @@ def get_pai_tensorboard_dir() -> Optional[str]:
 def subprocess_run(command: List[str],
                    env: Optional[Dict[str, str]] = None,
                    stdout=None,
-                   stderr=None) -> None:
+                   stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()

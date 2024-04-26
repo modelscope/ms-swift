@@ -15,14 +15,14 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import (get_logger, get_seed, read_from_jsonl,
-                         transform_jsonl_to_df)
+from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
+                         read_from_jsonl, transform_jsonl_to_df)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor,
                          SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
-from .utils import dataset_map, download_dataset
+from .utils import download_dataset
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -67,6 +67,8 @@ class DatasetName:
     open_orca_gpt4 = 'open-orca-gpt4'
     sharegpt_gpt4 = 'sharegpt-gpt4'
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
+    deepctrl_sft_zh = 'deepctrl-sft-zh'
+    deepctrl_sft_en = 'deepctrl-sft-en'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
@@ -75,6 +77,10 @@ class DatasetName:
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_mini_zh = 'damo-agent-mini-zh'
     agent_instruct_all_en = 'agent-instruct-all-en'
+    toolbench_for_alpha_umi_backbone = 'toolbench-for-alpha-umi-backbone'
+    toolbench_for_alpha_umi_caller = 'toolbench-for-alpha-umi-caller'
+    toolbench_for_alpha_umi_planner = 'toolbench-for-alpha-umi-planner'
+    toolbench_for_alpha_umi_summarizer = 'toolbench-for-alpha-umi-summarizer'
     # coding
     code_alpaca_en = 'code-alpaca-en'
     leetcode_python_en = 'leetcode-python-en'
@@ -237,8 +243,17 @@ def load_ms_dataset(
             subset_split = ('default', subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
+        if is_dist() and not is_local_master():
+            force_redownload = False
+        else:
+            force_redownload = strtobool(
+                os.environ.get('FORCE_REDOWNLOAD', 'False'))
+        download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         dataset = MsDataset.load(
-            dataset_id, subset_name=subset_name, split=split)
+            dataset_id,
+            subset_name=subset_name,
+            split=split,
+            download_mode=download_mode)
         if hasattr(dataset, 'to_hf_dataset'):
             dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
@@ -539,7 +554,7 @@ register_dataset(
 
 
 def _repair_agent_conversations(conversations: str,
-                                use_mini: bool) -> Dict[str, str]:
+                                use_mini: bool) -> List[Dict[str, str]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
     else:
@@ -552,13 +567,14 @@ def _repair_agent_conversations(conversations: str,
     find_list = re.findall(pattern, conversations[:idx])
     if len(set(find_list)) <= 1:
         return
-    conversations = ast.literal_eval(conversations)
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
     if len(conversations) == 1:
         return
     return conversations
 
 
-def _repair_ms_bench(conversations: str) -> Dict[str, str]:
+def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
     if isinstance(conversations, str):
         conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
@@ -568,7 +584,7 @@ def _repair_ms_bench(conversations: str) -> Dict[str, str]:
     # skip MOSS
     for c in conversations:
         value = c['value'].lower()
-        if 'moss' in value or 'human:' in value or 'assistant:' in value:
+        if 'moss' in value or 'human:' in value or 'assistant:' in value or 'user:' in value:
             return
     return conversations
 
@@ -659,7 +675,8 @@ register_dataset(
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
         repair_conversations=partial(
-            _repair_agent_conversations, use_mini=True)),
+            _repair_agent_conversations, use_mini=True),
+        error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 register_dataset(
@@ -667,9 +684,27 @@ register_dataset(
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
         repair_conversations=partial(
-            _repair_agent_conversations, use_mini=False)),
+            _repair_agent_conversations,
+            use_mini=False,
+            error_strategy='delete')),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
+
+register_dataset(
+    DatasetName.deepctrl_sft_zh,
+    'AI-ModelScope/deepctrl-sft-data', [['default', 'train']],
+    None,
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    tags=['chat', 'general', 'sft', 'multi-round'])
+
+register_dataset(
+    DatasetName.deepctrl_sft_en,
+    'AI-ModelScope/deepctrl-sft-data', [['en', 'train']],
+    None,
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    tags=['chat', 'general', 'sft', 'multi-round'])
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
 Keywords: {query}
@@ -1053,7 +1088,8 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     response = []
     history: List[History] = []
     for d in tqdm(dataset):
-        conversation = ast.literal_eval(d['conversation'])
+        if isinstance(d['conversation'], str):
+            conversation = ast.literal_eval(d['conversation'])
         query.append(conversation[-1]['human'])
         response.append(conversation[-1]['assistant'])
         h = []
@@ -1109,6 +1145,14 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     return dataset
 
 
+def _repair_planner(conversations: list) -> list:
+    if isinstance(conversations, str):
+        conversations = ast.literal_eval(conversations)
+    if len(conversations) == 2 and conversations[0]['from'] != 'user':
+        conversations[0]['from'] = 'user'
+    return conversations
+
+
 register_dataset(
     DatasetName.capcha_images,
     'AI-ModelScope/captcha-images', [('default', 'train')],
@@ -1151,6 +1195,39 @@ register_dataset(
         value_key='content'),
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_backbone,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('backbone', 'train')],
+    None,
+    ConversationsPreprocessor('system', system_role=None),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_caller,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('caller', 'train')],
+    None,
+    ConversationsPreprocessor('system', 'caller', None),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_planner,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
+    None,
+    ConversationsPreprocessor(
+        repair_conversations=_repair_planner, error_strategy='delete'),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
+
+register_dataset(
+    DatasetName.toolbench_for_alpha_umi_summarizer,
+    'shenweizhou/alpha-umi-toolbench-processed-v2', [('summarizer', 'train')],
+    None,
+    ConversationsPreprocessor('system', 'conclusion', None),
+    get_dataset_from_repo,
+    tags=['chat', 'agent'])
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
@@ -1262,9 +1339,11 @@ _agent_instruct_subset_list = [
 ]
 
 
-def _repair_conversations_agent_instruct(s: str) -> str:
+def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
     s = s.replace('}\n {', '},\n {')
-    return ast.literal_eval(s)
+    if isinstance(s, str):
+        s = ast.literal_eval(s)
+    return s
 
 
 register_dataset(

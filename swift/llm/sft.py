@@ -31,6 +31,7 @@ logger = get_logger()
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     training_args = args.training_args
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
@@ -39,7 +40,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
-    seed_everything(args.seed)
 
     if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
@@ -106,11 +106,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     model, callbacks = prepare_model(model, args)
 
     show_layers(model)
+    logger.info(model)
     model_info = None
     if not is_deepspeed_zero3_enabled():
         model_info = get_model_info(model)
         logger.info(model_info)
-    logger.info(model)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
@@ -161,9 +161,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                                                    args.self_cognition_sample,
                                                    args.model_name,
                                                    args.model_author)
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
@@ -202,6 +199,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         train_dataset = LazyLLMDataset(train_dataset, template)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)
@@ -267,9 +267,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master() and not use_torchacc():
-        images_dir = os.path.join(args.output_dir, 'images')
-        logger.info(f'images_dir: {images_dir}')
-        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
+        if 'tensorboard' in args.training_args.report_to:
+            images_dir = os.path.join(args.output_dir, 'images')
+            logger.info(f'images_dir: {images_dir}')
+            plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()

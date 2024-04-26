@@ -54,7 +54,11 @@ def cli_main() -> None:
     if torchrun_args is None or method_name not in ('sft', 'dpo'):
         try:
             python_cmd = 'python'
-            subprocess.run([python_cmd, '--version'])
+            subprocess.run(
+                [python_cmd, '--version'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
         except FileNotFoundError:
             python_cmd = 'python3'
         args = [python_cmd, file_path, *argv]

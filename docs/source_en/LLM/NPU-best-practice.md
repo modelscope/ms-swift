@@ -1,4 +1,5 @@
 # NPU Best Practice
+Authors: [chuanzhubin](https://github.com/chuanzhubin), [jintao](https://github.com/Jintao-Huang)
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)
@@ -7,11 +8,19 @@
 
 ## Environment Preparation
 
-Experimental environment: 8 * Ascend 910B3
+Experimental environment: 8 * Ascend 910B3 (The device is provided by [@chuanzhubin](https://github.com/chuanzhubin), thanks for the support to modelscope and swift ~)
 
 ```shell
-pip install ms-swift -U
-pip install torch-npu
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
+
+pip install torch-npu decorator
+pip install deepspeed
+
+# Align environment (usually not necessary to run. If you encounter errors, you can run the following code, the repository is tested with the latest environment)
+pip install -r requirements/framework.txt -U
+pip install -r requirements/llm.txt -U
 ```
 
 Verify the installation of the testing environment:
@@ -21,6 +30,7 @@ import torch
 
 print(is_torch_npu_available())  # True
 print(torch.npu.device_count())  # 8
+print(torch.randn(10, device='npu:0'))
 ```
 
 ## Fine-tuning
@@ -68,7 +78,7 @@ ZeRO2:
 ```shell
 # Experimental Environment: 4 * Ascend 910B3
 # GPU Memory Requirement: 4 * 28GB
-# Runtime: 3 hours
+# Runtime: 3.5 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
@@ -84,7 +94,7 @@ ZeRO3:
 ```shell
 # Experimental Environment: 4 * Ascend 910B3
 # GPU Memory Requirement: 4 * 25GB
-# Runtime: 8 hours
+# Runtime: 8.5 hours
 NPROC_PER_NODE=4 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
