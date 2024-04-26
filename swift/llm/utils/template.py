@@ -996,7 +996,7 @@ class InternvlTemplate(Template):
         images_path = example['images']
         pixel_values = []
         for image_path in images_path:
-            pixel_values.append(load_image(image_path))
+            pixel_values.append(load_image(_read_from_path(image_path)))
         pixel_values = torch.cat(pixel_values, dim=0)
         inputs['pixel_values'] = pixel_values 
 
