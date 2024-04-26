@@ -2377,7 +2377,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
-def get_model_tokenizer_internlm2(model_dir: str,
+def get_model_tokenizer_internvl(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
@@ -2406,6 +2406,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
         @wraps(forward)
         def _new_forward(*args, **kwargs):
             kwargs.pop('inputs_embeds', None)
+            kwargs['image_flags'] = '-200'
             return forward(*args, **kwargs)
 
         model.forward = _new_forward
