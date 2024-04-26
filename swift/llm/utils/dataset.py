@@ -218,6 +218,7 @@ def register_local_dataset(
         dataset_name,
         '_',
         None,
+        None,
         get_local_dataset,
         train_split=train_dataset_path,
         val_split=val_dataset_path,
@@ -292,14 +293,15 @@ def load_hf_dataset(
 def sample_dataset(dataset: HfDataset,
                    dataset_sample: int,
                    random_state: Optional[RandomState] = None) -> HfDataset:
-    if dataset_sample in {None, -1}:
+    if dataset_sample in {None, -1, len(dataset)}:
         return dataset
     if random_state is None:
         random_state = RandomState(42)
+    # Sample the part that exceeds the length of the dataset.
     idx = random_state.permutation(len(dataset))[:dataset_sample]
     dataset_sample -= len(idx)
     if dataset_sample > 0:
-        idx2 = random_state.choice(len(dataset), dataset_sample)
+        idx2 = random_state.choice(dataset, dataset_sample)
         idx = np.concatenate([idx, idx2], axis=0)
     dataset = dataset.select(idx)
     return dataset
@@ -318,10 +320,10 @@ def get_dataset_from_repo(
     dataset_list = []
     if subsets is None:
         subsets = []
-    _iter = zip([train_split, val_split],
-                [train_dataset_sample, val_dataset_sample])
     random_state = np.random.RandomState(42)
-    for split, dataset_sample in _iter:
+    for split in [train_split, val_split]:
+        if len(split) == 0:
+            continue
         if len(subsets) == 0:
             subset_split_list = split
         else:
@@ -330,13 +332,20 @@ def get_dataset_from_repo(
             dataset = load_hf_dataset(dataset_id, subset_split_list)
         else:
             dataset = load_ms_dataset(dataset_id, subset_split_list)
-        if dataset is not None:
-            dataset = sample_dataset(dataset, dataset_sample, random_state)
-            dataset = preprocess_func(dataset)
-            if remove_useless_columns:
-                dataset = _remove_useless_columns(dataset)
         dataset_list.append(dataset)
-    return tuple(dataset_list)
+    if len(dataset_list) == 1 and val_dataset_sample > 0:
+        dataset_list = list(dataset_list[0].train_test_split(
+            test_size=val_dataset_sample).values())
+
+    res: List[HfDataset] = []
+    for dataset, dataset_sample in zip(
+            dataset_list, [train_dataset_sample, val_dataset_sample]):
+        dataset = sample_dataset(dataset, dataset_sample, random_state)
+        dataset = preprocess_func(dataset)
+        if remove_useless_columns:
+            dataset = _remove_useless_columns(dataset)
+        res.append(dataset)
+    return tuple(res)
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -1234,21 +1243,19 @@ def get_dataset(
                                     'warning'] = 'none',
     *,
     # for self-cognition
-    model_name: Tuple[str, Optional[str]],
-    model_author: Tuple[str, Optional[str]]
+    model_name: Optional[Tuple[str, Optional[str]]] = None,
+    model_author: Optional[Tuple[str, Optional[str]]] = None
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
         dataset_name_list = [dataset_name_list]
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
-    random_state = dataset_seed
-    if isinstance(dataset_seed, int):
-        random_state = RandomState(dataset_seed)
     for dataset_name in dataset_name_list:
         use_hf, dataset_name, subsets, train_sample, val_sample = parse_dataset_name(
             dataset_name)
-        if dataset_name == 'self_cognition':
+        if dataset_name == 'self-cognition':
+            assert model_name is not None and model_author is not None
             dataset = get_self_cognition_dataset(model_name, model_author,
                                                  train_sample)
         else:
@@ -1269,6 +1276,8 @@ def get_dataset(
                 f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
                 f'dataset_id_or_path: {dataset_id_or_path}.')
             get_function: GetDatasetFunction = dataset_info['get_function']
+            if val_sample == -1 and dataset_test_ratio > 0:
+                val_sample = max(int(train_sample * dataset_test_ratio), 1)
             dataset = get_function(
                 dataset_id_or_path,
                 dataset_info['subsets'],
@@ -1284,10 +1293,6 @@ def get_dataset(
         else:
             train_d, val_d = dataset, None
         assert train_d is not None or val_d is not None
-        if val_d is None and dataset_test_ratio > 0:
-            dataset_dict = train_d.train_test_split(
-                dataset_test_ratio, seed=get_seed(random_state))
-            train_d, val_d = dataset_dict['train'], dataset_dict['test']
         if train_d is not None:
             train_dataset_list.append(train_d)
         if val_d is not None:
@@ -1346,8 +1351,6 @@ def get_local_dataset(_: str,
                       train_dataset_sample: int = -1,
                       val_dataset_sample: int = -1,
                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    train_dataset = load_dataset_from_local(train_subset_split_list,
-                                            preprocess_func)
-    val_dataset = load_dataset_from_local(val_subset_split_list,
-                                          preprocess_func)
+    train_dataset = load_dataset_from_local(train_split, preprocess_func)
+    val_dataset = load_dataset_from_local(val_split, preprocess_func)
     return train_dataset, val_dataset

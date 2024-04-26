@@ -590,6 +590,7 @@ class SftArguments(ArgumentsBase):
             )
 
         if self.self_cognition_sample > 0:
+            # TODO
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
                     'Please enter self.model_name self.model_author. '
@@ -661,7 +662,8 @@ class SftArguments(ArgumentsBase):
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
         if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
-                                       and len(self.custom_val_dataset_path) == 0
+                                       and len(
+                                           self.custom_val_dataset_path) == 0
                                        and self.self_cognition_sample == 0):
             raise ValueError(
                 f'self.dataset: {self.dataset}, Please input the training dataset.'
