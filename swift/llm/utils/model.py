@@ -2382,6 +2382,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
+    
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
@@ -2397,6 +2398,17 @@ def get_model_tokenizer_internlm2(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
+    if not hasattr(model,
+                    '__old_forward'):  # Avoid double patching
+        forward = model.forward
+        model.__old_forward = forward
+
+        @wraps(forward)
+        def _new_forward(*args, **kwargs):
+            kwargs.pop('inputs_embeds', None)
+            return forward(*args, **kwargs)
+
+        model.forward = _new_forward
     # if eos_token is not None:
     #     if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
     #         del tokenizer.__class__.eos_token_id
