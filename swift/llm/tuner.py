@@ -4,7 +4,6 @@ import types
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import transformers
 from packaging import version
 
@@ -19,7 +18,6 @@ from swift.utils import (activate_model_parameters, freeze_model_parameters,
                          get_logger, use_torchacc)
 from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
                     is_adapter)
-from .utils.utils import is_xtuner_available
 
 logger = get_logger()
 
