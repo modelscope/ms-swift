@@ -89,6 +89,7 @@ class ModelType:
     qwen1half_14b_chat_int4 = 'qwen1half-14b-chat-int4'
     qwen1half_32b_chat_int4 = 'qwen1half-32b-chat-int4'
     qwen1half_72b_chat_int4 = 'qwen1half-72b-chat-int4'
+    qwen1half_110b_chat_int4 = 'qwen1half-110b-chat-int4'
     qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
     qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
     qwen1half_4b_chat_int8 = 'qwen1half-4b-chat-int8'
@@ -2232,6 +2233,17 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
+@register_model(
+    ModelType.qwen1half_110b_chat_int4,
+    'qwen/Qwen1.5-110B-Chat-GPTQ-Int4',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='Qwen/Qwen1.5-110B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int8,
     'qwen/Qwen1.5-72B-Chat-GPTQ-Int8',
