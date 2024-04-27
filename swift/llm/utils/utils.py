@@ -30,7 +30,6 @@ from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset
-# InternVL image loading
 from torchvision.transforms.functional import InterpolationMode
 from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
