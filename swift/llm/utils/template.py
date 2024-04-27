@@ -979,14 +979,14 @@ register_template(
 class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+    internvl_query_template = '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'
 
     def __init__(self):
-        super().__init__([], [
-            '<|im_start|>user\n', [-200],
-            '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'
-        ], ['<|im_end|>'], ['<|im_end|>'], self.system,
-                         ['<|im_start|>system\n{{SYSTEM}}'])
-        # -200: <img><IMG_CONTEXT>...</img>
+        super().__init__(
+            [], ['<|im_start|>user\n', [-200], self.internvl_query_template],
+            ['<|im_end|>'], ['<|im_end|>'], self.system,
+            ['<|im_start|>system\n{{SYSTEM}}'])
+
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1007,8 +1007,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
             num_image_token = getattr(self, 'num_image_token', 256)
             image_tokens = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * image_bs + '</img>'
+            inputs['image_flags'] = image_tokens  # TODO
             # question = image_tokens + '\n' + question
-        inputs['image_flags'] = None  # TODO
 
         return inputs, {}
 
