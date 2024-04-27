@@ -984,7 +984,7 @@ class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
     def __init__(self):
-        super().__init__([], ['<|im_start|>user\n', [self.IMG_CONTEXT_TOKEN], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+        super().__init__([], ['<|im_start|>user\n', [-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],self.system,['<|im_start|>system\n{{SYSTEM}}'])
         # -200: <img><IMG_CONTEXT>...</img> 
     def encode(
@@ -1012,7 +1012,7 @@ class InternvlTemplate(Template):
         #     for (old_question, old_answer) in history:
         #         template.append_message(template.roles[0], old_question)
         #         template.append_message(template.roles[1], old_answer)
-
+        inputs['image_flags'] = None # TODO
 
         return inputs, {}
     
