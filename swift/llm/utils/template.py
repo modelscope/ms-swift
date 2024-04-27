@@ -984,13 +984,14 @@ class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
     def __init__(self):
-        super().__init__([], ['<|im_start|>user\n', [-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+        super().__init__([], ['<|im_start|>user\n', [self.IMG_CONTEXT_TOKEN], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],self.system,['<|im_start|>system\n{{SYSTEM}}'])
+        # -200: <img><IMG_CONTEXT>...</img> 
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
-
+        inputs.pop('loss_scale', None)
         # image process
         from .utils import load_image
         images_path = example['images']
@@ -1001,7 +1002,7 @@ class InternvlTemplate(Template):
         inputs['pixel_values'] = pixel_values 
 
         history = example.pop('history', None)
-        if history is None:
+        if history.empty():
             history = []
             image_bs = pixel_values.shape[0]
             num_image_token = getattr(self,'num_image_token', 256)
