@@ -13,7 +13,6 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
-from swift.llm.utils.utils import is_xtuner_available
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, use_torchacc
 
@@ -207,6 +206,8 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
+        self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
+
         for key in [
                 'prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system'
         ]:
@@ -422,34 +423,6 @@ class Template:
         assert len(old_tokenizer_kwargs) == 0
         return curr_tokenizer_kwargs
 
-    def _pad_and_split_for_sequence_parallel(self, tokenizer, input_ids,
-                                             labels, position_ids,
-                                             attention_mask, loss_scale):
-        from xtuner.parallel.sequence import (pad_for_sequence_parallel,
-                                              split_for_sequence_parallel,
-                                              get_sequence_parallel_group)
-        input_ids = pad_for_sequence_parallel(
-            input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
-        labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
-        position_ids = pad_for_sequence_parallel(
-            position_ids, padding_value=0, dim=-1)
-        attention_mask = pad_for_sequence_parallel(
-            attention_mask, padding_value=0, dim=-1)
-
-        sp_group = get_sequence_parallel_group()
-        input_ids = split_for_sequence_parallel(
-            input_ids, dim=1, sp_group=sp_group)
-        labels = split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
-        position_ids = split_for_sequence_parallel(
-            position_ids, dim=1, sp_group=sp_group)
-        if loss_scale is not None:
-            loss_scale = pad_for_sequence_parallel(
-                loss_scale, padding_value=0., dim=-1)
-            loss_scale = split_for_sequence_parallel(
-                loss_scale, dim=1, sp_group=sp_group)
-
-        return input_ids, labels, position_ids, attention_mask, loss_scale
-
     def data_collator(self,
                       batch: List[Dict[str, Any]],
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -502,14 +475,12 @@ class Template:
         bs, seq_len = input_ids.shape
         position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
 
-        if is_xtuner_available():
-            from xtuner.parallel.sequence import (pad_for_sequence_parallel,
-                                                  split_for_sequence_parallel,
-                                                  get_sequence_parallel_group,
-                                                  get_sequence_parallel_world_size)
-            if get_sequence_parallel_world_size() > 1:
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+            if get_xtuner_sequence_parallel_world_size() > 1:
+                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
                 input_ids, labels, position_ids, attention_mask, loss_scale = \
-                    self._pad_and_split_for_sequence_parallel(
+                    pad_and_split_for_sequence_parallel(
                         tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
 
         res = {

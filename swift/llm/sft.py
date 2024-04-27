@@ -198,28 +198,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
         if args.pack_to_max_length:
-            from swift.llm.utils.utils import is_xtuner_available
-            assert is_xtuner_available(), \
-                ('Please install XTuner first to pack dataset to `max_length`.'
-                 '`pip install -U \'xtuner[deepspeed]\'`')
-            assert dist.is_initialized(), 'pack_to_max_length is only available with distributed training.'
-            from xtuner.parallel.sequence import *
-            from xtuner.dataset.huggingface import pack_dataset
-            if dist.get_rank() == 0:
-                ds = [i[0] for i in train_dataset.data]
-                train_dataset = Dataset.from_list(ds)
-                train_dataset = pack_dataset(
-                    train_dataset,
-                    max_length=args.max_length,
-                    use_varlen_attn=False,
-                    shuffle_before_pack=True,
-                    map_num_proc=16)
-                objects = [train_dataset]
-                train_dataset.save_to_disk('alpaca_pack')
-            else:
-                objects = [None]
-            dist.broadcast_object_list(objects, src=0)
-            train_dataset = objects[0]
+            from swift.trainers.xtuner import pack_dataset_xtuner
+            train_dataset = pack_dataset_xtuner(train_dataset, args)
     else:
         dataset_info = None
         td0, tkwargs0 = template.encode(train_dataset[0])
@@ -260,7 +240,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         trainer_kwargs['check_model'] = False
 
     trainer = Seq2SeqTrainer(
-        sequence_parallel_size=args.sequence_parallel_size,
         model=model,
         args=training_args,
         data_collator=data_collator,
@@ -268,6 +247,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         callbacks=callbacks,
+        sequence_parallel_size=args.sequence_parallel_size,
         **trainer_kwargs)
     trainer.sft_args = args
     if use_torchacc():

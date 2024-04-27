@@ -202,14 +202,8 @@ def prepare_model(model, args: SftArguments):
             # release memory
             del state_dict
         if args.sequence_parallel_size > 1:
-            assert is_xtuner_available(), \
-                ('Please install XTuner first to pack dataset to `max_length`.'
-                 '`pip install -U \'xtuner[deepspeed]\'`')
-            assert dist.is_initialized(), 'pack_to_max_length is only available with distributed training.'
-            from xtuner.model.modules.dispatch import dispatch_modules
-            from xtuner.parallel.sequence import *
-            dispatch_modules(model)
-            logger.info('Dispatch modules for sequence parallel.')
+            from swift.trainers.xtuner import dispatch_module_xtuner
+            dispatch_module_xtuner(model)
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 

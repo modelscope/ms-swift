@@ -302,6 +302,7 @@ class SwiftMixin:
                 model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
+        self.max_memory = 0.0
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
@@ -597,6 +598,14 @@ class SwiftMixin:
         except ValueError as e:
             logger.warning(e)
 
+    def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
+        mem = torch.cuda.max_memory_allocated(device=device)
+        mem = float(mem)/1024/1024/1024
+        if self.max_memory < mem:
+            self.max_memory = mem
+        torch.cuda.reset_peak_memory_stats()
+        return mem
+
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
             self.control.should_log = False
@@ -621,7 +630,7 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-
+            logs['memory'] = round(self.get_max_cuda_memory(), 2)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
