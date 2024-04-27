@@ -627,6 +627,8 @@ class _QwenAudioTemplateMixin:
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, tokenizer_kwargs
         inputs.pop('loss_scale', None)
         inputs.update(tokenizer_kwargs)
         return inputs, tokenizer_kwargs
@@ -711,6 +713,8 @@ class YiVLTemplate(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
         model = self.model.model
@@ -909,6 +913,8 @@ class InternLMXComposer2(Template):
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1055,6 +1061,8 @@ class LLavaTemplate(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         images_path = example['images']
         images = []
         for image_path in images_path:
@@ -1152,6 +1160,8 @@ class DeepseekVLTemplate(Template):
             example['query'], history, '<image_placeholder>')
 
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1256,6 +1266,8 @@ class CogTemplate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
@@ -1338,6 +1350,8 @@ class MiniCPMVTemlate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
 
@@ -1510,6 +1524,8 @@ class mPlugOwl2Template(Template):
             image = image.resize((max_edge, max_edge))
             images.append(image)
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         images = process_images(images, image_processor)

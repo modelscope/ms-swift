@@ -68,12 +68,15 @@ class ModelOutput:
         if 'sft_type' not in args:
             return ''
         if args['sft_type'] in ('lora', 'adalora', 'longlora'):
-            hyper_params += f'rank={args["lora_rank"]}/' \
-                            f'target={args["lora_target_modules"]}/' \
-                            f'alpha={args["lora_alpha"]}/' \
-                            f'lr_ratio={args.get("lora_lr_ratio", None)}/' \
-                            f'use_rslora={args.get("use_rslora", False)}/' \
-                            f'use_dora={args.get("use_dora", False)}'
+            if 'lora_rank' in args:
+                hyper_params += f'rank={args["lora_rank"]}/' \
+                                f'target={args["lora_target_modules"]}/' \
+                                f'alpha={args["lora_alpha"]}/' \
+                                f'lr_ratio={args.get("lora_lr_ratio", None)}/' \
+                                f'use_rslora={args.get("use_rslora", False)}/' \
+                                f'use_dora={args.get("use_dora", False)}'
+            else:
+                hyper_params = ''
         if args['sft_type'] == 'full':
             if 'use_galore' in args and args['use_galore'] == 'true':
                 hyper_params += f'galore_rank={args["galore_rank"]}/' \

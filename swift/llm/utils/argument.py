@@ -309,7 +309,7 @@ class SftArguments(ArgumentsBase):
                       'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
-    tuner_backend: Literal['swift', 'peft'] = 'peft'
+    tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
         default='AUTO',
         metadata={
@@ -402,6 +402,10 @@ class SftArguments(ArgumentsBase):
     # neftune
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
     neftune_backend: Literal['swift', 'transformers'] = None
+
+    # lisa
+    lisa_activated_layers: int = 0
+    lisa_step_interval: int = 20
 
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'

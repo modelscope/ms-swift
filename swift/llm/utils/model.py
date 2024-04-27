@@ -25,6 +25,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import strtobool
 from transformers.utils.versions import require_version
+from trl.import_utils import is_unsloth_available
 
 from swift import get_logger
 from swift.utils import (get_dist_setting, is_dist, is_local_master,
@@ -66,6 +67,7 @@ class ModelType:
     qwen1half_14b = 'qwen1half-14b'
     qwen1half_32b = 'qwen1half-32b'
     qwen1half_72b = 'qwen1half-72b'
+    qwen1half_110b = 'qwen1half-110b'
     codeqwen1half_7b = 'codeqwen1half-7b'
     qwen1half_moe_a2_7b = 'qwen1half-moe-a2_7b'
     qwen1half_0_5b_chat = 'qwen1half-0_5b-chat'
@@ -75,6 +77,7 @@ class ModelType:
     qwen1half_14b_chat = 'qwen1half-14b-chat'
     qwen1half_32b_chat = 'qwen1half-32b-chat'
     qwen1half_72b_chat = 'qwen1half-72b-chat'
+    qwen1half_110b_chat = 'qwen1half-110b-chat'
     qwen1half_moe_a2_7b_chat = 'qwen1half-moe-a2_7b-chat'
     codeqwen1half_7b_chat = 'codeqwen1half-7b-chat'
 
@@ -86,6 +89,7 @@ class ModelType:
     qwen1half_14b_chat_int4 = 'qwen1half-14b-chat-int4'
     qwen1half_32b_chat_int4 = 'qwen1half-32b-chat-int4'
     qwen1half_72b_chat_int4 = 'qwen1half-72b-chat-int4'
+    qwen1half_110b_chat_int4 = 'qwen1half-110b-chat-int4'
     qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
     qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
     qwen1half_4b_chat_int8 = 'qwen1half-4b-chat-int8'
@@ -791,17 +795,29 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        with context:
-            model = automodel_class.from_pretrained(
-                model_dir,
-                config=model_config,
-                torch_dtype=torch_dtype,
+        if kwargs.get('use_unsloth', False):
+            assert is_unsloth_available(
+            ), 'please install unsloth if using `use_unsloth=True`'
+            from unsloth import FastLanguageModel
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=model_dir,
+                max_seq_length=kwargs.get('max_length', None),
+                dtype=torch_dtype,
+                load_in_4bit=kwargs.get('load_in_4bit', True),
                 trust_remote_code=True,
-                **model_kwargs)
-    if load_model and is_awq:
-        model.is_awq = is_awq
-    if load_model and gptq_bits > 0:
-        model.gptq_bits = gptq_bits
+            )
+        else:
+            with context:
+                model = automodel_class.from_pretrained(
+                    model_dir,
+                    config=model_config,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True,
+                    **model_kwargs)
+        if load_model and is_awq:
+            model.is_awq = is_awq
+        if load_model and gptq_bits > 0:
+            model.gptq_bits = gptq_bits
     return model, tokenizer
 
 
@@ -1460,6 +1476,15 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-72B')
 @register_model(
+    ModelType.qwen1half_110b,
+    'qwen/Qwen1.5-110B',
+    LoRATM.qwen1half,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen1.5-110B')
+@register_model(
     ModelType.codeqwen1half_7b,
     'qwen/CodeQwen1.5-7B',
     LoRATM.qwen1half,
@@ -2044,6 +2069,15 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-72B-Chat')
 @register_model(
+    ModelType.qwen1half_110b_chat,
+    'qwen/Qwen1.5-110B-Chat',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen1.5-110B-Chat')
+@register_model(
     ModelType.qwen1half_moe_a2_7b_chat,
     'qwen/Qwen1.5-MoE-A2.7B-Chat',
     LoRATM.qwen1half,
@@ -2199,6 +2233,17 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
+@register_model(
+    ModelType.qwen1half_110b_chat_int4,
+    'qwen/Qwen1.5-110B-Chat-GPTQ-Int4',
+    LoRATM.qwen1half,
+    TemplateType.qwen,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='Qwen/Qwen1.5-110B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int8,
     'qwen/Qwen1.5-72B-Chat-GPTQ-Int8',

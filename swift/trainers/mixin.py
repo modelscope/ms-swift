@@ -166,7 +166,7 @@ class PushToMsHubMixin:
             return
 
         self.repo.push_to_hub(commit_message, **kwargs)
-        # push separately the model card to be independant from the rest of the model
+        # push separately the model card to be independent from the rest of the model
         readme_path = os.path.join(self.args.output_dir, 'README.md')
         if create_model_card is None:
             create_model_card = not os.path.exists(readme_path)
