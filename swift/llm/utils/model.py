@@ -12,9 +12,9 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from modelscope import (AutoModel, AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                        BitsAndBytesConfig, GenerationConfig, GPTQConfig,
-                        snapshot_download)
+from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
+                        AutoTokenizer, BitsAndBytesConfig, GenerationConfig,
+                        GPTQConfig, snapshot_download)
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
@@ -2368,6 +2368,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -2378,11 +2379,11 @@ def get_model_tokenizer_internlm2(model_dir: str,
     support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
 def get_model_tokenizer_internvl(model_dir: str,
-                                  torch_dtype: Dtype,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+
     model_config = AutoConfig.from_pretrained(
         model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
@@ -2398,8 +2399,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
-    if not hasattr(model,
-                    '__old_forward'):  # Avoid double patching
+    if not hasattr(model, '__old_forward'):  # Avoid double patching
         forward = model.forward
         model.__old_forward = forward
 
@@ -2415,16 +2415,12 @@ def get_model_tokenizer_internvl(model_dir: str,
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
     img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
     model.img_context_token_id = img_context_token_id
-    # if eos_token is not None:
-    #     if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
-    #         del tokenizer.__class__.eos_token_id
-    #     tokenizer.eos_token = eos_token
     if load_model:
-        # func_list = ['generate', 'get_input_embeddings', 'forward']
         func_list = ['get_input_embeddings']
 
         _use_submodel_func(model, 'language_model', func_list)
     return model, tokenizer
+
 
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
