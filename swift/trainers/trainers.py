@@ -7,15 +7,13 @@ import torch
 from peft import PeftModel
 from torch import Tensor, nn
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
 from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import \
     MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
-from transformers.trainer_utils import seed_worker
-from transformers.utils import is_peft_available, is_torch_xla_available
+from transformers.utils import is_peft_available
 
 from swift.torchacc_utils import (ta_eval_dataloader, ta_test_dataloader,
                                   ta_train_dataloader)
@@ -29,9 +27,6 @@ try:
 except ImportError:
     from transformers.deepspeed import is_deepspeed_zero3_enabled
 
-if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm
-
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
     pass
@@ -40,6 +35,7 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
+        sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
         super().__init__(*args, **kwargs)
         # performance
         self.perf: Dict[str, Any] = {
@@ -53,8 +49,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 self.model, 'get_trainable_parameters') else None,
         }
         self._acc = torch.tensor(0.).to(self.args.device)
-        if kwargs.get('sequence_parallel_size', 1) > 1:
-            self.sequence_parallel_size = kwargs['sequence_parallel_size']
+        if sequence_parallel_size > 1:
+            self.sequence_parallel_size = sequence_parallel_size
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(self.sequence_parallel_size)
 
