@@ -323,13 +323,18 @@ def _post_preprocess(
     train_dataset, val_dataset = dataset_list
     if train_dataset is None:
         assert val_dataset is not None
-    if val_sample == -1 and dataset_test_ratio is not None:
-        assert 0 <= dataset_test_ratio < 1
-        val_sample = max(int(len(train_dataset) * dataset_test_ratio), 1)
-    elif val_dataset is None and val_sample > 0:
-        assert isinstance(val_sample, int)
-        train_dataset, val_dataset = train_dataset.train_test_split(
-            test_size=val_sample).values()
+    if val_dataset is None:
+        if val_sample == -1 and dataset_test_ratio is not None:
+            assert 0 <= dataset_test_ratio < 1
+            assert train_sample != 0
+            _train_len = len(train_dataset)
+            if train_sample != -1:
+                _train_len = min(_train_len, train_sample)
+            val_sample = max(_train_len * dataset_test_ratio, 1)
+        elif val_sample > 0:
+            assert isinstance(val_sample, int)
+            train_dataset, val_dataset = train_dataset.train_test_split(
+                test_size=val_sample).values()
 
     if val_dataset is not None and val_sample >= 0:
         assert val_sample <= len(val_dataset), (

@@ -49,13 +49,13 @@ class ArgumentsBase:
             dataset_info = json.load(f)
 
         # self-cognition
-        use_self_cognition = _dataset_name_exists(self.dataset,
+        self.use_self_cognition = _dataset_name_exists(self.dataset,
                                                   'self-cognition')
         if self.self_cognition_sample > 0:
-            if not use_self_cognition:
+            if not self.use_self_cognition:
                 self.dataset.append('self-cognition#')
-                use_self_cognition = True
-        if use_self_cognition:
+                self.use_self_cognition = True
+        if self.use_self_cognition:
             if self.model_name is None or self.model_author is None:
                 raise ValueError(
                     'Please enter self.model_name self.model_author. '
@@ -68,12 +68,6 @@ class ArgumentsBase:
                     v = v[0]
                 if isinstance(v, str):
                     setattr(self, k, [v, v])
-            if self.sft_type == 'lora' and not self.lora_use_all:
-                logger.warning(
-                    'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
-                    'For example: `--lora_target_modules ALL`. '
-                    'If you have already added LoRA on MLP, please ignore this warning.'
-                )
 
         # register _custom
         for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
@@ -236,25 +230,11 @@ class ArgumentsBase:
             assert ',' not in d, f'dataset: {d}, please use `|`'
         if self.truncation_strategy == 'ignore':
             self.truncation_strategy = 'delete'
-        if isinstance(self, InferArguments):
-            if self.show_dataset_sample != 10 and self.val_dataset_sample == 10:
-                # args.val_dataset_sample is the default value and args.show_dataset_sample is not the default value.
-                self.val_dataset_sample = self.show_dataset_sample
-            if self.safe_serialization is not None:
-                self.save_safetensors = self.safe_serialization
-            if self.merge_lora_and_save is not None:
-                self.merge_lora = self.merge_lora_and_save
         if isinstance(self, SftArguments):
-            if self.only_save_model is not None:
-                self.save_only_model = self.only_save_model
-            if self.neftune_alpha is not None:
-                self.neftune_noise_alpha = self.neftune_alpha
             if self.per_device_train_batch_size is not None:
                 self.batch_size = self.per_device_train_batch_size
             if self.per_device_eval_batch_size is not None:
                 self.eval_batch_size = self.per_device_eval_batch_size
-            if self.deepspeed_config_path is not None:
-                self.deepspeed = self.deepspeed_config_path
 
     def set_model_type(self: Union['SftArguments', 'InferArguments']) -> None:
         # compat with swift<1.7
@@ -516,10 +496,12 @@ class SftArguments(ArgumentsBase):
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
     # compatibility. (Deprecated)
-    only_save_model: Optional[bool] = None
-    neftune_alpha: Optional[float] = None
-    deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+    train_dataset_sample: int = -1  # -1: all dataset
+    train_dataset_mix_ratio: float = 0.
+    train_dataset_mix_ds: List[str] = field(
+        default_factory=lambda: ['ms-bench'])
+    val_dataset_sample: Optional[int] = None  # -1: all dataset
 
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
@@ -611,6 +593,13 @@ class SftArguments(ArgumentsBase):
                 self.lora_target_modules)
             self.lora_modules_to_save = self._prepare_modules_to_save(
                 self.lora_modules_to_save)
+        if self.use_self_cognition and self.sft_type == 'lora' and not self.lora_use_all:
+            logger.warning(
+                'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
+                'For example: `--lora_target_modules ALL`. '
+                'If you have already added LoRA on MLP, please ignore this warning.'
+            )
+
         if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
             raise ValueError(
                 '`adalora` and `ia3` do not support setting embedding as target_modules.'
@@ -926,10 +915,7 @@ class InferArguments(ArgumentsBase):
     vllm_max_lora_rank: int = 16
     vllm_lora_modules: List[str] = field(default_factory=list)
     # compatibility. (Deprecated)
-    show_dataset_sample: int = 10
-    safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
-    merge_lora_and_save: Optional[bool] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(

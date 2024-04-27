@@ -28,17 +28,12 @@
 - `--dataset`: Datasets to use for training, default is `[]`. Available datasets can be found in [Supported Datasets](Supported-models-datasets.md#Datasets). To use multiple datasets for training, separate them with ',' or ' ', e.g. `--dataset alpaca-en,alpaca-zh` or `--dataset alpaca-en alpaca-zh`.
 - `--dataset_seed`: Seed for dataset processing, default is `42`. Exists as random_state, does not affect global seed.
 - `--dataset_test_ratio`: Ratio for splitting subdataset into train and validation sets, default is `0.01`. If the subdataset is already split into train and validation, this parameter has no effect.
-- `--train_dataset_sample`: The number of samples for training set, default is `-1`, which means using the entire training set for training.
-- `--val_dataset_sample`: Sampling of validation set, default is `None`, automatically selects appropriate dataset size for validation. If set to `-1`, use the full validation set.
 - `--system`: System used in dialogue template, default is `None`, i.e. use the model's default system. If set to '', no system is used.
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
 - `--truncation_strategy`: Default is `'delete'` which removes sentences exceeding max_length from dataset. `'truncation_left'` will truncate excess text from the left, which may truncate special tokens and affect performance, not recommended.
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
 - `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
-- `--self_cognition_sample`: Sampling number for self-cognition dataset. Default is `0`. When setting this to >0, you also need to specify `--model_name`, `--model_author`. See [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md) for more info.
-- `--model_name`: Default is `[None, None]`. If self-cognition dataset sampling is enabled (i.e. self_cognition_sample>0), you need to pass two values, representing the model's Chinese and English names respectively. E.g. `--model_name 小黄 'Xiao Huang'`.
-- `--model_author`: Default is `[None, None]`. If self-cognition dataset sampling is enabled, you need to pass two values, representing the author's Chinese and English names respectively. E.g. `--model_author 魔搭 ModelScope`.
 - `--quantization_bit`: Specifies whether to quantize and number of quantization bits, default is `0`, i.e. no quantization. To use 4bit qlora, set `--sft_type lora --quantization_bit 4`
 - `--bnb_4bit_comp_dtype`: When doing 4bit quantization, we need to dequantize during model forward and backward passes. This specifies the torch_dtype after dequantization. Default is `'AUTO'`, i.e. consistent with `dtype`. Options: 'fp16', 'bf16', 'fp32'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
@@ -101,8 +96,6 @@
 - `--repetition_penalty`: Default is `1.`. This parameter will be used as default value in deployment parameters.
 - `--num_beams`: Default is `1`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--gpu_memory_fraction`: Default is `None`. This parameter aims to run training under a specified maximum available GPU memory percentage, used for extreme testing.
-- `--train_dataset_mix_ratio`: Default is `0`. This defines how to mix datasets for training. When specifying this, training set will be mixed `train_dataset_mix_ratio` times with the general knowledge dataset specified by `train_dataset_mix_ds`, making total dataset length reach `train_dataset_sample`.
-- `--train_dataset_mix_ds`: Default is `ms-bench`. General knowledge dataset used to prevent knowledge forgetting.
 - `--use_loss_scale`: Default is `False`. When taking effect, strengthens loss weight of some Agent fields (Action/Action Input part) to enhance CoT, has no effect in regular SFT scenarios.
 
 ### FSDP Parameters
