@@ -2410,6 +2410,9 @@ def get_model_tokenizer_internvl(model_dir: str,
             return forward(*args, **kwargs)
 
         model.forward = _new_forward
+    IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+    img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+    model.img_context_token_id = img_context_token_id
     # if eos_token is not None:
     #     if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
     #         del tokenizer.__class__.eos_token_id

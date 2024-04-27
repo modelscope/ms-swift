@@ -984,14 +984,14 @@ class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n', [-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>\n'],
+        super().__init__([], ['<|im_start|>user\n', [-200], '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],self.system,['<|im_start|>system\n{{SYSTEM}}'])
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
 
-        # image process‘
+        # image process
         from .utils import load_image
         images_path = example['images']
         pixel_values = []
