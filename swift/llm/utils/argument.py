@@ -5,11 +5,8 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Set, Tuple, Union
 
 import json
-import numpy as np
 import torch
 import transformers
-from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
 from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import (is_torch_bf16_gpu_available,
@@ -23,7 +20,7 @@ from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
                          get_pai_tensorboard_dir, is_dist, is_mp,
                          is_pai_training_job)
-from .dataset import (DATASET_MAPPING, get_dataset, get_local_dataset,
+from .dataset import (DATASET_MAPPING, _dataset_name_exists,
                       register_dataset_info, register_local_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
@@ -51,19 +48,47 @@ class ArgumentsBase:
         with open(dataset_info_path, 'r') as f:
             dataset_info = json.load(f)
 
-        # register _custom_dataset
+        # self-cognition
+        use_self_cognition = _dataset_name_exists(self.dataset,
+                                                  'self-cognition')
+        if self.self_cognition_sample > 0:
+            if not use_self_cognition:
+                self.dataset.append('self-cognition#')
+                use_self_cognition = True
+        if use_self_cognition:
+            if self.model_name is None or self.model_author is None:
+                raise ValueError(
+                    'Please enter self.model_name self.model_author. '
+                    'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
+                    'Representing the model name and model author in Chinese and English.'
+                )
+            for k in ['model_name', 'model_author']:
+                v = getattr(self, k)
+                if len(v) == 1:
+                    v = v[0]
+                if isinstance(v, str):
+                    setattr(self, k, [v, v])
+            if self.sft_type == 'lora' and not self.lora_use_all:
+                logger.warning(
+                    'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
+                    'For example: `--lora_target_modules ALL`. '
+                    'If you have already added LoRA on MLP, please ignore this warning.'
+                )
+
+        # register _custom
         for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
             value = getattr(self, key)
             if isinstance(value, str):
                 setattr(self, key, [value])
         if len(self.custom_train_dataset_path) > 0 or len(
                 self.custom_val_dataset_path) > 0:
-            dataset_info['_custom_dataset'] = {
+            dataset_info['_custom'] = {
                 'train_dataset_path': self.custom_train_dataset_path,
                 'val_dataset_path': self.custom_val_dataset_path
             }
-            self.dataset.append('_custom_dataset')
-            logger.info('Registered `_custom_dataset` to dataset_info')
+            if not _dataset_name_exists(self.dataset, '_custom'):
+                self.dataset.append('_custom')
+            logger.info('Registered `_custom` to dataset_info')
 
         for dataset_name, d_info in dataset_info.items():
             if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
@@ -74,10 +99,7 @@ class ArgumentsBase:
                                        d_info.get('val_dataset_path'))
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
-        check_exist_path = [
-            'ckpt_dir', 'resume_from_checkpoint', 'custom_train_dataset_path',
-            'custom_val_dataset_path'
-        ]
+        check_exist_path = ['ckpt_dir', 'resume_from_checkpoint']
         if self.model_id_or_path is not None and (
                 self.model_id_or_path.startswith('~')
                 or self.model_id_or_path.startswith('/')):
@@ -206,9 +228,12 @@ class ArgumentsBase:
             if k == self.model_type:
                 self.model_type = v
                 break
-        if self.dataset is not None and len(
-                self.dataset) == 1 and ',' in self.dataset[0]:
+        if isinstance(self.dataset, str):
+            self.dataset = [self.dataset]
+        if len(self.dataset) == 1 and ',' in self.dataset[0]:
             self.dataset = self.dataset[0].split(',')
+        for d in self.dataset:
+            assert ',' not in d, f'dataset: {d}, please use `|`'
         if self.truncation_strategy == 'ignore':
             self.truncation_strategy = 'delete'
         if isinstance(self, InferArguments):
@@ -567,8 +592,6 @@ class SftArguments(ArgumentsBase):
 
         self.handle_path()
         self.set_model_type()
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
         self.check_flash_attn()
         self.handle_generation_config()
 
@@ -592,27 +615,6 @@ class SftArguments(ArgumentsBase):
             raise ValueError(
                 '`adalora` and `ia3` do not support setting embedding as target_modules.'
             )
-
-        if self.self_cognition_sample > 0:
-            # TODO
-            if self.model_name is None or self.model_author is None:
-                raise ValueError(
-                    'Please enter self.model_name self.model_author. '
-                    'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
-                    'Representing the model name and model author in Chinese and English.'
-                )
-            for k in ['model_name', 'model_author']:
-                v = getattr(self, k)
-                if len(v) == 1:
-                    v = v[0]
-                if isinstance(v, str):
-                    setattr(self, k, [v, v])
-            if self.sft_type == 'lora' and not self.lora_use_all:
-                logger.warning(
-                    'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
-                    'For example: `--lora_target_modules ALL`. '
-                    'If you have already added LoRA on MLP, please ignore this warning.'
-                )
 
         self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
         world_size = 1
@@ -665,10 +667,7 @@ class SftArguments(ArgumentsBase):
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
-        if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
-                                       and len(
-                                           self.custom_val_dataset_path) == 0
-                                       and self.self_cognition_sample == 0):
+        if len(self.dataset) == 0:
             raise ValueError(
                 f'self.dataset: {self.dataset}, Please input the training dataset.'
             )
@@ -887,6 +886,14 @@ class InferArguments(ArgumentsBase):
                                     'warning'] = 'none'
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
+    self_cognition_sample: int = 0
+    # Chinese name and English name
+    model_name: List[str] = field(
+        default_factory=lambda: [None, None],
+        metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
+    model_author: List[str] = field(
+        default_factory=lambda: [None, None],
+        metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
     quantization_bit: Literal[0, 4, 8] = 0
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
@@ -944,8 +951,6 @@ class InferArguments(ArgumentsBase):
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
         self.set_model_type()
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
         self.check_flash_attn()
         self.handle_generation_config()
 
@@ -1038,7 +1043,8 @@ class InferArguments(ArgumentsBase):
             imported_keys += [
                 'dataset', 'dataset_seed', 'dataset_test_ratio',
                 'check_dataset_strategy', 'custom_train_dataset_path',
-                'custom_val_dataset_path'
+                'custom_val_dataset_path', 'self_cognition_sample',
+                'model_name', 'model_author'
             ]
         for key in imported_keys:
             if (key in {

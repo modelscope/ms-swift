@@ -383,7 +383,9 @@ def llm_infer(args: InferArguments) -> None:
             args.dataset,
             args.dataset_test_ratio,
             random_state,
-            check_dataset_strategy=args.check_dataset_strategy)
+            check_dataset_strategy=args.check_dataset_strategy,
+            model_name=args.model_name,
+            model_author=args.model_author)
         if args.val_dataset_sample >= 0 and val_dataset.shape[
                 0] > args.val_dataset_sample:
             logger.info(f'val_dataset_sample: {args.val_dataset_sample}')
