@@ -93,8 +93,8 @@ Similarity score: """
 def get_stsb_dataset(dataset_id_or_path: str,
                      **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_dict = MsDataset.load(dataset_id_or_path)
-    train_dataset = dataset_dict['train'].to_hf_dataset()
-    val_dataset = dataset_dict['validation'].to_hf_dataset()
+    train_dataset = dataset_dict['train']
+    val_dataset = dataset_dict['validation']
     return tuple(
         _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
 

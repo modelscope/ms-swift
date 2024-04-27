@@ -465,8 +465,6 @@ class TestTrainer(unittest.TestCase):
         num_labels = max(dataset['train']['label']) + 1
         model = Model.from_pretrained(
             model_dir, task='text-classification', num_labels=num_labels)
-        train_dataset, val_dataset = dataset['train'].to_hf_dataset(
-        ), dataset['validation'].to_hf_dataset()
         train_dataset: HfDataset = train_dataset.select(range(100))
         val_dataset: HfDataset = val_dataset.select(range(20))
 
