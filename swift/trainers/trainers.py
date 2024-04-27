@@ -239,7 +239,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
-
+        if use_torchacc():
+            import torchacc as ta
+            ta.mark_step()
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']

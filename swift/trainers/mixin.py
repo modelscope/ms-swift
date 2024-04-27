@@ -596,6 +596,9 @@ class SwiftMixin:
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
+            if use_torchacc():
+                import torchacc as ta
+                ta.mark_step()
             self.control.should_log = False
             logs: Dict[str, float] = {}
             metrics_log = {'loss': tr_loss}  # loss first

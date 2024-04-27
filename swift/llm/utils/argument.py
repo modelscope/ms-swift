@@ -547,6 +547,7 @@ class SftArguments:
             metric_warmup_step=self.metric_warmup_step,
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
+            dataloader_drop_last=self.dataloader_drop_last,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
