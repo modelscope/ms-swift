@@ -1002,7 +1002,7 @@ class InternvlTemplate(Template):
         inputs['pixel_values'] = pixel_values 
 
         history = example.pop('history', None)
-        if history.empty():
+        if not history:
             history = []
             image_bs = pixel_values.shape[0]
             num_image_token = getattr(self,'num_image_token', 256)
