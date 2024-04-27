@@ -4,8 +4,8 @@ import types
 
 import numpy as np
 import torch
-import transformers
 import torch.distributed as dist
+import transformers
 from packaging import version
 
 from swift.torchacc_utils import consolidate_checkpoint

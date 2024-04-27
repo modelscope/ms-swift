@@ -13,7 +13,8 @@ def assert_xtuner_runtime_condition():
     assert is_xtuner_available(), \
         ('Please install XTuner first to pack dataset to `max_length`.'
          '`pip install -U \'xtuner[deepspeed]\'`')
-    assert dist.is_initialized(), 'pack_to_max_length is only available with distributed training.'
+    assert dist.is_initialized(
+    ), 'pack_to_max_length is only available with distributed training.'
 
 
 def pack_dataset_xtuner(dataset: Dataset, args: Any) -> Any:
@@ -49,9 +50,9 @@ def dispatch_module_xtuner(module):
     dispatch_modules(module)
 
 
-def pad_and_split_for_sequence_parallel(tokenizer, input_ids,
-                                         labels, position_ids,
-                                         attention_mask, loss_scale):
+def pad_and_split_for_sequence_parallel(tokenizer, input_ids, labels,
+                                        position_ids, attention_mask,
+                                        loss_scale):
     assert_xtuner_runtime_condition()
     from xtuner.parallel.sequence import (pad_for_sequence_parallel,
                                           split_for_sequence_parallel,
@@ -103,8 +104,8 @@ def get_xtuner_train_dataloader(trainer):
 
     train_dataset = trainer.train_dataset
     data_collator = trainer.data_collator
-    if trainer.is_datasets_available() and isinstance(
-            train_dataset, datasets.Dataset):
+    if trainer.is_datasets_available() and isinstance(train_dataset,
+                                                      datasets.Dataset):
         train_dataset = trainer._remove_unused_columns(
             train_dataset, description='training')
     else:
@@ -127,5 +128,3 @@ def get_xtuner_train_dataloader(trainer):
         dataloader_params['worker_init_fn'] = seed_worker
 
     return DataLoader(train_dataset, **dataloader_params)
-
-

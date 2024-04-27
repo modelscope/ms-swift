@@ -60,8 +60,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
-        self.perf['memory'][
-            f'cuda'] = f'{self.max_memory:.2f}GiB'
+        self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
         return res
 
     def prediction_step(

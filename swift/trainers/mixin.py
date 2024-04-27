@@ -598,9 +598,11 @@ class SwiftMixin:
         except ValueError as e:
             logger.warning(e)
 
-    def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
+    def get_max_cuda_memory(self,
+                            device: Optional[Union[torch.device,
+                                                   int]] = None) -> float:
         mem = torch.cuda.max_memory_allocated(device=device)
-        mem = float(mem)/1024/1024/1024
+        mem = float(mem) / 1024 / 1024 / 1024
         if self.max_memory < mem:
             self.max_memory = mem
         torch.cuda.reset_peak_memory_stats()
