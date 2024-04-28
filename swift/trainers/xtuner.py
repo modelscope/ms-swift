@@ -104,8 +104,7 @@ def get_xtuner_train_dataloader(trainer):
 
     train_dataset = trainer.train_dataset
     data_collator = trainer.data_collator
-    if trainer.is_datasets_available() and isinstance(train_dataset,
-                                                      datasets.Dataset):
+    if isinstance(train_dataset, datasets.Dataset):
         train_dataset = trainer._remove_unused_columns(
             train_dataset, description='training')
     else:
