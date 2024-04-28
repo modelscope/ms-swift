@@ -1,4 +1,5 @@
 # NPU训练最佳实践
+作者: [chuanzhubin](https://github.com/chuanzhubin), [jintao](https://github.com/Jintao-Huang)
 
 ## 目录
 - [环境准备](#环境准备)
