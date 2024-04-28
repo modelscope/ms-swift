@@ -2412,6 +2412,10 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
+    if load_model and model is not None:
+        func_list = ['get_input_embeddings']
+        _use_submodel_func(model, 'language_model', func_list)
+        
     if model is not None:
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
@@ -2442,7 +2446,6 @@ def get_model_tokenizer_internvl(model_dir: str,
         IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
         img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
         model.img_context_token_id = img_context_token_id
-        
     if load_model:
         func_list = ['get_input_embeddings']
 
