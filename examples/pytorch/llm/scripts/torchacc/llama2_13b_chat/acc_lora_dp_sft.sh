@@ -1,4 +1,4 @@
-# Experimental environment: 4 * A800
+# Experimental environment: 2 * A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
@@ -14,9 +14,9 @@ CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
   --model_id_or_path modelscope/Llama-2-13b-chat-ms \
   --model_layer_cls_name LlamaDecoderLayer \
-	--dataset codefuse-python-en \
+  --dataset codefuse-python-en \
   --template_type llama \
-	--sft_type lora \
+  --sft_type lora \
   --output_dir output \
   --num_train_epochs 1 \
   --max_length 2048 \

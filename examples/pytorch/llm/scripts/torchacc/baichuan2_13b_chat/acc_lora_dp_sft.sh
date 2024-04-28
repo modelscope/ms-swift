@@ -1,4 +1,4 @@
-# Experimental environment: 4 * A800
+# Experimental environment: 2 * A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 # torchacc dp
@@ -9,13 +9,13 @@ export XLA_ALLOCATOR_FRACTION=0.95
 export XLA_EXPERIMENTAL=nonzero:masked_select
 
 NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=2,3 \
+CUDA_VISIBLE_DEVICES=0,1 \
 MASTER_PORT=27829 \
 swift sft \
   --model_id_or_path baichuan-inc/Baichuan2-13B-Chat \
   --model_layer_cls_name BaichuanLayer \
-	--dataset codefuse-python-en \
-	--sft_type lora \
+  --dataset codefuse-python-en \
+  --sft_type lora \
   --output_dir output \
   --num_train_epochs 1 \
   --max_length 2048 \

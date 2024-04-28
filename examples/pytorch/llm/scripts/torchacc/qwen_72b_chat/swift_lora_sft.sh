@@ -1,4 +1,4 @@
-# Experimental environment: 4 * A800
+# Experimental environment: 4 * A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
@@ -8,8 +8,8 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
   --model_id_or_path qwen/Qwen-72B-Chat \
-	--dataset codefuse-python-en \
-	--sft_type lora \
+  --dataset codefuse-python-en \
+  --sft_type lora \
   --dtype AUTO \
   --output_dir output \
   --num_train_epochs 1 \

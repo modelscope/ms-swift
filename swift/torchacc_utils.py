@@ -299,13 +299,11 @@ def ta_trim_graph():
 def patch_acc_model(model, args):
     if not args.use_flash_attn:
         return model
-    # patah qwen
     if args.model_type.startswith('qwen'):
         import torchacc as ta
         model = ta.patch_qwen_model(model)
     elif args.model_type.startswith('baichuan'):
         model = patch_baichuan_model(model)
-        # pass
     elif args.model_type.startswith('llama') or args.model_type.startswith(
             'yi'):
         model = patch_llama_model(model)

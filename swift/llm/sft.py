@@ -104,7 +104,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         # wrapper the model and make these properties wrong.
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
-        # model = ta.patch_qwen_model(model)
         model = patch_acc_model(model, args)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
@@ -272,7 +271,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
                     os.path.join(args.output_dir, './profile')),
                 with_stack=False) as prof:
             trainer.add_callback(ProfCallback(prof))
-            trainer.train()
+            trainer.train(training_args.resume_from_checkpoint)
     else:
         trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint',

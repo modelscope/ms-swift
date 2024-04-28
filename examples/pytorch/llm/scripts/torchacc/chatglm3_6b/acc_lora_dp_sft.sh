@@ -1,4 +1,4 @@
-# Experimental environment: 4 * A800
+# Experimental environment: 2 * A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 # torchacc dp
@@ -15,8 +15,8 @@ MASTER_PORT=27829 \
 swift sft \
   --model_id_or_path ZhipuAI/chatglm3-6b \
   --model_layer_cls_name GLMBlock \
-	--dataset codefuse-python-en \
-	--sft_type lora \
+  --dataset codefuse-python-en \
+  --sft_type lora \
   --output_dir output \
   --num_train_epochs 1 \
   --max_length 2048 \

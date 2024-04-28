@@ -1,4 +1,4 @@
-# Experimental environment: 4 * A800
+# Experimental environment: 4 * A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
