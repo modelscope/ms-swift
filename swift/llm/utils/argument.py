@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import math
 import os
 from dataclasses import dataclass, field
@@ -18,10 +19,10 @@ from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
-                         get_pai_tensorboard_dir, is_dist, is_mp,
-                         is_pai_training_job)
-from .dataset import (DATASET_MAPPING, _dataset_name_exists,
-                      register_dataset_info, register_local_dataset)
+                         get_pai_tensorboard_dir, is_dist, is_local_master,
+                         is_mp, is_pai_training_job)
+from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
+                      register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -243,6 +244,11 @@ class ArgumentsBase:
             if self.per_device_eval_batch_size is not None:
                 self.eval_batch_size = self.per_device_eval_batch_size
 
+    def prepare_template(self):
+        if self.template_type == 'AUTO':
+            self.template_type = get_default_template_type(self.model_type)
+            logger.info(f'Setting template_type: {self.template_type}')
+
     def set_model_type(self: Union['SftArguments', 'InferArguments']) -> None:
         # compat with swift<1.7
         if self.model_cache_dir is not None and self.model_id_or_path is None:
@@ -336,6 +342,7 @@ class SftArguments(ArgumentsBase):
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
+    ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
     dataset: List[str] = field(
@@ -484,6 +491,7 @@ class SftArguments(ArgumentsBase):
     save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
+    include_num_input_tokens_seen: Optional[bool] = False
 
     # generation config
     max_new_tokens: int = 2048
@@ -638,10 +646,11 @@ class SftArguments(ArgumentsBase):
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
-                if self.deepspeed is None:
-                    self.save_only_model = False
-                else:
+                if self.deepspeed is not None and version.parse(
+                        transformers.__version__) < version.parse('4.37'):
                     self.save_only_model = True
+                else:
+                    self.save_only_model = False
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
@@ -660,9 +669,7 @@ class SftArguments(ArgumentsBase):
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
+        self.prepare_template()
         if len(self.dataset) == 0:
             raise ValueError(
                 f'self.dataset: {self.dataset}, Please input the training dataset.'
@@ -740,7 +747,8 @@ class SftArguments(ArgumentsBase):
             logger.info(f'output_dir: {self.output_dir}')
             self.training_args.output_dir = self.output_dir
             self.training_args.run_name = self.output_dir
-
+        if is_local_master():
+            os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
             self.training_args.logging_dir = self.logging_dir
@@ -754,6 +762,12 @@ class SftArguments(ArgumentsBase):
         kwargs = {}
         if self.neftune_backend != 'swift':
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
+
+        parameters = inspect.signature(
+            Seq2SeqTrainingArguments.__init__).parameters
+        if 'include_num_input_tokens_seen' in parameters:
+            kwargs[
+                'include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
@@ -792,6 +806,7 @@ class SftArguments(ArgumentsBase):
             hub_token=self.hub_token,
             push_to_hub=self.push_to_hub,
             resume_from_checkpoint=self.resume_from_checkpoint,
+            ignore_data_skip=self.ignore_data_skip,
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
@@ -895,6 +910,7 @@ class InferArguments(ArgumentsBase):
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
+    bnb_4bit_quant_storage: Optional[str] = None
 
     max_new_tokens: int = 2048
     do_sample: bool = True
@@ -977,11 +993,6 @@ class InferArguments(ArgumentsBase):
             self.sft_type = 'full'
 
         self.prepare_vllm()
-
-    def prepare_template(self):
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
 
     def prepare_vllm(self):
         model_info = MODEL_MAPPING[self.model_type]

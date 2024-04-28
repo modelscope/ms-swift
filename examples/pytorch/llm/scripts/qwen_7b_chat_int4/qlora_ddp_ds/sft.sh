@@ -12,7 +12,7 @@ torchrun \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type qwen \
+    --template_type AUTO \
     --dtype fp16 \
     --output_dir output \
     --ddp_backend nccl \
@@ -41,5 +41,4 @@ torchrun \
     --hub_model_id qwen-7b-chat-int4-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
-    --deepspeed_config_path default-zero2 \
-    --save_only_model true \
+    --deepspeed default-zero2 \

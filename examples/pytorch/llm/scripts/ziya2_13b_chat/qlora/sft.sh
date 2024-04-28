@@ -8,7 +8,7 @@ python llm_sft.py \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type ziya \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --dataset lawyer-llama-zh \

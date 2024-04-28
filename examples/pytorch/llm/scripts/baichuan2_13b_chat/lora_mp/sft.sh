@@ -7,7 +7,7 @@ swift sft \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type baichuan \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --dataset dureader-robust-zh \
