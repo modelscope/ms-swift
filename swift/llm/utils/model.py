@@ -2449,7 +2449,18 @@ def get_model_tokenizer_internvl(model_dir: str,
         img_context_token_id = tokenizer.convert_tokens_to_ids(
             IMG_CONTEXT_TOKEN)
         model.img_context_token_id = img_context_token_id
+    # fix single GPU bug
+    import torch.distributed
+    if not hasattr(torch.distributed, '_old_get_rank'):
+        get_rank = torch.distributed.get_rank
+        @wraps(get_rank)
+        def new_get_rank():
+            if torch.distributed.GroupMember.WORLD is None:
+                return -1
+            return get_rank()
+        torch.distributed.get_rank = new_get_rank
 
+        torch.distributed._old_get_rank = get_rank
     return model, tokenizer
 
 
