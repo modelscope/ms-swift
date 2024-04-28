@@ -1022,7 +1022,7 @@ class InternvlTemplate(Template):
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-        res['image_flags'] = torch.concat([b['image_flags'] for b in batch] )
+        res['image_flags'] = torch.concat([b['image_flags'] for b in batch])
         return res
 
     @staticmethod

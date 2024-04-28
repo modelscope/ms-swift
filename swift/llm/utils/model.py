@@ -2408,7 +2408,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             kwargs.pop('inputs_embeds', None)
             if kwargs.get('pixel_values') is not None:
                 kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
-                kwargs['image_flags'] = kwargs['image_flags'].to(model.device)
+                kwargs['image_flags'] = kwargs['image_flags'].to(next(model.mlp1.parameters).device)
             return forward(*args, **kwargs)
 
         model.forward = _new_forward
