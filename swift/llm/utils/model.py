@@ -2457,7 +2457,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         get_rank = dist.get_rank
 
         @wraps(get_rank)
-        def new_get_rank(group):
+        def new_get_rank(group=None):
             if not dist.is_initialized() or dist.get_world_size() == 1:
                 return -1
             return get_rank(group)
