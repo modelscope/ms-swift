@@ -20,6 +20,7 @@ accelerate launch --config_file "./scripts/llama2_70b_chat/qlora_fsdp/fsdp_offlo
     --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype AUTO \
+    --bnb_4bit_quant_storage bfloat16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dtype bf16 \

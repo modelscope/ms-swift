@@ -474,6 +474,7 @@ class SftArguments(ArgumentsBase):
     save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
+    include_num_input_tokens_seen: Optional[bool] = False
 
     # generation config
     max_new_tokens: int = 2048
@@ -860,6 +861,7 @@ class SftArguments(ArgumentsBase):
             logging_first_step=True,
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
+            include_num_input_tokens_seen=self.include_num_input_tokens_seen,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters

@@ -23,7 +23,6 @@ torchrun \
     --check_dataset_strategy warning \
     --quantization_bit 4 \
     --bnb_4bit_comp_dtype AUTO \
-    --bnb_4bit_quant_storage bfloat16 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
