@@ -1021,7 +1021,11 @@ class InternvlTemplate(Template):
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
         return res
 
-
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+    
 register_template(
     TemplateType.internvl,
     InternvlTemplate(),
