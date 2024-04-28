@@ -1031,6 +1031,7 @@ register_template(
     InternvlTemplate(),
     use_model=True,
     lazy_tokenize=True,
+    infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
