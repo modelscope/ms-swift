@@ -356,6 +356,7 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
+    bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
@@ -937,6 +938,7 @@ class InferArguments(ArgumentsBase):
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
+    bnb_4bit_quant_storage: Optional[str] = None
 
     max_new_tokens: int = 2048
     do_sample: bool = True
