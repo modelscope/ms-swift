@@ -1131,7 +1131,11 @@ class DeepseekVLTemplate(Template):
             images.append(image)
 
         vl_chat_processor = self.tokenizer.vl_chat_processor
-        input_ids, labels = inputs['input_ids'], inputs['labels']
+        try:
+            input_ids, labels = inputs['input_ids'], inputs['labels']
+        except KeyError:
+            return {},{}
+        
         idx_list = _findall(input_ids, vl_chat_processor.image_id)
         new_input_ids, new_labels = [], []
         lo = 0

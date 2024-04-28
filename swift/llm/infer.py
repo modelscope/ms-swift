@@ -161,7 +161,8 @@ def prepare_model_template(
         model_id_or_path = args.model_id_or_path
     if automodel_class is not None:
         kwargs['automodel_class'] = automodel_class
-
+    if args.local_repo_path:
+        kwargs['local_repo_path'] = args.local_repo_path
     model, tokenizer = get_model_tokenizer(
         args.model_type,
         args.torch_dtype,

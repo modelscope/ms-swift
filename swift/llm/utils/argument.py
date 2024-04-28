@@ -464,6 +464,7 @@ class SftArguments(ArgumentsBase):
     save_strategy: Literal['steps', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
+    local_repo_path: Optional[str] = None
 
     # generation config
     max_new_tokens: int = 2048
@@ -946,6 +947,7 @@ class InferArguments(ArgumentsBase):
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
+    local_repo_path: Optional[str] = None
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
