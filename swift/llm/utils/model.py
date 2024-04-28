@@ -2417,7 +2417,6 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
-        model.mlp1.to(model.vision_model.device)
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
             forward = model.forward
