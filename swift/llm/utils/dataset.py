@@ -209,12 +209,23 @@ def register_dataset(
 def register_local_dataset(
         dataset_name: str,
         train_dataset_path: Optional[List[str]] = None,
-        val_dataset_path: Optional[List[str]] = None) -> None:
+        val_dataset_path: Optional[List[str]] = None,
+        # Convert relative path to absolute path,
+        base_dir: Optional[str] = None,
+        **kwargs) -> None:
     if train_dataset_path is None:
         train_dataset_path = []
+    elif isinstance(train_dataset_path, str):
+        train_dataset_path = [train_dataset_path]
     if val_dataset_path is None:
         val_dataset_path = []
+    elif isinstance(val_dataset_path, str):
+        val_dataset_path = [val_dataset_path]
     assert len(train_dataset_path) > 0 or len(val_dataset_path) > 0
+    for dataset_path in [train_dataset_path, val_dataset_path]:
+        for i, path in enumerate(dataset_path):
+            if not os.path.isabs(path):
+                dataset_path[i] = os.path.join(base_dir, dataset_path[i])
 
     register_dataset(
         dataset_name,
@@ -225,7 +236,8 @@ def register_local_dataset(
         train_split=train_dataset_path,
         val_split=val_dataset_path,
         exist_ok=True,
-        is_local=True)
+        is_local=True,
+        **kwargs)
 
 
 def register_dataset_info(dataset_name, d_info: Dict[str, Any]) -> None:
@@ -331,7 +343,7 @@ def _post_preprocess(
             if train_sample != -1:
                 _train_len = min(_train_len, train_sample)
             val_sample = max(_train_len * dataset_test_ratio, 1)
-        elif val_sample > 0:
+        if val_sample > 0:
             assert isinstance(val_sample, int)
             train_dataset, val_dataset = train_dataset.train_test_split(
                 test_size=val_sample).values()
@@ -1209,7 +1221,7 @@ def _check_dataset(
 
 def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
     # use_0: When the length of the part is 1, is it considered as part0 or part1.
-    if s is None:
+    if s is None or len(s) == 0:
         return None, None
     part = s.split(sep)
     if len(part) == 1:
@@ -1255,14 +1267,11 @@ def _dataset_name_exists(dataset_list: str, dataset_name: str) -> bool:
     return False
 
 
-def get_self_cognition_dataset(
+def _preprocess_self_cognition_dataset(
+    dataset_list: Tuple[HfDataset, Optional[HfDataset]],
     model_name: Tuple[str, Optional[str]],
     model_author: Tuple[str, Optional[str]],
-    train_sample: int = -1,
-    val_sample: int = -1,
-    random_state: Optional[RandomState] = None,
-    dataset_test_ratio: Optional[float] = None,
-) -> Tuple[HfDataset, None]:
+) -> Tuple[HfDataset, HfDataset]:
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
     assert model_author[0] is not None
@@ -1270,21 +1279,22 @@ def get_self_cognition_dataset(
         model_name = (model_name[0], model_name[0])
     if model_author[1] is None:
         model_author = (model_author[0], model_author[0])
-    response = []
-    for d in dataset:
-        if d['tag'] == 'zh':
-            model_n, model_a = model_name[0], model_author[0]
-        else:
-            model_n, model_a = model_name[1], model_author[1]
+    res_d_list = []
+    for dataset in dataset_list:
+        response = []
+        for d in dataset:
+            if d['tag'] == 'zh':
+                model_n, model_a = model_name[0], model_author[0]
+            else:
+                model_n, model_a = model_name[1], model_author[1]
 
-        r = d['response'].replace('{{NAME}}',
-                                  model_n).replace('{{AUTHOR}}', model_a)
-        response.append(r)
-    dataset = dataset.remove_columns('response').add_column(
-        'response', response).remove_columns('tag')
-
-    return _post_preprocess([dataset, None], train_sample, val_sample,
-                            random_state, None, dataset_test_ratio)
+            r = d['response'].replace('{{NAME}}',
+                                      model_n).replace('{{AUTHOR}}', model_a)
+            response.append(r)
+        dataset = dataset.remove_columns('response').add_column(
+            'response', response).remove_columns('tag')
+        res_d_list.append(dataset)
+    return tuple(res_d_list)
 
 
 def get_dataset(
@@ -1295,8 +1305,8 @@ def get_dataset(
                                     'warning'] = 'none',
     *,
     # for self-cognition
-    model_name: Optional[Tuple[str, Optional[str]]] = None,
-    model_author: Optional[Tuple[str, Optional[str]]] = None
+    model_name: Optional[Tuple[str, str]] = None,
+    model_author: Optional[Tuple[str, str]] = None
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
@@ -1315,45 +1325,44 @@ def get_dataset(
             train_sample = dataset_info.get('train_sample', -1)
         if val_sample is None:
             val_sample = dataset_info.get('val_sample', -1)
+
+        get_function: GetDatasetFunction = dataset_info['get_function']
+        is_local = dataset_info.get('is_local', False)
+        dataset_id_or_path = dataset_info['dataset_id_or_path']
+        remove_useless_columns = dataset_info.get('remove_useless_columns',
+                                                  True)
+        if not is_local:
+            if use_hf is None:
+                use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+            dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
+            if use_hf:
+                dataset_id_or_path = dataset_info['hf_dataset_id']
+                dataset_str = dataset_str_f.format(
+                    hub='HuggingFace', dataset_id=dataset_id_or_path)
+            else:
+                dataset_str = dataset_str_f.format(
+                    hub='ModelScope', dataset_id=dataset_id_or_path)
+            logger.info(dataset_str)
+            assert dataset_id_or_path is not None, (
+                f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
+                f'dataset_id_or_path: {dataset_id_or_path}.')
+        dataset = get_function(
+            dataset_id_or_path,
+            subsets,
+            dataset_info['preprocess_func'],
+            dataset_info['train_split'],
+            dataset_info['val_split'],
+            train_sample,
+            val_sample,
+            random_state=dataset_seed,
+            dataset_test_ratio=dataset_test_ratio,
+            remove_useless_columns=remove_useless_columns,
+            use_hf=use_hf)
+
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
-            dataset = get_self_cognition_dataset(
-                model_name,
-                model_author,
-                train_sample,
-                val_sample,
-                random_state=dataset_seed,
-                dataset_test_ratio=dataset_test_ratio)
-        else:
-            get_function: GetDatasetFunction = dataset_info['get_function']
-            is_local = dataset_info.get('is_local', False)
-            dataset_id_or_path = dataset_info['dataset_id_or_path']
-            if not is_local:
-                if use_hf is None:
-                    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-                dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
-                if use_hf:
-                    dataset_id_or_path = dataset_info['hf_dataset_id']
-                    dataset_str = dataset_str_f.format(
-                        hub='HuggingFace', dataset_id=dataset_id_or_path)
-                else:
-                    dataset_str = dataset_str_f.format(
-                        hub='ModelScope', dataset_id=dataset_id_or_path)
-                logger.info(dataset_str)
-                assert dataset_id_or_path is not None, (
-                    f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
-                    f'dataset_id_or_path: {dataset_id_or_path}.')
-            dataset = get_function(
-                dataset_id_or_path,
-                subsets,
-                dataset_info['preprocess_func'],
-                dataset_info['train_split'],
-                dataset_info['val_split'],
-                train_sample,
-                val_sample,
-                random_state=dataset_seed,
-                dataset_test_ratio=dataset_test_ratio,
-                use_hf=use_hf)
+            dataset = _preprocess_self_cognition_dataset(
+                dataset, model_name, model_author)
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
@@ -1419,8 +1428,10 @@ def get_local_dataset(_1: str,
                       val_sample: int = -1,
                       random_state: Optional[RandomState] = None,
                       dataset_test_ratio: Optional[float] = None,
+                      remove_useless_columns: bool = True,
                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     train_dataset = load_dataset_from_local(train_split, preprocess_func)
     val_dataset = load_dataset_from_local(val_split, preprocess_func)
     return _post_preprocess([train_dataset, val_dataset], train_sample,
-                            val_sample, random_state, None, dataset_test_ratio)
+                            val_sample, random_state, None, dataset_test_ratio,
+                            remove_useless_columns)

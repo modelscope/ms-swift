@@ -50,24 +50,28 @@ class ArgumentsBase:
 
         # self-cognition
         self.use_self_cognition = _dataset_name_exists(self.dataset,
-                                                  'self-cognition')
+                                                       'self-cognition')
         if self.self_cognition_sample > 0:
             if not self.use_self_cognition:
-                self.dataset.append('self-cognition#')
+                self.dataset.append(
+                    f'self-cognition#{self.self_cognition_sample}')
                 self.use_self_cognition = True
         if self.use_self_cognition:
-            if self.model_name is None or self.model_author is None:
-                raise ValueError(
-                    'Please enter self.model_name self.model_author. '
-                    'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
-                    'Representing the model name and model author in Chinese and English.'
-                )
             for k in ['model_name', 'model_author']:
                 v = getattr(self, k)
-                if len(v) == 1:
-                    v = v[0]
                 if isinstance(v, str):
-                    setattr(self, k, [v, v])
+                    v = [v]
+                elif v is None:
+                    v = []
+                if len(v) == 1:
+                    v = v * 2
+                if v[0] is None and v[1] is None:
+                    raise ValueError(
+                        'Please set self.model_name self.model_author. '
+                        'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
+                        'Representing the model name and model author in Chinese and English.'
+                    )
+                setattr(self, k, v)
 
         # register _custom
         for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
@@ -88,9 +92,12 @@ class ArgumentsBase:
             if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
                 register_dataset_info(dataset_name, d_info)
             elif 'train_dataset_path' in d_info or 'val_dataset_path' in d_info:
+                base_dir = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'data'))
                 register_local_dataset(dataset_name,
-                                       d_info.get('train_dataset_path'),
-                                       d_info.get('val_dataset_path'))
+                                       d_info.pop('train_dataset_path', None),
+                                       d_info.pop('val_dataset_path', None),
+                                       base_dir, **d_info)
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = ['ckpt_dir', 'resume_from_checkpoint']

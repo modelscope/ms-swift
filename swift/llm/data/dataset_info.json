@@ -219,6 +219,7 @@
     },
     "self-cognition": {
         "train_dataset_path": "self_cognition.jsonl",
+        "remove_useless_columns": false,
         "tags": ["chat", "self_cognition", "🔥"]
     }
 }
