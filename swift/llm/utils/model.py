@@ -2368,6 +2368,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
+
 def fix_internvl_inplace_bug(model) -> None:
 
     embedding = model.language_model.get_input_embeddings()
@@ -2375,13 +2376,14 @@ def fix_internvl_inplace_bug(model) -> None:
         if hasattr(embedding, '_old_forward'):  # device_map
             __old_forward = embedding._old_forward
             embedding._old_forward = lambda *args, **kwargs: __old_forward(
-                *args, **kwargs).clone()
+                *args, **kwargs).requires_grad_(True).clone()
         else:
             __old_forward = embedding.forward
             embedding.forward = lambda *args, **kwargs: __old_forward(
-                *args, **kwargs).clone()
+                *args, **kwargs).requires_grad_(True).clone()
         embedding.__old_forward = __old_forward
-            
+
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -2412,11 +2414,10 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
-    if load_model and model is not None:
-        func_list = ['get_input_embeddings']
-        _use_submodel_func(model, 'language_model', func_list)
-        
+
     if model is not None:
+        _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
+        model.mlp1.to(model.device)
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
             forward = model.forward
@@ -2425,8 +2426,8 @@ def get_model_tokenizer_internvl(model_dir: str,
             @wraps(forward)
             def _new_forward(*args, **kwargs):
                 kwargs.pop('inputs_embeds', None)
-                if kwargs.get('pixel_values') is not None:
-                    kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
+                # if kwargs.get('pixel_values') is not None:
+                #     kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
                 return forward(*args, **kwargs)
 
             model.forward = _new_forward
@@ -2437,19 +2438,18 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(generate)
             def _new_generate(*args, **kwargs):
-                if kwargs.get('pixel_values') is not None:
-                    kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
+                # if kwargs.get('pixel_values') is not None:
+                #     kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
                 kwargs.pop('image_flags', None)
                 return generate(*args, **kwargs)
 
             model.generate = _new_generate
-        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
-        img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-        model.img_context_token_id = img_context_token_id
-    if load_model:
-        func_list = ['get_input_embeddings']
 
-        _use_submodel_func(model, 'language_model', func_list)
+        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+        img_context_token_id = tokenizer.convert_tokens_to_ids(
+            IMG_CONTEXT_TOKEN)
+        model.img_context_token_id = img_context_token_id
+
     return model, tokenizer
 
 

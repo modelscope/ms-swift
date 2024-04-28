@@ -1006,14 +1006,8 @@ class InternvlTemplate(Template):
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-        inputs['pixel_values'] = pixel_values
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         inputs['image_flags'] = torch.ones(image_bs)
-        # history = example.pop('history', None)
-        # if not history:
-        #     history = []
-        #     image_tokens = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>'
-        #     inputs['image_flags'] = image_tokens  # TODO
-        # question = image_tokens + '\n' + question
 
         return inputs, {}
 

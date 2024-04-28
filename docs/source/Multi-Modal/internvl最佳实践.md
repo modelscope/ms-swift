@@ -156,16 +156,25 @@ LoRA微调:
 
 (默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`.)
 ```shell
-# Experimental environment: A10, 3090, V100...
-# 21GB GPU memory
+# Experimental environment: A100
+# 80GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1d6-mistral-7b-instruct \
+    --model_type internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
 
+# device_map
 # Experimental environment: 2*A100...
 # 2*45GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
-    --model_type llava1d6-yi-34b-instruct \
+    --model_type  internvl-chat-v1_5 \
+    --dataset coco-mini-en-2 \
+
+# ddp
+# Experimental environment: 2*A100...
+# 2*80GB GPU memory
+nproc_per_node = 2
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
 ```
 
