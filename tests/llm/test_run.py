@@ -189,7 +189,8 @@ class TestRun(unittest.TestCase):
             sft_args = SftArguments(
                 model_type='qwen-7b-chat',
                 custom_train_dataset_path=[
-                    os.path.join(folder, fname) for fname in train_dataset_fnames
+                    os.path.join(folder, fname)
+                    for fname in train_dataset_fnames
                 ],
                 train_dataset_mix_ds=[
                     os.path.join(folder, fname) for fname in mixture_dataset
