@@ -184,8 +184,8 @@ CUDA_VISIBLE_DEVICES=2,3 swift sft \
 ```shell
 # Experimental environment: 8 * A100
 # 8 * 50 GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \ 
-    --model_type internvl-chat-v1_5 \   
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type internvl-chat-v1_5 \
     --dataset coco-mini-en-2     --sft_type full --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5
 ```
 
