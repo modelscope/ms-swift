@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, trainer
 from transformers.modeling_utils import unwrap_model
 
-from swift.utils import get_logger
+from swift.utils import get_logger, torchacc_trim_graph, use_torchacc
 
 logger = get_logger()
 
@@ -288,6 +288,12 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
             output_dir,
             is_main_process=xm.is_master_ordinal(local=False),
             save_function=xm.save)
+
+
+def ta_trim_graph():
+    if use_torchacc() and torchacc_trim_graph():
+        import torchacc as ta
+        ta.mark_step()
 
 
 def patch_acc_model(model, args):

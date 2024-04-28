@@ -17,7 +17,7 @@ from transformers.models.auto.modeling_auto import \
 from transformers.utils import is_peft_available
 
 from swift.torchacc_utils import (ta_eval_dataloader, ta_test_dataloader,
-                                  ta_train_dataloader)
+                                  ta_train_dataloader, ta_trim_graph)
 from swift.utils import use_torchacc
 from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
                        ProgressCallbackNew)
@@ -240,8 +240,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         if use_torchacc():
-            import torchacc as ta
-            ta.mark_step()
+            ta_trim_graph()
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']

@@ -78,6 +78,10 @@ def use_torchacc() -> bool:
     return os.getenv('USE_TORCHACC', '0') == '1'
 
 
+def torchacc_trim_graph():
+    return os.getenv('TORCHACC_TRIM_GRAPH', '0') == '1'
+
+
 def is_dist():
     """Determine if the training is distributed"""
     if use_torchacc():
