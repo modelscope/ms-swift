@@ -21,8 +21,8 @@ from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
                          get_pai_tensorboard_dir, is_dist, is_local_master,
                          is_mp, is_pai_training_job)
-from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
-                      register_dataset)
+from .dataset import (DATASET_MAPPING, _dataset_name_exists,
+                      register_dataset_info, register_local_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -100,6 +100,22 @@ class ArgumentsBase:
                                        d_info.pop('val_dataset_path', None),
                                        base_dir, **d_info)
 
+    @classmethod
+    def _check_path(
+            cls, k: str, value: Union[str, List[str]],
+            check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+        if isinstance(value, str):
+            value = os.path.expanduser(value)
+            value = os.path.abspath(value)
+            if k in check_exist_path_set and not os.path.exists(value):
+                raise FileNotFoundError(f"`{k}`: '{value}'")
+        elif isinstance(value, list):
+            res = []
+            for v in value:
+                res.append(cls._check_path(k, v, check_exist_path_set))
+            value = res
+        return value
+
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = ['ckpt_dir', 'resume_from_checkpoint']
         if self.model_id_or_path is not None and (
@@ -112,7 +128,7 @@ class ArgumentsBase:
             value = getattr(self, k, None)
             if value is None:
                 continue
-            value = _check_path(k, value, check_exist_path_set)
+            value = self._check_path(k, value, check_exist_path_set)
             setattr(self, k, value)
 
     def check_flash_attn(
@@ -350,7 +366,7 @@ class SftArguments(ArgumentsBase):
         metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    use_loss_scale: bool = False
+    use_loss_scale: bool = False  # for agent
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
@@ -512,11 +528,6 @@ class SftArguments(ArgumentsBase):
     per_device_eval_batch_size: Optional[int] = None
     # compatibility. (Deprecated)
     model_cache_dir: Optional[str] = None
-    train_dataset_sample: int = -1  # -1: all dataset
-    train_dataset_mix_ratio: float = 0.
-    train_dataset_mix_ds: List[str] = field(
-        default_factory=lambda: ['ms-bench'])
-    val_dataset_sample: Optional[int] = None  # -1: all dataset
 
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
@@ -994,6 +1005,24 @@ class InferArguments(ArgumentsBase):
 
         self.prepare_vllm()
 
+    @staticmethod
+    def _parse_vllm_lora_modules(
+            vllm_lora_modules: List[str]) -> List['LoRARequest']:
+        try:
+            from .vllm_utils import LoRARequest
+        except ImportError:
+            logger.warning(
+                'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+            )
+            raise
+        lora_request_list = []
+        for i, vllm_lora_module in enumerate(vllm_lora_modules):
+            lora_name, lora_local_path = vllm_lora_module.split('=')
+            lora_local_path = swift_to_peft_format(lora_local_path)
+            lora_request_list.append(
+                LoRARequest(lora_name, i + 1, lora_local_path))
+        return lora_request_list
+
     def prepare_vllm(self):
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
@@ -1216,22 +1245,6 @@ class RomeArguments(InferArguments):
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 
-def _check_path(
-        k: str, value: Union[str, List[str]],
-        check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
-    if isinstance(value, str):
-        value = os.path.expanduser(value)
-        value = os.path.abspath(value)
-        if k in check_exist_path_set and not os.path.exists(value):
-            raise FileNotFoundError(f"`{k}`: '{value}'")
-    elif isinstance(value, list):
-        res = []
-        for v in value:
-            res.append(_check_path(k, v, check_exist_path_set))
-        value = res
-    return value
-
-
 def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     if 'default' in os.listdir(lora_checkpoint_path):  # swift_backend
         new_lora_checkpoint_path = f'{lora_checkpoint_path}-peft'
@@ -1243,21 +1256,3 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     else:
         logger.info('The format of the checkpoint is already in peft format.')
     return lora_checkpoint_path
-
-
-def _parse_vllm_lora_modules(
-        vllm_lora_modules: List[str]) -> List['LoRARequest']:
-    try:
-        from .vllm_utils import LoRARequest
-    except ImportError:
-        logger.warning(
-            'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
-        )
-        raise
-    lora_request_list = []
-    for i, vllm_lora_module in enumerate(vllm_lora_modules):
-        lora_name, lora_local_path = vllm_lora_module.split('=')
-        lora_local_path = swift_to_peft_format(lora_local_path)
-        lora_request_list.append(
-            LoRARequest(lora_name, i + 1, lora_local_path))
-    return lora_request_list

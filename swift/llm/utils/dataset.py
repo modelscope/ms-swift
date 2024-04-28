@@ -342,7 +342,7 @@ def _post_preprocess(
             _train_len = len(train_dataset)
             if train_sample != -1:
                 _train_len = min(_train_len, train_sample)
-            val_sample = max(_train_len * dataset_test_ratio, 1)
+            val_sample = max(int(_train_len * dataset_test_ratio), 1)
         if val_sample > 0:
             assert isinstance(val_sample, int)
             train_dataset, val_dataset = train_dataset.train_test_split(

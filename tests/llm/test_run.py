@@ -62,10 +62,13 @@ class TestRun(unittest.TestCase):
                 eval_steps=5,
                 adam_beta2=0.95,
                 check_dataset_strategy='warning',
-                train_dataset_sample=200,
                 predict_with_generate=predict_with_generate,
-                dataset=[DatasetName.jd_sentiment_zh],
+                dataset=[
+                    f'{DatasetName.alpaca_zh}#100',
+                    f'{DatasetName.jd_sentiment_zh}#100|10'
+                ],
                 output_dir=output_dir,
+                include_num_input_tokens_seen=True,
                 gradient_checkpointing=True)
             self.assertTrue(sft_args.gradient_accumulation_steps == 8)
             torch.cuda.empty_cache()
@@ -76,12 +79,12 @@ class TestRun(unittest.TestCase):
             if __name__ == '__main__':
                 infer_args = InferArguments(
                     ckpt_dir=best_model_checkpoint,
-                    merge_lora_and_save={
+                    merge_lora={
                         0: True,
                         4: False
                     }[quantization_bit],
                     load_dataset_config=NO_EVAL_HUMAN,
-                    show_dataset_sample=5)
+                    val_dataset_sample=5)
                 torch.cuda.empty_cache()
                 result = infer_main(infer_args)
                 print(result)
@@ -114,15 +117,15 @@ class TestRun(unittest.TestCase):
             print(f'best_model_checkpoint: {best_model_checkpoint}')
             load_dataset_config = str(bool_var or NO_EVAL_HUMAN)
             if load_dataset_config:
-                show_dataset_sample = 2
+                val_dataset_sample = 2
             else:
-                show_dataset_sample = -1
+                val_dataset_sample = -1
             torch.cuda.empty_cache()
             infer_main([
-                '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
-                str(show_dataset_sample), '--max_new_tokens', '100',
+                '--ckpt_dir', best_model_checkpoint, '--val_dataset_sample',
+                str(val_dataset_sample), '--max_new_tokens', '100',
                 '--use_flash_attn', 'false', '--verbose',
-                str(not bool_var), '--merge_lora_and_save',
+                str(not bool_var), '--merge_lora',
                 str(bool_var), '--load_dataset_config',
                 str(load_dataset_config)
             ])
@@ -164,7 +167,7 @@ class TestRun(unittest.TestCase):
                     ModelType.qwen_vl_chat: True,
                     ModelType.qwen_audio_chat: False
                 }[model_type],
-                show_dataset_sample=5)
+                val_dataset_sample=5)
             # merge_lora_main(infer_args)  # TODO: ERROR FIX
             torch.cuda.empty_cache()
             result = infer_main(infer_args)
@@ -182,23 +185,27 @@ class TestRun(unittest.TestCase):
             'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl',
             'swift_pre.csv', 'swift_single.jsonl'
         ]
-        mixture_dataset = val_dataset_fnames
         folder = os.path.join(os.path.dirname(__file__), 'data')
         resume_from_checkpoint = None
-        for num_train_epochs in [5, 10]:
+        for num_train_epochs in [1, 2]:
             sft_args = SftArguments(
                 model_type='qwen-7b-chat',
+                dataset=['_custom#100'],
                 custom_train_dataset_path=[
                     os.path.join(folder, fname)
                     for fname in train_dataset_fnames
                 ],
-                train_dataset_mix_ds=[
-                    os.path.join(folder, fname) for fname in mixture_dataset
+                custom_val_dataset_path=[
+                    os.path.join(folder, fname) for fname in val_dataset_fnames
                 ],
-                train_dataset_mix_ratio=0.1,
+                lora_target_modules='ALL',
                 resume_from_checkpoint=resume_from_checkpoint,
                 num_train_epochs=num_train_epochs,
+                self_cognition_sample=20,
+                model_name='小黄',
+                model_author='魔搭',
                 check_dataset_strategy='warning')
+
             torch.cuda.empty_cache()
             result = sft_main(sft_args)
             best_model_checkpoint = result['best_model_checkpoint']
@@ -212,7 +219,7 @@ class TestRun(unittest.TestCase):
                 ckpt_dir=best_model_checkpoint,
                 load_args_from_ckpt_dir=load_args_from_ckpt_dir,
                 load_dataset_config=load_args_from_ckpt_dir and NO_EVAL_HUMAN,
-                merge_lora_and_save=load_args_from_ckpt_dir,
+                merge_lora=load_args_from_ckpt_dir,
                 val_dataset_sample=-1,
                 custom_val_dataset_path=[
                     os.path.join(folder, fname) for fname in val_dataset_fnames
@@ -251,7 +258,7 @@ class TestRun(unittest.TestCase):
                 continue
             infer_args = InferArguments(
                 ckpt_dir=ckpt_dir,
-                show_dataset_sample=2,
+                val_dataset_sample=2,
                 verbose=False,
                 load_dataset_config=True)
             # merge_lora_main(infer_args)
