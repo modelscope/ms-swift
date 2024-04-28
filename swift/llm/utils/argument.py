@@ -222,6 +222,40 @@ class ArgumentsBase:
             if self.deepspeed_config_path is not None:
                 self.deepspeed = self.deepspeed_config_path
 
+    def load_from_ckpt_dir(self, ckpt_dir: str) -> None:
+        sft_args_path = os.path.join(ckpt_dir, 'sft_args.json')
+        if not os.path.exists(sft_args_path):
+            logger.info(f'{sft_args_path} not found')
+            return
+        with open(sft_args_path, 'r', encoding='utf-8') as f:
+            sft_args = json.load(f)
+        imported_keys = [
+            'model_type', 'model_revision', 'sft_type', 'template_type',
+            'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+        ]
+        if getattr(self, 'load_dataset_config', False):
+            imported_keys += [
+                'dataset', 'dataset_seed', 'dataset_test_ratio',
+                'check_dataset_strategy', 'custom_train_dataset_path',
+                'custom_val_dataset_path'
+            ]
+        for key in imported_keys:
+            if (key in {
+                    'dataset', 'custom_train_dataset_path',
+                    'custom_val_dataset_path'
+            } and len(getattr(self, key)) > 0):
+                continue
+            setattr(self, key, sft_args.get(key))
+
+        if self.model_id_or_path is None:
+            self.model_id_or_path = sft_args.get('model_id_or_path')
+
+    def prepare_template(self):
+        if self.template_type == 'AUTO':
+            self.template_type = get_default_template_type(self.model_type)
+            logger.info(f'Setting template_type: {self.template_type}')
+
     def set_model_type(self: Union['SftArguments', 'InferArguments']) -> None:
         # compat with swift<1.7
         if self.model_cache_dir is not None and self.model_id_or_path is None:
@@ -315,6 +349,7 @@ class SftArguments(ArgumentsBase):
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
+    ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
     dataset: List[str] = field(
@@ -603,6 +638,8 @@ class SftArguments(ArgumentsBase):
                 break
 
         self.handle_path()
+        if self.resume_from_checkpoint is not None:
+            self.load_from_ckpt_dir(self.resume_from_checkpoint)
         self.set_model_type()
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
@@ -701,9 +738,7 @@ class SftArguments(ArgumentsBase):
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
+        self.prepare_template()
         if len(self.dataset) == 0 and (len(self.custom_train_dataset_path) == 0
                                        and len(
                                            self.custom_val_dataset_path) == 0
@@ -836,6 +871,7 @@ class SftArguments(ArgumentsBase):
             hub_token=self.hub_token,
             push_to_hub=self.push_to_hub,
             resume_from_checkpoint=self.resume_from_checkpoint,
+            ignore_data_skip=self.ignore_data_skip,
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
@@ -1022,11 +1058,6 @@ class InferArguments(ArgumentsBase):
 
         self.prepare_vllm()
 
-    def prepare_template(self):
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
-
     def prepare_vllm(self):
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
@@ -1063,35 +1094,6 @@ class InferArguments(ArgumentsBase):
         self.infer_media_type = template_info.get('infer_media_type', 'none')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
-
-    def load_from_ckpt_dir(self) -> None:
-        sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
-            return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
-        imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type',
-            'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
-        ]
-        if self.load_dataset_config:
-            imported_keys += [
-                'dataset', 'dataset_seed', 'dataset_test_ratio',
-                'check_dataset_strategy', 'custom_train_dataset_path',
-                'custom_val_dataset_path'
-            ]
-        for key in imported_keys:
-            if (key in {
-                    'dataset', 'custom_train_dataset_path',
-                    'custom_val_dataset_path'
-            } and len(getattr(self, key)) > 0):
-                continue
-            setattr(self, key, sft_args.get(key))
-
-        if self.model_id_or_path is None:
-            self.model_id_or_path = sft_args.get('model_id_or_path')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
