@@ -998,14 +998,13 @@ class InternvlTemplate(Template):
                 pixel_values.append(load_image(image_path))
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
-            inputs['pixel_values'] = pixel_values
             if example.get('query') is not None:
                 example['query'] = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * \
                 image_bs + '</img>' + example['query']
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-
+        inputs['pixel_values'] = pixel_values
         history = example.pop('history', None)
         if not history:
             history = []
