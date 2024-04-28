@@ -164,7 +164,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 # device_map
 # Experimental environment: 2*A100...
-# 2*40GB GPU memory
+# 2*43GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
@@ -176,6 +176,7 @@ nproc_per_node = 2
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
+    --deepspeed default-zero2
 ```
 
 全参数微调:
