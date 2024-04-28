@@ -72,10 +72,10 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --deepspeed scripts/grok-1/lora_ddp_ds/zero3.json \
+    --deepspeed zero3-offload \
 ```
 
-改脚本需要一个zero3.json文件，完整的训练文件可以在[这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/grok-1/lora_ddp_ds)找到。
+完整的训练文件可以在[这里](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/grok-1/lora_ddp_ds)找到。
 
 下面是训练过程的一些benchmark：
 
