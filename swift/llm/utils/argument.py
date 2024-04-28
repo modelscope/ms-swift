@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import math
 import os
 from dataclasses import dataclass, field
@@ -806,6 +807,12 @@ class SftArguments(ArgumentsBase):
         if self.neftune_backend != 'swift':
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
+        parameters = inspect.signature(
+            Seq2SeqTrainingArguments.__init__).parameters
+        if 'include_num_input_tokens_seen' in parameters:
+            kwargs[
+                'include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
             evaluation_strategy=self.evaluation_strategy,
@@ -861,7 +868,6 @@ class SftArguments(ArgumentsBase):
             logging_first_step=True,
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
-            include_num_input_tokens_seen=self.include_num_input_tokens_seen,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
