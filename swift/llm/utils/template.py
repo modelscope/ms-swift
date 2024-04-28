@@ -1006,8 +1006,8 @@ class InternvlTemplate(Template):
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-        # inputs['pixel_values'] = pixel_values
-        # inputs['image_flags'] = torch.ones(image_bs)
+        inputs['pixel_values'] = pixel_values
+        inputs['image_flags'] = torch.ones(image_bs)
         # history = example.pop('history', None)
         # if not history:
         #     history = []
@@ -1022,7 +1022,7 @@ class InternvlTemplate(Template):
                       padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-        res['image_flags'] = torch.concat(torch.ones(b['pixel_values'].shape[0]) for b in batch )
+        res['image_flags'] = torch.concat(torch.ones(b['image_flags']) for b in batch )
         return res
 
     @staticmethod
