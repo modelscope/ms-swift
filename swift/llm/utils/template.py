@@ -993,7 +993,7 @@ class InternvlTemplate(Template):
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         pixel_values = None
         if example.get('images') is not None:
-            from .utils import load_image
+            from .vision_utils import load_image
             images_path = example['images']
             pixel_values = []
             for image_path in images_path:

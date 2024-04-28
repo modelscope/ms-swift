@@ -11,4 +11,4 @@
 7. [MiniCPM-V最佳实践](minicpm-v最佳实践.md), [MiniCPM-V-2最佳实践](minicpm-v-2最佳实践.md)
 8. [CogVLM最佳实践](cogvlm最佳实践.md)
 9. [mPLUG-Owl2最佳实践](mplug-owl2最佳实践.md)
-10. [InternVL-Chat-V1l5]
+10. [InternVL-Chat-V1.5最佳实践](internvl最佳实践.md)
