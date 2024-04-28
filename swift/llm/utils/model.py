@@ -2417,7 +2417,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
-        model.mlp1.to(model.device)
+        model.mlp1.to(model.vision_model.device)
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
             forward = model.forward
@@ -2452,11 +2452,13 @@ def get_model_tokenizer_internvl(model_dir: str,
     # fix single GPU bug
     if not hasattr(dist, '_old_get_rank'):
         get_rank = dist.get_rank
+
         @wraps(get_rank)
         def new_get_rank():
             if dist.GroupMember.WORLD is None:
                 return -1
             return get_rank()
+
         dist.get_rank = new_get_rank
         dist._old_get_rank = get_rank
     return model, tokenizer

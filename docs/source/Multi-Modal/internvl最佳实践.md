@@ -23,7 +23,7 @@ pip install -e '.[llm]'
 # 55GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --model_id_or_path /mnt/workspace/hujinghan.hjh/models/InternVL-Chat-V1-5
 
-# 2*20GB GPU memory
+# 2*30GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
 ```
 
@@ -164,7 +164,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 # device_map
 # Experimental environment: 2*A100...
-# 2*45GB GPU memory
+# 2*40GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
@@ -180,17 +180,10 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 
 全参数微调:
 ```shell
-# Experimental environment: 4 * A100
-# 4 * 70 GPU memory
-NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1d6-mistral-7b-instruct \
-    --dataset coco-mini-en-2 \
-    --sft_type full \
-    --deepspeed default-zero2
-
+# Experimental environment: 8 * A100
 # 8 * 50 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
-    --model_type llava1d6-yi-34b-instruct \
+    --model_type internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
     --sft_type full \
 ```
@@ -209,20 +202,18 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## 微调后推理
 直接推理:
 ```shell
-model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
-
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
 ```
 
 **merge-lora**并推理:
 ```shell
-model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
+    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx" \
     --merge_lora true
+
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx-merged" \
+    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
     --load_dataset_config true
 ```
