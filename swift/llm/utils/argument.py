@@ -22,7 +22,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
                          get_pai_tensorboard_dir, is_dist, is_mp,
-                         is_pai_training_job)
+                         is_pai_training_job, is_local_master)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
@@ -685,10 +685,11 @@ class SftArguments(ArgumentsBase):
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
-                if self.deepspeed is None:
-                    self.save_only_model = False
-                else:
+                if self.deepspeed is not None and version.parse(
+                        transformers.__version__) < version.parse('4.37'):
                     self.save_only_model = True
+                else:
+                    self.save_only_model = False
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
@@ -788,7 +789,8 @@ class SftArguments(ArgumentsBase):
             logger.info(f'output_dir: {self.output_dir}')
             self.training_args.output_dir = self.output_dir
             self.training_args.run_name = self.output_dir
-
+        if is_local_master():
+            os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
             self.training_args.logging_dir = self.logging_dir

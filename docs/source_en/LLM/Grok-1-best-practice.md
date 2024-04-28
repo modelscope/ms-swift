@@ -70,8 +70,7 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --deepspeed_config_path scripts/grok-1/lora_ddp_ds/zero3.json \
-    --save_only_model true \
+    --deepspeed scripts/grok-1/lora_ddp_ds/zero3.json \
 ```
 
 This script requires a zero3.json file. The complete training files can be found [here](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/grok-1/lora_ddp_ds).

@@ -10,7 +10,7 @@ accelerate launch --config_file "./scripts/llama2_70b_chat/qlora_fsdp/fsdp_offlo
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type llama \
+    --template_type AUTO \
     --dtype bf16 \
     --output_dir output \
     --dataset leetcode-python-en \

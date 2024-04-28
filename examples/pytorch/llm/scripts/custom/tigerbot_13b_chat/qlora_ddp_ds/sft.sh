@@ -11,7 +11,7 @@ torchrun \
     --model_type tigerbot-13b-chat \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type tigerbot \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
