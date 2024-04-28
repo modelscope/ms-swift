@@ -20,8 +20,8 @@ pip install -e '.[llm]'
 推理[internvl-chat-v1.5](https://www.modelscope.cn/models/fq980207/InternVL-Chat-V1.5/summary)
 ```shell
 # Experimental environment: A100
-# 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
+# 55GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --model_id_or_path /mnt/workspace/hujinghan.hjh/models/InternVL-Chat-V1-5
 
 # 2*20GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
@@ -31,8 +31,8 @@ CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
 ```python
 """
 <<< Describe this image.
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-The image shows a close-up of a kitten with a soft, blurred background that suggests a natural, outdoor setting. The kitten has a mix of white and gray fur with darker stripes, typical of a tabby pattern. Its eyes are wide open, with a striking blue color that contrasts with the kitten's fur. The kitten's nose is small and pink, and its whiskers are long and white, adding to the kitten's cute and innocent appearance. The lighting in the image is soft and diffused, creating a gentle and warm atmosphere. The focus is sharp on the kitten's face, while the rest of the image is slightly out of focus, which draws attention to the kitten's features.
+Input a media path or URL <<<  http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+This is a high-resolution image of a kitten. The kitten has striking blue eyes and a fluffy white and grey coat. The fur pattern suggests that it may be a Maine Coon or a similar breed. The kitten's ears are perked up, and it has a curious and innocent expression. The background is blurred, which brings the focus to the kitten's face.
 --------------------------------------------------
 <<< How many sheep are in the picture?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
@@ -40,39 +40,30 @@ There are four sheep in the picture.
 --------------------------------------------------
 <<< What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is 14352 + 45304 = 145304.
+The calculation result is 59,856.
 --------------------------------------------------
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-In the quiet of the night,
-A solitary boat takes flight,
-Across the water's gentle swell,
-Underneath the stars that softly fell.
+Token indices sequence length is longer than the specified maximum sequence length for this model (5142 > 4096). Running this sequence through the model will result in indexing errors
+In the still of the night,
+A lone boat sails on the light.
+The stars above, a twinkling sight,
+Reflecting in the water's might.
 
-The boat, a vessel of the night,
-Carries but one, a lone delight,
-A solitary figure, lost in thought,
-In the tranquil calm, they find a wraith.
+The trees stand tall, a silent guard,
+Their leaves rustling in the yard.
+The boatman's lantern, a beacon bright,
+Guiding him through the night.
 
-The stars above, like diamonds bright,
-Reflect upon the water's surface light,
-Creating a path for the boat's journey,
-Guiding through the night with a gentle purity.
+The river flows, a gentle stream,
+Carrying the boatman's dream.
+His journey long, his heart serene,
+In the beauty of the scene.
 
-The boat, a silent sentinel,
-In the stillness, it gently swells,
-A vessel of peace and calm,
-In the quiet of the night, it carries on.
-
-The figure on board, a soul at ease,
-In the serene embrace of nature's peace,
-They sail through the night,
-Under the watchful eyes of the stars' light.
-
-The boat, a symbol of solitude,
-In the vast expanse of the universe's beauty,
-A lone journey, a solitary quest,
-In the quiet of the night, it finds its rest.
+The stars above, a guiding light,
+Leading him through the night.
+The boatman's journey, a tale to tell,
+Of courage, hope, and love as well.
 """
 ```
 
@@ -144,9 +135,9 @@ response: 这张图片显示的是一个路标，上面标示了三个目的地�
 - 阳江（Yangjiang）：62公里
 - 广州（Guangzhou）：293公里
 
-这些距离是按照路标上的指示来计算的。 
+这些距离是按照路标上的指示来计算的。
 query: 距离最远的城市是哪？
-response: 根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 
+response: 根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。
 history: [['距离各城市多远？', '这张图片显示的是一个路标，上面标示了三个目的地及其距离：\n\n- 马踏（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些距离是按照路标上的指示来计算的。 '], ['距离最远的城市是哪？', '根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 ']]
 """
 ```

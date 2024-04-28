@@ -980,9 +980,11 @@ class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     internvl_query_template = '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'
     num_image_token = 256
+
     def __init__(self):
         super().__init__(
-            [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'],
+            [],
+            ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'],
             ['<|im_end|>'], ['<|im_end|>'], self.system,
             ['<|im_start|>system\n{{SYSTEM}}'])
 
@@ -1000,7 +1002,7 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
             if example.get('query') is not None:
                 example['query'] = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * \
-                image_bs + '</img>\n' + example['query']
+                    image_bs + '</img>\n' + example['query']
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
@@ -1010,7 +1012,7 @@ class InternvlTemplate(Template):
         #     history = []
         #     image_tokens = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>'
         #     inputs['image_flags'] = image_tokens  # TODO
-            # question = image_tokens + '\n' + question
+        # question = image_tokens + '\n' + question
 
         return inputs, {}
 
@@ -1025,7 +1027,8 @@ class InternvlTemplate(Template):
     def get_generate_ids(generate_ids: Tensor,
                          input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
-    
+
+
 register_template(
     TemplateType.internvl,
     InternvlTemplate(),
