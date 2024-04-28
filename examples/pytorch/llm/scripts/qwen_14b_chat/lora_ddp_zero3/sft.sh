@@ -36,4 +36,3 @@ swift sft \
     --logging_steps 10 \
     --use_flash_attn false \
     --deepspeed default-zero3 \
-    --save_only_model true \

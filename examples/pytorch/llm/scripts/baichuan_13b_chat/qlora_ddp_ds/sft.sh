@@ -39,4 +39,3 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --deepspeed default-zero2 \
-    --save_only_model true \

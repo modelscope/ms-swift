@@ -34,5 +34,5 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --deepspeed_config_path scripts/grok-1/lora_ddp_ds/zero3.json \
-    --save_only_model true \
+    --deepspeed scripts/grok-1/lora_ddp_ds/zero3.json \
+
