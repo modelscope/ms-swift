@@ -1007,6 +1007,7 @@ class InternvlTemplate(Template):
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
         inputs['pixel_values'] = pixel_values
+        inputs['image_flags'] = torch.ones(image_bs)
         # history = example.pop('history', None)
         # if not history:
         #     history = []
