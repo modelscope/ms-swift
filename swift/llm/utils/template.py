@@ -990,7 +990,7 @@ class InternvlTemplate(Template):
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        if example.get('image') is not None:
+        if example.get('images') is not None:
             from .utils import load_image
             images_path = example['images']
             pixel_values = []
