@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import requests
+import torch
 import torchvision.transforms as T
 from PIL import Image
 from torchvision.transforms.functional import InterpolationMode
