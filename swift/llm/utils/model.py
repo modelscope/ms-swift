@@ -2445,6 +2445,15 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             model.generate = _new_generate
 
+        if not hasattr(model, '_old_extract_feature'):
+            extract_feature = model.extract_feature
+            model._old_extract_feature = extract_feature
+
+            @wraps(extract_feature)
+            def _new_extract_feature(pixel_values):
+                return extract_feature(pixel_values).to(pixel_values.device)
+
+            model.extract_feature = _new_extract_feature
         IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
         img_context_token_id = tokenizer.convert_tokens_to_ids(
             IMG_CONTEXT_TOKEN)
