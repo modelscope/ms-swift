@@ -137,12 +137,17 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>
-距离各城市多远？
-response: 马路边距离马路边14公里；阳江边距离马路边62公里；广州边距离马路边293公里。
+query: 距离各城市多远？
+response: 这张图片显示的是一个路标，上面标示了三个目的地及其距离：
+
+- 马踏（Mata）：14公里
+- 阳江（Yangjiang）：62公里
+- 广州（Guangzhou）：293公里
+
+这些距离是按照路标上的指示来计算的。 
 query: 距离最远的城市是哪？
-response: 距离最远的城市是广州，距离马路边293公里。
-history: [['Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>\n距离各城市多远？', '马路边距离马路边14公里；阳江边距离马路边62公里；广州边距离马路边293公里。'], ['距离最远的城市是哪？', '距离最远的城市是广州，距离马路边293公里。']]
+response: 根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 
+history: [['距离各城市多远？', '这张图片显示的是一个路标，上面标示了三个目的地及其距离：\n\n- 马踏（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些距离是按照路标上的指示来计算的。 '], ['距离最远的城市是哪？', '根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 ']]
 """
 ```
 

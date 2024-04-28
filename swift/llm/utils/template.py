@@ -1000,16 +1000,16 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
             if example.get('query') is not None:
                 example['query'] = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * \
-                image_bs + '</img> \n' + example['query']
+                image_bs + '</img>\n' + example['query']
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
         inputs['pixel_values'] = pixel_values
-        history = example.pop('history', None)
-        if not history:
-            history = []
-            image_tokens = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>'
-            inputs['image_flags'] = image_tokens  # TODO
+        # history = example.pop('history', None)
+        # if not history:
+        #     history = []
+        #     image_tokens = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>'
+        #     inputs['image_flags'] = image_tokens  # TODO
             # question = image_tokens + '\n' + question
 
         return inputs, {}
