@@ -2405,7 +2405,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     if use_flash_attn:
         model_config.attn_implementation = 'flash_attention_2'
 
-    # eos_token = kwargs.pop('eos_token', None)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -2425,8 +2424,6 @@ def get_model_tokenizer_internvl(model_dir: str,
             @wraps(forward)
             def _new_forward(*args, **kwargs):
                 kwargs.pop('inputs_embeds', None)
-                # if kwargs.get('pixel_values') is not None:
-                #     kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
                 return forward(*args, **kwargs)
 
             model.forward = _new_forward
@@ -2437,8 +2434,6 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(generate)
             def _new_generate(*args, **kwargs):
-                # if kwargs.get('pixel_values') is not None:
-                #     kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
                 kwargs.pop('image_flags', None)
                 return generate(*args, **kwargs)
 
@@ -2462,10 +2457,10 @@ def get_model_tokenizer_internvl(model_dir: str,
         get_rank = dist.get_rank
 
         @wraps(get_rank)
-        def new_get_rank():
+        def new_get_rank(group):
             if dist.GroupMember.WORLD is None:
                 return -1
-            return get_rank()
+            return get_rank(group)
 
         dist.get_rank = new_get_rank
         dist._old_get_rank = get_rank

@@ -17,17 +17,17 @@ pip install -e '.[llm]'
 
 ## 推理
 
-推理[internvl-chat-v1.5](https://www.modelscope.cn/models/fq980207/InternVL-Chat-V1.5/summary)
+推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --model_id_or_path /mnt/workspace/hujinghan.hjh/models/InternVL-Chat-V1-5
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
 
 # 2*30GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
 ```
 
-输出: (支持传入本地路径或URL) #TODO
+输出: (支持传入本地路径或URL)
 ```python
 """
 <<< Describe this image.
@@ -172,8 +172,9 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # ddp
 # Experimental environment: 2*A100...
 # 2*80GB GPU memory
-nproc_per_node = 2
-CUDA_VISIBLE_DEVICES=0,1 swift sft \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=2,3 swift sft \
+    --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5 \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
     --deepspeed default-zero2
@@ -183,10 +184,9 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 ```shell
 # Experimental environment: 8 * A100
 # 8 * 50 GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
-    --model_type internvl-chat-v1_5 \
-    --dataset coco-mini-en-2 \
-    --sft_type full \
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \ 
+    --model_type internvl-chat-v1_5 \   
+    --dataset coco-mini-en-2     --sft_type full --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5
 ```
 
 

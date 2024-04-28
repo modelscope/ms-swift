@@ -1,5 +1,5 @@
 
-# Llava 最佳实践
+# InternVL 最佳实践
 
 ## 目录
 - [环境准备](#环境准备)
@@ -187,9 +187,9 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --sft_type full \
     --deepspeed default-zero2
 
-# 4 * 72 GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1d6-mistral-7b-instruct \
+# 8 * 50 GPU memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
+    --model_type llava1d6-yi-34b-instruct \
     --dataset coco-mini-en-2 \
     --sft_type full \
 ```
