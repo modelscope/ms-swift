@@ -2407,7 +2407,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         def _new_forward(*args, **kwargs):
             kwargs.pop('inputs_embeds', None)
             pixel_values = kwargs.get('pixel_values', None)
-            if not pixel_values:
+            if pixel_values:
                 pixel_values.to(torch_dtype)
             return forward(*args, **kwargs)
 
