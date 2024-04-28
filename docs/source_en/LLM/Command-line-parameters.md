@@ -43,7 +43,6 @@
 - `--bnb_4bit_comp_dtype`: When doing 4bit quantization, we need to dequantize during model forward and backward passes. This specifies the torch_dtype after dequantization. Default is `'AUTO'`, i.e. consistent with `dtype`. Options: 'fp16', 'bf16', 'fp32'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization for 4bit quantization, default is `True`. Has no effect when quantization_bit is 0.
-- `--bnb_4bit_quant_storage`: Default vlaue `None`.This sets the storage type to pack the quanitzed 4-bit prarams. Has no effect when quantization_bit is 0.
 - `--lora_target_modules`: Specify lora modules, default is `['DEFAULT']`. If lora_target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `lora_target_modules` in `MODEL_MAPPING` based on `model_type` (default specifies qkv). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
@@ -209,7 +208,6 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
-- `--bnb_4bit_quant_storage`: Default value `None`.See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--max_new_tokens`: Maximum number of new tokens to generate, default is `2048`.
 - `--do_sample`: Whether to use greedy generation or sampling generation, default is `True`.
 - `--temperature`: Default is `0.3`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.

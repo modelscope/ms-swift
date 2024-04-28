@@ -21,8 +21,8 @@ from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
-                         get_pai_tensorboard_dir, is_dist, is_mp,
-                         is_pai_training_job, is_local_master)
+                         get_pai_tensorboard_dir, is_dist, is_local_master,
+                         is_mp, is_pai_training_job)
 from .dataset import (DATASET_MAPPING, get_custom_dataset, get_dataset,
                       register_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
@@ -356,7 +356,6 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
-    bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_rank: int = 8
