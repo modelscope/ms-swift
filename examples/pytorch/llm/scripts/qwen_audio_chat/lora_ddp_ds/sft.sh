@@ -37,5 +37,4 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn false \
     --deepspeed default-zero2 \
-    --save_only_model true \
     --lazy_tokenize true \

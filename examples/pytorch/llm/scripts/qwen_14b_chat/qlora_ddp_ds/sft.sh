@@ -13,7 +13,7 @@ torchrun \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type qwen \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
@@ -41,4 +41,3 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn false \
     --deepspeed default-zero2 \
-    --save_only_model true \

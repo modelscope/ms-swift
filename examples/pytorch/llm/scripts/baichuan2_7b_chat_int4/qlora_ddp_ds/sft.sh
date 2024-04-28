@@ -12,7 +12,7 @@ torchrun \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type baichuan \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
@@ -40,5 +40,4 @@ torchrun \
     --hub_model_id baichuan2-7b-chat-int4-qlora \
     --hub_private_repo true \
     --hub_token 'your-sdk-token' \
-    --deepspeed_config_path default-zero2 \
-    --save_only_model true \
+    --deepspeed default-zero2 \
