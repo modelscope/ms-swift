@@ -980,7 +980,7 @@ class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
     internvl_query_template = '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'
-
+    num_image_token = 256
     def __init__(self):
         super().__init__(
             [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'],
@@ -999,7 +999,7 @@ class InternvlTemplate(Template):
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
             if example.get('query') is not None:
-                example['query'] = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * \
+                example['query'] = '<img>' + self.IMG_CONTEXT_TOKEN * self.num_image_token * \
                 image_bs + '</img>' + example['query']
 
         inputs, _ = super().encode(example)
@@ -1008,8 +1008,7 @@ class InternvlTemplate(Template):
         history = example.pop('history', None)
         if not history:
             history = []
-            num_image_token = getattr(self, 'num_image_token', 256)
-            image_tokens = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * image_bs + '</img>'
+            image_tokens = '<img>' + self.IMG_CONTEXT_TOKEN * self.num_image_token * image_bs + '</img>'
             inputs['image_flags'] = image_tokens  # TODO
             # question = image_tokens + '\n' + question
 
