@@ -990,6 +990,7 @@ class InternvlTemplate(Template):
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        pixel_values = None
         if example.get('images') is not None:
             from .utils import load_image
             images_path = example['images']
@@ -1004,8 +1005,7 @@ class InternvlTemplate(Template):
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-        if pixel_values is not None:
-            inputs['pixel_values'] = pixel_values
+        inputs['pixel_values'] = pixel_values
         history = example.pop('history', None)
         if not history:
             history = []
