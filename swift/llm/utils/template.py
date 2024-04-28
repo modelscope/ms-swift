@@ -983,28 +983,32 @@ class InternvlTemplate(Template):
 
     def __init__(self):
         super().__init__(
-            [], ['<|im_start|>user\n', [-200], self.internvl_query_template],
+            [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'],
             ['<|im_end|>'], ['<|im_end|>'], self.system,
             ['<|im_start|>system\n{{SYSTEM}}'])
 
     def encode(
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        if example.get('image') is not None:
+            from .utils import load_image
+            images_path = example['images']
+            pixel_values = []
+            for image_path in images_path:
+                pixel_values.append(load_image(image_path))
+            pixel_values = torch.cat(pixel_values, dim=0)
+            image_bs = pixel_values.shape[0]
+            inputs['pixel_values'] = pixel_values
+            if example.get('query') is not None:
+                example['query'] = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * \
+                image_bs + '</img>' + example['query']
+
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-        # image process
-        from .utils import load_image
-        images_path = example['images']
-        pixel_values = []
-        for image_path in images_path:
-            pixel_values.append(load_image(image_path))
-        pixel_values = torch.cat(pixel_values, dim=0)
-        inputs['pixel_values'] = pixel_values
 
         history = example.pop('history', None)
         if not history:
             history = []
-            image_bs = pixel_values.shape[0]
             num_image_token = getattr(self, 'num_image_token', 256)
             image_tokens = '<img>' + self.IMG_CONTEXT_TOKEN * num_image_token * image_bs + '</img>'
             inputs['image_flags'] = image_tokens  # TODO
