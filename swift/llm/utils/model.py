@@ -2407,7 +2407,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         def _new_forward(*args, **kwargs):
             kwargs.pop('inputs_embeds', None)
             if kwargs.get('pixel_values') is not None:
-                kwargs['pixel_values'].to(torch_dtype)
+                kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
             return forward(*args, **kwargs)
 
         model.forward = _new_forward
@@ -2418,7 +2418,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         @wraps(generate)
         def _new_generate(*args, **kwargs):
             if kwargs.get('pixel_values') is not None:
-                kwargs['pixel_values'].to(torch_dtype)
+                kwargs['pixel_values'] = kwargs['pixel_values'].to(torch_dtype)
             return generate(*args, **kwargs)
 
         model.generate = _new_generate
