@@ -1004,7 +1004,8 @@ class InternvlTemplate(Template):
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-        inputs['pixel_values'] = pixel_values
+        if pixel_values is not None:
+            inputs['pixel_values'] = pixel_values
         history = example.pop('history', None)
         if not history:
             history = []
