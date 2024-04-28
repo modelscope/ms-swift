@@ -2417,9 +2417,8 @@ def get_model_tokenizer_internvl(model_dir: str,
 
         @wraps(generate)
         def _new_generate(*args, **kwargs):
-            pixel_values = kwargs.get('pixel_values', None)
-            if pixel_values:
-                pixel_values.to(torch_dtype)
+            if kwargs.get('pixel_values') is not None:
+                kwargs['pixel_values'].to(torch_dtype)
             return generate(*args, **kwargs)
 
         model.generate = _new_generate
