@@ -10,7 +10,7 @@
 
 ## 环境准备
 ```shell
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 ```
 
 ## 推理
@@ -148,7 +148,6 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type qwen-vl-chat \
     --dataset coco-mini-en \
-    --train_dataset_sample -1 \
     --sft_type full \
 ```
 

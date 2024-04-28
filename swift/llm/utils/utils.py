@@ -5,7 +5,6 @@ import importlib.util
 import logging
 import os
 import shutil
-import sys
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -20,12 +19,8 @@ import numpy as np
 import requests
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 import transformers
-from accelerate.utils.modeling import (get_balanced_memory,
-                                       infer_auto_device_map)
 from datasets import Dataset as HfDataset
-from modelscope import MsDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
@@ -37,12 +32,13 @@ from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase, StoppingCriteriaList,
                           TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
+from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist,
-                         is_local_master, is_master, stat_array, upper_bound,
-                         use_torchacc)
+                         is_local_master, safe_ddp_context, stat_array,
+                         upper_bound, use_torchacc)
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
@@ -92,20 +88,22 @@ def download_dataset(model_id: str,
     return local_dir
 
 
-_old_msdataset_load = MsDataset.load
+use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+if not use_hf:
+    from modelscope import MsDataset
+    _old_msdataset_load = MsDataset.load
 
+    @wraps(_old_msdataset_load)
+    def _msdataset_ddp_load(*args, **kwargs):
+        with safe_ddp_context():
+            dataset = _old_msdataset_load(*args, **kwargs)
 
-@wraps(_old_msdataset_load)
-def _msdataset_ddp_load(*args, **kwargs):
-    if is_dist() and not is_local_master():
-        dist.barrier()
-    dataset = _old_msdataset_load(*args, **kwargs)
-    if is_dist() and is_local_master():
-        dist.barrier()
+        if is_dist():  # sync
+            dist.barrier()
+        return dataset
 
-    if is_dist():
-        dist.barrier()
-    return dataset
+    # monkey patching
+    MsDataset.load = _msdataset_ddp_load
 
 
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
@@ -143,25 +141,6 @@ def _sync_max_memory(
         if v > 0 and k != 'cpu':
             new_max_memory[k] = next(new_max_memory_iter)
     return new_max_memory
-
-
-@wraps(infer_auto_device_map)
-def _infer_auto_device_map_patch(
-        model: Module,
-        max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
-        **kwargs) -> Dict[str, Union[int, str, Device]]:
-    """The auxiliary function for supports DDP+MP. Monkey Patching.
-    add feat in accelerate to support DDP + MP"""
-    verbose = kwargs.pop('verbose', False)
-    n_gpu = torch.cuda.device_count()
-    _, local_rank, _, local_world_size = get_dist_setting()
-    device_ids = list(range(local_rank, n_gpu, local_world_size))
-    max_memory = _get_max_memory(device_ids)
-    max_memory = _sync_max_memory(max_memory)
-    max_memory = get_balanced_memory(
-        model, max_memory, low_zero=False, **kwargs)
-    max_memory = {k: v for k, v in max_memory.items() if v > 0}
-    return infer_auto_device_map(model, max_memory, verbose=verbose, **kwargs)
 
 
 class LLMDataset(Dataset):
@@ -385,26 +364,38 @@ def find_all_linears(model: Module, quantization_bit: int,
     else:
         linear_cls = [Linear]
     if 'int4' in model_type or 'int8' in model_type:
-        from bitsandbytes.nn import Linear4bit
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             gptq_quantization_config)
-        linear_cls = [Linear4bit]
-        if AutoGPTQQuantLinear is not None:
-            linear_cls.append(AutoGPTQQuantLinear)
+        if AutoGPTQQuantLinear is None:
+            from bitsandbytes.nn import Linear4bit
+            linear_cls = [Linear4bit]
+        else:
+            linear_cls = [AutoGPTQQuantLinear]
     if 'awq' in model_type:
         from awq.modules.linear import WQLinear_GEMM
         linear_cls.append(WQLinear_GEMM)
     if 'aqlm' in model_type:
         from aqlm import QuantizedLinear
         linear_cls.append(QuantizedLinear)
+
+    # The content of target_module_names cannot exist in inner_nodes.
+    # O(n^2logn), n represents the number of nodes, n<1000.
+    inner_nodes = set()
+    for name, module in model.named_modules():
+        if not isinstance(module, tuple(linear_cls)):
+            inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)):
-            module_name = '.'.join(name.split('.')[-2:])
-            if head_module_name not in module_name:
-                target_module_names.add(module_name)
+        if isinstance(module,
+                      tuple(linear_cls)) and head_module_name not in name:
+            module_name_list = name.split('.')
+            module_name = module_name_list.pop()
+            for inner_node in inner_nodes:
+                while inner_node.endswith(module_name):
+                    module_name = f'{module_name_list.pop()}.{module_name}'
+            target_module_names.add(module_name)
     return list(target_module_names)
 
 
@@ -416,38 +407,10 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
     return llm_dataset.select(idx)
 
 
-def _is_chinese_char(cp):
-    """Checks whether CP is the codepoint of a CJK character."""
-    # copy from transformers.generation.streamers.TextStreamer
-    if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF)
-            or (cp >= 0x20000 and cp <= 0x2A6DF)
-            or (cp >= 0x2A700 and cp <= 0x2B73F)
-            or (cp >= 0x2B740 and cp <= 0x2B81F)
-            or (cp >= 0x2B820 and cp <= 0x2CEAF)
-            or (cp >= 0xF900 and cp <= 0xFAFF)
-            or (cp >= 0x2F800 and cp <= 0x2FA1F)):
-        return True
-
-    return False
-
-
-def _get_safe_print_idx(response: str,
-                        print_idx: int,
-                        is_finished: bool = False) -> int:
-    if is_finished:
-        return len(response)
-    if response.endswith('\n') or len(response) > 0 and _is_chinese_char(
-            ord(response[-1])):
-        print_idx = len(response)
-    else:
-        print_idx = max(response.rfind(' ') + 1, print_idx)
-    return print_idx
-
-
 def to_device(inputs: Any, device: Device) -> Any:
     if callable(getattr(inputs, 'to', None)):
         return inputs.to(device=device)
-    #
+
     if isinstance(inputs, Mapping):
         res = {}
         for k, v in inputs.items():
@@ -562,6 +525,12 @@ def inference_stream(model: PreTrainedModel,
         generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
+        max_length = get_max_model_len(model.config)
+        if max_length and token_len + generation_config.max_new_tokens > max_length:
+            generation_config.max_new_tokens = max_length - token_len
+            if generation_config.max_new_tokens <= 0:
+                raise AssertionError('Current sentence length exceeds'
+                                     f'the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
@@ -578,48 +547,45 @@ def inference_stream(model: PreTrainedModel,
         'stopping_criteria': stopping_criteria,
         **inputs
     }
-    thread = Thread(target=model.generate, kwargs=generation_kwargs)
+    _model_generate = model.generate
+    if is_torch_npu_available():
+
+        def _model_generate(*args, **kwargs):
+            torch.npu.set_device(model.device)
+            return model.generate(*args, **kwargs)
+
+    thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
     raw_generate_ids, generate_ids = [], []
-    response, safe_response = '', ''
-    print_idx = 0
+
     if not is_observation:
         history.append(None)  # dummy
-    for token in streamer:
-        raw_generate_ids.append(token)
+
+    print_idx = [0]
+    first_num_space = [-1]
+
+    is_finished = False
+    while not is_finished:
+        try:
+            token = next(streamer)
+            raw_generate_ids.append(token)
+        except StopIteration:
+            is_finished = True
         generate_ids = template.get_generate_ids(
             torch.tensor(raw_generate_ids)[None], token_len)
         if generation_info is not None:
             generation_info['num_generated_tokens'] = len(generate_ids)
-        # avoid printing template.suffix[-1])
-        if isinstance(template.suffix[-1], list):
-            generate_ids = generate_ids[:-len(template.suffix[-1])]
-        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-        if isinstance(template.suffix[-1], str):
-            response = response[:-len(template.suffix[-1])]
-        print_idx = _get_safe_print_idx(response, print_idx)
-        # avoid printing incomplete words
-        if safe_response != response[:print_idx]:
-            safe_response = response[:print_idx]
-            if not is_observation:
-                history[-1] = [query, safe_response]
-            else:
-                history[-1][-1] = history[-1][-1][:act_length] + safe_response
-            yield safe_response, history
-    # avoid printing template.suffix[-1])
-    if (isinstance(template.suffix[-1], list) and
-            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
-        generate_ids = generate_ids[:-len(template.suffix[-1])]
-    response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-    if isinstance(
-            template.suffix[-1], str
-    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
-        response = response[:-len(template.suffix[-1])]
-    if not is_observation:
-        history[-1] = [query, response]
-    else:
-        history[-1][-1] = history[-1][-1][:act_length] + response
-    yield response, history
+        response = template.generate_ids_to_response(
+            generate_ids,
+            is_finished,
+            tokenizer_kwargs=tokenizer_kwargs,
+            print_idx=print_idx,
+            first_num_space=first_num_space)
+        if not is_observation:
+            history[-1] = [query, response]
+        else:
+            history[-1][-1] = history[-1][-1][:act_length] + response
+        yield response, history
 
 
 def inference(model: PreTrainedModel,
@@ -708,6 +674,12 @@ def inference(model: PreTrainedModel,
         generation_config.bos_token_id = tokenizer.bos_token_id
     if generation_config.max_new_tokens is not None:
         generation_config.max_length = 20  # fix max_length, max_new_tokens warning
+        max_length = get_max_model_len(model.config)
+        if max_length and token_len + generation_config.max_new_tokens > max_length:
+            generation_config.max_new_tokens = max_length - token_len
+            if generation_config.max_new_tokens <= 0:
+                raise AssertionError('Current sentence length exceeds'
+                                     f'the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     stopping_criteria = StoppingCriteriaList(
@@ -729,17 +701,8 @@ def inference(model: PreTrainedModel,
     if verbose and stream is False:
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
-    # avoid printing template.suffix[-1])
-    if (isinstance(template.suffix[-1], list) and
-            generate_ids[-len(template.suffix[-1]):] == template.suffix[-1]):
-        generate_ids = generate_ids[:-len(template.suffix[-1])]
-        response = None
-    if response is None:
-        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-    if isinstance(
-            template.suffix[-1], str
-    ) and response[-len(template.suffix[-1]):] == template.suffix[-1]:
-        response = response[:-len(template.suffix[-1])]
+    response = template.generate_ids_to_response(
+        generate_ids, tokenizer_kwargs=tokenizer_kwargs)
     if not is_observation:
         history.append([query, response])
     else:
@@ -861,9 +824,30 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     return max_model_len
 
 
-# monkey patching
-MsDataset.load = _msdataset_ddp_load
 if is_ddp_plus_mp():
+    from accelerate.utils.modeling import (get_balanced_memory,
+                                           infer_auto_device_map)
+
+    @wraps(infer_auto_device_map)
+    def _infer_auto_device_map_patch(
+            model: Module,
+            max_memory: Optional[Dict[Union[int, str], Union[int,
+                                                             str]]] = None,
+            **kwargs) -> Dict[str, Union[int, str, Device]]:
+        """The auxiliary function for supports DDP+MP. Monkey Patching.
+        add feat in accelerate to support DDP + MP"""
+        verbose = kwargs.pop('verbose', False)
+        n_gpu = torch.cuda.device_count()
+        _, local_rank, _, local_world_size = get_dist_setting()
+        device_ids = list(range(local_rank, n_gpu, local_world_size))
+        max_memory = _get_max_memory(device_ids)
+        max_memory = _sync_max_memory(max_memory)
+        max_memory = get_balanced_memory(
+            model, max_memory, low_zero=False, **kwargs)
+        max_memory = {k: v for k, v in max_memory.items() if v > 0}
+        return infer_auto_device_map(
+            model, max_memory, verbose=verbose, **kwargs)
+
     _old_ddp_init = DDP.__init__
     accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (
         lambda self, model, device_ids, output_device, *args, **kwargs:

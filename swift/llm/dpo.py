@@ -14,19 +14,19 @@ from swift.utils import (check_json_format, get_dist_setting, get_logger,
                          is_master, plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (DPOArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, set_generation_config)
+                    get_template, get_time_info, set_generation_config)
 
 logger = get_logger()
 
 
 def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'args: {args}')
+    seed_everything(args.seed)
     training_args = args.training_args
     print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, '
           f'world_size: {world_size}, local_world_size: {local_world_size}')
-    seed_everything(args.seed)
 
     # Loading Model and Tokenizer
     if is_deepspeed_zero3_enabled():
@@ -47,7 +47,11 @@ def llm_dpo(args: DPOArguments) -> str:
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
 
-    kwargs = {}
+    kwargs = {
+        'max_length': args.max_length,
+        'use_unsloth': args.tuner_backend == 'unsloth',
+        'load_in_4bit': args.quantization_bit == 4
+    }
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
     model, tokenizer = get_model_tokenizer(
@@ -55,11 +59,16 @@ def llm_dpo(args: DPOArguments) -> str:
         args.torch_dtype,
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
+        revision=args.model_revision,
         **kwargs)
     if args.ref_model_type is not None:
-        ref_model, _ = get_model_tokenizer(args.ref_model_type,
-                                           args.torch_dtype, model_kwargs,
-                                           **kwargs)
+        ref_model, _ = get_model_tokenizer(
+            args.ref_model_type,
+            args.torch_dtype,
+            model_kwargs,
+            model_id_or_path=args.ref_model_id_or_path,
+            revision=args.model_revision,
+            **kwargs)
     else:
         ref_model = None
 
@@ -177,6 +186,7 @@ def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(
         f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
+    train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')
@@ -185,14 +195,21 @@ def llm_dpo(args: DPOArguments) -> str:
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
-    return {
+    run_info = {
+        'memory': trainer.perf['memory'],
+        'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
         'model_info': model_info,
+        'dataset_info': trainer.dataset_info,
     }
+    jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
+    with open(jsonl_path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(run_info) + '\n')
+    return run_info
 
 
 dpo_main = get_main(DPOArguments, llm_dpo)

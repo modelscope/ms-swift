@@ -26,7 +26,7 @@ The corresponding example sh script can be found [here](https://github.com/model
 
 2. `--custom_val_dataset_path`: The default value is `[]`, indicating not to use a custom validation dataset. If you specify `custom_train_dataset_path`, then the validation set of the custom dataset will be split according to the command line argument `dataset_test_ratio`.
 
-The script supports file formats including `csv`, `json`, and `jsonl`. You need to ensure the passed in files conform to the following dataset formats. csv files only support instruction tuning, i.e. the case without history. json and jsonl files support system and history.
+The supported file formats for the script include `csv`, `json`, and `jsonl`. You need to ensure that the incoming files conform to the following dataset formats. Both `json` and `jsonl` formats support multi-turn dialogues (`csv` does not support this).
 
 **Format 1:**
 
@@ -256,8 +256,7 @@ if __name__ == '__main__':
 - `get_function`: Default value is `None`. The function to get model and tokenizer. If passed `None`, the decorator approach will be used to register the model. If passed a function, the normal approach will be used to register.
 - `requires`: Default is `[]`. Represents the dependencies required by the model that differ from other models. This parameter generally does not need to be set.
 - `torch_dtype`: Default is `None`. Represents the recommended torch_dtype for the model to use. This parameter generally does not need to be set.
-- `use_hf`: Default is `False`, i.e. set to modelscope hub. If you want to use huggingface hub, you can set it to True.
-- `revision`: Default is `None`. Used to specify the version number of the model. If `use_hf` is False, it is set to 'master', if `use_hf` is True, it is set to 'main'. If `model_id_or_path` is a local model directory, this parameter is not effective. This parameter generally does not need to be set.
+- `revision`: Default is `None`. Used to specify the version number of the model. If `model_id_or_path` is a local model directory, this parameter is not effective. This parameter generally does not need to be set.
 - `ignore_file_pattern`: Default is `None`. Represents the regular pattern of file names to be ignored when downloading, this parameter will be passed to `snapshot_download`. For example, `r'.+\.bin$'`, `r'.+\.savetensors$'`, etc. This parameter generally does not need to be set.
 - `**kwargs`: Other parameters used to annotate model capabilities. This parameter generally does not need to be set.
 

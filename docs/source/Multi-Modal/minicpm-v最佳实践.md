@@ -1,5 +1,6 @@
 
 # MiniCPM-V 最佳实践
+以下内容以`minicpm-v-3b-chat`为例, 如果你想要使用更新版本的 MiniCPM-V 多模态模型(v2), 你可以将`--model_type minicpm-v-3b-chat`切换成`--model_type minicpm-v-v2`.
 
 ## 目录
 - [环境准备](#环境准备)
@@ -10,12 +11,17 @@
 
 ## 环境准备
 ```shell
-pip install ms-swift[llm] -U
+pip install 'ms-swift[llm]' -U
 ```
+
+模型链接:
+- minicpm-v-3b-chat: [https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary)
+- minicpm-v-v2: [https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary)
+
 
 ## 推理
 
-推理[minicpm-v-3b-chat](https://modelscope.cn/models/OpenBMB/MiniCPM-V/summary):
+推理minicpm-v-3b-chat:
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory
@@ -27,22 +33,22 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-3b-chat
 """
 <<< 描述这种图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
- 该图像描绘了一只黑白相间的猫，它正坐在地板上。这只猫看起来很小，可能是幼猫。它的眼睛睁得大大的，似乎在观察周围环境。
+该图像的特点是一只黑白相间的猫，它的眼睛睁得大大的，似乎在凝视着相机。这只猫看起来很小，可能是一只幼猫。
 --------------------------------------------------
 <<< clear
 <<< 图中有几只羊？
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
- 图中有四只羊。
+图中有四只羊。
 --------------------------------------------------
 <<< clear
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
- 计算结果为1452 + 4530 = 5982。
+计算结果为1452 + 4530 = 5982。
 --------------------------------------------------
 <<< clear
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
- 在宁静的湖面上，一艘小船缓缓驶过。
+在宁静的夜晚，一艘船在平静的湖面上航行。
 """
 ```
 
@@ -81,7 +87,7 @@ model_type = ModelType.minicpm_v_3b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
-model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16,
                                        model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
@@ -106,10 +112,10 @@ print()
 print(f'history: {history}')
 """
 query: 距离各城市多远？
-response:  广州到深圳的距离是293公里，而深圳到广州的距离是14公里。
+response:  广州到深圳的距离是230公里，而深圳到广州的距离是14公里。
 query: 距离最远的城市是哪？
-response: 距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳圳14公里。
-history: [['距离各城市多远？', ' 广州到深圳的距离是293公里，而深圳到广州的距离是14公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是深圳，它位于广州和深圳之间，距离广州293公里，距离深圳14公里。']]
+response: 距离最远的城市是深圳，它位于广州和深圳之间，距离广州230公里，距离深圳14公里。
+history: [['距离各城市多远？', ' 广州到深圳的距离是230公里，而深圳到广州的距离是14公里。'], ['距离最远的城市是哪？', '距离最远的城市是深圳，它位于广州和深圳之间，距离广州230公里，距离深圳14公里。']]
 """
 ```
 

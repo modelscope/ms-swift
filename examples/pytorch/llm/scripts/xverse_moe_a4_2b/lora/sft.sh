@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type xverse-moe-a4_2b \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype fp16 \
     --dataset dureader-robust-zh \
     --train_dataset_sample -1 \

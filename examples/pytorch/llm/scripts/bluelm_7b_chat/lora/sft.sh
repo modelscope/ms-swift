@@ -6,7 +6,7 @@ python llm_sft.py \
     --model_id_or_path vivo-ai/BlueLM-7B-Chat \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type bluelm \
     --dtype AUTO \
     --output_dir output \

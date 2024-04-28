@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type internlm-xcomposer2-7b-chat \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \

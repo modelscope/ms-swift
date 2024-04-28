@@ -268,8 +268,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def get_train_dataloader(self):
+
         if not use_torchacc():
             return super().get_train_dataloader()
+
         else:
             if trainer.is_datasets_available():
                 import datasets

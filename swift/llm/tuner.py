@@ -2,13 +2,14 @@
 import os
 import types
 
+import numpy as np
 import torch
 import transformers
 from packaging import version
 
 from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
-from swift.tuners import (AdaLoraConfig, IA3Config, LongLoRAConfig,
+from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config,
                           LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
 from swift.tuners.llamapro import LLaMAProConfig
@@ -73,46 +74,45 @@ def prepare_model(model, args: SftArguments):
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
                 'modules_to_save': args.lora_modules_to_save,
-                'layers_to_transform': args.lora_layers_to_transform,
-                'layers_pattern': args.lora_layers_pattern,
-                'rank_pattern': args.lora_rank_pattern,
-                'alpha_pattern': args.lora_alpha_pattern,
-                'loftq_config': args.lora_loftq_config,
                 'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
+                'lorap_lr_ratio': args.lora_lr_ratio,
             }
-            if args.sft_type == 'lora':
+            if args.sft_type in ('lora', 'longlora'):
+                if args.lora_dtype == 'AUTO':
+                    args.lora_dtype = None
                 if args.tuner_backend == 'swift':
-                    lora_kwargs['lr_ratio'] = args.lora_lr_ratio
                     lora_config = LoRAConfig(
                         lora_dtype=args.lora_dtype, **lora_kwargs)
+                    model = Swift.prepare_model(model, lora_config)
+                    logger.info(f'lora_config: {lora_config}')
                 elif args.tuner_backend == 'peft':
-                    assert args.lora_lr_ratio is None, 'Please use tuner_backend="swift" to use LoRA+'
                     lora_config = LoraConfig(
-                        task_type='CAUSAL_LM', **lora_kwargs)
-                model = Swift.prepare_model(model, lora_config)
-                logger.info(f'lora_config: {lora_config}')
-            elif args.sft_type == 'longlora':
-                assert args.tuner_backend == 'swift'
-                assert LongLoRAModelType.LLAMA in args.model_type
-                longlora_config = LongLoRAConfig(
-                    lora_dtype=args.lora_dtype,
-                    model_type=LongLoRAModelType.LLAMA,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, longlora_config)
-                logger.info(f'longlora_config: {longlora_config}')
-            elif args.sft_type == 'qalora':
-                assert args.tuner_backend == 'swift'
-                assert getattr(
-                    model, 'quantization_method',
-                    None) == 'gptq', 'qalora must be used with auto_gptq'
-                qalora_config = LoRAConfig(
-                    lora_dtype=args.lora_dtype,
-                    use_qa_lora=True,
-                    **lora_kwargs)
-                model = Swift.prepare_model(model, qalora_config)
-                logger.info(f'qalora_config: {qalora_config}')
+                        task_type='CAUSAL_LM',
+                        lora_dtype=args.lora_dtype,
+                        **lora_kwargs)
+                    model = Swift.prepare_model(model, lora_config)
+                    logger.info(f'lora_config: {lora_config}')
+                elif args.tuner_backend == 'unsloth':
+                    from unsloth import FastLanguageModel
+                    assert args.sft_type == 'lora', 'Unsloth does not support LongLoRA'
+                    lora_kwargs.pop('lorap_lr_ratio')
+                    model = FastLanguageModel.get_peft_model(
+                        model,
+                        use_gradient_checkpointing=True,
+                        max_seq_length=args.max_length,
+                        **lora_kwargs,
+                    )
+                    logger.info(f'unsloth_config: {lora_kwargs}')
+                if args.sft_type == 'longlora':
+                    assert LongLoRAModelType.LLAMA in args.model_type
+                    assert version.parse(
+                        transformers.__version__) >= version.parse('4.39.3')
+                    from swift.tuners.longlora.llama import replace_llama_attn
+                    replace_llama_attn(model)
+                    model.config.group_size_ratio = 0.25
             elif args.sft_type == 'adalora':
+                lora_kwargs.pop('lorap_lr_ratio', None)
                 lora_kwargs['rank_pattern'] = None
                 adalora_config = AdaLoraConfig(
                     task_type='CAUSAL_LM',
@@ -150,6 +150,24 @@ def prepare_model(model, args: SftArguments):
                     num_groups=args.llamapro_num_groups)
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
+            elif args.sft_type == 'adapter':
+                model_type = args.model_type or args.model_id_or_path
+                for key in MODEL_KEYS_MAPPING.keys():
+                    if key in model_type.lower():
+                        model_type = key
+                        break
+
+                assert model_type in MODEL_KEYS_MAPPING
+                mlp_key = MODEL_KEYS_MAPPING[model_type].mlp
+                mlp_key = mlp_key.split('.{}.')[1]
+                adapter_config = AdapterConfig(
+                    dim=model.config.hidden_size,
+                    target_modules=[mlp_key],
+                    hidden_pos=0,
+                    adapter_length=args.adapter_length,
+                    act_layer=args.adapter_act)
+                model = Swift.prepare_model(model, adapter_config)
+                logger.info(f'adapter_config: {adapter_config}')
         else:
             if use_torchacc():
                 consolidate_checkpoint(args.resume_from_checkpoint,
@@ -207,6 +225,65 @@ def prepare_model(model, args: SftArguments):
             optim_per_parameter=args.galore_optim_per_parameter,
         )
 
+    callbacks = []
+    if args.lisa_activated_layers > 0:
+        assert args.sft_type == 'full', 'LISA only supports full parameter training.'
+
+        class DynamicLayerActivationCallback(TrainerCallback):
+
+            def __init__(self, n_layers: int, step_interval: int,
+                         model: torch.nn.Module):
+                super().__init__()
+                self.n_layers = n_layers
+                self.step_interval = step_interval
+                self.model = model
+                layers_name = None
+                layers = None
+                for name, module in model.named_modules():
+                    if isinstance(module, torch.nn.ModuleList):
+                        layers_name = name
+                        layers = module
+                        break
+                assert layers_name is not None
+                self.layers_attribute = layers_name
+                self.total_layers = len(layers)
+
+                # Freeze all layers upon initialization
+                self.freeze_all_layers()
+                self.active_layers_indices = []
+
+            def freeze_all_layers(self):
+                layers = self.model.get_submodule(self.layers_attribute)
+                for layer in layers:
+                    for param in layer.parameters():
+                        param.requires_grad = False
+
+            def on_step_begin(self, args, state, control, **kwargs):
+                # Check if it's time to switch active layers, including at step 0
+                if state.global_step % self.step_interval == 0 or state.global_step == 1:
+                    self.switch_active_layers()
+
+            def switch_active_layers(self):
+                # First, disable gradients for all layers
+                self.freeze_all_layers()
+
+                # Randomly select n_layers to activate
+                layers = self.model.get_submodule(self.layers_attribute)
+                self.active_layers_indices = np.random.choice(
+                    range(self.total_layers), self.n_layers, replace=False)
+                # Enable gradients only for the selected layers
+                for idx in self.active_layers_indices:
+                    for param in layers[idx].parameters():
+                        param.requires_grad = True
+
+        callbacks.append(
+            DynamicLayerActivationCallback(
+                n_layers=args.
+                lisa_activated_layers,  # Number of layers to activate
+                step_interval=args.
+                lisa_step_interval,  # Step interval to update active layers
+                model=model))
+
     class TrainerAdapterCallback(TrainerCallback):
 
         def __init__(self):
@@ -230,7 +307,6 @@ def prepare_model(model, args: SftArguments):
             if args.sft_type == 'adalora':
                 self.global_step = state.global_step
 
-    callbacks = []
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback())
     return model, callbacks

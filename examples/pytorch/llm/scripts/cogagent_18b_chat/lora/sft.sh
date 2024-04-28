@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type cogagent-18b-chat \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype AUTO \
     --output_dir output \
     --dataset coco-mini-en-2 \

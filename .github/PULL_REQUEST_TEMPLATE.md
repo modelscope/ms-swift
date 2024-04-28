@@ -2,7 +2,7 @@
 - [ ] Bug Fix
 - [ ] New Feature
 - [ ] Document Updates
-- [ ] More Model or Dataset Support
+- [ ] More Models or Datasets Support
 
 # PR information
 

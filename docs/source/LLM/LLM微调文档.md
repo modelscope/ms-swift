@@ -7,6 +7,7 @@
 - [量化](#量化)
 - [推理](#推理)
 - [Web-UI](#web-ui)
+- [推送模型](#推送模型)
 
 ## 环境准备
 GPU设备: A10, 3090, V100, A100均可.
@@ -16,7 +17,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # 如果你想要使用deepspeed.
 pip install deepspeed -U
@@ -287,3 +288,6 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
+
+## 推送模型
+如果你想推送模型到ModelScope，可以参考[模型推送文档](LLM量化文档.md#推送模型)

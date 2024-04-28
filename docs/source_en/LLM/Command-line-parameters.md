@@ -17,7 +17,7 @@
 - `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'qalora'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--freeze_parameters`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
 - `--additional_trainable_parameters`: In addition to freeze_parameters, only allowed when sft_type is 'full', default is `[]`. For example, if you want to train embedding layer in addition to 50% of parameters, you can set `--freeze_parameters 0.5 --additional_trainable_parameters transformer.wte`, all parameters starting with `transformer.wte` will be activated.
-- `--tuner_backend`: Backend support for lora, qlora, default is `'swift'`. Options include: 'swift', 'peft'.
+- `--tuner_backend`: Backend support for lora, qlora, default is `'peft'`. Options include: 'swift', 'peft', 'unsloth'.
 - `--template_type`: Type of dialogue template used, default is `'AUTO'`, i.e. look up `template` in `MODEL_MAPPING` based on `model_type`. Available `template_type` options can be found in `TEMPLATE_MAPPING.keys()`.
 - `--output_dir`: Directory to store ckpt, default is `'output'`. We will append `model_type` and fine-tuning version number to this directory, allowing users to do multiple comparative experiments on different models without changing the `output_dir` command line argument. If you don't want to append this content, specify `--add_output_dir_suffix false`.
 - `--add_output_dir_suffix`: Default is `True`, indicating that a suffix of `model_type` and fine-tuning version number will be appended to the `output_dir` directory. Set to `False` to avoid this behavior.
@@ -126,6 +126,23 @@
 - `--galore_optim_per_parameter: bool` : Default False, whether to set a separate optimizer for each Galore target Parameter.
 - `--galore_with_embedding: bool` : Default False, whether to apply GaLore to embedding.
 
+### LISA Fine-tuning Parameters
+
+Note: LISA only supports full training, which is `--sft_type full`.
+
+- `--lisa_activated_layers`: Default value`0`, which means use without `LISA`, suggested value is `2` or `8`.
+- `--lisa_step_interval`: Default value `20`, how many iters to switch the layers to back-propagate.
+
+### UNSLOTH Fine-tuning Parameters
+
+unsloth has no new parameters，you can use the existing parameters to use unsloth:
+
+```
+--tuner_backend unsloth
+--sft_type full/lora
+--quantization_type 4
+```
+
 ### LLaMA-PRO Fine-tuning Parameters
 
 - `--llamapro_num_new_blocks`: Default `4`, total number of new layers inserted.
@@ -157,6 +174,7 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 dpo parameters inherit from sft parameters, with the following added parameters:
 
 - `--ref_model_type`: Type of reference model, available `model_type` options can be found in `MODEL_MAPPING.keys()`.
+- `--ref_model_id_or_path`: The local cache dir for reference model, default `None`.
 - `--max_prompt_length`: Maximum prompt length, this parameter is passed to DPOTrainer, setting prompt length to not exceed this value, default is `1024`.
 - `--beta`: Regularization term for DPO logits, default is 0.1.
 - `--label_smoothing`: Whether to use DPO smoothing, default is 0, generally set between 0~0.5.
@@ -185,8 +203,8 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
-- `--custom_train_dataset_path`: Default is `[]`. See README.md `Custom Datasets` module for details.
-- `--custom_val_dataset_path`: Default is `[]`. See README.md `Custom Datasets` module for details.
+- `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
 - `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
@@ -219,7 +237,7 @@ export parameters inherit from infer parameters, with the following added parame
 - `--quant_bits`: Number of bits for quantization. Default is `0`, i.e. no quantization. If you set `--quant_method awq`, you can set this to `4` for 4bits quantization. If you set `--quant_method gptq`, you can set this to `2`,`3`,`4`,`8` for corresponding bits quantization. If quantizing original model, weights will be saved in `f'{args.model_type}-{args.quant_method}-int{args.quant_bits}'` directory. If quantizing fine-tuned model, weights will be saved in the same level directory as `ckpt_dir`, e.g. `f'/path/to/your/vx-xxx/checkpoint-xxx-{args.quant_method}-int{args.quant_bits}'` directory.
 - `--quant_method`: Quantization method, default is `'awq'`. Options are 'awq', 'gptq'.
 - `--dataset`: This parameter is already defined in InferArguments, for export it means quantization dataset. Default is `[]`. Recommended to set `--dataset ms-bench-mini`. This dataset contains multilingual content (mainly Chinese) of high quality, with good effect for quantizing Chinese models. You can also set `--dataset pileval`, using autoawq default quantization dataset, the language of this dataset is English. More details: including how to customize quantization dataset, can be found in [LLM Quantization Documentation](LLM-quantization.md).
-- `--quant_n_samples`: Quantization parameter, default is `None`, set to `256` if using awq quantization, set to `1024` if using gptq quantization. When set to `--quant_method awq`, if OOM occurs during quantization, you can moderately reduce `--quant_n_samples` and `--quant_seqlen`. `--quant_method gptq` generally does not encounter quantization OOM.
+- `--quant_n_samples`: Quantization parameter, default is `256`. When set to `--quant_method awq`, if OOM occurs during quantization, you can moderately reduce `--quant_n_samples` and `--quant_seqlen`. `--quant_method gptq` generally does not encounter quantization OOM.
 - `--quant_seqlen`: Quantization parameter, default is `2048`.
 - `--quant_device_map`: Default is `'cpu'`, to save memory. You can specify 'cuda:0', 'auto', 'cpu', etc., representing the device to load model during quantization.
 - `--push_to_hub`: Default is `False`. Whether to push the final `ckpt_dir` to ModelScope Hub. If you specify `merge_lora`, full parameters will be pushed; if you also specify `quant_bits`, quantized model will be pushed.
@@ -227,6 +245,31 @@ export parameters inherit from infer parameters, with the following added parame
 - `--hub_token`: Default is `None`. See `sft.sh command line arguments` for parameter details.
 - `--hub_private_repo`: Default is `False`. See `sft.sh command line arguments` for parameter details.
 - `--commit_message`: Default is `'update files'`.
+
+## eval parameters
+
+The eval parameters inherit from the infer parameters, and additionally include the following parameters:
+
+- `--name`: Default is `None`. The name of the evaluation, the final evaluation results will be stored in a folder named `{{model_type}-{name}}`.
+
+- `--eval_dataset`: The official dataset for evaluation, the default value is `['ceval', 'gsm8k', 'arc']`, and `mmlu` and `bbh` datasets are also supported. If you only need to evaluate a custom dataset, you can set this parameter to `no`.
+
+- `--eval_limit`: The number of samples for each sub-dataset of the evaluation set, default is `None` which means full evaluation.
+
+- `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
+
+- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
+
+- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
+
+- `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
+
+  ```shell
+  swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true --model_type gpt4 --eval_token xxx
+  ```
+
+- `--eval_is_chat_model`: If `eval_url` is not None, `eval_is_chat_model` must be passed to tell the url calls a chat or a base model.
+- `--eval_token`: The token of the `eval_url`, default value `EMPTY` means token is not needed.
 
 ## app-ui Parameters
 

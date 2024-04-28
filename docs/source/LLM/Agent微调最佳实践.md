@@ -21,7 +21,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 # 安装ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 
 # 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -165,7 +165,7 @@ torchrun \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype AUTO \
     --output_dir output \
     --dataset ms-agent \
@@ -440,7 +440,7 @@ print()
 
 
 ### 微调
-将`dataset`换为`ms-agent-for-agentfabric`和`ms-agent-for-agentfabric-default`
+将`dataset`换为`ms-agent-for-agentfabric-default`和`ms-agent-for-agentfabric-addition`
 ```shell
 # Experimental environment: 8GPU
 nproc_per_node=8

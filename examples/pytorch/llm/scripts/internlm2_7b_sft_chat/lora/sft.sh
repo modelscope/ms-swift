@@ -5,7 +5,7 @@ swift sft \
     --model_type internlm2-7b-sft-chat \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \

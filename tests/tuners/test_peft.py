@@ -4,11 +4,13 @@ import shutil
 import tempfile
 import unittest
 
+import peft
 import torch
 from modelscope import Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
 from peft import PeftModel, inject_adapter_in_model
+from peft.config import PeftConfigMixin
 from peft.tuners.lora import Linear
 from peft.utils import WEIGHTS_NAME
 from torch import nn
@@ -159,3 +161,35 @@ class TestPeft(unittest.TestCase):
                 all(
                     torch.isclose(state_dict[key],
                                   state_dict2[key]).flatten().detach().cpu()))
+
+    @unittest.skip
+    def test_peft_lora_dtype(self):
+        model = SbertForSequenceClassification(SbertConfig())
+        model2 = copy.deepcopy(model)
+        model3 = copy.deepcopy(model)
+        lora_config = LoraConfig(
+            target_modules=['query', 'key', 'value'], lora_dtype='fp16')
+        model = Swift.prepare_model(model, lora_config)
+        model.save_pretrained(self.tmp_dir, safe_serialization=False)
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(self.tmp_dir, 'additional_config.json')))
+        model2 = Swift.from_pretrained(model2, self.tmp_dir)
+        self.assertTrue(model2.base_model.model.bert.encoder.layer[0].attention
+                        .self.key.lora_A.default.weight.dtype == torch.float16)
+        self.assertTrue(model2.peft_config['default'].lora_dtype == 'fp16')
+        state_dict = model.state_dict()
+        state_dict2 = model2.state_dict()
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(
+                all(
+                    torch.isclose(state_dict[key],
+                                  state_dict2[key]).flatten().detach().cpu()))
+
+        PeftConfigMixin.from_pretrained = PeftConfigMixin.from_pretrained_origin
+        model3 = Swift.from_pretrained(model3, self.tmp_dir)
+        self.assertTrue(model3.base_model.model.bert.encoder.layer[0].attention
+                        .self.key.lora_A.default.weight.dtype == torch.float32)
+        self.assertTrue(
+            isinstance(model3.peft_config['default'], peft.LoraConfig))

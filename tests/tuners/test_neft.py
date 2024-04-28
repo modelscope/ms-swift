@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 import torch
-from modelscope import AutoModel, AutoTokenizer, Preprocessor
+from modelscope import AutoModel, Preprocessor
 from peft.utils import WEIGHTS_NAME
 from transformers import PreTrainedModel
 

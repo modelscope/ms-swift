@@ -14,12 +14,10 @@ from transformers import PreTrainedTokenizerBase
 from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
                   SamplingParams)
 
-from swift.tuners import Swift
-from swift.utils import get_logger, seed_everything
+from swift.utils import get_logger
 from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template
-from .utils import _get_safe_print_idx
 
 try:
     from vllm.lora.request import LoRARequest
@@ -33,6 +31,7 @@ def get_vllm_engine(model_type: str,
                     torch_dtype: Optional[Dtype] = None,
                     *,
                     model_id_or_path: Optional[str] = None,
+                    revision: Optional[str] = None,
                     gpu_memory_utilization: float = 0.9,
                     tensor_parallel_size: int = 1,
                     max_model_len: Optional[int] = None,
@@ -47,7 +46,9 @@ def get_vllm_engine(model_type: str,
         model_type,
         load_model=False,
         model_id_or_path=model_id_or_path,
-        model_dir=model_dir)[1]
+        model_dir=model_dir,
+        revision=revision,
+        download_model=True)[1]
     model_dir = tokenizer.model_dir
 
     if engine_kwargs is None:
@@ -70,7 +71,7 @@ def get_vllm_engine(model_type: str,
         llm_engine_cls = LLMEngine
 
     parameters = inspect.signature(engine_args_cls.__init__).parameters
-    if 'enable_lora' in parameters:
+    if 'enable_lora' in parameters and enable_lora:
         engine_kwargs['enable_lora'] = enable_lora
         engine_kwargs['max_loras'] = max_loras
         engine_kwargs['max_lora_rank'] = max_lora_rank
@@ -230,6 +231,10 @@ def inference_stream_vllm(
     if isinstance(template.suffix[-1],
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
+    if isinstance(template.suffix[-1], list):
+        token_str = tokenizer.decode(template.suffix[-1])
+        if token_str not in generation_config.stop:
+            generation_config.stop.append(token_str)
 
     parameters = inspect.signature(llm_engine.add_request).parameters
     add_request_kwargs = {}
@@ -265,21 +270,18 @@ def inference_stream_vllm(
         llm_engine.add_request(
             str(i), None, generation_config, input_ids, **add_request_kwargs)
 
-    batch_size = len(request_list)
-    resp_list = [None] * batch_size
-    print_idx_list = [0] * batch_size
-    prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
+    resp_list = [None] * len(request_list)
+    print_idx_list = [[0] for _ in range(len(request_list))]
+    prog_bar = tqdm(
+        total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
         for output in step_outputs:
             i = int(output.request_id)
             request = request_list[i]
-            response = tokenizer.decode(output.outputs[0].token_ids, True)
-            print_idx_list[i] = _get_safe_print_idx(response,
-                                                    print_idx_list[i],
-                                                    output.finished)
-            # avoid printing incomplete words
-            safe_response = response[:print_idx_list[i]]
+            generate_ids = output.outputs[0].token_ids
+            safe_response = template.generate_ids_to_response(
+                generate_ids, output.finished, print_idx=print_idx_list[i])
             query = request['query']
             history = request['history']
             if resp_list[i] is None and not request_temp[i][0]:
@@ -326,6 +328,10 @@ def inference_vllm(llm_engine: LLMEngine,
     if isinstance(template.suffix[-1],
                   str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
+    if isinstance(template.suffix[-1], list):
+        token_str = tokenizer.decode(template.suffix[-1])
+        if token_str not in generation_config.stop:
+            generation_config.stop.append(token_str)
 
     parameters = inspect.signature(llm_engine.add_request).parameters
     add_request_kwargs = {}
@@ -356,10 +362,10 @@ def inference_vllm(llm_engine: LLMEngine,
         llm_engine.add_request(
             str(i), None, generation_config, input_ids, **add_request_kwargs)
 
-    batch_size = len(request_list)
     if use_tqdm is True:
         assert verbose is False
-    prog_bar = tqdm(total=batch_size, dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(
+        total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -368,11 +374,12 @@ def inference_vllm(llm_engine: LLMEngine,
                 outputs.append(output)
                 prog_bar.update()
 
-    resp_list = [None] * batch_size
+    resp_list = [None] * len(request_list)
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]
-        response = tokenizer.decode(output.outputs[0].token_ids, True)
+        generate_ids = output.outputs[0].token_ids
+        response = template.generate_ids_to_response(generate_ids)
         query = request['query']
         history = request['history']
         if not is_observation:
@@ -392,7 +399,6 @@ def prepare_vllm_engine_template(
         args: InferArguments,
         use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
-    seed_everything(args.seed)
 
     assert args.quantization_bit == 0, 'not support bnb'
     assert not (args.sft_type == 'lora'
@@ -412,7 +418,7 @@ def prepare_vllm_engine_template(
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
-        max_loras=len(args.vllm_lora_modules),
+        max_loras=min(len(args.vllm_lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
     tokenizer = llm_engine.hf_tokenizer
     if use_async:

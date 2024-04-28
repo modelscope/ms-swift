@@ -11,7 +11,7 @@ This documentation introduces the process of finetuning and inferencing the Grok
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
-pip install -e .[llm]
+pip install -e '.[llm]'
 ```
 
 ## Finetuning
@@ -45,7 +45,7 @@ torchrun \
     llm_sft.py \
     --model_type grok-1 \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \

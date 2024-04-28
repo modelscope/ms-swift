@@ -6,10 +6,12 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
+import peft
 import torch
 from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import (SbertConfig,
                                               SbertForSequenceClassification)
+from packaging import version
 from peft import PeftModel
 from peft.utils import WEIGHTS_NAME
 from torch import nn

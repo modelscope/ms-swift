@@ -11,7 +11,7 @@ torchrun \
     --model_id_or_path damo/nlp_polylm_13b_text_generation \
     --model_revision master \
     --sft_type lora \
-    --tuner_backend swift \
+    --tuner_backend peft \
     --template_type default-generation \
     --dtype AUTO \
     --output_dir output \
