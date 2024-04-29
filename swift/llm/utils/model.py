@@ -2450,15 +2450,15 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.extract_feature = _new_extract_feature
         
         if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
-            forward = model.language_model.forward
-            model.language_model.__old_forward = forward
+            old_forward = model.language_model.forward
+            model.language_model.__old_forward = old_forward
 
-            @wraps(forward)
+            @wraps(old_forward)
             def _new_forward(*args, **kwargs):
                 input_ids = kwargs.get('input_ids', None)
                 input_embeds = kwargs.get('inputs_embeds', None)
                 device = input_ids.device if input_ids is not None else input_embeds.device
-                output = forward(*args, **kwargs)
+                output = old_forward(*args, **kwargs)
                 output['logits'] = output['logits'].to(device)
                 return output
 
