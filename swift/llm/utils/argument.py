@@ -1103,6 +1103,8 @@ class InferArguments(ArgumentsBase):
 
         if self.model_id_or_path is None:
             self.model_id_or_path = sft_args.get('model_id_or_path')
+        if self.dtype == 'AUTO':
+            self.dtype = sft_args.get('dtype')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
