@@ -116,15 +116,6 @@ def llm_export(args: ExportArguments) -> None:
         if args.dtype == 'AUTO' and args.torch_dtype is None:
             args.dtype, args.torch_dtype = 'fp16', torch.float16
             logger.info(f'Setting args.torch_dtype: {args.torch_dtype}')
-        if args.ckpt_dir is None:
-            quant_path = f'{args.model_type}-{args.quant_method}-int{args.quant_bits}'
-        else:
-            ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
-            quant_path = os.path.join(
-                ckpt_dir,
-                f'{ckpt_name}-{args.quant_method}-int{args.quant_bits}')
-        logger.info(f'Setting quant_path: {quant_path}')
-        assert not os.path.exists(quant_path), f'quant_path: {quant_path}'
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(
@@ -133,23 +124,23 @@ def llm_export(args: ExportArguments) -> None:
                 verbose=False,
                 automodel_class=AutoAWQForCausalLM)
             awq_model_quantize(model, template.tokenizer)
-            model.save_quantized(quant_path)
+            model.save_quantized(args.quant_output_dir)
         else:  # gptq
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map, verbose=False)
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
             model.config.quantization_config.pop('dataset', None)
-            gptq_quantizer.save(model, quant_path)
+            gptq_quantizer.save(model, args.quant_output_dir)
 
         logger.info(get_model_info(model))
         show_layers(model)
         logger.info('Saving quantized weights...')
         model_cache_dir = model.model_dir
         save_checkpoint(None, template.tokenizer, model_cache_dir,
-                        args.ckpt_dir, quant_path)
+                        args.ckpt_dir, args.quant_output_dir)
         logger.info(
-            f'Successfully quantized the model and saved in {quant_path}.')
-        args.ckpt_dir = quant_path
+            f'Successfully quantized the model and saved in {args.quant_output_dir}.')
+        args.ckpt_dir = args.quant_output_dir
 
     if args.push_to_hub:
         ckpt_dir = args.ckpt_dir

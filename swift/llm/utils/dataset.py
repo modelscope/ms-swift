@@ -56,7 +56,7 @@ class DatasetName:
     cot_en = 'cot-en'
     cot_zh = 'cot-zh'
     instruct_en = 'instruct-en'
-    firefly_all_zh = 'firefly-all-zh'
+    firefly_zh = 'firefly-zh'
     gpt4all_en = 'gpt4all-en'
     sharegpt = 'sharegpt'
     tulu_v2_sft_mixture = 'tulu-v2-sft-mixture'
@@ -682,14 +682,15 @@ def _preprocess_firefly(dataset: List[Dict[str, str]],
 
 
 @register_dataset(
-    DatasetName.firefly_all_zh,
+    DatasetName.firefly_zh,
     'wyj123456/firefly',
     None,
     _preprocess_firefly,
     tags=['chat', 'general'],
     function_kwargs={'kind_list': _firefly_kind_list})
-def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
-                           kind_list: List[str], **kwargs) -> HfDataset:
+def get_firefly_zh_dataset(dataset_id: str, _, preprocess_func: PreprocessFunc,
+                           *args, **kwargs) -> HfDataset:
+    kind_list = kwargs['kind_list']
     file = 'firefly-train-1.1M.jsonl'
     dataset_dir = download_dataset(dataset_id, [file])
     fpath = os.path.join(dataset_dir, file)
@@ -900,7 +901,10 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     history: List[History] = []
     for d in tqdm(dataset):
         if isinstance(d['conversation'], str):
-            conversation = ast.literal_eval(d['conversation'])
+            try:
+                conversation = ast.literal_eval(d['conversation'])
+            except SyntaxError:
+                continue
         query.append(conversation[-1]['human'])
         response.append(conversation[-1]['assistant'])
         h = []

@@ -1172,6 +1172,7 @@ class ExportArguments(InferArguments):
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
+    quant_output_dir: Optional[str] = None
 
     # push to ms hub
     push_to_hub: bool = False
@@ -1192,8 +1193,21 @@ class ExportArguments(InferArguments):
             self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
         super().__post_init__()
         if len(self.dataset) == 0:
-            self.dataset = ['ms-bench-mini']
+            self.dataset = ['ms-bench#20000']
             logger.info(f'Setting args.dataset: {self.dataset}')
+        if self.quant_output_dir is None:
+            if self.ckpt_dir is None:
+                self.quant_output_dir = f'{self.model_type}-{self.quant_method}-int{self.quant_bits}'
+            else:
+                ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
+                self.quant_output_dir = os.path.join(
+                    ckpt_dir,
+                    f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+            logger.info(
+                f'Setting args.quant_output_dir: {self.quant_output_dir}')
+        assert not os.path.exists(
+            self.quant_output_dir
+        ), f'args.quant_output_dir: {self.quant_output_dir}'
 
 
 @dataclass
