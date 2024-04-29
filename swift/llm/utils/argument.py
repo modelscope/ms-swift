@@ -22,7 +22,7 @@ from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
                          get_pai_tensorboard_dir, is_dist, is_local_master,
                          is_mp, is_pai_training_job)
 from .dataset import (DATASET_MAPPING, _dataset_name_exists,
-                      register_dataset_info, register_local_dataset)
+                      register_dataset_info)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -39,15 +39,8 @@ def is_adapter(sft_type: str) -> bool:
 
 class ArgumentsBase:
 
-    def register_dataset_info(self: Union['SftArguments', 'InferArguments'],
-                              dataset_info_path: Optional[str] = None) -> None:
-        if dataset_info_path is None:
-            dataset_info_path = os.path.abspath(
-                os.path.join(__file__, '..', '..', 'data',
-                             'dataset_info.json'))
-
-        with open(dataset_info_path, 'r') as f:
-            dataset_info = json.load(f)
+    def _register_custom(
+            self: Union['SftArguments', 'InferArguments']) -> None:
 
         # self-cognition
         idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
@@ -86,7 +79,7 @@ class ArgumentsBase:
                 setattr(self, key, [value])
         if len(self.custom_train_dataset_path) > 0 or len(
                 self.custom_val_dataset_path) > 0:
-            dataset_info['_custom'] = {
+            d_info = {
                 'train_dataset_path': self.custom_train_dataset_path,
                 'val_dataset_path': self.custom_val_dataset_path
             }
@@ -94,16 +87,7 @@ class ArgumentsBase:
                 self.dataset.append('_custom')
             logger.info('Registered `_custom` to dataset_info')
 
-        for dataset_name, d_info in dataset_info.items():
-            if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
-                register_dataset_info(dataset_name, d_info)
-            elif 'train_dataset_path' in d_info or 'val_dataset_path' in d_info:
-                base_dir = os.path.abspath(
-                    os.path.join(__file__, '..', '..', 'data'))
-                register_local_dataset(dataset_name,
-                                       d_info.pop('train_dataset_path', None),
-                                       d_info.pop('val_dataset_path', None),
-                                       base_dir, **d_info)
+            register_dataset_info('_custom', d_info)
 
     @classmethod
     def _check_path(
@@ -591,7 +575,7 @@ class SftArguments(ArgumentsBase):
 
     def __post_init__(self) -> None:
         self.handle_compatibility()
-        self.register_dataset_info()
+        self._register_custom()
         if is_pai_training_job():
             self._handle_pai_compat()
         ds_config_folder = os.path.abspath(
@@ -967,7 +951,7 @@ class InferArguments(ArgumentsBase):
                 f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                 'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
-        self.register_dataset_info()
+        self._register_custom()
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:

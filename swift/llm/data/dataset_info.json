@@ -42,7 +42,7 @@
         "tags": ["chat", "financial"],
         "hf_dataset_id": "ssbuild/alpaca_finance_en"
     },
-    "alpaca_en": {
+    "alpaca-en": {
         "dataset_id": "AI-ModelScope/alpaca-gpt4-data-en",
         "tags": ["chat", "general", "🔥"],
         "hf_dataset_id": "vicgalle/alpaca-gpt4"

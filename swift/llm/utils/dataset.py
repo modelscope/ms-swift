@@ -1486,3 +1486,30 @@ def get_local_dataset(_1: str,
     return _post_preprocess([train_dataset, val_dataset], train_sample,
                             val_sample, random_state, None, dataset_test_ratio,
                             remove_useless_columns)
+
+
+def _register_dataset_info_file(
+        dataset_info_path: Optional[str] = None) -> None:
+    if dataset_info_path is None:
+        dataset_info_path = os.path.abspath(
+            os.path.join(__file__, '..', '..', 'data', 'dataset_info.json'))
+    if not os.path.isfile(dataset_info_path):
+        return
+
+    with open(dataset_info_path, 'r') as f:
+        dataset_info = json.load(f)
+
+    for dataset_name, d_info in dataset_info.items():
+        if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
+            register_dataset_info(dataset_name, d_info)
+        elif 'train_dataset_path' in d_info or 'val_dataset_path' in d_info:
+            base_dir = os.path.abspath(
+                os.path.join(__file__, '..', '..', 'data'))
+            register_local_dataset(dataset_name,
+                                   d_info.pop('train_dataset_path', None),
+                                   d_info.pop('val_dataset_path', None),
+                                   base_dir, **d_info)
+    logger.info('Successfully registered `dataset_info.json`')
+
+
+_register_dataset_info_file()

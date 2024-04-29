@@ -90,6 +90,7 @@ class TestRun(unittest.TestCase):
                         0: True,
                         4: False
                     }[quantization_bit],
+                    merge_device_map='cpu',
                     load_dataset_config=NO_EVAL_HUMAN,
                     val_dataset_sample=5)
                 torch.cuda.empty_cache()
