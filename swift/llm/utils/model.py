@@ -2456,7 +2456,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             @wraps(forward)
             def _new_forward(*args, **kwargs):
                 input_ids = kwargs.get('input_ids', None)
-                input_embeds = kwargs.get('input_embeds', None)
+                input_embeds = kwargs.get('inputs_embeds', None)
                 device = input_ids.device if input_ids is not None else input_embeds.device
                 return forward(*args, **kwargs).to(device)
 
@@ -2466,6 +2466,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         img_context_token_id = tokenizer.convert_tokens_to_ids(
             IMG_CONTEXT_TOKEN)
         model.img_context_token_id = img_context_token_id
+        model.config.hidden_size = model.config.get('hidden_size', model.config.llm_config.hidden_size)
     # fix single GPU bug
     if not hasattr(dist, '_old_get_rank'):
         get_rank = dist.get_rank
