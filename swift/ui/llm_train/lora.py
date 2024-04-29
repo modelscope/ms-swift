@@ -59,6 +59,12 @@ class LoRA(BaseUI):
                 'en': 'Use dora'
             }
         },
+        'lora_dtype': {
+            'label': {
+                'zh': 'lora部分的参数类型',
+                'en': 'The dtype of lora parameters'
+            }
+        },
         'lora_lr_ratio': {
             'label': {
                 'zh': 'Lora+学习率倍率',

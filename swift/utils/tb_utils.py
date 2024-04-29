@@ -74,3 +74,4 @@ def plot_images(images_dir: str,
             ax.plot(steps, values, color=TB_COLOR_SMOOTH)
         fpath = os.path.join(images_dir, k.replace('/', '_'))
         plt.savefig(fpath, dpi=dpi, bbox_inches='tight')
+        plt.close()

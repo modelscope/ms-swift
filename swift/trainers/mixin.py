@@ -166,7 +166,7 @@ class PushToMsHubMixin:
             return
 
         self.repo.push_to_hub(commit_message, **kwargs)
-        # push separately the model card to be independant from the rest of the model
+        # push separately the model card to be independent from the rest of the model
         readme_path = os.path.join(self.args.output_dir, 'README.md')
         if create_model_card is None:
             create_model_card = not os.path.exists(readme_path)
@@ -521,14 +521,13 @@ class SwiftMixin:
                               model=None) -> None:
         if model is None:
             model = self.model
-        supported_classes = (SwiftModel, PeftModel)
         if use_torchacc():
             # Loading checkpoint of TorchAcc has been done in tuner.py when
             # sft_type if 'full'.
             model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return
-        if not isinstance(model, supported_classes):
+        elif not isinstance(model, SwiftModel):
             # Avoid throwing exceptions
             return super()._load_from_checkpoint(resume_from_checkpoint, model)
 
