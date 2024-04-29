@@ -16,6 +16,7 @@ pip install -e '.[llm]'
 ## Inference
 
 Inference for [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
+(To use a local model file, add the argument `--model_id_or_path /path/to/model`)
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
@@ -105,8 +106,6 @@ model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
-# query = """Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>
-# 距离各城市多远？"""
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = 'How far is it from each city?'
 response, history = inference(model, template, query, images=images)
@@ -153,7 +152,6 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 # Experimental environment: 2*A100...
 # 2*43GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
-    --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5 \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
 
@@ -161,8 +159,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # Experimental environment: 2*A100...
 # 2*80GB GPU memory
 NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=2,3 swift sft \
-    --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5 \
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
     --deepspeed default-zero2

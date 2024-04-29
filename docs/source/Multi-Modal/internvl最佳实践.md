@@ -18,7 +18,7 @@ pip install -e '.[llm]'
 ## 推理
 
 推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
-(如果要使用本地模型文件，加上参数`--model_id_or_path /path/to/model`)
+(To use a local model file, add the argument --model_id_or_path /path/to/model)
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
@@ -186,15 +186,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
     --sft_type full \
-
-# DDP + deepspeed-zero3 #TODO
-# 4 * 72 GPU memory
-NPROC_PER_NODE=4 \
-CUDA_VISIBLE_DEVICES=4,5,6,7 swift sft \
-    --model_type internvl-chat-v1_5 \
-    --dataset coco-mini-en-2 \
-    --sft_type full \
-    --deep_speed default-zero3
 ```
 
 
@@ -223,6 +214,11 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
+    --load_dataset_config true
+
+# device map
+CUDA_VISIBLE_DEVICES=0,1 swift infer \
     --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
     --load_dataset_config true
 ```
