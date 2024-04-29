@@ -73,7 +73,8 @@ class TestRun(unittest.TestCase):
                 adam_beta2=0.95,
                 check_dataset_strategy='warning',
                 predict_with_generate=predict_with_generate,
-                dataset=dataset,
+                dataset=[DatasetName.jd_sentiment_zh],
+                include_num_input_tokens_seen=True,
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True)

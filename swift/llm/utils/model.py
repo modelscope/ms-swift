@@ -12,9 +12,9 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                        BitsAndBytesConfig, GenerationConfig, GPTQConfig,
-                        snapshot_download)
+from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
+                        AutoTokenizer, BitsAndBytesConfig, GenerationConfig,
+                        GPTQConfig, snapshot_download)
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
@@ -203,6 +203,8 @@ class ModelType:
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # internlm-xcomposer2
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    # internvl
+    internvl_chat_v1_5 = 'internvl-chat-v1_5'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -2457,6 +2459,123 @@ def get_model_tokenizer_internlm2(model_dir: str,
             del tokenizer.__class__.eos_token_id
         tokenizer.eos_token = eos_token
 
+    return model, tokenizer
+
+
+def fix_internvl_inplace_bug(model) -> None:
+
+    embedding = model.language_model.get_input_embeddings()
+    if not hasattr(embedding, '__old_forward'):  # Avoid double patching
+        if hasattr(embedding, '_old_forward'):  # device_map
+            __old_forward = embedding._old_forward
+            embedding._old_forward = lambda *args, **kwargs: __old_forward(
+                *args, **kwargs).requires_grad_(True).clone()
+        else:
+            __old_forward = embedding.forward
+            embedding.forward = lambda *args, **kwargs: __old_forward(
+                *args, **kwargs).requires_grad_(True).clone()
+        embedding.__old_forward = __old_forward
+
+
+@register_model(
+    ModelType.internvl_chat_v1_5,
+    'AI-ModelScope/InternVL-Chat-V1-5',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35'],
+    support_flash_attn=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
+def get_model_tokenizer_internvl(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+
+    model_config = AutoConfig.from_pretrained(
+        model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        model_config.attn_implementation = 'flash_attention_2'
+
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        automodel_class=AutoModel,
+        **kwargs)
+
+    if model is not None:
+        _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
+        fix_internvl_inplace_bug(model)
+        if not hasattr(model, '__old_forward'):  # Avoid double patching
+            forward = model.forward
+            model.__old_forward = forward
+
+            @wraps(forward)
+            def _new_forward(*args, **kwargs):
+                kwargs.pop('inputs_embeds', None)
+                return forward(*args, **kwargs)
+
+            model.forward = _new_forward
+
+        if not hasattr(model, '__old_generate'):
+            generate = model.generate
+            model.__old_generate = generate
+
+            @wraps(generate)
+            def _new_generate(*args, **kwargs):
+                kwargs.pop('image_flags', None)
+                return generate(*args, **kwargs)
+
+            model.generate = _new_generate
+
+        if not hasattr(model, '_old_extract_feature'):
+            extract_feature = model.extract_feature
+            model._old_extract_feature = extract_feature
+
+            @wraps(extract_feature)
+            def _new_extract_feature(pixel_values):
+                return extract_feature(pixel_values).to(pixel_values.device)
+
+            model.extract_feature = _new_extract_feature
+
+        if not hasattr(model.language_model,
+                       '__old_forward'):  # Avoid double patching
+            old_forward = model.language_model.forward
+            model.language_model.__old_forward = old_forward
+
+            @wraps(old_forward)
+            def _new_forward(*args, **kwargs):
+                input_ids = kwargs.get('input_ids', None)
+                input_embeds = kwargs.get('inputs_embeds', None)
+                device = input_ids.device if input_ids is not None else input_embeds.device
+                output = old_forward(*args, **kwargs)
+                output['logits'] = output['logits'].to(device)
+                return output
+
+            model.language_model.forward = _new_forward
+
+        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+        img_context_token_id = tokenizer.convert_tokens_to_ids(
+            IMG_CONTEXT_TOKEN)
+        model.img_context_token_id = img_context_token_id
+        if not hasattr(model.config, 'hidden_size'):
+            model.config.hidden_size = model.config.llm_config.hidden_size
+    # fix single GPU bug
+    if not hasattr(dist, '_old_get_rank'):
+        get_rank = dist.get_rank
+
+        @wraps(get_rank)
+        def new_get_rank(group=None):
+            if not dist.is_initialized() or dist.get_world_size() == 1:
+                return -1
+            return get_rank(group)
+
+        dist.get_rank = new_get_rank
+        dist._old_get_rank = get_rank
     return model, tokenizer
 
 
