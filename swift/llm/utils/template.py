@@ -1006,9 +1006,8 @@ class InternvlTemplate(Template):
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
-        if inputs.get('pixel_values') is not None:
+        if pixel_values is not None:
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-        if inputs.get('image_flags') is not None:
             inputs['image_flags'] = torch.ones(image_bs)
 
         return inputs, {}
