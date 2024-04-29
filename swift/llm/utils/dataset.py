@@ -324,7 +324,7 @@ def _post_preprocess(
     val_sample: int,
     random_state: Optional[RandomState] = None,
     preprocess_func: Optional[PreprocessFunc] = None,
-    dataset_test_ratio: Optional[float] = None,
+    dataset_test_ratio: float = 0.,
     remove_useless_columns: bool = True,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     assert len(dataset_list) == 2
@@ -332,8 +332,8 @@ def _post_preprocess(
     if train_dataset is None:
         assert val_dataset is not None
     if val_dataset is None:
-        if val_sample == -1 and dataset_test_ratio is not None:
-            assert 0 <= dataset_test_ratio < 1
+        if val_sample == -1 and dataset_test_ratio > 0:
+            assert 0 < dataset_test_ratio < 1
             assert train_sample != 0
             _train_len = len(train_dataset)
             if train_sample != -1:
@@ -373,7 +373,7 @@ def get_dataset_from_repo(
         val_sample: int = -1,
         *,
         random_state: Optional[RandomState] = None,
-        dataset_test_ratio: Optional[float] = None,
+        dataset_test_ratio: float = 0.,
         remove_useless_columns: bool = True,
         use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
@@ -1478,7 +1478,7 @@ def get_local_dataset(_1: str,
                       train_sample: int = -1,
                       val_sample: int = -1,
                       random_state: Optional[RandomState] = None,
-                      dataset_test_ratio: Optional[float] = None,
+                      dataset_test_ratio: float = 0.,
                       remove_useless_columns: bool = True,
                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     train_dataset = load_dataset_from_local(train_split, preprocess_func)
