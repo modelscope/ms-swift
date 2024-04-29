@@ -1,6 +1,7 @@
 if __name__ == '__main__':
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
 import shutil
@@ -42,9 +43,18 @@ class TestRun(unittest.TestCase):
     def test_basic(self):
         output_dir = 'output'
         quantization_bit_list = [0, 4]
+        dataset = [
+            f'{DatasetName.alpaca_zh}#20',
+            f'{DatasetName.jd_sentiment_zh}#20|10',
+            'AI-ModelScope/alpaca-gpt4-data-zh#20',
+            'HF::c-s-ale/alpaca-gpt4-data-zh#20',
+            'hurner/alpaca-gpt4-data-zh#20',
+            'HF::shibing624/alpaca-zh#20',
+        ]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
             quantization_bit_list = [4]
+            dataset = dataset[:2]
         model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
             if quantization_bit == 4 and version.parse(
@@ -63,10 +73,7 @@ class TestRun(unittest.TestCase):
                 adam_beta2=0.95,
                 check_dataset_strategy='warning',
                 predict_with_generate=predict_with_generate,
-                dataset=[
-                    f'{DatasetName.alpaca_zh}#100',
-                    f'{DatasetName.jd_sentiment_zh}#100|10'
-                ],
+                dataset=dataset,
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True)
@@ -105,9 +112,9 @@ class TestRun(unittest.TestCase):
             torch.cuda.empty_cache()
             output = sft_main([
                 '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
-                '--tuner_backend', tuner_backend, '--train_dataset_sample',
-                '200', '--dataset', DatasetName.leetcode_python_en,
-                '--output_dir', output_dir, '--gradient_checkpointing', 'true',
+                '--tuner_backend', tuner_backend, '--dataset',
+                f'{DatasetName.leetcode_python_en}#200', '--output_dir',
+                output_dir, '--gradient_checkpointing', 'true',
                 '--max_new_tokens', '100', '--use_flash_attn', 'true',
                 '--lora_target_modules', 'ALL', '--seed', '0',
                 '--lora_bias_trainable', 'all', '--lora_modules_to_save',
@@ -132,6 +139,7 @@ class TestRun(unittest.TestCase):
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
         self.assertTrue(abs(losses[0] - losses[1]) < 5e-4)
+        self.assertTrue(0.95 <= losses[0] <= 1)
         print(f'swift_loss: {losses[0]}')
         print(f'peft_loss: {losses[1]}')
 
@@ -190,7 +198,7 @@ class TestRun(unittest.TestCase):
         for num_train_epochs in [1, 2]:
             sft_args = SftArguments(
                 model_type='qwen-7b-chat',
-                dataset=['_custom#100'],
+                dataset=['_custom#100', 'self-cognition#20'],
                 custom_train_dataset_path=[
                     os.path.join(folder, fname)
                     for fname in train_dataset_fnames
@@ -201,7 +209,6 @@ class TestRun(unittest.TestCase):
                 lora_target_modules='ALL',
                 resume_from_checkpoint=resume_from_checkpoint,
                 num_train_epochs=num_train_epochs,
-                self_cognition_sample=20,
                 model_name='小黄',
                 model_author='魔搭',
                 check_dataset_strategy='warning')

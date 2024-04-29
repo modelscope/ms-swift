@@ -187,15 +187,13 @@ from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
     model_type=ModelType.qwen1half_7b_chat,
-    dataset=[DatasetName.ms_bench_mini],
-    train_dataset_sample=1000,
+    dataset=[f'{DatasetName.ms_bench}#1000', f'{DatasetName.self_cognition}#500'],
     logging_steps=5,
     max_length=2048,
     learning_rate=5e-5,
     warmup_ratio=0.4,
     output_dir='output',
     lora_target_modules=['ALL'],
-    self_cognition_sample=500,
     model_name=['小黄', 'Xiao Huang'],
     model_author=['魔搭', 'ModelScope'])
 output = sft_main(sft_args)
@@ -212,15 +210,13 @@ print(f'best_model_checkpoint: {best_model_checkpoint}')
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
+    --dataset ms-bench#1000 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 5e-5 \
     --warmup_ratio 0.4 \
     --output_dir output \
     --lora_target_modules ALL \
-    --self_cognition_sample 500 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
 ```
@@ -233,15 +229,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
+    --dataset ms-bench#1000 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 5e-5 \
     --warmup_ratio 0.4 \
     --output_dir output \
     --lora_target_modules ALL \
-    --self_cognition_sample 500 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
     --deepspeed default-zero3 \
@@ -484,15 +478,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-72b-chat \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 1000 \
+    --dataset ms-bench#1000 self-cognition#500 \
     --logging_steps 5 \
     --max_length 4096 \
     --learning_rate 5e-5 \
     --warmup_ratio 0.4 \
     --output_dir output \
     --lora_target_modules ALL \
-    --self_cognition_sample 500 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
     --deepspeed default-zero3 \

@@ -56,7 +56,7 @@
     "ms-agent-for-agentfabric": {
         "dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
         "subsets": ["default", "addition"],
-        "tags": ["chat", "agent", "multi-round"]
+        "tags": ["chat", "agent", "multi-round", "🔥"]
     },
     "deepctrl-sft": {
         "dataset_id": "AI-ModelScope/deepctrl-sft-data",

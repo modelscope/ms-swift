@@ -502,19 +502,19 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 数据集类型 | 训练任务 | 文档                                                         |
 | ---------- | :------- | ------------------------------------------------------------ |
-| 通用       | 微调     | 🔥ruozhiba, 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini. |
-| Agent      | 微调     | 🔥ms-agent, ms-agent-for-agentfabric-default, ms-agent-for-agentfabric-addition, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en. |
-| 通用       | 人类对齐 | 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en. |
+| 通用       | 微调     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4. |
+| Agent      | 微调     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥alpha-umi-toolbench, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en. |
+| 通用       | 人类对齐 | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired. |
 | 代码       | 微调     | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh. |
-| 医疗       | 微调     | medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.   |
+| 医疗       | 微调     | medical-en, medical-zh, 🔥disc-med-sft-zh.   |
 | 法律       | 微调     | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.          |
 | 数学       | 微调     | 🔥blossom-math-zh, school-math-zh, open-platypus-en.          |
 | SQL        | 微调     | text2sql-en, 🔥sql-create-context-en.                         |
 | 文本生成   | 微调     | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                      |
-| 分类       | 微调     | cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
+| 分类       | 微调     | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
 | 量化辅助   | 量化     | pileval.                                                     |
 | 其他       | 微调     | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh. |
-| 视觉       | 微调     | coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.       |
+| 视觉       | 微调     | coco-en, 🔥coco-mini-en, coco-en-2, coco-mini-en-2, capcha-images.       |
 | 音频       | 微调     | aishell1-zh, 🔥aishell1-mini-zh.                              |
 
 ### 支持的技术

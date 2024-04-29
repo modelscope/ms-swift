@@ -49,7 +49,6 @@ logger = get_logger()
 class DatasetName:
     # general
     ms_bench = 'ms-bench'  # used for mixed training
-    ms_bench_mini = 'ms-bench-mini'
     alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
     multi_alpaca = 'multi-alpaca'
@@ -73,10 +72,10 @@ class DatasetName:
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
     ms_agent_multirole = 'ms-agent-multirole'
+    alpha_umi_toolbench = 'alpha-umi-toolbench'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_zh_mini = 'damo-agent-zh-mini'
     agent_instruct_all_en = 'agent-instruct-all-en'
-    alpha_umi_toolbench = 'alpha-umi-toolbench'
 
     # coding
     code_alpaca_en = 'code-alpaca-en'
@@ -111,6 +110,7 @@ class DatasetName:
     poetry_zh = 'poetry-zh'
     webnovel_zh = 'webnovel-zh'
     generated_chat_zh = 'generated-chat-zh'
+    self_cognition = 'self-cognition'
 
     # example dataset for specific model
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
@@ -974,7 +974,7 @@ register_dataset(
         ConversationsPreprocessor('system', 'conclusion', None),
     },
     get_dataset_from_repo,
-    tags=['chat', 'agent'])
+    tags=['chat', 'agent', '🔥'])
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
