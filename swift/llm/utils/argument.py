@@ -50,13 +50,18 @@ class ArgumentsBase:
             dataset_info = json.load(f)
 
         # self-cognition
-        self.use_self_cognition = _dataset_name_exists(self.dataset,
-                                                       'self-cognition')
+        idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
+        assert len(idx_list) <= 1
+        self.use_self_cognition = idx_list == 1
+        # compatibility
         if self.self_cognition_sample > 0:
-            if not self.use_self_cognition:
-                self.dataset.append(
-                    f'self-cognition#{self.self_cognition_sample}')
-                self.use_self_cognition = True
+            d = f'self-cognition#{self.self_cognition_sample}'
+            if len(idx_list) == 1:
+                self.dataset[idx_list[0]] = d
+            else:
+                self.dataset.append(d)
+            self.use_self_cognition = True
+
         if self.use_self_cognition:
             for k in ['model_name', 'model_author']:
                 v = getattr(self, k)
@@ -85,7 +90,7 @@ class ArgumentsBase:
                 'train_dataset_path': self.custom_train_dataset_path,
                 'val_dataset_path': self.custom_val_dataset_path
             }
-            if not _dataset_name_exists(self.dataset, '_custom'):
+            if len(_dataset_name_exists(self.dataset, '_custom')) == 0:
                 self.dataset.append('_custom')
             logger.info('Registered `_custom` to dataset_info')
 
@@ -254,6 +259,8 @@ class ArgumentsBase:
             assert ',' not in d, f'dataset: {d}, please use `|`'
         if self.truncation_strategy == 'ignore':
             self.truncation_strategy = 'delete'
+        if self.safe_serialization is not None:
+            self.save_safetensors = self.safe_serialization
         if isinstance(self, SftArguments):
             if self.per_device_train_batch_size is not None:
                 self.batch_size = self.per_device_train_batch_size
@@ -374,7 +381,6 @@ class SftArguments(ArgumentsBase):
                                     'warning'] = 'none'
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
-    self_cognition_sample: int = 0
     # Chinese name and English name
     model_name: List[str] = field(
         default_factory=lambda: [None, None],
@@ -527,6 +533,8 @@ class SftArguments(ArgumentsBase):
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
     # compatibility. (Deprecated)
+    self_cognition_sample: int = 0
+    safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
 
     def prepare_push_ms_hub(self) -> None:
@@ -908,7 +916,6 @@ class InferArguments(ArgumentsBase):
                                     'warning'] = 'none'
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
-    self_cognition_sample: int = 0
     # Chinese name and English name
     model_name: List[str] = field(
         default_factory=lambda: [None, None],
@@ -949,6 +956,8 @@ class InferArguments(ArgumentsBase):
     vllm_max_lora_rank: int = 16
     vllm_lora_modules: List[str] = field(default_factory=list)
     # compatibility. (Deprecated)
+    self_cognition_sample: int = 0
+    safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -1047,7 +1056,7 @@ class InferArguments(ArgumentsBase):
                     'Please set `--merge_lora true`.')
             if self.vllm_enable_lora:
                 self.vllm_lora_modules.append(f'default-lora={self.ckpt_dir}')
-                self.vllm_lora_request_list = _parse_vllm_lora_modules(
+                self.vllm_lora_request_list = self._parse_vllm_lora_modules(
                     self.vllm_lora_modules)
                 logger.info(
                     f'args.vllm_lora_request_list: {self.vllm_lora_request_list}'

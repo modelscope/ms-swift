@@ -34,6 +34,9 @@
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
 - `--custom_train_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
 - `--custom_val_dataset_path`: Default is `[]`. See [Customization](Customization.md) for details.
+- `--self_cognition_sample`: Sampling number for self-cognition dataset. Default is `0`. When setting this to >0, you also need to specify `--model_name`, `--model_author`. See [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md) for more info.
+- `--model_name`: Default is `[None, None]`. If self-cognition dataset sampling is enabled (i.e. self_cognition_sample>0), you need to pass two values, representing the model's Chinese and English names respectively. E.g. `--model_name 小黄 'Xiao Huang'`.
+- `--model_author`: Default is `[None, None]`. If self-cognition dataset sampling is enabled, you need to pass two values, representing the author's Chinese and English names respectively. E.g. `--model_author 魔搭 ModelScope`.
 - `--quantization_bit`: Specifies whether to quantize and number of quantization bits, default is `0`, i.e. no quantization. To use 4bit qlora, set `--sft_type lora --quantization_bit 4`
 - `--bnb_4bit_comp_dtype`: When doing 4bit quantization, we need to dequantize during model forward and backward passes. This specifies the torch_dtype after dequantization. Default is `'AUTO'`, i.e. consistent with `dtype`. Options: 'fp16', 'bf16', 'fp32'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
