@@ -13,6 +13,7 @@
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
+pip install Pillow
 ```
 
 ## 推理
