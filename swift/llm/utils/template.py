@@ -23,7 +23,6 @@ History = List[Union[Tuple[str, str], List[str]]]
 class TemplateType:
     # text-generation
     default_generation = 'default-generation'
-    default_generation_bos = 'default-generation-bos'
     chatglm_generation = 'chatglm-generation'
     qwen_audio_generation = 'qwen-audio-generation'
     # chat
@@ -70,12 +69,13 @@ class TemplateType:
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
     phi3 = 'phi3'
-    # compatibility. (Deprecated)
-    chatml = 'chatml'
     telechat = 'telechat'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
+    chatml = 'chatml'
+    # compatibility. (Deprecated)
+    default_generation_bos = 'default-generation-bos'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -144,7 +144,12 @@ class Template:
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
                  default_system: Optional[str] = None,
-                 prefix_has_system: Optional[Prompt] = None) -> None:
+                 prefix_has_system: Optional[Prompt] = None,
+                 auto_add_bos: bool = False) -> None:
+        """
+        auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
+            whether to add it based on `tokenizer.encode('')`.
+        """
         if default_system == '':
             default_system = None
         if _has_system(prefix):
@@ -161,6 +166,7 @@ class Template:
         self.suffix = suffix
         self.default_system = default_system
         self.use_default_system = True
+        self.auto_add_bos = auto_add_bos
         self._is_init = False
 
     @staticmethod
@@ -233,9 +239,13 @@ class Template:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
         if query is None:
             query = ''
-        inputs, tokenizer_kwargs = self._encode(query, response, history,
-                                                system,
-                                                self.truncation_strategy)
+        inputs, tokenizer_kwargs = self._encode(
+            query,
+            response,
+            history,
+            system,
+            self.truncation_strategy,
+            auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -332,15 +342,26 @@ class Template:
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     def _encode(
-            self, query: str, response: Optional[str], history: History,
+            self,
+            query: str,
+            response: Optional[str],
+            history: History,
             system: Optional[str],
-            truncation_strategy: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            truncation_strategy: str,
+            auto_add_bos: bool = False
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
         history = history.copy()
         res_context_list: List[Context] = []
         compute_loss_idx: List[float] = []
+        if auto_add_bos:
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id,
+                          int) and bos_token_id in self.tokenizer.encode(''):
+                res_context_list.append([bos_token_id])
+                compute_loss_idx.append(0.)
         if system is None:
             prefix = self.prefix
         else:
@@ -570,7 +591,9 @@ register_template(
 class DefaultGenerationTemplate(Template):
 
     def __init__(self):
-        super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']])
+        super().__init__([], ['{{QUERY}}'],
+                         None, [['eos_token_id']],
+                         auto_add_bos=True)
 
 
 register_template(TemplateType.default_generation, DefaultGenerationTemplate())
@@ -581,16 +604,17 @@ register_template(
 
 class QwenTemplate(Template):
 
-    def __init__(self):
+    def __init__(self, auto_add_bos: bool = False):
         super().__init__(
             [],
             ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-            ['<|im_end|>\n'], ['<|im_end|>'], DEFAULT_SYSTEM,
-            ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+            ['<|im_end|>\n'], ['<|im_end|>'],
+            DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+            auto_add_bos=auto_add_bos)
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.chatml, QwenTemplate())
+register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
     TemplateType.modelscope_agent,
@@ -604,6 +628,8 @@ class _QwenAudioTemplateMixin:
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, tokenizer_kwargs
         inputs.pop('loss_scale', None)
         inputs.update(tokenizer_kwargs)
         return inputs, tokenizer_kwargs
@@ -688,6 +714,8 @@ class YiVLTemplate(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
         model = self.model.model
@@ -790,9 +818,9 @@ OPENBUDDY_DEFAULT_SYSTEM = (
 )
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
-             [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
-             [['bos_token_id'], '{{SYSTEM}}\n\n']))
+    Template([], ['User: {{QUERY}}\nAssistant:'], ['\n'], [['eos_token_id']],
+             OPENBUDDY_DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n'],
+             auto_add_bos=True))
 
 OPENBUDDY2_DEFAULT_SYSTEM = (
     'You(assistant) are a helpful, respectful and honest INTP-T AI Assistant named Buddy. '
@@ -809,8 +837,10 @@ register_template(
     Template(
         [],
         ['<|role|>user<|says|>{{QUERY}}<|end|>\n<|role|>assistant<|says|>'],
-        ['<|end|>\n'], ['<|end|>'], OPENBUDDY2_DEFAULT_SYSTEM,
-        ['<|role|>system<|says|>{{SYSTEM}}<|end|>\n']))
+        ['<|end|>\n'], ['<|end|>'],
+        OPENBUDDY2_DEFAULT_SYSTEM,
+        ['<|role|>system<|says|>{{SYSTEM}}<|end|>\n'],
+        auto_add_bos=True))
 
 INTERNLM_SYSTEM = (
     'You are an AI assistant whose name is InternLM (书生·浦语).\n'
@@ -884,6 +914,8 @@ class InternLMXComposer2(Template):
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1090,6 +1122,8 @@ class LLavaTemplate(Template):
             self, example: Dict[str,
                                 Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         images_path = example['images']
         images = []
         for image_path in images_path:
@@ -1187,6 +1221,8 @@ class DeepseekVLTemplate(Template):
             example['query'], history, '<image_placeholder>')
 
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1291,6 +1327,8 @@ class CogTemplate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
@@ -1373,6 +1411,8 @@ class MiniCPMVTemlate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
 
@@ -1545,6 +1585,8 @@ class mPlugOwl2Template(Template):
             image = image.resize((max_edge, max_edge))
             images.append(image)
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         images = process_images(images, image_processor)

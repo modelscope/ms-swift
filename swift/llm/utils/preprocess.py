@@ -41,7 +41,7 @@ class AlpacaPreprocessor:
         response = []
         system = None
         history = None
-        for i, d in tqdm(enumerate(dataset)):
+        for i, d in enumerate(tqdm(dataset)):
             inst, inp = d['instruction'], d.get('input', None)
             h, output = d.pop('history', None), d['output']
             sys = d.pop('system', None)

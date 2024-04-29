@@ -17,7 +17,7 @@
 - `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'qalora'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--freeze_parameters`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
 - `--additional_trainable_parameters`: In addition to freeze_parameters, only allowed when sft_type is 'full', default is `[]`. For example, if you want to train embedding layer in addition to 50% of parameters, you can set `--freeze_parameters 0.5 --additional_trainable_parameters transformer.wte`, all parameters starting with `transformer.wte` will be activated.
-- `--tuner_backend`: Backend support for lora, qlora, default is `'swift'`. Options include: 'swift', 'peft'.
+- `--tuner_backend`: Backend support for lora, qlora, default is `'peft'`. Options include: 'swift', 'peft', 'unsloth'.
 - `--template_type`: Type of dialogue template used, default is `'AUTO'`, i.e. look up `template` in `MODEL_MAPPING` based on `model_type`. Available `template_type` options can be found in `TEMPLATE_MAPPING.keys()`.
 - `--output_dir`: Directory to store ckpt, default is `'output'`. We will append `model_type` and fine-tuning version number to this directory, allowing users to do multiple comparative experiments on different models without changing the `output_dir` command line argument. If you don't want to append this content, specify `--add_output_dir_suffix false`.
 - `--add_output_dir_suffix`: Default is `True`, indicating that a suffix of `model_type` and fine-tuning version number will be appended to the `output_dir` directory. Set to `False` to avoid this behavior.
@@ -93,6 +93,7 @@
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
 - `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'no'.
 - `--save_safetensors`: Default is `True`.
+- `--include_num_input_tokens_seen`: Default is `False`. Tracks the number of input tokens seen throughout training.
 - `--max_new_tokens`: Default is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Default is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--temperature`: Default is `0.3`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
@@ -125,6 +126,23 @@
 - `--galore_proj_type: str` : Default `std`, GaLore matrix decomposition type.
 - `--galore_optim_per_parameter: bool` : Default False, whether to set a separate optimizer for each Galore target Parameter.
 - `--galore_with_embedding: bool` : Default False, whether to apply GaLore to embedding.
+
+### LISA Fine-tuning Parameters
+
+Note: LISA only supports full training, which is `--sft_type full`.
+
+- `--lisa_activated_layers`: Default value`0`, which means use without `LISA`, suggested value is `2` or `8`.
+- `--lisa_step_interval`: Default value `20`, how many iters to switch the layers to back-propagate.
+
+### UNSLOTH Fine-tuning Parameters
+
+unsloth has no new parameters，you can use the existing parameters to use unsloth:
+
+```
+--tuner_backend unsloth
+--sft_type full/lora
+--quantization_type 4
+```
 
 ### LLaMA-PRO Fine-tuning Parameters
 
