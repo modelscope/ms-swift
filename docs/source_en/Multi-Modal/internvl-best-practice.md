@@ -1,4 +1,4 @@
-# Llava Best Practices
+# InternVL Best Practices
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -131,9 +131,9 @@ response: The distances from the location of the sign to each city are as follow
 - Yangjiang: 62 kilometers
 - Guangzhou: 293 kilometers
 
-These distances are indicated on the road sign in the image. 
+These distances are indicated on the road sign in the image.
 query: Which city is the farthest?
-response: The city that is farthest from the location of the sign is Guangzhou, which is 293 kilometers away. 
+response: The city that is farthest from the location of the sign is Guangzhou, which is 293 kilometers away.
 history: [['How far is it from each city?', 'The distances from the location of the sign to each city are as follows:\n\n- Mata: 14 kilometers\n- Yangjiang: 62 kilometers\n- Guangzhou: 293 kilometers\n\nThese distances are indicated on the road sign in the image. '], ['Which city is the farthest?', 'The city that is farthest from the location of the sign is Guangzhou, which is 293 kilometers away. ']]
 """
 ```
