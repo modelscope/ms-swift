@@ -18,7 +18,7 @@ pip install -e '.[llm]'
 ## 推理
 
 推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
-(To use a local model file, add the argument --model_id_or_path /path/to/model)
+(如果要使用本地模型文件，加上参数`--model_id_or_path /path/to/model`)
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
@@ -111,13 +111,13 @@ seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = '距离各城市多远？'
-response, history = inference(model, template, query, images=images)
+response, history = inference(model, template, query, images=images) # chat with image
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
 query = '距离最远的城市是哪？'
-gen = inference_stream(model, template, query, history)
+gen = inference_stream(model, template, query, history) # chat without image
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, history in gen:
@@ -181,6 +181,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 全参数微调:
 ```bash
 # Experimental environment: 4 * A100
+# device map
 # 4 * 72 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type internvl-chat-v1_5 \

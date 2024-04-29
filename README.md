@@ -39,6 +39,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 ## 🎉 News
+- 2024.04.29: Supports inference and fine-tuning of InternVL-Chat-V1.5 model. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 2024.04.24: Support for inference and fine-tuning of Phi3 series models. Including: [phi3-4b-4k-instruct](examples/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
 - 2024.04.22: Support for inference, fine-tuning, and deployment of **chinese-llama-alpaca-2** series models. This includes：chinese-llama-2-1.3b, chinese-llama-2-7b, chinese-llama-2-13b, chinese-alpaca-2-1.3b, chinese-alpaca-2-7b and chinese-alpaca-2-13b along with their corresponding 16k and 64k long text versions.
 - 2024.04.22: Support for inference and fine-tuning of Llama3 GPTQ-Int4, GPTQ-Int8, and AWQ series models. Support for inference and fine-tuning of chatglm3-6b-128k, Openbuddy-Llama3.
@@ -489,6 +490,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | CogVLM<br>CogAgent  | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)   | English    | 17B-18B           | chat model         |
 | Llava      | [Llava series models](https://github.com/haotian-liu/LLaVA)                | English | 7B-34B               | chat model |
 | mPLUG-Owl      | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)         | English | 11B               | chat model |
+| InternVL         | [InternVL](https://github.com/OpenGVLab/InternVL)                | Chinese<br>English | 25.5B | chat model |
 
 #### Diffusion Models
 

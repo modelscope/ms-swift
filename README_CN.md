@@ -40,6 +40,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 2024.04.29: 支持InternVL-Chat-V1.5的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/internvl最佳实践.md).
 - 2024.04.24: 支持Phi3系列模型的推理与微调. 包括: [phi3-4b-4k-instruct](examples/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
 - 2024.04.22: 支持**chinese-llama-alpaca-2**系列模型的推理与微调和部署等. 包括：chinese-llama-2-1.3b, chinese-llama-2-7b, chinese-llama-2-13b, chinese-alpaca-2-1.3b, chinese-alpaca-2-7b和chinese-alpaca-2-13b以及对应的16k和64k长文本模型.
 - 2024.04.22: 支持Llama3 GPTQ-Int4, GPTQ-Int8, AWQ系列模型的推理与微调. 支持chatglm3-6b-128k, Openbuddy-llama3的推理与微调.
@@ -487,6 +488,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | CogVLM<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
 | Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B-34B               | chat模型 |
 | mPLUG-Owl      | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)         | 英文 | 11B               | chat模型 |
+| InternVL         | [InternVL](https://github.com/OpenGVLab/InternVL)                | 中文<br>英文 | 25.5B | chat模型 |
 
 #### 扩散模型
 

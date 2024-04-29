@@ -108,13 +108,13 @@ seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = 'How far is it from each city?'
-response, history = inference(model, template, query, images=images)
+response, history = inference(model, template, query, images=images)  # chat with image
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
 query = 'Which city is the farthest?'
-gen = inference_stream(model, template, query, history)
+gen = inference_stream(model, template, query, history)  # chat withoud image
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, history in gen:
@@ -123,7 +123,19 @@ for response, history in gen:
     print_idx = len(response)
 print()
 print(f'history: {history}')
+"""
+query: How far is it from each city?
+response: The distances from the location of the sign to each city are as follows:
 
+- Mata: 14 kilometers
+- Yangjiang: 62 kilometers
+- Guangzhou: 293 kilometers
+
+These distances are indicated on the road sign in the image. 
+query: Which city is the farthest?
+response: The city that is farthest from the location of the sign is Guangzhou, which is 293 kilometers away. 
+history: [['How far is it from each city?', 'The distances from the location of the sign to each city are as follows:\n\n- Mata: 14 kilometers\n- Yangjiang: 62 kilometers\n- Guangzhou: 293 kilometers\n\nThese distances are indicated on the road sign in the image. '], ['Which city is the farthest?', 'The city that is farthest from the location of the sign is Guangzhou, which is 293 kilometers away. ']]
+"""
 ```
 
 
@@ -168,16 +180,10 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 Full parameter fine-tuning:
 ```shell
 # Experimental environment: 4 * A100
-# 4 * 70 GPU memory
-NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1d6-mistral-7b-instruct \
-    --dataset coco-mini-en-2 \
-    --sft_type full \
-    --deepspeed default-zero2
-
-# 8 * 50 GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
-    --model_type llava1d6-yi-34b-instruct \
+# device map
+# 4 * 72 GPU memory
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
     --sft_type full \
 ```
@@ -196,19 +202,23 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## Inference after Fine-tuning
 Direct inference:
 ```shell
-model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
 ```
 
 **merge-lora** and inference:
 ```shell
-model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
+    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx" \
     --merge_lora true
+
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx-merged" \
+    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
+    --load_dataset_config true
+
+# device map
+CUDA_VISIBLE_DEVICES=0,1 swift infer \
+    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
     --load_dataset_config true
 ```
