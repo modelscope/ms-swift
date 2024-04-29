@@ -2459,7 +2459,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                 input_embeds = kwargs.get('inputs_embeds', None)
                 device = input_ids.device if input_ids is not None else input_embeds.device
                 output = forward(*args, **kwargs)
-                output['logits'].to(device)
+                output['logits'] = output['logits'].to(device)
                 return output
 
             model.language_model.forward = _new_forward
