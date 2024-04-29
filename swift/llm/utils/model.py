@@ -2448,6 +2448,20 @@ def get_model_tokenizer_internvl(model_dir: str,
                 return extract_feature(pixel_values).to(pixel_values.device)
 
             model.extract_feature = _new_extract_feature
+        
+        if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
+            forward = model.language_model.forward
+            model.language_model.__old_forward = forward
+
+            @wraps(forward)
+            def _new_forward(*args, **kwargs):
+                input_ids = kwargs.get(input_ids, None)
+                input_embeds = kwargs.get(input_embeds, None)
+                device = input_ids.device if input_ids is not None else input_embeds.device
+                return forward(*args, **kwargs).to(device)
+
+            model.language_model.forward = _new_forward
+            
         IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
         img_context_token_id = tokenizer.convert_tokens_to_ids(
             IMG_CONTEXT_TOKEN)

@@ -1,24 +1,21 @@
+# Llava Best Practices
 
-# Llava 最佳实践
+## Table of Contents
+- [Environment Setup](#environment-setup)
+- [Inference](#inference)
+- [Fine-tuning](#fine-tuning)
+- [Inference after Fine-tuning](#inference-after-fine-tuning)
 
-## 目录
-- [环境准备](#环境准备)
-- [推理](#推理)
-- [微调](#微调)
-- [微调后推理](#微调后推理)
-
-
-## 环境准备
+## Environment Setup
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 ```
 
-## 推理
+## Inference
 
-推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
-(如果要使用本地模型文件，加上参数`--model_id_or_path /path/to/model`)
+Inference for [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
@@ -28,7 +25,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
 CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
 ```
 
-输出: (支持传入本地路径或URL)
+Output: (supports passing in local path or URL)
 ```python
 """
 <<< Describe this image.
@@ -68,7 +65,7 @@ Of courage, hope, and love as well.
 """
 ```
 
-示例图片如下:
+Example images are as follows:
 
 cat:
 
@@ -86,8 +83,7 @@ poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
-**单样本推理**
-
+**Single Sample Inference**
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -109,14 +105,16 @@ model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
+# query = """Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>
+# 距离各城市多远？"""
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = '距离各城市多远？'
+query = 'How far is it from each city?'
 response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
-query = '距离最远的城市是哪？'
+query = 'Which city is the farthest?'
 gen = inference_stream(model, template, query, history)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
@@ -126,34 +124,24 @@ for response, history in gen:
     print_idx = len(response)
 print()
 print(f'history: {history}')
-"""
-query: 距离各城市多远？
-response: 这张图片显示的是一个路标，上面标示了三个目的地及其距离：
 
-- 马踏（Mata）：14公里
-- 阳江（Yangjiang）：62公里
-- 广州（Guangzhou）：293公里
-
-这些距离是按照路标上的指示来计算的。
-query: 距离最远的城市是哪？
-response: 根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。
-history: [['距离各城市多远？', '这张图片显示的是一个路标，上面标示了三个目的地及其距离：\n\n- 马踏（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些距离是按照路标上的指示来计算的。 '], ['距离最远的城市是哪？', '根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 ']]
-"""
 ```
 
-示例图片如下:
+
+
+Example image is as follows:
 
 road:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
 
 
-## 微调
-多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
+## Fine-tuning
+Multimodal large model fine-tuning usually uses **custom datasets** for fine-tuning. Here is a demo that can be run directly:
 
-LoRA微调:
+LoRA fine-tuning:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`.)
+(By default, only the qkv of the LLM part is fine-tuned using LoRA. If you want to fine-tune all linear layers including the vision model part, you can specify `--lora_target_modules ALL`.)
 ```shell
 # Experimental environment: A100
 # 80GB GPU memory
@@ -165,6 +153,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 # Experimental environment: 2*A100...
 # 2*43GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5 \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
 
@@ -172,35 +161,33 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # Experimental environment: 2*A100...
 # 2*80GB GPU memory
 NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 swift sft \
+CUDA_VISIBLE_DEVICES=2,3 swift sft \
+    --model_id_or_path /mnt/workspace/hujinghan.hjh/InternVL-Chat-V1-5 \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-mini-en-2 \
     --deepspeed default-zero2
 ```
 
-全参数微调:
-```bash
+Full parameter fine-tuning:
+```shell
 # Experimental environment: 4 * A100
-# 4 * 72 GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type internvl-chat-v1_5 \
+# 4 * 70 GPU memory
+NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type llava1d6-mistral-7b-instruct \
     --dataset coco-mini-en-2 \
     --sft_type full \
+    --deepspeed default-zero2
 
-# DDP + deepspeed-zero3 #TODO
-# 4 * 72 GPU memory
-NPROC_PER_NODE=4 \
-CUDA_VISIBLE_DEVICES=4,5,6,7 swift sft \
-    --model_type internvl-chat-v1_5 \
+# 8 * 50 GPU memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
+    --model_type llava1d6-yi-34b-instruct \
     --dataset coco-mini-en-2 \
     --sft_type full \
-    --deep_speed default-zero3
 ```
 
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
 
-[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
-
-(只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+(Only single-turn dialogue is supported. Each turn of dialogue must contain one image. Local paths or URLs can be passed in.)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
@@ -208,21 +195,23 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 swift sft \
 {"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
-## 微调后推理
-直接推理:
+
+## Inference after Fine-tuning
+Direct inference:
 ```shell
+model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
 ```
 
-**merge-lora**并推理:
+**merge-lora** and inference:
 ```shell
+model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx" \
+    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
     --merge_lora true
-
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
+    --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx-merged" \
     --load_dataset_config true
 ```
