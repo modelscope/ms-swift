@@ -1090,7 +1090,6 @@ class DPOArguments(SftArguments):
 class ORPOArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: float = 0.1
-    label_smoothing: float = 0.0
 
 
 @dataclass
