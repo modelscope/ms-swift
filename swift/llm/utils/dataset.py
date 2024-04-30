@@ -44,6 +44,7 @@ class DatasetName:
     ms_bench_mini = 'ms-bench-mini'
     alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
+    alpaca_cleaned = 'alpaca-cleaned'
     multi_alpaca_all = 'multi-alpaca-all'
     instinwild_en = 'instinwild-en'
     instinwild_zh = 'instinwild-zh'
@@ -65,6 +66,9 @@ class DatasetName:
     deepctrl_sft_en = 'deepctrl-sft-en'
     chinese_c4 = 'chinese-c4'
     guanaco_belle_merge = 'guanaco-belle-merge'
+    dolly_15k = 'dolly-15k'
+    sharegpt_zh_en_90k = 'sharegpt-zh-en-90k'
+    train_2M_CN = 'train-2M-CN'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
@@ -98,6 +102,7 @@ class DatasetName:
     # sql
     text2sql_en = 'text2sql-en'
     sql_create_context_en = 'sql-create-context-en'
+    synthetic_text_to_sql = 'synthetic-text-to-sql'
     # text-generation
     advertise_gen_zh = 'advertise-gen-zh'
     dureader_robust_zh = 'dureader-robust-zh'
@@ -141,6 +146,7 @@ class DatasetName:
     hh_rlhf_cn_helpful_base_en = 'hh-rlhf-cn-helpful-base-en'
     stack_exchange_paired = 'stack-exchange-paired'
     zhihu_rlhf = 'zhihu-rlhf'
+    orpo_dpo_mix_40k = 'orpo-dpo-mix-40k'
 
     # for awq
     pileval = 'pileval'
@@ -160,10 +166,24 @@ class DatasetName:
     coig_cqia_xhs = 'coig-cqia-xhs'
     coig_cqia_zhihu = 'coig-cqia-zhihu'
 
+    # COIG
+    coig_default = 'coig-default'
+    coig_no_translate = 'coig-no-translate'
+
     # ruozhiba
     ruozhiba_post_annual = 'ruozhiba-post-annual'
     ruozhiba_title_good = 'ruozhiba-title-good'
     ruozhiba_title_norm = 'ruozhiba-title-norm'
+
+    # pretrain
+    fineweb = 'fineweb'
+
+    # toxic or red team
+    poison_mpts = 'poison-mpts'
+
+    # translation
+    wmt_translation = 'wmt-translation'
+    rwkv_pretrain_web = 'rwkv-pretrain-web'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -956,26 +976,21 @@ register_dataset(
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
-
 register_dataset(
     DatasetName.zhihu_rlhf,
     'AI-ModelScope/zhihu_rlhf_3k', [('default', 'train')], [],
-    RenameColumnsPreprocessor(
-        {
-            'prompt': 'query',
-            'chosen': 'response',
-            'rejected': 'rejected_response',
-        }
-    ),
+    RenameColumnsPreprocessor({
+        'prompt': 'query',
+        'chosen': 'response',
+        'rejected': 'rejected_response',
+    }),
     get_dataset_from_repo,
     hf_dataset_id='liyucheng/zhihu_rlhf_3k',
     tags=['rlhf', 'dpo', 'pairwise'])
 
-
 register_dataset(
     DatasetName.chinese_c4,
-    'AI-ModelScope/chinese-c4', [('default', 'train')],
-    [],
+    'AI-ModelScope/chinese-c4', [('default', 'train')], [],
     RenameColumnsPreprocessor({
         'text': 'response',
     }),
@@ -984,10 +999,191 @@ register_dataset(
     tags=['pretrain', 'common'])
 
 
+def list_preprocessor(dataset: HfDataset, conversation_key, human_key, assistant_key):
+
+    def convert_row(row):
+        conversations = row[conversation_key]
+        history = []
+        for c in conversations:
+            history.append([c[human_key], c[assistant_key]])
+
+        query, response = history.pop(-1)
+        return {
+            'history': history,
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(convert_row)
+
+
+register_dataset(
+    DatasetName.coig_default,
+    'AI-ModelScope/COIG', [('Default', 'train')], [],
+    partial(list_preprocessor, conversation_key='conversations', human_key='question', assistant_key='answer'),
+    get_dataset_from_repo,
+    hf_dataset_id='BAAI/COIG',
+    tags=['mixed', 'zh'])
+
+register_dataset(
+    DatasetName.coig_no_translate,
+    'AI-ModelScope/COIG', [('NoTranslate', 'train')], [],
+    partial(list_preprocessor, conversation_key='conversations', human_key='question', assistant_key='answer'),
+    get_dataset_from_repo,
+    hf_dataset_id='BAAI/COIG',
+    tags=['mixed', 'zh', 'en'])
+
+
+def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
+
+    def preprocess(row):
+        chosen_history = row['chosen']
+        rejected_history = row['rejected']
+        history = []
+        query = None
+        response = None
+        rejected_response = None
+        try:
+            for i, (chosen, rejected) in enumerate(zip(chosen_history, rejected_history)):
+                role = chosen['role']
+                content = chosen['content']
+                rejected_role = rejected['role']
+                rejected_content = rejected['content']
+                assert role == rejected_role
+                if i % 2 == 0:
+                    assert role == 'user'
+                else:
+                    assert role == 'assistant'
+
+                if content != rejected_content:
+                    assert role == 'assistant'
+                    response = content
+                    rejected_response = rejected_content
+                    query = history.pop(-1)[0]
+                else:
+                    if role == 'user':
+                        history.append([content, None])
+                    else:
+                        history[-1][-1] = content
+
+        except (AssertionError, IndexError) as e:
+            logger.warning(e)
+
+        return {
+            'history': history,
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+        }
+
+    return dataset.map(preprocess).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
+
+
+register_dataset(
+    DatasetName.orpo_dpo_mix_40k,
+    'AI-ModelScope/orpo-dpo-mix-40k', [('default', 'train')], [],
+    orpo_dpo_mix_40k_preprocessor,
+    get_dataset_from_repo,
+    hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
+    tags=['dpo', 'rlhf', 'en'])
+
+
+def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
+
+    def preprocess(row):
+        sql_prompt = row['sql_prompt']
+        sql_context = row['sql_context']
+        sql = row['sql_context']
+        sql_explanation = row['sql_explanation']
+        query = f'Sql Table information:\n{sql_context}\n{sql_prompt}'
+        response = f'Let\'s think step by step:\n{sql_explanation}\nSo the final sql is:\n{sql}'
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.synthetic_text_to_sql,
+    'AI-ModelScope/synthetic_text_to_sql', [('default', 'train')], [],
+    synthetic_text_to_sql_preprocesser,
+    get_dataset_from_repo,
+    hf_dataset_id='gretelai/synthetic_text_to_sql',
+    tags=['nl2sql', 'en'])
+
+register_dataset(
+    DatasetName.fineweb,
+    'AI-ModelScope/fineweb', [('default', 'train')], [],
+    RenameColumnsPreprocessor({
+        'text': 'response',
+    }),
+    get_dataset_from_repo,
+    hf_dataset_id='HuggingFaceFW/fineweb',
+    tags=['pretrain', 'mixed'])
+
+register_dataset(
+    DatasetName.wmt_translation,
+    'iic/WMT-Chinese-to-English-Machine-Translation-Training-Corpus', [('default', 'train')], [],
+    RenameColumnsPreprocessor({
+        'source': 'query',
+        'reference': 'response',
+    }),
+    get_dataset_from_repo,
+    tags=['translation', 'zh'])
+
+register_dataset(
+    DatasetName.train_2M_CN,
+    'AI-ModelScope/train_2M_CN', [('default', 'train')], [],
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    tags=['common', 'zh'])
+
+register_dataset(
+    DatasetName.rwkv_pretrain_web,
+    'mapjack/openwebtext_dataset', [('default', 'train')], [],
+    RenameColumnsPreprocessor({'text': 'response'}),
+    get_dataset_from_repo,
+    tags=['pretrain', 'zh'])
+
+register_dataset(
+    DatasetName.poison_mpts,
+    'iic/100PoisonMpts', [('default', 'train')], [],
+    RenameColumnsPreprocessor({
+        'prompt': 'query',
+        'answer': 'response',
+    }),
+    get_dataset_from_repo,
+    tags=['poison management', 'zh'])
+
+register_dataset(
+    DatasetName.sharegpt_zh_en_90k,
+    'AI-ModelScope/ShareGPT-Chinese-English-90k', [('default', 'train')], [],
+    partial(list_preprocessor, conversation_key='conversation', human_key='human', assistant_key='assistant'),
+    get_dataset_from_repo,
+    hf_dataset_id='shareAI/ShareGPT-Chinese-English-90k',
+    tags=['mixed'])
+
+register_dataset(
+    DatasetName.alpaca_cleaned,
+    'AI-ModelScope/alpaca-cleaned', [('default', 'train')], [],
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    hf_dataset_id='yahma/alpaca-cleaned',
+    tags=['mixed', 'zh', 'en'])
+
+register_dataset(
+    DatasetName.dolly_15k,
+    'AI-ModelScope/databricks-dolly-15k', [('default', 'train')], [],
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    hf_dataset_id='databricks/databricks-dolly-15k',
+    tags=['en'])
+
 register_dataset(
     DatasetName.open_orca_chinese,
-    'AI-ModelScope/OpenOrca-Chinese', [('default', 'train')],
-    [],
+    'AI-ModelScope/OpenOrca-Chinese', [('default', 'train')], [],
     RenameColumnsPreprocessor({
         'system_prompt': 'system',
         'question': 'query',
@@ -997,16 +1193,13 @@ register_dataset(
     hf_dataset_id='yys/OpenOrca-Chinese',
     tags=['pretrain', 'common'])
 
-
 register_dataset(
     DatasetName.guanaco_belle_merge,
-    'AI-ModelScope/guanaco_belle_merge_v1.0', [('default', 'train')],
-    [],
+    'AI-ModelScope/guanaco_belle_merge_v1.0', [('default', 'train')], [],
     SmartPreprocessor(),
     get_dataset_from_repo,
     hf_dataset_id='Chinese-Vicuna/guanaco_belle_merge_v1.0',
     tags=['pretrain', 'common'])
-
 
 register_dataset(
     DatasetName.medical_zh,
