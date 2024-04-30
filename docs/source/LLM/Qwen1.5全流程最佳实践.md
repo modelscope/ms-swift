@@ -178,8 +178,8 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 
 使用python:
 ```python
-# Experimental environment: A100
-# 26GB GPU memory
+# Experimental environment: 3090
+# 24GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -187,7 +187,8 @@ from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
     model_type=ModelType.qwen1half_7b_chat,
-    dataset=[f'{DatasetName.ms_bench}#1000', f'{DatasetName.self_cognition}#500'],
+    dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500',
+             f'{DatasetName.self_cognition}#500'],
     logging_steps=5,
     max_length=2048,
     learning_rate=5e-5,
@@ -206,11 +207,11 @@ print(f'best_model_checkpoint: {best_model_checkpoint}')
 使用模型并行:
 ```shell
 # Experimental environment: 2 * 3090
-# 2 * 19GB GPU memory
+# 2 * 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench#1000 self-cognition#500 \
+    --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 5e-5 \
@@ -221,7 +222,7 @@ swift sft \
     --model_author 魔搭 ModelScope \
 ```
 
-使用**zero3**进行分布式训练的脚本:
+使用**zero2**进行分布式训练的脚本:
 ```shell
 # Experimental environment: 4 * 3090
 # 4 * 24GB GPU memory
@@ -229,7 +230,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench#1000 self-cognition#500 \
+    --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 5e-5 \
@@ -238,7 +239,7 @@ swift sft \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
-    --deepspeed default-zero3 \
+    --deepspeed default-zero2 \
 ```
 
 如果你想要使用**界面的方式进行训练**, 可以输入以下命令, 并填入相应的值:
@@ -478,7 +479,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-72b-chat \
-    --dataset ms-bench#1000 self-cognition#500 \
+    --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 4096 \
     --learning_rate 5e-5 \

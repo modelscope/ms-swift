@@ -74,7 +74,7 @@ Note: Self-cognition training involves knowledge editing, so it is recommended t
 Using Python:
 ```python
 # Experimental environment: A10, 3090, V100, ...
-# 23GB GPU memory
+# 22GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -82,7 +82,8 @@ from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
     model_type=ModelType.qwen1half_4b_chat,
-    dataset=[f'{DatasetName.ms_bench}#1000', f'{DatasetName.self_cognition}#500'],
+    dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500', 
+             f'{DatasetName.self_cognition}#500'],
     logging_steps=5,
     max_length=2048,
     learning_rate=5e-5,
@@ -129,11 +130,11 @@ Val: 100%|███████████████████████�
 Using CLI (single GPU):
 ```bash
 # Experimental environment: A10, 3090, V100, ...
-# 23GB GPU memory
+# 22GB GPU memory
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type qwen1half-4b-chat \
-    --dataset ms-bench#1000 self-cognition#500 \
+    --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 5e-5 \
@@ -144,16 +145,16 @@ swift sft \
     --model_author 魔搭 ModelScope \
 ```
 
-Using CLI (DDP):
+Using CLI (DeepSpeed-ZeRO2):
 > If you have GPUs like the 3090, you can reduce `max_length` to decrease memory usage.
 ```bash
-# Experimental environment: 4 * A100
-# 4 * 32GB GPU memory
+# Experimental environment: 4 * 3090
+# 4 * 24GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-4b-chat \
-    --dataset ms-bench#1000 self-cognition#500 \
+    --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 5e-5 \
@@ -162,6 +163,7 @@ swift sft \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
+    --deepspeed default-zero2
 ```
 
 ## Inference After Fine-Tuning
