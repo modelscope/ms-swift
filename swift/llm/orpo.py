@@ -140,8 +140,6 @@ def llm_orpo(args: ORPOArguments) -> str:
 
     trainer = ORPOTrainer(
         model=model,
-        beta=args.beta,
-        label_smoothing=args.label_smoothing,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
