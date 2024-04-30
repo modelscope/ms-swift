@@ -1236,16 +1236,16 @@ def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
 
 def parse_dataset_name(
         dataset_name: str) -> Tuple[Optional[str], str, List[str], int, int]:
-    # HF::dataset_name:subset1|subset2|subset3#train_sample|val_sample
+    # HF::dataset_name:subset1/subset2/subset3#train_sample/val_sample
     use_hf, other = _safe_split(dataset_name, '::', False)
     part1, part2 = _safe_split(other, '#', True)
     dataset_name, subsets = _safe_split(part1, ':', True)
     if subsets is not None:
-        subset_list = subsets.split('|')
+        subset_list = subsets.split('/')
         subset_list = [subset.strip() for subset in subset_list]
     else:
         subset_list = None
-    train_sample, val_sample = _safe_split(part2, '|', True)
+    train_sample, val_sample = _safe_split(part2, '/', True)
     train_sample, val_sample = [
         sample if sample is None else int(sample)
         for sample in [train_sample, val_sample]

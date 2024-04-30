@@ -240,7 +240,7 @@ class ArgumentsBase:
         if len(self.dataset) == 1 and ',' in self.dataset[0]:
             self.dataset = self.dataset[0].split(',')
         for d in self.dataset:
-            assert ',' not in d, f'dataset: {d}, please use `|`'
+            assert ',' not in d, f'dataset: {d}, please use `/`'
         if self.truncation_strategy == 'ignore':
             self.truncation_strategy = 'delete'
         if self.safe_serialization is not None:

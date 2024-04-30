@@ -45,7 +45,7 @@ class TestRun(unittest.TestCase):
         quantization_bit_list = [0, 4]
         dataset = [
             f'{DatasetName.alpaca_zh}#20',
-            f'{DatasetName.jd_sentiment_zh}#20|10',
+            f'{DatasetName.jd_sentiment_zh}#20/10',
             'AI-ModelScope/alpaca-gpt4-data-zh#20',
             'HF::c-s-ale/alpaca-gpt4-data-zh#20',
             'hurner/alpaca-gpt4-data-zh#20',
@@ -73,8 +73,7 @@ class TestRun(unittest.TestCase):
                 adam_beta2=0.95,
                 check_dataset_strategy='warning',
                 predict_with_generate=predict_with_generate,
-                dataset=[DatasetName.jd_sentiment_zh],
-                include_num_input_tokens_seen=True,
+                dataset=dataset,
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True)

@@ -139,7 +139,8 @@ def llm_export(args: ExportArguments) -> None:
         save_checkpoint(None, template.tokenizer, model_cache_dir,
                         args.ckpt_dir, args.quant_output_dir)
         logger.info(
-            f'Successfully quantized the model and saved in {args.quant_output_dir}.')
+            f'Successfully quantized the model and saved in {args.quant_output_dir}.'
+        )
         args.ckpt_dir = args.quant_output_dir
 
     if args.push_to_hub:
