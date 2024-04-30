@@ -18,6 +18,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
 
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
+        args.model_init_kwargs = args.get('model_init_kwargs', None)
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         val_ds_info = self.stat_dataset(self.eval_dataset)
