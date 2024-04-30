@@ -183,7 +183,6 @@ from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_vllm
 )
-from swift.tuners import Swift
 
 ckpt_dir = 'vx-xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat

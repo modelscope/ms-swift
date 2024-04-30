@@ -11,7 +11,7 @@ swift sft \
     --num_train_epochs 1 \
     --max_length 1024 \
     --check_dataset_strategy warning \
-    --lora_dtype fp16 \
+    --lora_dtype AUTO \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \

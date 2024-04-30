@@ -12,14 +12,10 @@ if TYPE_CHECKING:
     from .neftune import NEFTune, NEFTuneConfig
     from .longlora.longlora import LongLoRAModelType, LongLoRAConfig, LongLoRA
     from .restuning import ResTuning, ResTuningConfig, ResTuningBypassModule
-    from .peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
-                       LoKrConfig, LoraConfig, OFTConfig, PeftConfig,
-                       PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
-                       PeftModelForSequenceClassification,
-                       PeftModelForTokenClassification, PrefixTuningConfig,
-                       PromptEncoderConfig, PromptLearningConfig,
-                       PromptTuningConfig, get_peft_config, get_peft_model,
-                       get_peft_model_state_dict)
+    from .peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, PeftConfig,
+                       PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
+                       PeftModelForTokenClassification, PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig,
+                       PromptTuningConfig, get_peft_config, get_peft_model, get_peft_model_state_dict)
     from .prompt import Prompt, PromptConfig, PromptModule
     from .scetuning.scetuning import SCETuning, SCETuningConfig
     from .utils import SwiftConfig, SwiftOutput
@@ -28,20 +24,16 @@ else:
         'adapter': ['Adapter', 'AdapterConfig', 'AdapterModule'],
         'base': ['SwiftModel', 'Swift'],
         'lora': ['LoRA', 'LoRAConfig'],
-        'longlora.longlora':
-        ['LongLoRAModelType', 'LongLoRAConfig', 'LongLoRA'],
+        'longlora.longlora': ['LongLoRAModelType', 'LongLoRAConfig', 'LongLoRA'],
         'mapping': ['SWIFT_MAPPING', 'SwiftTuners'],
         'side': ['Side', 'SideConfig', 'SideModule'],
         'neftune': ['NEFTune', 'NEFTuneConfig'],
         'restuning': ['ResTuning', 'ResTuningConfig', 'ResTuningBypassModule'],
         'peft': [
-            'AdaLoraConfig', 'IA3Config', 'LoftQConfig', 'LoHaConfig',
-            'LoKrConfig', 'LoraConfig', 'OFTConfig', 'PeftConfig', 'PeftModel',
-            'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
-            'PeftModelForSequenceClassification',
-            'PeftModelForTokenClassification', 'PrefixTuningConfig',
-            'PromptEncoderConfig', 'PromptLearningConfig',
-            'PromptTuningConfig', 'get_peft_config', 'get_peft_model',
+            'AdaLoraConfig', 'IA3Config', 'LoftQConfig', 'LoHaConfig', 'LoKrConfig', 'LoraConfig', 'OFTConfig',
+            'PeftConfig', 'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
+            'PeftModelForSequenceClassification', 'PeftModelForTokenClassification', 'PrefixTuningConfig',
+            'PromptEncoderConfig', 'PromptLearningConfig', 'PromptTuningConfig', 'get_peft_config', 'get_peft_model',
             'get_peft_model_state_dict'
         ],
         'prompt': ['Prompt', 'PromptConfig', 'PromptModule'],

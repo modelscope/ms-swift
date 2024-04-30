@@ -10,8 +10,7 @@ from torch import nn
 from transformers.activations import ACT2CLS
 
 from swift import get_logger
-from swift.tuners.utils import (ActivationMixin, SwiftAdapter, SwiftConfig,
-                                SwiftOutput)
+from swift.tuners.utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 from swift.utils.torch_utils import find_sub_module
 from .scetuning_components import probe_output_hook
 
@@ -40,32 +39,19 @@ class SCETuningConfig(SwiftConfig):
 
     target_modules: Optional[Union[List[str], str]] = field(
         default=None,
-        metadata={
-            'help':
-            'The target module to be replaced, can be a regex string or name list of full match format'
-        })
+        metadata={'help': 'The target module to be replaced, can be a regex string or name list of full match format'})
 
     hint_modules: Optional[Union[List[str], str]] = field(
         default=None,
-        metadata={
-            'help':
-            'The hint modules to be replaced, can be a regex string or name list of full match format'
-        })
+        metadata={'help': 'The hint modules to be replaced, can be a regex string or name list of full match format'})
 
     tuner_mode: str = field(
         default='decoder',
-        metadata={
-            'help':
-            'Location of tuner operation. The tuner mode choices: encoder, decoder, and identity'
-        })
+        metadata={'help': 'Location of tuner operation. The tuner mode choices: encoder, decoder, and identity'})
 
-    tuner_op: str = field(
-        default='SCEAdapter',
-        metadata={'help': 'The tuner ops choices: SCEAdapter'})
+    tuner_op: str = field(default='SCEAdapter', metadata={'help': 'The tuner ops choices: SCEAdapter'})
 
-    down_ratio: float = field(
-        default=1.0,
-        metadata={'help': 'The dim down ratio of tuner hidden state'})
+    down_ratio: float = field(default=1.0, metadata={'help': 'The dim down ratio of tuner hidden state'})
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
@@ -75,8 +61,7 @@ class SCETuningConfig(SwiftConfig):
 class SCETuning(SwiftAdapter):
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: SCETuningConfig,
-                      adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: SCETuningConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `SCETuningConfig`"""
         module_keys = [key for key, _ in model.named_modules()]
         # 1. Matching the hint module
@@ -86,30 +71,21 @@ class SCETuning(SwiftAdapter):
                 for module_key in config.hint_modules:
                     assert module_key in module_keys
                     h_module = model.get_submodule(module_key)
-                    logger.info(
-                        f'Matching hint module [{module_key}] of type {type(h_module)}'
-                    )
+                    logger.info(f'Matching hint module [{module_key}] of type {type(h_module)}')
                     if isinstance(h_module, (nn.ModuleList, nn.ModuleDict)):
                         logger.warning(
-                            f'Type of {type(h_module)} may not be supported because of its customized forward'
-                        )
-                    h_module.register_forward_hook(
-                        probe_output_hook, with_kwargs=True)
+                            f'Type of {type(h_module)} may not be supported because of its customized forward')
+                    h_module.register_forward_hook(probe_output_hook, with_kwargs=True)
                     hint_module_ins_list.append(h_module)
             else:
                 for module_key in module_keys:
                     if re.fullmatch(config.hint_modules, module_key):
                         h_module = model.get_submodule(module_key)
-                        logger.info(
-                            f'Matching hint module [{module_key}] of type {type(h_module)}'
-                        )
-                        if isinstance(h_module,
-                                      (nn.ModuleList, nn.ModuleDict)):
+                        logger.info(f'Matching hint module [{module_key}] of type {type(h_module)}')
+                        if isinstance(h_module, (nn.ModuleList, nn.ModuleDict)):
                             logger.warning(
-                                f'Type of {type(h_module)} may not be supported because of its customized forward'
-                            )
-                        h_module.register_forward_hook(
-                            probe_output_hook, with_kwargs=True)
+                                f'Type of {type(h_module)} may not be supported because of its customized forward')
+                        h_module.register_forward_hook(probe_output_hook, with_kwargs=True)
                         hint_module_ins_list.append(h_module)
             if len(hint_module_ins_list) == 0:
                 logger.error('Cannot match hint modules')
@@ -127,24 +103,18 @@ class SCETuning(SwiftAdapter):
             for module_key in config.target_modules:
                 assert module_key in module_keys
                 t_module = model.get_submodule(module_key)
-                logger.info(
-                    f'Matching target module [{module_key}] of type {type(t_module)}'
-                )
+                logger.info(f'Matching target module [{module_key}] of type {type(t_module)}')
                 target_module_ins_list.append(_get_module(t_module))
         else:
             for module_key in module_keys:
                 if re.fullmatch(config.target_modules, module_key):
                     t_module = model.get_submodule(module_key)
-                    logger.info(
-                        f'Matching target module [{module_key}] of type {type(t_module)}'
-                    )
+                    logger.info(f'Matching target module [{module_key}] of type {type(t_module)}')
                     target_module_ins_list.append(_get_module(t_module))
         if len(target_module_ins_list) == 0:
             logger.error('Cannot match target modules')
-        if len(hint_module_ins_list) > 0 and not len(
-                hint_module_ins_list) == len(target_module_ins_list):
-            logger.info(
-                "Target modules' length should be equal with hint modules.")
+        if len(hint_module_ins_list) > 0 and not len(hint_module_ins_list) == len(target_module_ins_list):
+            logger.info("Target modules' length should be equal with hint modules.")
             assert len(hint_module_ins_list) == len(target_module_ins_list)
         if isinstance(config.dims, int):
             dims = [config.dims for _ in target_module_ins_list]
@@ -154,15 +124,13 @@ class SCETuning(SwiftAdapter):
 
         # refactor forward function
         def _forward_encoder_mode(self, *args, **kwargs):
-            args = getattr(self, f'forward_origin_{adapter_name}')(*args,
-                                                                   **kwargs)
+            args = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
             args_type = type(args)
             if args_type is tuple:
                 args = args[0]
             if hasattr(self, 'hint'):
                 hint_out = self.hint.probe_output_data
-                args_main = getattr(self, f'scetuner_{adapter_name}')(args,
-                                                                      hint_out)
+                args_main = getattr(self, f'scetuner_{adapter_name}')(args, hint_out)
             else:
                 args_main = getattr(self, f'scetuner_{adapter_name}')(args)
             if args_type is tuple:
@@ -175,8 +143,7 @@ class SCETuning(SwiftAdapter):
                 args_sub_tuner = args[0]
                 args_sub_extra = args[1:]
             tuner_module = getattr(self, f'scetuner_{adapter_name}')
-            args_hidden, args_res = torch.split(
-                args_sub_tuner, args_sub_tuner.shape[1] - tuner_module.dim, 1)
+            args_hidden, args_res = torch.split(args_sub_tuner, args_sub_tuner.shape[1] - tuner_module.dim, 1)
             if hasattr(self, 'hint'):
                 hint_out = self.hint.probe_output_data
                 args_res_new = tuner_module(args_res, hint_out)
@@ -186,15 +153,12 @@ class SCETuning(SwiftAdapter):
             if args_type is tuple:
                 args_main = (args_sub_tuner_new, *args_sub_extra)
 
-            args_main = getattr(self,
-                                f'forward_origin_{adapter_name}')(*args_main,
-                                                                  **kwargs)
+            args_main = getattr(self, f'forward_origin_{adapter_name}')(*args_main, **kwargs)
             return args_main
 
         # 3. inject the tuners
         for tuner_id, t_module in enumerate(target_module_ins_list):
-            setattr(t_module, f'forward_origin_{adapter_name}',
-                    getattr(t_module, 'forward'))
+            setattr(t_module, f'forward_origin_{adapter_name}', getattr(t_module, 'forward'))
             if config.tuner_mode in ('encoder', 'identity'):
                 _forward = _forward_encoder_mode
             elif config.tuner_mode == 'decoder':
@@ -213,31 +177,22 @@ class SCETuning(SwiftAdapter):
                 setattr(t_module, 'hint', hint_module_ins_list[tuner_id])
 
         def state_dict_callback(state_dict, adapter_name):
-            state_dict_new = {
-                key: value
-                for key, value in state_dict.items()
-                if f'scetuner_{adapter_name}' in key
-            }
+            state_dict_new = {key: value for key, value in state_dict.items() if f'scetuner_{adapter_name}' in key}
             return state_dict_new
 
         def mark_trainable_callback(model):
             return
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module,
-                         adapter_name: str,
-                         activate: bool,
-                         offload: str = None):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         modules = find_sub_module(module, f'scetuner_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
-            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
-                                     activate, offload)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key, activate, offload)
 
 
 class SCETunerModule(nn.Module, ActivationMixin):
