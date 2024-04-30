@@ -21,6 +21,7 @@ else:
         'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
         'deploy': ['deploy_main'],
         'dpo': ['dpo_main'],
+        'orpo': ['orpo_main'],
         'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
         'rome': ['rome_main'],
         'sft': ['sft_main'],
