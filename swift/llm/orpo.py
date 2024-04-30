@@ -152,7 +152,7 @@ def llm_orpo(args: ORPOArguments) -> str:
         training_args.label_pad_token_id = -100
     if not hasattr(training_args, 'disable_dropout'):
         training_args.disable_dropout = True
-    training_args.truncation_mode = 'keep_end' if args.truncation_left else 'keep_start'
+    training_args.truncation_mode = 'keep_end' if args.truncation_strategy == 'truncation_left' else 'keep_start'
     training_args.max_length = args.max_length
     training_args.max_prompt_length = args.max_prompt_length
     training_args.beta = args.beta
