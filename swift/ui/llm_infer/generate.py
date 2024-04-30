@@ -67,25 +67,9 @@ class Generate(BaseUI):
             gr.Textbox(elem_id='max_new_tokens', lines=1, value='2048')
             gr.Checkbox(elem_id='do_sample', value=True)
             gr.Dropdown(elem_id='infer_backend', value='pt')
-            gr.Slider(
-                elem_id='temperature',
-                minimum=0.0,
-                maximum=10,
-                step=0.1,
-                value=0.3)
-            gr.Slider(
-                elem_id='top_k', minimum=1, maximum=100, step=5, value=20)
-            gr.Slider(
-                elem_id='top_p',
-                minimum=0.0,
-                maximum=1.0,
-                step=0.05,
-                value=0.7)
-            gr.Slider(
-                elem_id='repetition_penalty',
-                minimum=0.0,
-                maximum=10,
-                step=0.05,
-                value=1.05)
+            gr.Slider(elem_id='temperature', minimum=0.0, maximum=10, step=0.1, value=0.3)
+            gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=20)
+            gr.Slider(elem_id='top_p', minimum=0.0, maximum=1.0, step=0.05, value=0.7)
+            gr.Slider(elem_id='repetition_penalty', minimum=0.0, maximum=10, step=0.05, value=1.05)
             if os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
                 gr.Textbox(elem_id='port', lines=1, value='8000')

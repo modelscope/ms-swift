@@ -271,7 +271,7 @@ The table below introcudes all models supported by SWIFT:
 |c4ai-command-r-plus|[AI-ModelScope/c4ai-command-r-plus](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-plus/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>4.39|-|[CohereForAI/c4ai-command-r-plus](https://huggingface.co/CohereForAI/c4ai-command-r-plus)|
 
 
-## dataset
+## Datasets
 The table below introduces the datasets supported by SWIFT:
 - Dataset Name: The dataset name registered in SWIFT.
 - Dataset ID: The dataset id in [ModelScope](https://www.modelscope.cn/my/overview).

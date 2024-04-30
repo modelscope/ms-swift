@@ -22,12 +22,8 @@ def compute_nlg_metrics(prediction, tokenizer):
     def _decode(tokens, ignore_pad_token_for_loss=False):
         if ignore_pad_token_for_loss:
             tokens = np.where(tokens != -100, tokens, tokenizer.pad_token_id)
-        tokens = np.where(tokens < tokenizer.vocab_size, tokens,
-                          tokenizer.pad_token_id)
-        return [
-            t
-            for t in tokenizer.batch_decode(tokens, skip_special_tokens=True)
-        ]
+        tokens = np.where(tokens < tokenizer.vocab_size, tokens, tokenizer.pad_token_id)
+        return [t for t in tokenizer.batch_decode(tokens, skip_special_tokens=True)]
 
     for pred, label in zip(preds, labels):
         pred = ''.join(_decode(pred, False))
@@ -38,16 +34,12 @@ def compute_nlg_metrics(prediction, tokenizer):
         reference = list(jieba.cut(label))
         try:
             rouge = Rouge()
-            scores = rouge.get_scores(' '.join(hypothesis),
-                                      ' '.join(reference))
+            scores = rouge.get_scores(' '.join(hypothesis), ' '.join(reference))
             result = scores[0]
 
             for k, v in result.items():
                 score_dict[k].append(round(v['f'] * 100, 4))
-            bleu_score = sentence_bleu(
-                [list(label)],
-                list(pred),
-                smoothing_function=SmoothingFunction().method3)
+            bleu_score = sentence_bleu([list(label)], list(pred), smoothing_function=SmoothingFunction().method3)
             score_dict['bleu-4'].append(round(bleu_score * 100, 4))
         except Exception as e:
             logger.error(e)
@@ -58,10 +50,8 @@ def compute_nlg_metrics(prediction, tokenizer):
     return score_dict
 
 
-def compute_acc_metrics(
-        eval_prediction: EvalPrediction,
-        acc_strategy: Literal['token',
-                              'sentence'] = 'token') -> Dict[str, Tensor]:
+def compute_acc_metrics(eval_prediction: EvalPrediction,
+                        acc_strategy: Literal['token', 'sentence'] = 'token') -> Dict[str, Tensor]:
     labels = eval_prediction.label_ids[..., 1:]
     predictions = eval_prediction.predictions[..., :-1]
     if predictions.shape != labels.shape:

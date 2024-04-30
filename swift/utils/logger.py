@@ -6,8 +6,7 @@ from typing import Optional
 
 init_loggers = {}
 
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 def is_master():
@@ -15,9 +14,7 @@ def is_master():
     return rank in {-1, 0}
 
 
-def get_logger(log_file: Optional[str] = None,
-               log_level: int = logging.INFO,
-               file_mode: str = 'w'):
+def get_logger(log_file: Optional[str] = None, log_level: int = logging.INFO, file_mode: str = 'w'):
     """ Get logging logger
 
     Args:

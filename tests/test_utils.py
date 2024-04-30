@@ -67,10 +67,7 @@ class DummyTorchDataset:
 
     def __getitem__(self, index):
         import torch
-        return {
-            'feat': torch.Tensor(self.feat),
-            'labels': torch.Tensor(self.label)
-        }
+        return {'feat': torch.Tensor(self.feat), 'labels': torch.Tensor(self.label)}
 
     def __len__(self):
         return self.num
@@ -100,8 +97,7 @@ def download_and_untar(fpath, furl, dst) -> str:
 
 def get_case_model_info():
     status_code, result = subprocess.getstatusoutput(
-        'grep -rn "damo/" tests/  | grep -v ".pyc" | grep -v "Binary file" | grep -v run.py '
-    )
+        'grep -rn "damo/" tests/  | grep -v ".pyc" | grep -v "Binary file" | grep -v run.py ')
     lines = result.split('\n')
     test_cases = OrderedDict()
     model_cases = OrderedDict()
@@ -122,26 +118,17 @@ def get_case_model_info():
         if model_name not in model_cases:
             model_cases[model_name] = set()
         case_info = model_cases[model_name]
-        case_info.add(
-            test_file.replace('tests/', '').replace('.py',
-                                                    '').replace('/', '.'))
+        case_info.add(test_file.replace('tests/', '').replace('.py', '').replace('/', '.'))
 
     return model_cases
 
 
-def compare_arguments_nested(print_content,
-                             arg1,
-                             arg2,
-                             rtol=1.e-3,
-                             atol=1.e-8,
-                             ignore_unknown_type=True):
+def compare_arguments_nested(print_content, arg1, arg2, rtol=1.e-3, atol=1.e-8, ignore_unknown_type=True):
     type1 = type(arg1)
     type2 = type(arg2)
     if type1.__name__ != type2.__name__:
         if print_content is not None:
-            print(
-                f'{print_content}, type not equal:{type1.__name__} and {type2.__name__}'
-            )
+            print(f'{print_content}, type not equal:{type1.__name__} and {type2.__name__}')
         return False
 
     if arg1 is None:
@@ -161,13 +148,10 @@ def compare_arguments_nested(print_content,
     elif isinstance(arg1, (tuple, list)):
         if len(arg1) != len(arg2):
             if print_content is not None:
-                print(
-                    f'{print_content}, length is not equal:{len(arg1)}, {len(arg2)}'
-                )
+                print(f'{print_content}, length is not equal:{len(arg1)}, {len(arg2)}')
             return False
         if not all([
-                compare_arguments_nested(
-                    None, sub_arg1, sub_arg2, rtol=rtol, atol=atol)
+                compare_arguments_nested(None, sub_arg1, sub_arg2, rtol=rtol, atol=atol)
                 for sub_arg1, sub_arg2 in zip(arg1, arg2)
         ]):
             if print_content is not None:
@@ -179,19 +163,13 @@ def compare_arguments_nested(print_content,
         keys2 = arg2.keys()
         if len(keys1) != len(keys2):
             if print_content is not None:
-                print(
-                    f'{print_content}, key length is not equal:{len(keys1)}, {len(keys2)}'
-                )
+                print(f'{print_content}, key length is not equal:{len(keys1)}, {len(keys2)}')
             return False
         if len(set(keys1) - set(keys2)) > 0:
             if print_content is not None:
                 print(f'{print_content}, key diff:{set(keys1) - set(keys2)}')
             return False
-        if not all([
-                compare_arguments_nested(
-                    None, arg1[key], arg2[key], rtol=rtol, atol=atol)
-                for key in keys1
-        ]):
+        if not all([compare_arguments_nested(None, arg1[key], arg2[key], rtol=rtol, atol=atol) for key in keys1]):
             if print_content is not None:
                 print(f'{print_content}')
             return False
@@ -199,9 +177,7 @@ def compare_arguments_nested(print_content,
     elif isinstance(arg1, np.ndarray):
         arg1 = np.where(np.equal(arg1, None), np.NaN, arg1).astype(dtype=float)
         arg2 = np.where(np.equal(arg2, None), np.NaN, arg2).astype(dtype=float)
-        if not all(
-                np.isclose(arg1, arg2, rtol=rtol, atol=atol,
-                           equal_nan=True).flatten()):
+        if not all(np.isclose(arg1, arg2, rtol=rtol, atol=atol, equal_nan=True).flatten()):
             if print_content is not None:
                 print(f'{print_content}')
             return False
@@ -277,14 +253,7 @@ class DistributedTestCase(unittest.TestCase):
         >>>         )
     """
 
-    def _start(self,
-               dist_start_cmd,
-               func,
-               num_gpus,
-               assert_callback=None,
-               save_all_ranks=False,
-               *args,
-               **kwargs):
+    def _start(self, dist_start_cmd, func, num_gpus, assert_callback=None, save_all_ranks=False, *args, **kwargs):
         script_path = func.__code__.co_filename
         script_dir, script_name = os.path.split(script_path)
         script_name = os.path.splitext(script_name)[0]
@@ -309,8 +278,7 @@ class DistributedTestCase(unittest.TestCase):
         with open(tmp_run_file, 'w') as f:
             print('save temporary run file to : {}'.format(tmp_run_file))
             print('save results to : {}'.format(tmp_res_file))
-            run_file_content = _DIST_SCRIPT_TEMPLATE.format(
-                script_name, script_name, func_name, func_params)
+            run_file_content = _DIST_SCRIPT_TEMPLATE.format(script_name, script_name, func_name, func_params)
             f.write(run_file_content)
 
         tmp_res_files = []
@@ -322,12 +290,10 @@ class DistributedTestCase(unittest.TestCase):
         self.addCleanup(self.clean_tmp, [tmp_run_file] + tmp_res_files)
 
         tmp_env = copy.deepcopy(os.environ)
-        tmp_env['PYTHONPATH'] = ':'.join(
-            (tmp_env.get('PYTHONPATH', ''), script_dir)).lstrip(':')
+        tmp_env['PYTHONPATH'] = ':'.join((tmp_env.get('PYTHONPATH', ''), script_dir)).lstrip(':')
         # avoid distributed test hang
         tmp_env['NCCL_P2P_DISABLE'] = '1'
-        script_params = '--save_all_ranks=%s --save_file=%s' % (save_all_ranks,
-                                                                tmp_res_file)
+        script_params = '--save_all_ranks=%s --save_file=%s' % (save_all_ranks, tmp_res_file)
         script_cmd = '%s %s %s' % (dist_start_cmd, tmp_run_file, script_params)
         print('script command: %s' % script_cmd)
         res = subprocess.call(script_cmd, shell=True, env=tmp_env)
@@ -342,21 +308,11 @@ class DistributedTestCase(unittest.TestCase):
         if assert_callback:
             assert_callback(script_res)
 
-        self.assertEqual(
-            res,
-            0,
-            msg='The test function ``{}`` in ``{}`` run failed!'.format(
-                func_name, script_name))
+        self.assertEqual(res, 0, msg='The test function ``{}`` in ``{}`` run failed!'.format(func_name, script_name))
 
         return script_res
 
-    def start(self,
-              func,
-              num_gpus,
-              assert_callback=None,
-              save_all_ranks=False,
-              *args,
-              **kwargs):
+    def start(self, func, num_gpus, assert_callback=None, save_all_ranks=False, *args, **kwargs):
         from .torch_utils import _find_free_port
         ip = socket.gethostbyname(socket.gethostname())
         if 'dist_start_cmd' in kwargs:
