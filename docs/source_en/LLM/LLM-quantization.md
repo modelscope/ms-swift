@@ -67,10 +67,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
 ```
 
-**Comparison of quantization effects**:
-
-The comparison shows inference results from the AWQ-INT4 model, GPTQ-INT4 model, and the original unquantized model. The quantized models maintain high quality output while enabling faster inference speeds.
-
 ## Fine-tuned Model
 
 Assume you fine-tuned qwen1half-4b-chat using LoRA, and the model weights directory is: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.

@@ -411,7 +411,7 @@ for query in ['Who are you?', "what's your name?", 'Who developed you?']:
     messages.append({'role': 'assistant', 'content': response})
 
 # streaming
-for query in ['78654+657=?', 'What to do if I can't fall asleep at night']:
+for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
     messages.append({'role': 'user', 'content': query})
     stream_resp = client.chat.completions.create(
         model=model_type,
@@ -573,7 +573,7 @@ for query in ['Who are you?', "what's your name?", 'Who developed you?']:
     messages.append({'role': 'assistant', 'content': response})
 
 # streaming
-for query in ['78654+657=?', 'What to do if I can't fall asleep at night']:
+for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
     messages.append({'role': 'user', 'content': query})
     stream_resp = client.chat.completions.create(
         model=model_type,

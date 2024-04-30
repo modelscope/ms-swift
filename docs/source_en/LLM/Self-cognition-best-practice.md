@@ -213,7 +213,9 @@ best_model_checkpoint = 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx'
 app_ui_args = AppUIArguments(ckpt_dir=best_model_checkpoint)
 merge_lora(app_ui_args, device_map='cpu')
 result = app_ui_main(app_ui_args)
-``Using CLI:
+```
+
+Using CLI:
 ```bash
 # Directly use app-ui
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx'
