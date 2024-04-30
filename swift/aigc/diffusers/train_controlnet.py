@@ -232,8 +232,8 @@ def parse_args(input_args=None):
         '--controlnet_model_name_or_path',
         type=str,
         default=None,
-        help='Path to pretrained controlnet model or model identifier from huggingface.co/models or modelscope.cn/models.'
-        ' If not specified controlnet weights are initialized from unet.',
+        help='Path to pretrained controlnet model or model identifier from huggingface.co/models or '
+        'modelscope.cn/models. If not specified controlnet weights are initialized from unet.',
     )
     parser.add_argument(
         '--revision',
