@@ -45,7 +45,7 @@ def llm_dpo(args: DPOArguments) -> str:
             model_kwargs['device_map'] = {'': local_rank}
         else:
             model_kwargs['device_map'] = 'auto'
-            
+
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
