@@ -15,10 +15,7 @@ torchrun \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  hh-rlhf-cn-harmless-base-cn  \
-    --train_dataset_sample  -1  \
-    --truncation_strategy  truncation_left  \
-    --val_dataset_sample  2000  \
+    --dataset  hh-rlhf-cn:harmless_base_cn#-1/2000  \
     --num_train_epochs  3  \
     --max_length  1024  \
     --max_prompt_length  512  \

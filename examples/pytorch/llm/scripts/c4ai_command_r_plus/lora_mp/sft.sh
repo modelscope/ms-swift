@@ -9,8 +9,7 @@ swift sft \
     --tuner_backend swift \
     --dtype AUTO \
     --output_dir output \
-    --dataset ms-bench-mini \
-    --train_dataset_sample 5000 \
+    --dataset ms-bench#5000 \
     --num_train_epochs 2 \
     --max_length 2048 \
     --check_dataset_strategy warning \

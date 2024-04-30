@@ -17,7 +17,6 @@ torchrun \
     --output_dir output \
     --ddp_backend nccl \
     --dataset damo-agent-mini-zh \
-    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \
     --check_dataset_strategy warning \
