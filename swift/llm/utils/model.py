@@ -938,6 +938,7 @@ def get_model_tokenizer_mamba(model_dir: str,
     LoRATM.cogagent,
     TemplateType.cogagent_chat,
     support_gradient_checkpointing=False,
+    requires=['timm'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogagent-chat-hf')
 @register_model(
@@ -946,6 +947,7 @@ def get_model_tokenizer_mamba(model_dir: str,
     LoRATM.cogagent,
     TemplateType.cogagent_instruct,
     support_gradient_checkpointing=False,
+    requires=['timm'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogagent-vqa-hf')
 def get_model_tokenizer_cogagent(model_dir: str,
@@ -2610,9 +2612,28 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
             del tokenizer.__class__.eos_token_id
         tokenizer.eos_token = eos_token
-    if model is not None and use_flash_attn:
-        # fix AttributeError: no attribute 'attention_dropout'
-        model.model.layers[0].attention.__class__.attention_dropout = 0.
+    if model is not None:
+        if use_flash_attn:
+            # fix AttributeError: no attribute 'attention_dropout'
+            model.model.layers[0].attention.__class__.attention_dropout = 0.
+
+        model_cls = model.__class__
+        if not hasattr(model_cls, '__old_encode_img'):  # avoid double patching
+            encode_img = model.__class__.encode_img
+            model.__class__.__old_encode_img = encode_img
+            def _new_encode_img(self, image):
+                if image is None:
+                    return None
+                if isinstance(image, str):
+                    image = Image.open(image).convert('RGB')
+                    image = self.vis_processor(image).unsqueeze(0).to(self.device)
+                else:
+                    assert isinstance(image, torch.Tensor)
+
+                img_embeds, atts_img, img_target = self.img2emb(image)
+                return img_embeds.to(device=self.device)  # FIX device_map == 2
+            model.__class__.encode_img = _new_encode_img
+
     return model, tokenizer
 
 
