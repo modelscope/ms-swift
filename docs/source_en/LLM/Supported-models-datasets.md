@@ -280,8 +280,8 @@ The table below introduces the datasets supported by SWIFT:
 
 | Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |
 | ------------ | ---------- | ---------- | -------- | ----------------- | ---- | ------------- |
-|🔥ms-bench|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|316931|0|347.3±444.1, min=22, max=30960|chat, general, multi-round|-|
-|🔥ms-bench-mini|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|19960|0|356.6±443.3, min=29, max=12078|chat, general, multi-round|-|
+|ms-bench|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|316931|0|347.3±444.1, min=22, max=30960|chat, general, multi-round|-|
+|ms-bench-mini|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench/summary)|19960|0|356.6±443.3, min=29, max=12078|chat, general, multi-round|-|
 |🔥alpaca-en|[AI-ModelScope/alpaca-gpt4-data-en](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-en/summary)|52002|0|176.2±125.8, min=26, max=740|chat, general|[vicgalle/alpaca-gpt4](https://huggingface.co/datasets/vicgalle/alpaca-gpt4)|
 |🔥alpaca-zh|[AI-ModelScope/alpaca-gpt4-data-zh](https://modelscope.cn/datasets/AI-ModelScope/alpaca-gpt4-data-zh/summary)|48818|0|162.1±93.9, min=26, max=856|chat, general|[c-s-ale/alpaca-gpt4-data-zh](https://huggingface.co/datasets/c-s-ale/alpaca-gpt4-data-zh)|
 |multi-alpaca-all|[damo/nlp_polylm_multialpaca_sft](https://modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft/summary)|131867|0|112.9±50.6, min=26, max=1226|chat, general, multilingual|-|

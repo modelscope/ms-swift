@@ -7,7 +7,7 @@ swift sft \
     --tuner_backend peft \
     --dtype AUTO \
     --output_dir output \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh alpaca-en \
     --train_dataset_sample 5000 \
     --num_train_epochs 2 \
     --max_length 2048 \

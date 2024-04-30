@@ -1067,7 +1067,7 @@ class ExportArguments(InferArguments):
             self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
         super().__post_init__()
         if len(self.dataset) == 0:
-            self.dataset = ['ms-bench-mini']
+            self.dataset = ['alpaca-zh', 'alpaca-en']
             logger.info(f'Setting args.dataset: {self.dataset}')
 
 

@@ -575,7 +575,7 @@ register_dataset(
     'iic/ms_bench', ['train'], [],
     ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
-    tags=['chat', 'general', 'multi-round', '🔥'])
+    tags=['chat', 'general', 'multi-round'])
 
 register_dataset(
     DatasetName.ms_bench_mini,
@@ -583,7 +583,7 @@ register_dataset(
     ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     function_kwargs={'train_dataset_sample': 20000},
-    tags=['chat', 'general', 'multi-round', '🔥'])
+    tags=['chat', 'general', 'multi-round'])
 
 register_dataset(
     DatasetName.ms_agent,
