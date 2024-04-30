@@ -2621,17 +2621,20 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         if not hasattr(model_cls, '__old_encode_img'):  # avoid double patching
             encode_img = model.__class__.encode_img
             model.__class__.__old_encode_img = encode_img
+
             def _new_encode_img(self, image):
                 if image is None:
                     return None
                 if isinstance(image, str):
                     image = Image.open(image).convert('RGB')
-                    image = self.vis_processor(image).unsqueeze(0).to(self.device)
+                    image = self.vis_processor(image).unsqueeze(0).to(
+                        self.device)
                 else:
                     assert isinstance(image, torch.Tensor)
 
                 img_embeds, atts_img, img_target = self.img2emb(image)
-                return img_embeds.to(device=self.device)  # FIX device_map == 2
+                return img_embeds.to(device=self.device)  # FIX device_map
+
             model.__class__.encode_img = _new_encode_img
 
     return model, tokenizer
