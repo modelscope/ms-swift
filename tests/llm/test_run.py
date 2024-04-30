@@ -110,13 +110,10 @@ class TestRun(unittest.TestCase):
                 bool_var = False
             torch.cuda.empty_cache()
             output = sft_main([
-                '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
-                '--tuner_backend', tuner_backend, '--dataset',
-                f'{DatasetName.leetcode_python_en}#200', '--output_dir',
-                output_dir, '--gradient_checkpointing', 'true',
-                '--max_new_tokens', '100', '--use_flash_attn', 'true',
-                '--lora_target_modules', 'ALL', '--seed', '0',
-                '--lora_bias_trainable', 'all', '--lora_modules_to_save',
+                '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5', '--tuner_backend', tuner_backend,
+                '--dataset', f'{DatasetName.leetcode_python_en}#200', '--output_dir', output_dir,
+                '--gradient_checkpointing', 'true', '--max_new_tokens', '100', '--use_flash_attn', 'true',
+                '--lora_target_modules', 'ALL', '--seed', '0', '--lora_bias_trainable', 'all', '--lora_modules_to_save',
                 'EMBEDDING', 'LN', 'lm_head'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
@@ -129,8 +126,7 @@ class TestRun(unittest.TestCase):
             torch.cuda.empty_cache()
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--val_dataset_sample',
-                str(val_dataset_sample), '--max_new_tokens', '100',
-                '--use_flash_attn', 'false', '--verbose',
+                str(val_dataset_sample), '--max_new_tokens', '100', '--use_flash_attn', 'false', '--verbose',
                 str(not bool_var), '--merge_lora',
                 str(bool_var), '--load_dataset_config',
                 str(load_dataset_config)
@@ -196,13 +192,8 @@ class TestRun(unittest.TestCase):
             sft_args = SftArguments(
                 model_type='qwen-7b-chat',
                 dataset=['_custom#100', 'self-cognition#20'],
-                custom_train_dataset_path=[
-                    os.path.join(folder, fname)
-                    for fname in train_dataset_fnames
-                ],
-                custom_val_dataset_path=[
-                    os.path.join(folder, fname) for fname in val_dataset_fnames
-                ],
+                custom_train_dataset_path=[os.path.join(folder, fname) for fname in train_dataset_fnames],
+                custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
                 lora_target_modules='ALL',
                 resume_from_checkpoint=resume_from_checkpoint,
                 num_train_epochs=num_train_epochs,
@@ -259,10 +250,7 @@ class TestRun(unittest.TestCase):
             if len(dataset) == 0:
                 continue
             infer_args = InferArguments(
-                ckpt_dir=ckpt_dir,
-                val_dataset_sample=2,
-                verbose=False,
-                load_dataset_config=True)
+                ckpt_dir=ckpt_dir, val_dataset_sample=2, verbose=False, load_dataset_config=True)
             # merge_lora_main(infer_args)
             torch.cuda.empty_cache()
             result = infer_main(infer_args)

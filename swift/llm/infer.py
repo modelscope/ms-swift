@@ -351,8 +351,7 @@ def llm_infer(args: InferArguments) -> None:
             check_dataset_strategy=args.check_dataset_strategy,
             model_name=args.model_name,
             model_author=args.model_author)
-        if args.val_dataset_sample >= 0 and val_dataset.shape[
-                0] > args.val_dataset_sample:
+        if args.val_dataset_sample >= 0 and val_dataset.shape[0] > args.val_dataset_sample:
             logger.info(f'val_dataset_sample: {args.val_dataset_sample}')
             val_idxs = random_state.permutation(args.val_dataset_sample)
             val_dataset = val_dataset.select(val_idxs)

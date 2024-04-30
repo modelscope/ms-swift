@@ -398,27 +398,23 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTr
 
 
 def register_model(
-    model_type: str,
-    model_id_or_path: Optional[str],
-    lora_target_modules: Optional[List[str]] = None,
-    template: str = TemplateType.default,
-    get_function: Optional[GetModelTokenizerFunction] = None,
-    *,
-    requires: Optional[List[str]] = None,
-    torch_dtype: Optional[Dtype] = None,
-    hf_model_id: Optional[str] = None,
-    revision: Optional[str] = None,  # only modelscope
-    ignore_file_pattern: Optional[List[str]] = None,
-    function_kwargs: Optional[Dict[str, Any]] = None,
-    exist_ok: bool = False,
-    eos_token: Optional[str] = None,
-    **kwargs
-) -> Optional[Callable[[GetModelTokenizerFunction],
-                       GetModelTokenizerFunction]]:
+        model_type: str,
+        model_id_or_path: Optional[str],
+        lora_target_modules: Optional[List[str]] = None,
+        template: str = TemplateType.default,
+        get_function: Optional[GetModelTokenizerFunction] = None,
+        *,
+        requires: Optional[List[str]] = None,
+        torch_dtype: Optional[Dtype] = None,
+        hf_model_id: Optional[str] = None,
+        revision: Optional[str] = None,  # only modelscope
+        ignore_file_pattern: Optional[List[str]] = None,
+        function_kwargs: Optional[Dict[str, Any]] = None,
+        exist_ok: bool = False,
+        eos_token: Optional[str] = None,
+        **kwargs) -> Optional[Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]]:
     if not exist_ok and model_type in MODEL_MAPPING:
-        raise ValueError(
-            f'The `{model_type}` has already been registered in the MODEL_MAPPING.'
-        )
+        raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
     if requires is None:
         requires = []
     if function_kwargs is None:

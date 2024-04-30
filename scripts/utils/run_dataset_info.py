@@ -26,11 +26,9 @@ def write_dataset_info() -> None:
     res_text_list = []
 
     res_text_list.append(
-        '| Dataset Name | Dataset ID | Subsets | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |'
-    )
+        '| Dataset Name | Dataset ID | Subsets | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |')
     res_text_list.append(
-        '| ------------ | ---------- | ------- |---------- | -------- | ----------------- | ---- | ------------- |'
-    )
+        '| ------------ | ---------- | ------- |---------- | -------- | ----------------- | ---- | ------------- |')
     if len(text_list) >= 2:
         text_list = text_list[2:]
     else:
@@ -62,8 +60,7 @@ def write_dataset_info() -> None:
             else:
                 template = mapping['llm']
             if dataset_name in ignore_dataset:
-                train_size, val_size, stat_str = ignore_dataset[
-                    dataset_name].split('|')[4:7]
+                train_size, val_size, stat_str = ignore_dataset[dataset_name].split('|')[4:7]
             else:
                 train_dataset, val_dataset = get_dataset([dataset_name])
                 train_size = len(train_dataset)
@@ -71,14 +68,12 @@ def write_dataset_info() -> None:
 
                 raw_dataset = train_dataset
                 if val_dataset is not None:
-                    raw_dataset = concatenate_datasets(
-                        [raw_dataset, val_dataset])
+                    raw_dataset = concatenate_datasets([raw_dataset, val_dataset])
                 if len(raw_dataset) < 5000:
                     num_proc = 1
                 else:
                     num_proc = 4
-                dataset = dataset_map(
-                    raw_dataset, template.encode, num_proc=num_proc)
+                dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
 
                 _token_len = []
                 input_ids = dataset['input_ids']

@@ -16,13 +16,11 @@ from transformers.utils.versions import require_version
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
-from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger,
-                         get_pai_tensorboard_dir, is_dist, is_local_master,
-                         is_mp, is_pai_training_job)
-from .dataset import (DATASET_MAPPING, _dataset_name_exists,
-                      register_dataset_info)
-from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files,
-                    get_default_lora_target_modules, get_default_template_type)
+from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
+                         is_local_master, is_mp, is_pai_training_job)
+from .dataset import DATASET_MAPPING, _dataset_name_exists, register_dataset_info
+from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
+                    get_default_template_type)
 from .template import TEMPLATE_MAPPING
 from .utils import is_vllm_available
 
@@ -35,8 +33,7 @@ def is_adapter(sft_type: str) -> bool:
 
 class ArgumentsBase:
 
-    def _register_custom(
-            self: Union['SftArguments', 'InferArguments']) -> None:
+    def _register_custom(self: Union['SftArguments', 'InferArguments']) -> None:
 
         # self-cognition
         idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
@@ -61,11 +58,9 @@ class ArgumentsBase:
                 if len(v) == 1:
                     v = v * 2
                 if v[0] is None and v[1] is None:
-                    raise ValueError(
-                        'Please set self.model_name self.model_author. '
-                        'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
-                        'Representing the model name and model author in Chinese and English.'
-                    )
+                    raise ValueError('Please set self.model_name self.model_author. '
+                                     'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
+                                     'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
         # register _custom
@@ -73,8 +68,7 @@ class ArgumentsBase:
             value = getattr(self, key)
             if isinstance(value, str):
                 setattr(self, key, [value])
-        if len(self.custom_train_dataset_path) > 0 or len(
-                self.custom_val_dataset_path) > 0:
+        if len(self.custom_train_dataset_path) > 0 or len(self.custom_val_dataset_path) > 0:
             d_info = {
                 'train_dataset_path': self.custom_train_dataset_path,
                 'val_dataset_path': self.custom_val_dataset_path
@@ -86,9 +80,8 @@ class ArgumentsBase:
             register_dataset_info('_custom', d_info)
 
     @classmethod
-    def _check_path(
-            cls, k: str, value: Union[str, List[str]],
-            check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    def _check_path(cls, k: str, value: Union[str, List[str]],
+                    check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
         if isinstance(value, str):
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
@@ -103,9 +96,8 @@ class ArgumentsBase:
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = ['ckpt_dir', 'resume_from_checkpoint']
-        if self.model_id_or_path is not None and (
-                self.model_id_or_path.startswith('~')
-                or self.model_id_or_path.startswith('/')):
+        if self.model_id_or_path is not None and (self.model_id_or_path.startswith('~')
+                                                  or self.model_id_or_path.startswith('/')):
             check_exist_path.append('model_id_or_path')
         check_exist_path_set = set(check_exist_path)
         other_path = ['output_dir', 'logging_dir']
@@ -523,8 +515,7 @@ class SftArguments(ArgumentsBase):
         self._register_custom()
         if is_pai_training_job():
             self._handle_pai_compat()
-        ds_config_folder = os.path.abspath(
-            os.path.join(__file__, '..', '..', 'ds_config'))
+        ds_config_folder = os.path.abspath(os.path.join(__file__, '..', '..', 'ds_config'))
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
@@ -549,16 +540,12 @@ class SftArguments(ArgumentsBase):
             self.ia3_target_modules = self._prepare_target_modules(self.ia3_target_modules)
             self.ia3_modules_to_save = self._prepare_modules_to_save(self.ia3_modules_to_save)
         else:
-            self.lora_target_modules = self._prepare_target_modules(
-                self.lora_target_modules)
-            self.lora_modules_to_save = self._prepare_modules_to_save(
-                self.lora_modules_to_save)
+            self.lora_target_modules = self._prepare_target_modules(self.lora_target_modules)
+            self.lora_modules_to_save = self._prepare_modules_to_save(self.lora_modules_to_save)
         if self.use_self_cognition and self.sft_type == 'lora' and not self.lora_use_all:
-            logger.warning(
-                'Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
-                'For example: `--lora_target_modules ALL`. '
-                'If you have already added LoRA on MLP, please ignore this warning.'
-            )
+            logger.warning('Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
+                           'For example: `--lora_target_modules ALL`. '
+                           'If you have already added LoRA on MLP, please ignore this warning.')
 
         if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
             raise ValueError('`adalora` and `ia3` do not support setting embedding as target_modules.')
@@ -607,9 +594,7 @@ class SftArguments(ArgumentsBase):
 
         self.prepare_template()
         if len(self.dataset) == 0:
-            raise ValueError(
-                f'self.dataset: {self.dataset}, Please input the training dataset.'
-            )
+            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
@@ -809,12 +794,9 @@ class InferArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     # Chinese name and English name
-    model_name: List[str] = field(
-        default_factory=lambda: [None, None],
-        metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
+    model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
-        default_factory=lambda: [None, None],
-        metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
+        default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
     quantization_bit: Literal[0, 4, 8] = 0
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
@@ -880,9 +862,7 @@ class InferArguments(ArgumentsBase):
                 self.eval_human = False
             logger.info(f'Setting self.eval_human: {self.eval_human}')
         elif self.eval_human is False and not len(self.dataset) > 0:
-            raise ValueError(
-                'Please provide the dataset or set `--load_dataset_config true`.'
-            )
+            raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
@@ -900,21 +880,17 @@ class InferArguments(ArgumentsBase):
         self.prepare_vllm()
 
     @staticmethod
-    def _parse_vllm_lora_modules(
-            vllm_lora_modules: List[str]) -> List['LoRARequest']:
+    def _parse_vllm_lora_modules(vllm_lora_modules: List[str]) -> List['LoRARequest']:
         try:
             from .vllm_utils import LoRARequest
         except ImportError:
-            logger.warning(
-                'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
-            )
+            logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
             raise
         lora_request_list = []
         for i, vllm_lora_module in enumerate(vllm_lora_modules):
             lora_name, lora_local_path = vllm_lora_module.split('=')
             lora_local_path = swift_to_peft_format(lora_local_path)
-            lora_request_list.append(
-                LoRARequest(lora_name, i + 1, lora_local_path))
+            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
         return lora_request_list
 
     def prepare_vllm(self):
@@ -939,11 +915,8 @@ class InferArguments(ArgumentsBase):
                                                  'Please set `--merge_lora true`.')
             if self.vllm_enable_lora:
                 self.vllm_lora_modules.append(f'default-lora={self.ckpt_dir}')
-                self.vllm_lora_request_list = self._parse_vllm_lora_modules(
-                    self.vllm_lora_modules)
-                logger.info(
-                    f'args.vllm_lora_request_list: {self.vllm_lora_request_list}'
-                )
+                self.vllm_lora_request_list = self._parse_vllm_lora_modules(self.vllm_lora_modules)
+                logger.info(f'args.vllm_lora_request_list: {self.vllm_lora_request_list}')
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
             self.stream = False
@@ -965,10 +938,8 @@ class InferArguments(ArgumentsBase):
         ]
         if self.load_dataset_config:
             imported_keys += [
-                'dataset', 'dataset_seed', 'dataset_test_ratio',
-                'check_dataset_strategy', 'custom_train_dataset_path',
-                'custom_val_dataset_path', 'self_cognition_sample',
-                'model_name', 'model_author'
+                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'custom_train_dataset_path',
+                'custom_val_dataset_path', 'self_cognition_sample', 'model_name', 'model_author'
             ]
         for key in imported_keys:
             if (key in {'dataset', 'custom_train_dataset_path', 'custom_val_dataset_path'}
@@ -1090,14 +1061,9 @@ class ExportArguments(InferArguments):
                 self.quant_output_dir = f'{self.model_type}-{self.quant_method}-int{self.quant_bits}'
             else:
                 ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
-                self.quant_output_dir = os.path.join(
-                    ckpt_dir,
-                    f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
-            logger.info(
-                f'Setting args.quant_output_dir: {self.quant_output_dir}')
-        assert not os.path.exists(
-            self.quant_output_dir
-        ), f'args.quant_output_dir: {self.quant_output_dir}'
+                self.quant_output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+            logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
+        assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
 
 
 @dataclass

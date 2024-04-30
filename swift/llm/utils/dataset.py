@@ -16,12 +16,9 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import (get_logger, is_dist, is_local_master, read_from_jsonl,
-                         transform_jsonl_to_df)
-from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
-                         ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor, TextGenerationPreprocessor)
+from swift.utils import get_logger, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
+                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
 
@@ -142,27 +139,23 @@ class DatasetName:
         return res
 
 
-def register_dataset(
-        dataset_name: str,
-        dataset_id_or_path: Optional[str] = None,
-        subsets: Optional[List[str]] = None,
-        preprocess_func: Optional[PreprocessFunc] = None,
-        get_function: Optional[GetDatasetFunction] = None,
-        *,
-        train_split: Optional[List[str]] = None,
-        val_split: Optional[List[str]] = None,
-        hf_dataset_id: Optional[str] = None,
-        function_kwargs: Optional[Dict[str, Any]] = None,
-        exist_ok: bool = False,
-        is_local: bool = False,
-        **kwargs
-) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
+def register_dataset(dataset_name: str,
+                     dataset_id_or_path: Optional[str] = None,
+                     subsets: Optional[List[str]] = None,
+                     preprocess_func: Optional[PreprocessFunc] = None,
+                     get_function: Optional[GetDatasetFunction] = None,
+                     *,
+                     train_split: Optional[List[str]] = None,
+                     val_split: Optional[List[str]] = None,
+                     hf_dataset_id: Optional[str] = None,
+                     function_kwargs: Optional[Dict[str, Any]] = None,
+                     exist_ok: bool = False,
+                     is_local: bool = False,
+                     **kwargs) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
     if preprocess_func is None:
         preprocess_func = SmartPreprocessor()
     if not exist_ok and dataset_name in DATASET_MAPPING:
-        raise ValueError(
-            f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
-        )
+        raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
     if subsets is None:
         subsets = []
     if train_split is None:
@@ -241,19 +234,10 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any]) -> None:
         d_info.pop('conversations')
     dataset_id = d_info.pop('dataset_id', None)
     subsets = d_info.pop('subsets', None)
-    register_dataset(
-        dataset_name,
-        dataset_id,
-        subsets,
-        preprocess_func,
-        get_dataset_from_repo,
-        **d_info,
-        exist_ok=True)
+    register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info, exist_ok=True)
 
 
-def load_ms_dataset(
-        dataset_id: str,
-        subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
+def load_ms_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
     from modelscope import MsDataset
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
@@ -289,9 +273,7 @@ def load_hf_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSpli
     return concatenate_datasets(dataset_list)
 
 
-def sample_dataset(dataset: HfDataset,
-                   dataset_sample: int,
-                   random_state: Optional[RandomState] = None) -> HfDataset:
+def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None) -> HfDataset:
     if dataset_sample in {None, -1, len(dataset)}:
         return dataset
     if random_state is None:
@@ -329,15 +311,12 @@ def _post_preprocess(
             val_sample = max(int(_train_len * dataset_test_ratio), 1)
         if val_sample > 0:
             assert isinstance(val_sample, int)
-            train_dataset, val_dataset = train_dataset.train_test_split(
-                test_size=val_sample).values()
+            train_dataset, val_dataset = train_dataset.train_test_split(test_size=val_sample).values()
 
     if val_dataset is not None and val_sample >= 0:
-        assert val_sample <= len(val_dataset), (
-            f'val_sample: {val_sample}, val_dataset: {val_dataset}')
+        assert val_sample <= len(val_dataset), (f'val_sample: {val_sample}, val_dataset: {val_dataset}')
     res: List[HfDataset] = []
-    for dataset, dataset_sample in zip([train_dataset, val_dataset],
-                                       [train_sample, val_sample]):
+    for dataset, dataset_sample in zip([train_dataset, val_dataset], [train_sample, val_sample]):
         if dataset is None or dataset_sample == 0:
             res.append(None)
             continue
@@ -351,19 +330,18 @@ def _post_preprocess(
     return tuple(res)
 
 
-def get_dataset_from_repo(
-        dataset_id: str,
-        subsets: Optional[List[str]],
-        preprocess_func: PreprocessFunc,
-        train_split: List[str],
-        val_split: List[str],
-        train_sample: int = -1,
-        val_sample: int = -1,
-        *,
-        random_state: Optional[RandomState] = None,
-        dataset_test_ratio: float = 0.,
-        remove_useless_columns: bool = True,
-        use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+def get_dataset_from_repo(dataset_id: str,
+                          subsets: Optional[List[str]],
+                          preprocess_func: PreprocessFunc,
+                          train_split: List[str],
+                          val_split: List[str],
+                          train_sample: int = -1,
+                          val_sample: int = -1,
+                          *,
+                          random_state: Optional[RandomState] = None,
+                          dataset_test_ratio: float = 0.,
+                          remove_useless_columns: bool = True,
+                          use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
     if subsets is None:
         subsets = []
@@ -380,8 +358,7 @@ def get_dataset_from_repo(
         else:
             dataset = load_ms_dataset(dataset_id, subset_split_list)
         dataset_list.append(dataset)
-    return _post_preprocess(dataset_list, train_sample, val_sample,
-                            random_state, preprocess_func, dataset_test_ratio,
+    return _post_preprocess(dataset_list, train_sample, val_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns)
 
 
@@ -594,8 +571,7 @@ register_dataset(
     DatasetName.ms_bench,
     'iic/ms_bench',
     None,
-    ConversationsPreprocessor(
-        repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round', '🔥'])
 
@@ -663,8 +639,7 @@ def _preprocess_firefly(dataset: List[Dict[str, str]], kind_list: List[str]) -> 
     _preprocess_firefly,
     tags=['chat', 'general'],
     function_kwargs={'kind_list': _firefly_kind_list})
-def get_firefly_zh_dataset(dataset_id: str, _, preprocess_func: PreprocessFunc,
-                           *args, **kwargs) -> HfDataset:
+def get_firefly_zh_dataset(dataset_id: str, _, preprocess_func: PreprocessFunc, *args, **kwargs) -> HfDataset:
     kind_list = kwargs['kind_list']
     file = 'firefly-train-1.1M.jsonl'
     dataset_dir = download_dataset(dataset_id, [file])
@@ -680,8 +655,7 @@ def get_firefly_zh_dataset(dataset_id: str, _, preprocess_func: PreprocessFunc,
 register_dataset(
     DatasetName.cmnli_zh,
     'modelscope/clue', ['cmnli'],
-    ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
-                    'Natural Language Inference', True),
+    ClsPreprocessor(['neutral', 'entailment', 'contradiction'], 'Natural Language Inference', True),
     get_dataset_from_repo,
     val_split=['validation'],
     tags=['text-generation', 'classification'],
@@ -691,8 +665,7 @@ register_dataset(
     DatasetName.jd_sentiment_zh,
     'DAMO_NLP/jd',
     None,
-    ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification',
-                    False),
+    ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification', False),
     get_dataset_from_repo,
     val_split=['validation'],
     tags=['text-generation', 'classification', '🔥'])
@@ -785,10 +758,8 @@ def process_hh_rlhf(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf,
-    'AI-ModelScope/hh-rlhf', [
-        'harmless-base', 'helpful-base', 'helpful-online',
-        'helpful-rejection-sampled', 'red-team-attempts'
-    ],
+    'AI-ModelScope/hh-rlhf',
+    ['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled', 'red-team-attempts'],
     process_hh_rlhf,
     get_dataset_from_repo,
     val_split=['test'],
@@ -852,10 +823,8 @@ def process_hh_rlhf_cn(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf_cn,
-    'AI-ModelScope/hh_rlhf_cn', [
-        'hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn',
-        'helpful_base_en'
-    ],
+    'AI-ModelScope/hh_rlhf_cn',
+    ['hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn', 'helpful_base_en'],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
     val_split=['test'],
@@ -883,8 +852,7 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.sharegpt,
-    'huangjintao/sharegpt',
-    ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
+    'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
     _preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
@@ -924,17 +892,11 @@ register_dataset(
 
 register_dataset(
     DatasetName.alpha_umi_toolbench,
-    'shenweizhou/alpha-umi-toolbench-processed-v2',
-    ['backbone', 'caller', 'planner', 'summarizer'], {
-        'backbone':
-        ConversationsPreprocessor('system', system_role='-'),
-        'caller':
-        ConversationsPreprocessor('system', 'caller', '-'),
-        'planner':
-        ConversationsPreprocessor(
-            repair_conversations=_repair_planner, error_strategy='delete'),
-        'summarizer':
-        ConversationsPreprocessor('system', 'conclusion', None),
+    'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'], {
+        'backbone': ConversationsPreprocessor('system', system_role='-'),
+        'caller': ConversationsPreprocessor('system', 'caller', '-'),
+        'planner': ConversationsPreprocessor(repair_conversations=_repair_planner, error_strategy='delete'),
+        'summarizer': ConversationsPreprocessor('system', 'conclusion', None),
     },
     get_dataset_from_repo,
     tags=['chat', 'agent', '🔥'])
@@ -1038,12 +1000,8 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 
 register_dataset(
     DatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy',
-    ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
-    ConversationsPreprocessor(
-        'human',
-        'gpt',
-        repair_conversations=_repair_conversations_agent_instruct),
+    'huangjintao/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
+    ConversationsPreprocessor('human', 'gpt', repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 
@@ -1099,10 +1057,7 @@ Output:"""
 
 register_dataset(
     DatasetName.hc3_zh,
-    'simpleai/HC3-Chinese', [
-        'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
-        'psychology'
-    ],
+    'simpleai/HC3-Chinese', ['baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law', 'psychology'],
     _preprocess_hc3,
     get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'],
@@ -1187,8 +1142,7 @@ def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
     return part
 
 
-def parse_dataset_name(
-        dataset_name: str) -> Tuple[Optional[str], str, List[str], int, int]:
+def parse_dataset_name(dataset_name: str) -> Tuple[Optional[str], str, List[str], int, int]:
     # HF::dataset_name:subset1/subset2/subset3#train_sample/val_sample
     use_hf, other = _safe_split(dataset_name, '::', False)
     part1, part2 = _safe_split(other, '#', True)
@@ -1199,24 +1153,18 @@ def parse_dataset_name(
     else:
         subset_list = None
     train_sample, val_sample = _safe_split(part2, '/', True)
-    train_sample, val_sample = [
-        sample if sample is None else int(sample)
-        for sample in [train_sample, val_sample]
-    ]
+    train_sample, val_sample = [sample if sample is None else int(sample) for sample in [train_sample, val_sample]]
     if train_sample is None:
         train_sample = -1
     if val_sample is None:
         val_sample = -1
-    return tuple(
-        t.strip() if isinstance(t, str) else t
-        for t in [use_hf, dataset_name, subset_list, train_sample, val_sample])
+    return tuple(t.strip() if isinstance(t, str) else t
+                 for t in [use_hf, dataset_name, subset_list, train_sample, val_sample])
 
 
 def _dataset_name_exists(dataset_list: str, dataset_name: str) -> List[int]:
     dataset_name = parse_dataset_name(dataset_name)[1]
-    cache_name_list = [
-        parse_dataset_name(dataset)[1] for dataset in dataset_list
-    ]
+    cache_name_list = [parse_dataset_name(dataset)[1] for dataset in dataset_list]
     res = []
     for i, cache_name in enumerate(cache_name_list):
         if cache_name == dataset_name:
@@ -1245,11 +1193,9 @@ def _preprocess_self_cognition_dataset(
             else:
                 model_n, model_a = model_name[1], model_author[1]
 
-            r = d['response'].replace('{{NAME}}',
-                                      model_n).replace('{{AUTHOR}}', model_a)
+            r = d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
             response.append(r)
-        dataset = dataset.remove_columns('response').add_column(
-            'response', response).remove_columns('tag')
+        dataset = dataset.remove_columns('response').add_column('response', response).remove_columns('tag')
         res_d_list.append(dataset)
     return tuple(res_d_list)
 
@@ -1258,8 +1204,7 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
     # register dataset_id (ms/hf). Convert dataset_id to dataset_name.
     ms_dataset_mapping = {}
     hf_dataset_mapping = {}
-    for k_name, container in zip(['dataset_id_or_path', 'hf_dataset_id'],
-                                 [ms_dataset_mapping, hf_dataset_mapping]):
+    for k_name, container in zip(['dataset_id_or_path', 'hf_dataset_id'], [ms_dataset_mapping, hf_dataset_mapping]):
         for k, v in DATASET_MAPPING.items():
             if v.get(k_name) is None or not v.get('is_main', True):
                 continue
@@ -1302,16 +1247,14 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
 
 
 def get_dataset(
-    dataset_name_list: Union[List[str], str],
-    dataset_test_ratio: float = 0.,
-    dataset_seed: Union[RandomState, int] = 42,
-    check_dataset_strategy: Literal['none', 'discard', 'error',
-                                    'warning'] = 'none',
-    *,
-    # for self-cognition
-    model_name: Optional[Tuple[str, str]] = None,
-    model_author: Optional[Tuple[str, str]] = None
-) -> Tuple[HfDataset, Optional[HfDataset]]:
+        dataset_name_list: Union[List[str], str],
+        dataset_test_ratio: float = 0.,
+        dataset_seed: Union[RandomState, int] = 42,
+        check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none',
+        *,
+        # for self-cognition
+        model_name: Optional[Tuple[str, str]] = None,
+        model_author: Optional[Tuple[str, str]] = None) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
         dataset_name_list = [dataset_name_list]
@@ -1322,8 +1265,7 @@ def get_dataset(
 
     dataset_name_list = _dataset_id_to_name(dataset_name_list)
     for dataset_name in dataset_name_list:
-        use_hf, dataset_name, subsets, train_sample, val_sample = parse_dataset_name(
-            dataset_name)
+        use_hf, dataset_name, subsets, train_sample, val_sample = parse_dataset_name(dataset_name)
         dataset_info = DATASET_MAPPING[dataset_name]
         if subsets is None:
             subsets = dataset_info['subsets']
@@ -1335,8 +1277,7 @@ def get_dataset(
         get_function: GetDatasetFunction = dataset_info['get_function']
         is_local = dataset_info.get('is_local', False)
         dataset_id_or_path = dataset_info['dataset_id_or_path']
-        remove_useless_columns = dataset_info.get('remove_useless_columns',
-                                                  True)
+        remove_useless_columns = dataset_info.get('remove_useless_columns', True)
         if not is_local:
             if use_hf is None:
                 use_hf = strtobool(os.environ.get('USE_HF', 'False'))
@@ -1345,15 +1286,12 @@ def get_dataset(
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if use_hf:
                 dataset_id_or_path = dataset_info['hf_dataset_id']
-                dataset_str = dataset_str_f.format(
-                    hub='HuggingFace', dataset_id=dataset_id_or_path)
+                dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
             else:
-                dataset_str = dataset_str_f.format(
-                    hub='ModelScope', dataset_id=dataset_id_or_path)
+                dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id_or_path)
             logger.info(dataset_str)
-            assert dataset_id_or_path is not None, (
-                f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
-                f'dataset_id_or_path: {dataset_id_or_path}.')
+            assert dataset_id_or_path is not None, (f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
+                                                    f'dataset_id_or_path: {dataset_id_or_path}.')
         dataset = get_function(
             dataset_id_or_path,
             subsets,
@@ -1369,8 +1307,7 @@ def get_dataset(
 
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
-            dataset = _preprocess_self_cognition_dataset(
-                dataset, model_name, model_author)
+            dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
@@ -1438,16 +1375,13 @@ def get_local_dataset(_1: str,
                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     train_dataset = load_dataset_from_local(train_split, preprocess_func)
     val_dataset = load_dataset_from_local(val_split, preprocess_func)
-    return _post_preprocess([train_dataset, val_dataset], train_sample,
-                            val_sample, random_state, None, dataset_test_ratio,
-                            remove_useless_columns)
+    return _post_preprocess([train_dataset, val_dataset], train_sample, val_sample, random_state, None,
+                            dataset_test_ratio, remove_useless_columns)
 
 
-def _register_dataset_info_file(
-        dataset_info_path: Optional[str] = None) -> None:
+def _register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
     if dataset_info_path is None:
-        dataset_info_path = os.path.abspath(
-            os.path.join(__file__, '..', '..', 'data', 'dataset_info.json'))
+        dataset_info_path = os.path.abspath(os.path.join(__file__, '..', '..', 'data', 'dataset_info.json'))
     if not os.path.isfile(dataset_info_path):
         return
 
@@ -1458,12 +1392,9 @@ def _register_dataset_info_file(
         if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
             register_dataset_info(dataset_name, d_info)
         elif 'train_dataset_path' in d_info or 'val_dataset_path' in d_info:
-            base_dir = os.path.abspath(
-                os.path.join(__file__, '..', '..', 'data'))
-            register_local_dataset(dataset_name,
-                                   d_info.pop('train_dataset_path', None),
-                                   d_info.pop('val_dataset_path', None),
-                                   base_dir, **d_info)
+            base_dir = os.path.abspath(os.path.join(__file__, '..', '..', 'data'))
+            register_local_dataset(dataset_name, d_info.pop('train_dataset_path', None),
+                                   d_info.pop('val_dataset_path', None), base_dir, **d_info)
     logger.info('Successfully registered `dataset_info.json`')
 
 
