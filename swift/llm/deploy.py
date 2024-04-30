@@ -14,14 +14,11 @@ from modelscope import GenerationConfig
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import ChatCompletionResponse  # noqa
-from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice,
-                    ChatCompletionResponseStreamChoice,
-                    ChatCompletionStreamResponse, ChatMessage,
-                    CompletionRequest, CompletionResponse,
-                    CompletionResponseChoice, CompletionResponseStreamChoice,
-                    CompletionStreamResponse, DeltaMessage, DeployArguments,
-                    Model, ModelList, UsageInfo, inference, inference_stream,
-                    messages_to_history, random_uuid)
+from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                    ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
+                    CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
+                    DeployArguments, Model, ModelList, UsageInfo, inference, inference_stream, messages_to_history,
+                    random_uuid)
 
 logger = get_logger()
 
@@ -32,8 +29,7 @@ llm_engine = None
 template = None
 
 
-def create_error_response(status_code: Union[int, str, HTTPStatus],
-                          message: str) -> JSONResponse:
+def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
     status_code = int(status_code)
     return JSONResponse({'message': message, 'object': 'error'}, status_code)
 
@@ -43,17 +39,12 @@ async def get_available_models():
     global _args
     model_list = [_args.model_type]
     if _args.vllm_lora_request_list is not None:
-        model_list += [
-            lora_request.lora_name
-            for lora_request in _args.vllm_lora_request_list
-        ]
+        model_list += [lora_request.lora_name for lora_request in _args.vllm_lora_request_list]
     data = [Model(id=model_id) for model_id in model_list]
     return ModelList(data=data)
 
 
-async def check_length(request: Union[ChatCompletionRequest,
-                                      CompletionRequest],
-                       input_ids: List[int]) -> Optional[str]:
+async def check_length(request: Union[ChatCompletionRequest, CompletionRequest], input_ids: List[int]) -> Optional[str]:
     global llm_engine, model, _args
     if _args.infer_backend == 'vllm':
         max_model_len = llm_engine.model_config.max_model_len
@@ -65,17 +56,13 @@ async def check_length(request: Union[ChatCompletionRequest,
         max_tokens = max_model_len - num_tokens
         request.max_tokens = max_tokens
     if max_tokens + num_tokens > max_model_len:
-        error_msg = (
-            f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
-            f'but the maximum model length supported is {max_model_len}. '
-            'Please reduce the number of tokens in the prompt or the `max_tokens`.'
-        )
+        error_msg = (f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
+                     f'but the maximum model length supported is {max_model_len}. '
+                     'Please reduce the number of tokens in the prompt or the `max_tokens`.')
         return error_msg
 
 
-async def check_model(
-        request: Union[ChatCompletionRequest,
-                       CompletionRequest]) -> Optional[str]:
+async def check_model(request: Union[ChatCompletionRequest, CompletionRequest]) -> Optional[str]:
     model_list = await get_available_models()
     model_type_list = [model.id for model in model_list.data]
     if request.model in model_type_list:
@@ -91,9 +78,7 @@ def is_generation_template(template_type: str) -> bool:
         return False
 
 
-async def inference_vllm_async(request: Union[ChatCompletionRequest,
-                                              CompletionRequest],
-                               raw_request: Request):
+async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
     from .utils import VllmGenerationConfig
     error_msg = await check_model(request)
@@ -106,8 +91,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     if isinstance(request, ChatCompletionRequest):
         if is_generation_template(template.template_type):
             return create_error_response(
-                HTTPStatus.BAD_REQUEST,
-                f'The chat template `{template.template_type}` corresponding to '
+                HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         example = messages_to_history(request.messages)
@@ -117,8 +101,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
-                HTTPStatus.BAD_REQUEST,
-                f'The chat template `{template.template_type}` corresponding to '
+                HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
         example = {'query': request.prompt}
@@ -134,10 +117,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
 
     kwargs = {'max_new_tokens': request.max_tokens}
-    for key in [
-            'n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty',
-            'presence_penalty', 'num_beams'
-    ]:
+    for key in ['n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
@@ -153,8 +133,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1],
-                  str) and template.suffix[-1] not in generation_config.stop:
+    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
     if isinstance(template.suffix[-1], list):
         token_str = tokenizer.decode(template.suffix[-1])
@@ -172,24 +151,20 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
             if lora_req.lora_name == request.model:
                 lora_request = lora_req
                 break
-        assert lora_request is not None, (
-            f"request.model: '{request.model}', "
-            f'available_models: {await get_available_models()}')
+        assert lora_request is not None, (f"request.model: '{request.model}', "
+                                          f'available_models: {await get_available_models()}')
         generate_kwargs['lora_request'] = lora_request
-    result_generator = llm_engine.generate(None, generation_config, request_id,
-                                           input_ids, **generate_kwargs)
+    result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
 
     async def _generate_full():
         result = None
         async for result in result_generator:
             if await raw_request.is_disconnected():
                 await llm_engine.abort(request_id)
-                return create_error_response(HTTPStatus.BAD_REQUEST,
-                                             'Client disconnected')
+                return create_error_response(HTTPStatus.BAD_REQUEST, 'Client disconnected')
         assert result is not None
         num_prompt_tokens = len(result.prompt_token_ids)
-        num_generated_tokens = sum(
-            len(output.token_ids) for output in result.outputs)
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = UsageInfo(
             prompt_tokens=num_prompt_tokens,
             completion_tokens=num_generated_tokens,
@@ -207,11 +182,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 )
                 choices.append(choice)
             response = ChatCompletionResponse(
-                model=request.model,
-                choices=choices,
-                usage=usage_info,
-                id=request_id,
-                created=created_time)
+                model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:
             choices = []
             for output in result.outputs:
@@ -223,19 +194,14 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
                 )
                 choices.append(choice)
             response = CompletionResponse(
-                model=request.model,
-                choices=choices,
-                usage=usage_info,
-                id=request_id,
-                created=created_time)
+                model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         return response
 
     async def _generate_stream():
         print_idx_list = [[0] for _ in range(request.n)]
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
-            num_generated_tokens = sum(
-                len(output.token_ids) for output in result.outputs)
+            num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
             usage_info = UsageInfo(
                 prompt_tokens=num_prompt_tokens,
                 completion_tokens=num_generated_tokens,
@@ -244,40 +210,26 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest,
 
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
-                    output.token_ids,
-                    output.finished(),
-                    return_delta=True,
-                    print_idx=print_idx_list[output.index])
+                    output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
 
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
-                        delta=DeltaMessage(
-                            role='assistant', content=output.delta_text),
+                        delta=DeltaMessage(role='assistant', content=output.delta_text),
                         finish_reason=output.finish_reason)
                     choices.append(choice)
                 response = ChatCompletionStreamResponse(
-                    model=request.model,
-                    choices=choices,
-                    usage=usage_info,
-                    id=request_id,
-                    created=created_time)
+                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             else:
                 choices = []
                 for output in result.outputs:
                     choice = CompletionResponseStreamChoice(
-                        index=output.index,
-                        text=output.delta_text,
-                        finish_reason=output.finish_reason)
+                        index=output.index, text=output.delta_text, finish_reason=output.finish_reason)
                     choices.append(choice)
                 response = CompletionStreamResponse(
-                    model=request.model,
-                    choices=choices,
-                    usage=usage_info,
-                    id=request_id,
-                    created=created_time)
+                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
         yield 'data:[DONE]\n\n'
 
@@ -299,9 +251,7 @@ class _GenerationConfig(GenerationConfig):
         return f'GenerationConfig({gen_kwargs})'
 
 
-async def inference_pt_async(request: Union[ChatCompletionRequest,
-                                            CompletionRequest],
-                             raw_request: Request):
+async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global model, template
     error_msg = await check_model(request)
     if error_msg is not None:
@@ -313,8 +263,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
     if isinstance(request, ChatCompletionRequest):
         if is_generation_template(template.template_type):
             return create_error_response(
-                HTTPStatus.BAD_REQUEST,
-                f'The chat template `{template.template_type}` corresponding to '
+                HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         example = messages_to_history(request.messages)
@@ -324,8 +273,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
-                HTTPStatus.BAD_REQUEST,
-                f'The chat template `{template.template_type}` corresponding to '
+                HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
         example = {'query': request.prompt}
@@ -360,11 +308,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
 
     generation_config = _GenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
-    request_info.update({
-        'seed': request.seed,
-        'stop': request.stop,
-        'stream': request.stream
-    })
+    request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
     logger.info(request_info)
 
     created_time = int(time.time())
@@ -394,25 +338,15 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                 )
             ]
             response = ChatCompletionResponse(
-                model=request.model,
-                choices=choices,
-                usage=usage_info,
-                id=request_id,
-                created=created_time)
+                model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:
-            choices = [
-                CompletionResponseChoice(
-                    index=0,
-                    text=response,
-                    finish_reason=None,
-                )
-            ]
+            choices = [CompletionResponseChoice(
+                index=0,
+                text=response,
+                finish_reason=None,
+            )]
             response = CompletionResponse(
-                model=request.model,
-                choices=choices,
-                usage=usage_info,
-                id=request_id,
-                created=created_time)
+                model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         return response
 
     def _generate_stream():
@@ -439,30 +373,16 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
                 print_idx = len(response)
                 choices = [
                     ChatCompletionResponseStreamChoice(
-                        index=0,
-                        delta=DeltaMessage(
-                            role='assistant', content=delta_text),
-                        finish_reason=None)
+                        index=0, delta=DeltaMessage(role='assistant', content=delta_text), finish_reason=None)
                 ]
                 resp = ChatCompletionStreamResponse(
-                    model=request.model,
-                    choices=choices,
-                    usage=usage_info,
-                    id=request_id,
-                    created=created_time)
+                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             else:
                 delta_text = response[print_idx:]
                 print_idx = len(response)
-                choices = [
-                    CompletionResponseStreamChoice(
-                        index=0, text=delta_text, finish_reason=None)
-                ]
+                choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
                 resp = CompletionStreamResponse(
-                    model=request.model,
-                    choices=choices,
-                    usage=usage_info,
-                    id=request_id,
-                    created=created_time)
+                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
         yield 'data:[DONE]\n\n'
 
@@ -473,9 +393,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest,
 
 
 @app.post('/v1/chat/completions')
-async def create_chat_completion(
-        request: ChatCompletionRequest,
-        raw_request: Request) -> ChatCompletionResponse:
+async def create_chat_completion(request: ChatCompletionRequest, raw_request: Request) -> ChatCompletionResponse:
     global _args
     assert _args is not None
     if _args.infer_backend == 'vllm':
@@ -485,8 +403,7 @@ async def create_chat_completion(
 
 
 @app.post('/v1/completions')
-async def create_completion(request: CompletionRequest,
-                            raw_request: Request) -> CompletionResponse:
+async def create_completion(request: CompletionRequest, raw_request: Request) -> CompletionResponse:
     global _args
     assert _args is not None
     if _args.infer_backend == 'vllm':
@@ -498,8 +415,7 @@ async def create_completion(request: CompletionRequest,
 def llm_deploy(args: DeployArguments) -> None:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
-    logger_format = logging.Formatter(
-        '%(levelname)s: %(asctime)s %(filename)s:%(lineno)d] %(message)s')
+    logger_format = logging.Formatter('%(levelname)s: %(asctime)s %(filename)s:%(lineno)d] %(message)s')
     logger.handlers[0].setFormatter(logger_format)
     import uvicorn
     global llm_engine, model, template, _args
@@ -508,16 +424,10 @@ def llm_deploy(args: DeployArguments) -> None:
         merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template
-        llm_engine, template = prepare_vllm_engine_template(
-            args, use_async=True)
+        llm_engine, template = prepare_vllm_engine_template(args, use_async=True)
     else:
         model, template = prepare_model_template(args)
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        ssl_keyfile=args.ssl_keyfile,
-        ssl_certfile=args.ssl_certfile)
+    uvicorn.run(app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
 
 
 deploy_main = get_main(DeployArguments, llm_deploy)

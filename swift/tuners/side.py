@@ -33,31 +33,23 @@ class SideConfig(SwiftConfig):
         target_modules: The feedforward module to be replaced, in regex format
     """
 
-    dim: int = field(
-        default=None, metadata={'help': 'The dimension of the hidden states'})
+    dim: int = field(default=None, metadata={'help': 'The dimension of the hidden states'})
 
     target_modules: str = field(
-        default=None,
-        metadata={
-            'help': 'The target module to be replaced, in full match format'
-        })
+        default=None, metadata={'help': 'The target module to be replaced, in full match format'})
 
-    side_module_name: str = field(
-        default='fcn4',
-        metadata={'help': 'The name of the additive side networks'})
+    side_module_name: str = field(default='fcn4', metadata={'help': 'The name of the additive side networks'})
 
     source_hidden_pos: Union[str, int] = field(
         default=0,
         metadata={
-            'help':
-            'The position of the hidden state input to the target module, can be int (args) or str (kwargs)'
+            'help': 'The position of the hidden state input to the target module, can be int (args) or str (kwargs)'
         })
 
     target_hidden_pos: Union[str, int] = field(
         default=0,
         metadata={
-            'help':
-            'The position of the hidden state output from the target module, can be int (args) or str (kwargs)'
+            'help': 'The position of the hidden state output from the target module, can be int (args) or str (kwargs)'
         })
 
     def __post_init__(self):
@@ -68,26 +60,20 @@ class SideConfig(SwiftConfig):
 class Side(SwiftAdapter):
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: SideConfig,
-                      adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: SideConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `SideConfig`"""
         module_keys = [key for key, _ in model.named_modules()]
 
         for module_key in module_keys:
             if re.fullmatch(config.target_modules, module_key):  # noqa
                 tgt_module = model.get_submodule(module_key)
-                logger.info(
-                    f'Matching target module [{module_key}] of type {type(tgt_module)}'
-                )
+                logger.info(f'Matching target module [{module_key}] of type {type(tgt_module)}')
                 if isinstance(tgt_module, (nn.ModuleList, nn.ModuleDict)):
                     raise Exception(
-                        f'Type of {type(tgt_module)} may not be supported because of its customized forward'
-                    )
+                        f'Type of {type(tgt_module)} may not be supported because of its customized forward')
 
                 def _forward(self, *args, **kwargs):
-                    args_main = getattr(
-                        self, f'forward_origin_{adapter_name}')(*args,
-                                                                **kwargs)
+                    args_main = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
 
                     if isinstance(config.source_hidden_pos, int):
                         x = args[config.source_hidden_pos]
@@ -103,10 +89,8 @@ class Side(SwiftAdapter):
                         args_main = out
                     return args_main
 
-                if isinstance(tgt_module, nn.Sequential) and not hasattr(
-                        tgt_module, 'tgt_module_keys'):
-                    tgt_module.tgt_module_keys = copy.deepcopy(
-                        list(tgt_module._modules.keys()))
+                if isinstance(tgt_module, nn.Sequential) and not hasattr(tgt_module, 'tgt_module_keys'):
+                    tgt_module.tgt_module_keys = copy.deepcopy(list(tgt_module._modules.keys()))
 
                     def forward_seq(self, input, *args, **kwargs):
                         for idx, module in enumerate(self):
@@ -115,44 +99,30 @@ class Side(SwiftAdapter):
                             input = module(input)
                         return input
 
-                    setattr(tgt_module, f'forward_origin_{adapter_name}',
-                            types.MethodType(forward_seq, tgt_module))
+                    setattr(tgt_module, f'forward_origin_{adapter_name}', types.MethodType(forward_seq, tgt_module))
                 else:
-                    setattr(tgt_module, f'forward_origin_{adapter_name}',
-                            tgt_module.forward)
+                    setattr(tgt_module, f'forward_origin_{adapter_name}', tgt_module.forward)
                 tgt_module.forward = types.MethodType(_forward, tgt_module)
-                side_module = SideModule(config.dim, adapter_name, module_key,
-                                         config.side_module_name)
+                side_module = SideModule(config.dim, adapter_name, module_key, config.side_module_name)
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
-                logger.info(
-                    f'Side modules(module_key): {module_key}.side_{adapter_name}'
-                )
+                logger.info(f'Side modules(module_key): {module_key}.side_{adapter_name}')
 
         def state_dict_callback(state_dict, adapter_name):
-            return {
-                key: value
-                for key, value in state_dict.items()
-                if f'side_{adapter_name}' in key
-            }
+            return {key: value for key, value in state_dict.items() if f'side_{adapter_name}' in key}
 
         def mark_trainable_callback(model):
             return
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module,
-                         adapter_name: str,
-                         activate: bool,
-                         offload: str = None):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         modules = find_sub_module(module, f'side_{adapter_name}')
         for _module in modules:
             _module: ActivationMixin
             _module: nn.Module
             _module.set_activation(adapter_name, activate)
-            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key,
-                                     activate, offload)
+            SwiftAdapter.save_memory(_module, adapter_name, _module.module_key, activate, offload)
 
 
 class SideModule(nn.Module, ActivationMixin):
@@ -182,13 +152,10 @@ class SideModule(nn.Module, ActivationMixin):
             import torchvision
             mm = torchvision.models.alexnet(pretrained=True)
             self.side_net = nn.Sequential(
-                OrderedDict([('features', mm.features),
-                             ('avgpool', mm.avgpool),
-                             ('flatten', nn.Flatten()),
+                OrderedDict([('features', mm.features), ('avgpool', mm.avgpool), ('flatten', nn.Flatten()),
                              ('fc', nn.Linear(9216, dim, bias=False))]))
         else:
-            raise ValueError(
-                f'Unsupported side_module_name: {side_module_name}')
+            raise ValueError(f'Unsupported side_module_name: {side_module_name}')
         self.alpha = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, x, x_main):
@@ -208,41 +175,17 @@ class FCN4(nn.Module):
         super(FCN4, self).__init__(**kwargs)
 
         self.conv1 = nn.Sequential(
-            nn.Conv2d(
-                3,
-                16,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-                bias=False,
-                dilation=1), nn.GroupNorm(2, 16), nn.ReLU())
+            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False, dilation=1), nn.GroupNorm(2, 16),
+            nn.ReLU())
         self.conv2 = nn.Sequential(
-            nn.Conv2d(
-                16,
-                16,
-                kernel_size=3,
-                stride=2,
-                padding=0,
-                bias=False,
-                dilation=1), nn.GroupNorm(2, 16), nn.ReLU())
+            nn.Conv2d(16, 16, kernel_size=3, stride=2, padding=0, bias=False, dilation=1), nn.GroupNorm(2, 16),
+            nn.ReLU())
         self.conv3 = nn.Sequential(
-            nn.Conv2d(
-                16,
-                32,
-                kernel_size=3,
-                stride=2,
-                padding=0,
-                bias=False,
-                dilation=1), nn.GroupNorm(2, 32), nn.ReLU())
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0, bias=False, dilation=1), nn.GroupNorm(2, 32),
+            nn.ReLU())
         self.conv4 = nn.Sequential(
-            nn.Conv2d(
-                32,
-                64,
-                kernel_size=3,
-                stride=1,
-                padding=0,
-                bias=False,
-                dilation=1), nn.GroupNorm(2, 64), nn.ReLU())
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=0, bias=False, dilation=1), nn.GroupNorm(2, 64),
+            nn.ReLU())
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         if out_dims > 0:
             self.fc = nn.Linear(64, out_dims)
@@ -281,14 +224,12 @@ class Mlp(nn.Module):
         hidden_features = hidden_features or in_features
         bias = tuple(repeat(bias, 2))
         drop_probs = tuple(repeat(drop, 2))
-        linear_layer = partial(
-            nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
+        linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
 
         self.fc1 = linear_layer(in_features, hidden_features, bias=bias[0])
         self.act = act_layer()
         self.drop1 = nn.Dropout(drop_probs[0])
-        self.norm = norm_layer(
-            hidden_features) if norm_layer is not None else nn.Identity()
+        self.norm = norm_layer(hidden_features) if norm_layer is not None else nn.Identity()
         self.fc2 = linear_layer(hidden_features, out_features, bias=bias[1])
         self.drop2 = nn.Dropout(drop_probs[1])
 

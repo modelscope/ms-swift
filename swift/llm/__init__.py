@@ -15,19 +15,12 @@ if TYPE_CHECKING:
     from .export import export_main
     from .eval import eval_main
 else:
-    _extra_objects = {
-        k: v
-        for k, v in globals().items() if not k.startswith('_')
-    }
+    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'app_ui':
-        ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
+        'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
         'deploy': ['deploy_main'],
         'dpo': ['dpo_main'],
-        'infer': [
-            'merge_lora', 'prepare_model_template', 'infer_main',
-            'merge_lora_main'
-        ],
+        'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
         'rome': ['rome_main'],
         'sft': ['sft_main'],
         'export': ['export_main'],

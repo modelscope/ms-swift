@@ -21,23 +21,16 @@ from requests import Session
 from requests.adapters import HTTPAdapter, Retry
 
 from swift.utils.logger import get_logger
-from .constants import (API_HTTP_CLIENT_TIMEOUT, API_RESPONSE_FIELD_DATA,
-                        API_RESPONSE_FIELD_EMAIL,
-                        API_RESPONSE_FIELD_GIT_ACCESS_TOKEN,
-                        API_RESPONSE_FIELD_MESSAGE,
-                        API_RESPONSE_FIELD_USERNAME, DEFAULT_CREDENTIALS_PATH,
-                        DEFAULT_MODEL_REVISION, DEFAULT_REPOSITORY_REVISION,
-                        MASTER_MODEL_BRANCH, MODELSCOPE_CLOUD_ENVIRONMENT,
-                        MODELSCOPE_CLOUD_USERNAME, ONE_YEAR_SECONDS,
+from .constants import (API_HTTP_CLIENT_TIMEOUT, API_RESPONSE_FIELD_DATA, API_RESPONSE_FIELD_EMAIL,
+                        API_RESPONSE_FIELD_GIT_ACCESS_TOKEN, API_RESPONSE_FIELD_MESSAGE, API_RESPONSE_FIELD_USERNAME,
+                        DEFAULT_CREDENTIALS_PATH, DEFAULT_MODEL_REVISION, DEFAULT_REPOSITORY_REVISION,
+                        MASTER_MODEL_BRANCH, MODELSCOPE_CLOUD_ENVIRONMENT, MODELSCOPE_CLOUD_USERNAME, ONE_YEAR_SECONDS,
                         REQUESTS_API_HTTP_METHOD, Licenses, ModelVisibility)
-from .errors import (InvalidParameter, NotExistError, NotLoginException,
-                     NoValidRevisionError, RequestError,
-                     handle_http_post_error, handle_http_response, is_ok,
-                     raise_for_http_status, raise_on_error)
+from .errors import (InvalidParameter, NotExistError, NotLoginException, NoValidRevisionError, RequestError,
+                     handle_http_post_error, handle_http_response, is_ok, raise_for_http_status, raise_on_error)
 from .git import GitCommandWrapper
 from .repository import Repository
-from .utils.utils import (get_endpoint, get_release_datetime,
-                          model_id_to_group_owner_name)
+from .utils.utils import get_endpoint, get_release_datetime, model_id_to_group_owner_name
 
 logger = get_logger()
 

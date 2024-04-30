@@ -98,10 +98,8 @@ class LLMTrain(BaseUI):
                 'en': 'GPU memory fraction'
             },
             'info': {
-                'zh':
-                '设置使用显存的比例，一般用于显存测试',
-                'en':
-                'Set the memory fraction ratio of GPU, usually used in memory test'
+                'zh': '设置使用显存的比例，一般用于显存测试',
+                'en': 'Set the memory fraction ratio of GPU, usually used in memory test'
             }
         },
         'sft_type': {
@@ -160,10 +158,8 @@ class LLMTrain(BaseUI):
                 'en': 'neftune_noise_alpha'
             },
             'info': {
-                'zh':
-                '使用neftune提升训练效果, 一般设置为5或者10',
-                'en':
-                'Use neftune to improve performance, normally the value should be 5 or 10'
+                'zh': '使用neftune提升训练效果, 一般设置为5或者10',
+                'en': 'Use neftune to improve performance, normally the value should be 5 or 10'
             }
         },
         'use_galore': {
@@ -172,10 +168,8 @@ class LLMTrain(BaseUI):
                 'en': 'Use GaLore'
             },
             'info': {
-                'zh':
-                '使用Galore来减少全参数训练的显存消耗',
-                'en':
-                'Use Galore to reduce GPU memory usage in full parameter training'
+                'zh': '使用Galore来减少全参数训练的显存消耗',
+                'en': 'Use Galore to reduce GPU memory usage in full parameter training'
             }
         },
         'galore_rank': {
@@ -220,26 +214,11 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Textbox(elem_id='ddp_num', value='2', scale=4)
-                    gr.Slider(
-                        elem_id='neftune_noise_alpha',
-                        minimum=0.0,
-                        maximum=20.0,
-                        step=0.5,
-                        scale=4)
+                    gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=4)
                 with gr.Row():
                     gr.Checkbox(elem_id='use_galore', scale=4)
-                    gr.Slider(
-                        elem_id='galore_rank',
-                        minimum=8,
-                        maximum=256,
-                        step=8,
-                        scale=4)
-                    gr.Slider(
-                        elem_id='galore_update_proj_gap',
-                        minimum=10,
-                        maximum=1000,
-                        step=50,
-                        scale=4)
+                    gr.Slider(elem_id='galore_rank', minimum=8, maximum=256, step=8, scale=4)
+                    gr.Slider(elem_id='galore_update_proj_gap', minimum=10, maximum=1000, step=50, scale=4)
                     gr.Checkbox(elem_id='galore_optim_per_parameter', scale=4)
                 with gr.Row():
                     gr.Dropdown(
@@ -250,8 +229,7 @@ class LLMTrain(BaseUI):
                         scale=8)
                     gr.Textbox(elem_id='gpu_memory_fraction', scale=4)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
-                    submit = gr.Button(
-                        elem_id='submit', scale=4, variant='primary')
+                    submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 Save.build_ui(base_tab)
                 LoRA.build_ui(base_tab)
@@ -262,19 +240,15 @@ class LLMTrain(BaseUI):
                 if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
                     submit.click(
                         cls.update_runtime, [],
-                        [cls.element('runtime_tab'),
-                         cls.element('log')]).then(
-                             cls.train_studio, [
-                                 value for value in cls.elements().values()
-                                 if not isinstance(value, (Tab, Accordion))
-                             ], [cls.element('log')],
-                             queue=True)
+                        [cls.element('runtime_tab'), cls.element('log')]).then(
+                            cls.train_studio,
+                            [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
+                            [cls.element('log')],
+                            queue=True)
                 else:
                     submit.click(
-                        cls.train_local, [
-                            value for value in cls.elements().values()
-                            if not isinstance(value, (Tab, Accordion))
-                        ], [
+                        cls.train_local,
+                        [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))], [
                             cls.element('running_cmd'),
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
@@ -282,21 +256,16 @@ class LLMTrain(BaseUI):
                         ],
                         queue=True)
                 base_tab.element('running_tasks').change(
-                    partial(Runtime.task_changed, base_tab=base_tab),
-                    [base_tab.element('running_tasks')],
-                    [
-                        value for value in base_tab.elements().values()
-                        if not isinstance(value, (Tab, Accordion))
-                    ] + [cls.element('log')] + Runtime.all_plots,
+                    partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                    [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+                    + [cls.element('log')] + Runtime.all_plots,
                     cancels=Runtime.log_event)
                 Runtime.element('kill_task').click(
                     Runtime.kill_task,
                     [Runtime.element('running_tasks')],
-                    [Runtime.element('running_tasks')]
-                    + [Runtime.element('log')] + Runtime.all_plots,
+                    [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
                     cancels=[Runtime.log_event],
-                ).then(Runtime.reset, [], [Runtime.element('logging_dir')]
-                       + [Save.element('output_dir')])
+                ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Save.element('output_dir')])
 
     @classmethod
     def update_runtime(cls):
@@ -310,29 +279,21 @@ class LLMTrain(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
-        keys = [
-            key for key, value in cls.elements().items()
-            if not isinstance(value, (Tab, Accordion))
-        ]
+        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         model_type = None
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
-            compare_value_arg = str(compare_value) if not isinstance(
-                compare_value, (list, dict)) else compare_value
-            compare_value_ui = str(value) if not isinstance(
-                value, (list, dict)) else value
+            compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
+            compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
 
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                 value = int(value)
-            elif isinstance(value, str) and re.fullmatch(
-                    cls.float_regex, value):
+            elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                 value = float(value)
 
             if key not in ignore_elements and key in sft_args and compare_value_ui != compare_value_arg and value:
-                kwargs[key] = value if not isinstance(
-                    value, list) else ' '.join(value)
-                kwargs_is_list[key] = isinstance(value, list) or getattr(
-                    cls.element(key), 'is_list', False)
+                kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
+                kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:
@@ -350,8 +311,7 @@ class LLMTrain(BaseUI):
 
         sft_args = SftArguments(
             **{
-                key: value.split(' ') if kwargs_is_list.get(key, False)
-                and isinstance(value, str) else value
+                key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
                 for key, value in kwargs.items()
             })
         params = ''
@@ -393,10 +353,8 @@ class LLMTrain(BaseUI):
     def train_studio(cls, *args):
         run_command, sft_args, other_kwargs = cls.train(*args)
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            lines = collections.deque(
-                maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
-            process = Popen(
-                run_command, shell=True, stdout=PIPE, stderr=STDOUT)
+            lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+            process = Popen(run_command, shell=True, stdout=PIPE, stderr=STDOUT)
             with process.stdout:
                 for line in iter(process.stdout.readline, b''):
                     line = line.decode('utf-8')
@@ -411,5 +369,4 @@ class LLMTrain(BaseUI):
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
-        return run_command, sft_args.logging_dir, gr.update(
-            open=True), Runtime.refresh_tasks(sft_args.output_dir)
+        return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(sft_args.output_dir)

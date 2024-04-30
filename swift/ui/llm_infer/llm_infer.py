@@ -13,8 +13,7 @@ from gradio import Accordion, Tab
 from modelscope import GenerationConfig
 
 from swift import snapshot_download
-from swift.llm import (DeployArguments, InferArguments, XRequestConfig,
-                       inference_client, inference_stream,
+from swift.llm import (DeployArguments, InferArguments, XRequestConfig, inference_client, inference_stream,
                        limit_history_length, prepare_model_template)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
@@ -26,17 +25,13 @@ class LLMInfer(BaseUI):
 
     sub_ui = [Model, Runtime]
 
-    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get(
-        'MODELSCOPE_ENVIRONMENT') == 'studio'
+    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
         'generate_alert': {
             'value': {
-                'zh':
-                '请先加载模型' if is_inference else '请先部署模型',
-                'en':
-                'Please load model first'
-                if is_inference else 'Please deploy model first',
+                'zh': '请先加载模型' if is_inference else '请先部署模型',
+                'en': 'Please load model first' if is_inference else 'Please deploy model first',
             }
         },
         'llm_infer': {
@@ -50,8 +45,7 @@ class LLMInfer(BaseUI):
                 'zh':
                 '加载中，请等待' if is_inference else '部署中，请点击"展示部署状态"查看',
                 'en':
-                'Start to load model, please wait'
-                if is_inference else 'Start to deploy model, '
+                'Start to load model, please wait' if is_inference else 'Start to deploy model, '
                 'please Click "Show running '
                 'status" to view details',
             }
@@ -125,10 +119,8 @@ class LLMInfer(BaseUI):
                     choices=[str(i) for i in range(gpu_count)] + ['cpu'],
                     value=default_device,
                     scale=8)
-                chatbot = gr.Chatbot(
-                    elem_id='chatbot', elem_classes='control-height')
-                prompt = gr.Textbox(
-                    elem_id='prompt', lines=1, interactive=True)
+                chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
+                prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -150,10 +142,7 @@ class LLMInfer(BaseUI):
                         outputs=[prompt, chatbot],
                         queue=True)
 
-                    clear_history.click(
-                        fn=cls.clear_session,
-                        inputs=[],
-                        outputs=[prompt, chatbot])
+                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
 
                     cls.element('load_checkpoint').click(
                         cls.reset_memory, [], [model_and_template]) \
@@ -169,13 +158,10 @@ class LLMInfer(BaseUI):
                         queue=True).then(cls.reset_load_button, [], [cls.element('load_checkpoint')])
                 else:
                     cls.element('load_checkpoint').click(
-                        cls.deploy_model, [
-                            value for value in cls.elements().values()
-                            if not isinstance(value, (Tab, Accordion))
-                        ], [
-                            cls.element('runtime_tab'),
-                            cls.element('running_tasks'), model_and_template
-                        ])
+                        cls.deploy_model,
+                        [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
+                        [cls.element('runtime_tab'),
+                         cls.element('running_tasks'), model_and_template])
                     submit.click(
                         cls.send_message,
                         inputs=[
@@ -191,24 +177,17 @@ class LLMInfer(BaseUI):
                         outputs=[prompt, chatbot],
                         queue=True)
 
-                    clear_history.click(
-                        fn=cls.clear_session,
-                        inputs=[],
-                        outputs=[prompt, chatbot])
+                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
 
                     base_tab.element('running_tasks').change(
-                        partial(Runtime.task_changed, base_tab=base_tab),
-                        [base_tab.element('running_tasks')],
-                        [
-                            value for value in base_tab.elements().values()
-                            if not isinstance(value, (Tab, Accordion))
-                        ] + [cls.element('log'), model_and_template],
+                        partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                        [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+                        + [cls.element('log'), model_and_template],
                         cancels=Runtime.log_event)
                     Runtime.element('kill_task').click(
                         Runtime.kill_task,
                         [Runtime.element('running_tasks')],
-                        [Runtime.element('running_tasks')]
-                        + [Runtime.element('log')],
+                        [Runtime.element('running_tasks')] + [Runtime.element('log')],
                         cancels=[Runtime.log_event],
                     )
 
@@ -219,25 +198,17 @@ class LLMInfer(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
-        keys = [
-            key for key, value in cls.elements().items()
-            if not isinstance(value, (Tab, Accordion))
-        ]
+        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
             compare_value = deploy_args.get(key)
-            compare_value_arg = str(compare_value) if not isinstance(
-                compare_value, (list, dict)) else compare_value
-            compare_value_ui = str(value) if not isinstance(
-                value, (list, dict)) else value
+            compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
+            compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
             if key in deploy_args and compare_value_ui != compare_value_arg and value:
-                if isinstance(value, str) and re.fullmatch(
-                        cls.int_regex, value):
+                if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                     value = int(value)
-                elif isinstance(value, str) and re.fullmatch(
-                        cls.float_regex, value):
+                elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                     value = float(value)
-                kwargs[key] = value if not isinstance(
-                    value, list) else ' '.join(value)
+                kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list)
             else:
                 other_kwargs[key] = value
@@ -252,13 +223,11 @@ class LLMInfer(BaseUI):
             kwargs['ckpt_dir'] = model_dir
 
         if 'ckpt_dir' in kwargs:
-            with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'),
-                      'r') as f:
+            with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'), 'r') as f:
                 kwargs['model_type'] = json.load(f)['model_type']
         deploy_args = DeployArguments(
             **{
-                key: value.split(' ')
-                if key in kwargs_is_list and kwargs_is_list[key] else value
+                key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
                 for key, value in kwargs.items()
             })
         if deploy_args.port in Runtime.get_all_ports():
@@ -311,8 +280,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def reset_load_button(cls):
-        return gr.update(
-            value=cls.locale('load_checkpoint', cls.lang)['value'])
+        return gr.update(value=cls.locale('load_checkpoint', cls.lang)['value'])
 
     @classmethod
     def reset_loading_button(cls):
@@ -330,25 +298,17 @@ class LLMInfer(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
-        keys = [
-            key for key, value in cls.elements().items()
-            if not isinstance(value, (Tab, Accordion))
-        ]
+        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
             compare_value = infer_args.get(key)
-            compare_value_arg = str(compare_value) if not isinstance(
-                compare_value, (list, dict)) else compare_value
-            compare_value_ui = str(value) if not isinstance(
-                value, (list, dict)) else value
+            compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
+            compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
             if key in infer_args and compare_value_ui != compare_value_arg and value:
-                if isinstance(value, str) and re.fullmatch(
-                        cls.int_regex, value):
+                if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                     value = int(value)
-                elif isinstance(value, str) and re.fullmatch(
-                        cls.float_regex, value):
+                elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                     value = float(value)
-                kwargs[key] = value if not isinstance(
-                    value, list) else ' '.join(value)
+                kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list)
             else:
                 other_kwargs[key] = value
@@ -361,9 +321,7 @@ class LLMInfer(BaseUI):
             if not os.path.exists(model_dir):
                 model_dir = snapshot_download(model_dir)
             kwargs['ckpt_dir'] = model_dir
-        if 'ckpt_dir' in kwargs or (
-                'model_id_or_path' in kwargs
-                and not os.path.exists(kwargs['model_id_or_path'])):
+        if 'ckpt_dir' in kwargs or ('model_id_or_path' in kwargs and not os.path.exists(kwargs['model_id_or_path'])):
             kwargs.pop('model_type', None)
 
         devices = other_kwargs['gpu_id']
@@ -386,9 +344,8 @@ class LLMInfer(BaseUI):
         return gr.update(interactive=True)
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type,
-                     prompt: str, history, system, max_new_tokens, temperature,
-                     top_k, top_p, repetition_penalty):
+    def send_message(cls, running_task, model_and_template, template_type, prompt: str, history, system, max_new_tokens,
+                     temperature, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
@@ -396,21 +353,13 @@ class LLMInfer(BaseUI):
         model_type, template = model_and_template
         old_history, history = history or [], []
         request_config = XRequestConfig(
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty)
+            temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
         request_config.stream = True
         request_config.stop = ['Observation:']
         stream_resp_with_history = ''
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
-                model_type,
-                prompt,
-                old_history,
-                system=system,
-                port=args['port'],
-                request_config=request_config)
+                model_type, prompt, old_history, system=system, port=args['port'], request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
                 qr_pair = [prompt, stream_resp_with_history]
@@ -418,11 +367,7 @@ class LLMInfer(BaseUI):
                 yield '', total_history
         else:
             request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(
-                model_type,
-                prompt,
-                port=args['port'],
-                request_config=request_config)
+            stream_resp = inference_client(model_type, prompt, port=args['port'], request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].text
                 qr_pair = [prompt, stream_resp_with_history]
@@ -430,9 +375,8 @@ class LLMInfer(BaseUI):
                 yield '', total_history
 
     @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str,
-                      history, system, max_new_tokens, temperature, top_k,
-                      top_p, repetition_penalty):
+    def generate_chat(cls, model_and_template, template_type, prompt: str, history, system, max_new_tokens, temperature,
+                      top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
@@ -440,8 +384,7 @@ class LLMInfer(BaseUI):
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
             model.cuda()
         if not template_type.endswith('generation'):
-            old_history, history = limit_history_length(
-                template, prompt, history, int(max_new_tokens))
+            old_history, history = limit_history_length(template, prompt, history, int(max_new_tokens))
         else:
             old_history = []
             history = []

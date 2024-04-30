@@ -11,8 +11,7 @@ logger = get_logger()
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Simple args for swift experiments.')
+    parser = argparse.ArgumentParser(description='Simple args for swift experiments.')
     parser.add_argument(
         '--config',
         type=str,
