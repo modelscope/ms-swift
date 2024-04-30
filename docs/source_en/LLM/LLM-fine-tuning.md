@@ -46,7 +46,7 @@ import torch
 
 from swift.llm import (
     DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora
+    infer_main, sft_main, app_ui_main
 )
 
 model_type = ModelType.qwen_7b_chat
@@ -133,12 +133,12 @@ cd examples/pytorch/llm
 - We default to setting `--gradient_checkpointing true` during training to **save memory**, which may slightly reduce training speed.
 - If you want to use quantization parameters `--quantization_bit 4`, you need to first install [bnb](https://github.com/TimDettmers/bitsandbytes): `pip install bitsandbytes -U`. This will reduce memory usage but usually slows down the training speed.
 - If you want to use quantization based on **auto_gptq**, you need to install the corresponding cuda version of [auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
-  > Models that can use auto_gptq can be viewed in [LLM Supported Models](supported-models-and-datasets.md#models). It is recommended to use auto_gptq instead of bnb.
+  > Models that can use auto_gptq can be viewed in [LLM Supported Models](Supported-models-datasets.md#models). It is recommended to use auto_gptq instead of bnb.
 - If you want to use deepspeed, you need `pip install deepspeed -U`. Using deepspeed can **save memory**, but may slightly reduce training speed.
-- If your training involves **knowledge editing**, such as: [Self-aware Fine-tuning](self-aware-fine-tuning-best-practices.md), you need to add LoRA to MLP as well, otherwise, the results might be poor. You can simply pass the argument `--lora_target_modules ALL` to add lora to all linear(qkvo, mlp), **this is usually the best result**.
+- If your training involves **knowledge editing**, such as: [Self-aware Fine-tuning](Self-cognition-best-practice.md), you need to add LoRA to MLP as well, otherwise, the results might be poor. You can simply pass the argument `--lora_target_modules ALL` to add lora to all linear(qkvo, mlp), **this is usually the best result**.
 - If you are using older GPUs like **V100**, you need to set `--dtype AUTO` or `--dtype fp16`, as they do not support bf16.
-- If your machine has high-performance graphics cards like A100 and the model supports flash-attn, it is recommended to install [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will speed up training and inference as well as reduce memory usage (A10, 3090, V100, etc. graphics cards do not support training with flash-attn). Models that support flash-attn can be viewed in [LLM Supported Models](supported-models-and-datasets.md#models)
-- If you are doing **second pre-training** or **multi-turn dialogue**, you can refer to [Customization and Extension](customization-and-extension.md#ways-to-register-datasets)
+- If your machine has high-performance graphics cards like A100 and the model supports flash-attn, it is recommended to install [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will speed up training and inference as well as reduce memory usage (A10, 3090, V100, etc. graphics cards do not support training with flash-attn). Models that support flash-attn can be viewed in [LLM Supported Models](Supported-models-datasets.md#models)
+- If you are doing **second pre-training** or **multi-turn dialogue**, you can refer to [Customization and Extension](Customization.md#Registering-Datasets)
 - If you need to train **offline**, please use `--model_id_or_path <model_dir>` and set `--check_model_is_latest false`. For specific parameter meanings, please check [Command-line Parameters](Command-line-parameters.md).
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge LoRA weights and save them during inference, you need to set `--merge_lora true`. **It is not recommended to merge** for models trained with qlora, as this will result in precision loss. Therefore **it is not recommended to fine-tune** with qlora, as the deployment ecology is not good.
@@ -175,7 +175,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 ## Quantization
 
-For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization.md#post-fine-tuning-model)
+For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization.md#fine-tuned-model)
 
 ## Inference
 If you want to use VLLM for accelerated inference, you can check [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md)
