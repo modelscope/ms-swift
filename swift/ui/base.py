@@ -4,8 +4,7 @@ from dataclasses import fields
 from functools import partial, wraps
 from typing import Any, Dict, List, OrderedDict, Type
 
-from gradio import (Accordion, Button, Checkbox, Dropdown, Slider, Tab,
-                    TabItem, Textbox)
+from gradio import Accordion, Button, Checkbox, Dropdown, Slider, Tab, TabItem, Textbox
 
 from swift.llm.utils.model import MODEL_MAPPING, ModelType
 
@@ -27,9 +26,7 @@ def update_data(fn):
             if choices:
                 kwargs['choices'] = choices
 
-        if not isinstance(
-                self,
-            (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
+        if not isinstance(self, (Tab, TabItem, Accordion)) and 'interactive' not in kwargs:  # noqa
             kwargs['interactive'] = True
 
         if 'is_list' in kwargs:
@@ -191,5 +188,4 @@ class BaseUI:
 
     @staticmethod
     def get_custom_name_list():
-        return list(
-            set(MODEL_MAPPING.keys()) - set(ModelType.get_model_name_list()))
+        return list(set(MODEL_MAPPING.keys()) - set(ModelType.get_model_name_list()))

@@ -2,17 +2,13 @@ import os
 
 from datasets import concatenate_datasets
 
-from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map,
-                       get_dataset, get_default_template_type,
+from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map, get_dataset, get_default_template_type,
                        get_model_tokenizer, get_template)
 from swift.utils import stat_array
 
 
 def write_dataset_info() -> None:
-    fpaths = [
-        'docs/source/LLM/支持的模型和数据集.md',
-        'docs/source_en/LLM/Supported-models-datasets.md'
-    ]
+    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
     pre_texts = []
     for fpath in fpaths:
         if os.path.exists(fpath):
@@ -30,28 +26,20 @@ def write_dataset_info() -> None:
     res_text_list = []
 
     res_text_list.append(
-        '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |'
-    )
+        '| Dataset Name | Dataset ID | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |')
     res_text_list.append(
-        '| ------------ | ---------- | ---------- | -------- | ----------------- | ---- | ------------- |'
-    )
+        '| ------------ | ---------- | ---------- | -------- | ----------------- | ---- | ------------- |')
     if len(text_list) >= 2:
         text_list = text_list[2:]
     else:
         text_list = []
 
-    ignore_dataset = {
-        text.split('|', 2)[1].lstrip('🔥 '): text
-        for text in text_list
-    }
+    ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
     dataset_name_list = DatasetName.get_dataset_name_list()
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
-        [
-            ModelType.qwen_7b_chat, ModelType.qwen_vl_chat,
-            ModelType.qwen_audio_chat
-        ],
+        [ModelType.qwen_7b_chat, ModelType.qwen_vl_chat, ModelType.qwen_audio_chat],
     )
     for task_type, model_type in _iter:
         _, tokenizer = get_model_tokenizer(model_type, load_model=False)
@@ -68,8 +56,7 @@ def write_dataset_info() -> None:
         else:
             template = mapping['llm']
         if dataset_name in ignore_dataset:
-            train_size, val_size, stat_str = ignore_dataset[
-                dataset_name].split('|')[3:6]
+            train_size, val_size, stat_str = ignore_dataset[dataset_name].split('|')[3:6]
         else:
             train_dataset, val_dataset = get_dataset([dataset_name])
             train_size = len(train_dataset)
@@ -104,9 +91,8 @@ def write_dataset_info() -> None:
             hf_url = f'https://huggingface.co/datasets/{hf_dataset_id}'
             hf_dataset_id_str = f'[{hf_dataset_id}]({hf_url})'
 
-        res_text_list.append(
-            f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{train_size}|"
-            f'{val_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
+        res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{train_size}|"
+                             f'{val_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
     print(f'数据集总数: {len(dataset_name_list)}')
 
     for idx in range(len(fpaths)):

@@ -5,8 +5,7 @@ import time
 from typing import Optional
 
 from swift.utils.logger import get_logger
-from .constants import (DEFAULT_DATASET_REVISION, DEFAULT_REPOSITORY_REVISION,
-                        MASTER_MODEL_BRANCH)
+from .constants import DEFAULT_DATASET_REVISION, DEFAULT_REPOSITORY_REVISION, MASTER_MODEL_BRANCH
 from .errors import GitError, InvalidParameter, NotLoginException
 from .git import GitCommandWrapper
 from .utils.utils import get_endpoint
@@ -67,15 +66,13 @@ class Repository:
             remote_url = self.git_wrapper.remove_token_from_url(remote_url)
             if remote_url and remote_url == url:  # need not clone again
                 return
-        self.git_wrapper.clone(self.model_base_dir, self.auth_token, url,
-                               self.model_repo_name, revision)
+        self.git_wrapper.clone(self.model_base_dir, self.auth_token, url, self.model_repo_name, revision)
 
         if git_wrapper.is_lfs_installed():
             git_wrapper.git_lfs_install(self.model_dir)  # init repo lfs
 
         # add user info if login
-        self.git_wrapper.add_user_info(self.model_base_dir,
-                                       self.model_repo_name)
+        self.git_wrapper.add_user_info(self.model_base_dir, self.model_repo_name)
         if self.auth_token:  # config remote with auth token
             self.git_wrapper.config_auth_token(self.model_dir, self.auth_token)
 
@@ -106,9 +103,8 @@ class Repository:
             file_name_suffix (str): The file name suffix.
                 examples '*.safetensors'
         """
-        os.system(
-            "printf '%s filter=lfs diff=lfs merge=lfs -text\n'>>%s" %
-            (file_name_suffix, os.path.join(self.model_dir, '.gitattributes')))
+        os.system("printf '%s filter=lfs diff=lfs merge=lfs -text\n'>>%s" %
+                  (file_name_suffix, os.path.join(self.model_dir, '.gitattributes')))
 
     def push(self,
              commit_message: str,
@@ -138,8 +134,7 @@ class Repository:
             raise NotLoginException('Must login to push, please login first.')
 
         self.git_wrapper.config_auth_token(self.model_dir, self.auth_token)
-        self.git_wrapper.add_user_info(self.model_base_dir,
-                                       self.model_repo_name)
+        self.git_wrapper.add_user_info(self.model_base_dir, self.model_repo_name)
 
         url = self.git_wrapper.get_repo_remote_url(self.model_dir)
         assert 'modelscope' in url  # Avoid unexpected pushes
@@ -147,8 +142,7 @@ class Repository:
         # avoid race condition with git status
         time.sleep(0.5)
         if self.is_repo_clean():
-            logger.info(
-                'Repo currently clean. Ignoring commit and push_to_hub')
+            logger.info('Repo currently clean. Ignoring commit and push_to_hub')
         else:
             self.git_wrapper.commit(self.model_dir, commit_message)
             self.git_wrapper.push(
@@ -158,10 +152,7 @@ class Repository:
                 local_branch=local_branch,
                 remote_branch=remote_branch)
 
-    def tag(self,
-            tag_name: str,
-            message: str,
-            ref: Optional[str] = MASTER_MODEL_BRANCH):
+    def tag(self, tag_name: str, message: str, ref: Optional[str] = MASTER_MODEL_BRANCH):
         """Create a new tag.
 
         Args:
@@ -178,16 +169,9 @@ class Repository:
         if message is None or message == '':
             msg = 'We use annotated tag, therefore message cannot None or empty.'
             raise InvalidParameter(msg)
-        self.git_wrapper.tag(
-            repo_dir=self.model_dir,
-            tag_name=tag_name,
-            message=message,
-            ref=ref)
+        self.git_wrapper.tag(repo_dir=self.model_dir, tag_name=tag_name, message=message, ref=ref)
 
-    def tag_and_push(self,
-                     tag_name: str,
-                     message: str,
-                     ref: Optional[str] = MASTER_MODEL_BRANCH):
+    def tag_and_push(self, tag_name: str, message: str, ref: Optional[str] = MASTER_MODEL_BRANCH):
         """Create tag and push to remote
 
         Args:
@@ -200,8 +184,7 @@ class Repository:
         self.git_wrapper.push_tag(repo_dir=self.model_dir, tag_name=tag_name)
 
     def is_repo_clean(self) -> bool:
-        response = self.git_wrapper._run_git_command('-C', self.model_dir,
-                                                     'status', '--porcelain')
+        response = self.git_wrapper._run_git_command('-C', self.model_dir, 'status', '--porcelain')
         return len(response.stdout.strip()) == 0
 
 
@@ -266,8 +249,7 @@ class DatasetRepository:
                 return ''
 
         logger.info('Cloning repo from {} '.format(self.repo_url))
-        self.git_wrapper.clone(self.repo_base_dir, self.auth_token,
-                               self.repo_url, self.repo_name, self.revision)
+        self.git_wrapper.clone(self.repo_base_dir, self.auth_token, self.repo_url, self.repo_name, self.revision)
         return self.repo_work_dir
 
     def push(self,

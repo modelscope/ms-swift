@@ -175,8 +175,8 @@ Next, we perform self-cognition fine-tuning on the model to train your own large
 
 Using Python:
 ```python
-# Experimental environment: A100
-# 26GB GPU memory
+# Experimental environment: 3090
+# 24GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -184,7 +184,7 @@ from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
     model_type=ModelType.qwen1half_7b_chat,
-    dataset=[DatasetName.ms_bench_mini],
+    dataset=[DatasetName.alpaca_zh, DatasetName.alpaca_en],
     train_dataset_sample=1000,
     logging_steps=5,
     max_length=2048,
@@ -193,8 +193,8 @@ sft_args = SftArguments(
     output_dir='output',
     lora_target_modules=['ALL'],
     self_cognition_sample=500,
-    model_name=['Xiao Huang', 'Xiao Huang'],
-    model_author=['ModelScope', 'ModelScope'])
+    model_name=['小黄', 'Xiao Huang'],
+    model_author=['魔搭', 'ModelScope'])
 output = sft_main(sft_args)
 best_model_checkpoint = output['best_model_checkpoint']
 print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -207,11 +207,11 @@ Using model parallelism:
 ```shell
 
 # Experimental environment: 2 * 3090
-# 2 * 19GB GPU memory
+# 2 * 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh alpaca-en \
     --train_dataset_sample 1000 \
     --logging_steps 5 \
     --max_length 2048 \
@@ -220,17 +220,19 @@ swift sft \
     --output_dir output \
     --lora_target_modules ALL \
     --self_cognition_sample 500 \
-    --model_name Xiao Huang 'Xiao Huang' \
-    --model_author ModelScope ModelScope \```
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+```
 
-Script for distributed training using **zero3**:```shell
+script for distributed training using **zero2**:
+```shell
 # Experimental environment: 4 * 3090
 # 4 * 24GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-7b-chat \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh alpaca-en \
     --train_dataset_sample 1000 \
     --logging_steps 5 \
     --max_length 2048 \
@@ -239,9 +241,10 @@ swift sft \
     --output_dir output \
     --lora_target_modules ALL \
     --self_cognition_sample 500 \
-    --model_name Xiao Huang 'Xiao Huang' \
-    --model_author ModelScope ModelScope \
-    --deepspeed default-zero3 \```
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --deepspeed default-zero2 \
+```
 
 If you want to use **the interface to train**, you can enter the following command and fill in the corresponding values:
 
@@ -408,7 +411,7 @@ for query in ['Who are you?', "what's your name?", 'Who developed you?']:
     messages.append({'role': 'assistant', 'content': response})
 
 # streaming
-for query in ['78654+657=?', 'What to do if I can't fall asleep at night']:
+for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
     messages.append({'role': 'user', 'content': query})
     stream_resp = client.chat.completions.create(
         model=model_type,
@@ -483,7 +486,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-72b-chat \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh alpaca-en \
     --train_dataset_sample 1000 \
     --logging_steps 5 \
     --max_length 4096 \
@@ -492,8 +495,8 @@ swift sft \
     --output_dir output \
     --lora_target_modules ALL \
     --self_cognition_sample 500 \
-    --model_name Xiao Huang 'Xiao Huang' \
-    --model_author ModelScope ModelScope \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
     --deepspeed default-zero3 \
 ```
 
@@ -570,7 +573,7 @@ for query in ['Who are you?', "what's your name?", 'Who developed you?']:
     messages.append({'role': 'assistant', 'content': response})
 
 # streaming
-for query in ['78654+657=?', 'What to do if I can't fall asleep at night']:
+for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
     messages.append({'role': 'user', 'content': query})
     stream_resp = client.chat.completions.create(
         model=model_type,

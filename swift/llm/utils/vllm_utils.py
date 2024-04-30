@@ -11,8 +11,7 @@ from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
-from vllm import (AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine,
-                  SamplingParams)
+from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
 from .argument import InferArguments
@@ -53,12 +52,7 @@ def get_vllm_engine(model_type: str,
 
     if engine_kwargs is None:
         engine_kwargs = {}
-    dtype_mapping = {
-        torch.float16: 'float16',
-        torch.bfloat16: 'bfloat16',
-        torch.float32: 'float32',
-        None: 'auto'
-    }
+    dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32', None: 'auto'}
     dtype = dtype_mapping[torch_dtype]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
 
@@ -76,9 +70,7 @@ def get_vllm_engine(model_type: str,
         engine_kwargs['max_loras'] = max_loras
         engine_kwargs['max_lora_rank'] = max_lora_rank
     else:
-        assert not enable_lora, (
-            'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
-        )
+        assert not enable_lora, ('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -118,8 +110,7 @@ def get_vllm_engine(model_type: str,
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
         kwargs = generation_config.to_dict()
-        parameters = inspect.signature(
-            VllmGenerationConfig.__init__).parameters
+        parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
         for k in kwargs.copy().keys():
             if k not in parameters:
                 kwargs.pop(k)
@@ -153,8 +144,7 @@ class VllmGenerationConfig(SamplingParams):
             top_p = 1
             temperature = 0
             logger.warning(
-                'The output of num_beams in vllm may not be consistent with the output of num_beams in transformers.'
-            )
+                'The output of num_beams in vllm may not be consistent with the output of num_beams in transformers.')
         if top_k == 0:
             top_k = -1
         if stop is None:
@@ -175,9 +165,7 @@ class VllmGenerationConfig(SamplingParams):
         parameters = inspect.signature(SamplingParams.__init__).parameters
         for k in kwargs.copy().keys():
             if k not in parameters:
-                logger.info(
-                    f'The VLLM version is too old and does not support the parameter: {k}.'
-                )
+                logger.info(f'The VLLM version is too old and does not support the parameter: {k}.')
                 kwargs.pop(k)
         self._temperature = temperature
         super().__init__(**kwargs)
@@ -192,22 +180,19 @@ class VllmGenerationConfig(SamplingParams):
             else:
                 self.temperature = 0.
         elif key == 'max_length':
-            raise ValueError(
-                '`max_length` is not supported, please use `max_new_tokens` for setting.'
-            )
+            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
         else:
             super().__setattr__(key, value)
 
 
-def inference_stream_vllm(
-        llm_engine: LLMEngine,
-        template: Template,
-        request_list: List[Dict[str, Any]],
-        *,
-        generation_config: Optional[VllmGenerationConfig] = None,
-        lora_request: Optional['LoRARequest'] = None,
-        use_tqdm: bool = False,
-        **kwargs) -> Iterator[List[Dict[str, Any]]]:
+def inference_stream_vllm(llm_engine: LLMEngine,
+                          template: Template,
+                          request_list: List[Dict[str, Any]],
+                          *,
+                          generation_config: Optional[VllmGenerationConfig] = None,
+                          lora_request: Optional['LoRARequest'] = None,
+                          use_tqdm: bool = False,
+                          **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -216,8 +201,7 @@ def inference_stream_vllm(
         The keys to be included will be: 'response', 'history'.
     """
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config',
-                                    VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -228,8 +212,7 @@ def inference_stream_vllm(
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1],
-                  str) and template.suffix[-1] not in generation_config.stop:
+    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
     if isinstance(template.suffix[-1], list):
         token_str = tokenizer.decode(template.suffix[-1])
@@ -242,8 +225,7 @@ def inference_stream_vllm(
         add_request_kwargs['lora_request'] = lora_request
     else:
         assert lora_request is None, (
-            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
-        )
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
     request_temp = []
     for i, request in enumerate(request_list):
         history = request.get('history', None)
@@ -251,8 +233,7 @@ def inference_stream_vllm(
             history = []
 
         # agent support
-        is_observation = history[-1][-1].endswith(
-            'Observation:') if history and history[-1][-1] else False
+        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
         act_length = None
         if is_observation:
             history[-1][-1] = history[-1][-1] + request['query']
@@ -263,17 +244,13 @@ def inference_stream_vllm(
         request['history'] = history
         inputs = template.encode(request)[0]
         if len(inputs) == 0:
-            raise ValueError(
-                'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
-            )
+            raise ValueError('input_ids exceeds `max_length`. Please increase the value of `max_length`.')
         input_ids = inputs['input_ids']
-        llm_engine.add_request(
-            str(i), None, generation_config, input_ids, **add_request_kwargs)
+        llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     resp_list = [None] * len(request_list)
     print_idx_list = [[0] for _ in range(len(request_list))]
-    prog_bar = tqdm(
-        total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
         for output in step_outputs:
@@ -289,8 +266,7 @@ def inference_stream_vllm(
             if not request_temp[i][0]:
                 history[-1] = [query, safe_response]
             else:
-                history[-1][
-                    -1] = history[-1][-1][:request_temp[i][1]] + safe_response
+                history[-1][-1] = history[-1][-1][:request_temp[i][1]] + safe_response
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
@@ -316,8 +292,7 @@ def inference_vllm(llm_engine: LLMEngine,
         The keys to be included will be: 'response', 'history'.
     """
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config',
-                                    VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -325,8 +300,7 @@ def inference_vllm(llm_engine: LLMEngine,
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1],
-                  str) and template.suffix[-1] not in generation_config.stop:
+    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
     if isinstance(template.suffix[-1], list):
         token_str = tokenizer.decode(template.suffix[-1])
@@ -339,33 +313,27 @@ def inference_vllm(llm_engine: LLMEngine,
         add_request_kwargs['lora_request'] = lora_request
     else:
         assert lora_request is None, (
-            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
-        )
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
 
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
             history = []
 
-        is_observation = history[-1][-1].endswith(
-            'Observation:') if history and history[-1][-1] else False
+        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
         if is_observation:
             history[-1][-1] = history[-1][-1] + request['query']
             request['query'] = None
         request['history'] = history
         inputs = template.encode(request)[0]
         if len(inputs) == 0:
-            raise ValueError(
-                'input_ids exceeds `max_length`. Please increase the value of `max_length`.'
-            )
+            raise ValueError('input_ids exceeds `max_length`. Please increase the value of `max_length`.')
         input_ids = inputs['input_ids']
-        llm_engine.add_request(
-            str(i), None, generation_config, input_ids, **add_request_kwargs)
+        llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     if use_tqdm is True:
         assert verbose is False
-    prog_bar = tqdm(
-        total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -388,21 +356,16 @@ def inference_vllm(llm_engine: LLMEngine,
             history[-1][-1] = history[-1][-1] + response
         resp_list[i] = {'response': response, 'history': history}
         if verbose:
-            print(
-                f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}',
-                end='')
+            print(f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}', end='')
             print(tokenizer.decode(output.outputs[0].token_ids, False))
     return resp_list
 
 
-def prepare_vllm_engine_template(
-        args: InferArguments,
-        use_async: bool = False) -> Tuple[LLMEngine, Template]:
+def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
 
     assert args.quantization_bit == 0, 'not support bnb'
-    assert not (args.sft_type == 'lora'
-                and not args.vllm_enable_lora), 'you need to merge lora'
+    assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
     model_id_or_path = None
     if args.sft_type == 'full' and args.ckpt_dir is not None:
@@ -440,8 +403,7 @@ def prepare_vllm_engine_template(
         num_beams=args.num_beams)
     logger.info(f'generation_config: {generation_config}')
     llm_engine.generation_config = generation_config
-    template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length,
+    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
                                       args.truncation_strategy)
     args.system = template.default_system
     logger.info(f'system: {args.system}')

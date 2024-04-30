@@ -19,8 +19,7 @@ class TestVllmUtils(unittest.TestCase):
         template = get_template(template_type, llm_engine.hf_tokenizer)
         request_list = [{'query': '浙江的省会在哪？'}, {'query': '你好!'}]
         # test inference_vllm
-        response_list = inference_vllm(
-            llm_engine, template, request_list, verbose=True)
+        response_list = inference_vllm(llm_engine, template, request_list, verbose=True)
         for response in response_list:
             print(response)
 

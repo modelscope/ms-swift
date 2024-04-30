@@ -27,8 +27,7 @@ class EvalModel(CustomModel):
                 merge_lora(args, device_map=args.merge_device_map)
             if args.infer_backend == 'vllm':
                 from .utils import prepare_vllm_engine_template
-                self.llm_engine, self.template = prepare_vllm_engine_template(
-                    args)
+                self.llm_engine, self.template = prepare_vllm_engine_template(args)
             else:
                 self.model, self.template = prepare_model_template(args)
                 if args.overwrite_generation_config:
@@ -36,11 +35,7 @@ class EvalModel(CustomModel):
                     self.model.generation_config.save_pretrained(args.ckpt_dir)
 
         self.args = args
-        super(EvalModel, self).__init__(
-            config={
-                'model_id': model_name,
-                **config
-            }, **kwargs)
+        super(EvalModel, self).__init__(config={'model_id': model_name, **config}, **kwargs)
         self.model_name = model_name
         self.generation_info = {'time': 0, 'tokens': 0}
 
@@ -49,14 +44,12 @@ class EvalModel(CustomModel):
         history = history or []
         messages = history
         messages.append({'role': 'user', 'content': query})
-        resp = self.client.chat.completions.create(
-            model=self.args.model_type, messages=messages, **infer_args)
+        resp = self.client.chat.completions.create(model=self.args.model_type, messages=messages, **infer_args)
         response = resp.choices[0].message.content
         return response
 
     def call_openai_base(self, query: str, **infer_args):
-        resp = self.client.completions.create(
-            model=self.args.model_type, prompt=query, **infer_args)
+        resp = self.client.completions.create(model=self.args.model_type, prompt=query, **infer_args)
         response = resp.choices[0].message.content
         return response
 
@@ -68,12 +61,10 @@ class EvalModel(CustomModel):
             if 'max_new_tokens' in infer_cfg:
                 infer_cfg['max_tokens'] = infer_cfg.pop('max_new_tokens')
             if 'do_sample' in infer_cfg:
-                infer_cfg['temperature'] = infer_cfg[
-                    'temperature'] if infer_cfg['do_sample'] else 0.
+                infer_cfg['temperature'] = infer_cfg['temperature'] if infer_cfg['do_sample'] else 0.
                 infer_cfg.pop('do_sample', None)
             if 'repetition_penalty' in infer_cfg:
-                infer_cfg['presence_penalty'] = infer_cfg.pop(
-                    'repetition_penalty')
+                infer_cfg['presence_penalty'] = infer_cfg.pop('repetition_penalty')
             if infer_cfg.get('limit') is not None:
                 infer_cfg['n'] = infer_cfg.pop('limit')
             infer_cfg.pop('limit', None)
@@ -91,28 +82,18 @@ class EvalModel(CustomModel):
                 response = self.call_openai_base(prompt, **infer_cfg)
         elif self.args.infer_backend == 'vllm':
             from . import inference_vllm
-            request_list = [{
-                'query': prompt,
-                'history': kwargs.get('history'),
-                'system': kwargs.get('system')
-            }]
+            request_list = [{'query': prompt, 'history': kwargs.get('history'), 'system': kwargs.get('system')}]
             if 'temperature' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.temperature = kwargs[
-                    'infer_cfg']['temperature']
+                self.llm_engine.generation_config.temperature = kwargs['infer_cfg']['temperature']
             if 'max_new_tokens' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.max_new_tokens = kwargs[
-                    'infer_cfg']['max_new_tokens']
+                self.llm_engine.generation_config.max_new_tokens = kwargs['infer_cfg']['max_new_tokens']
             if 'top_k' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.top_k = kwargs['infer_cfg'][
-                    'top_k']
+                self.llm_engine.generation_config.top_k = kwargs['infer_cfg']['top_k']
             if 'top_p' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.top_p = kwargs['infer_cfg'][
-                    'top_p']
+                self.llm_engine.generation_config.top_p = kwargs['infer_cfg']['top_p']
             if 'repetition_penalty' in kwargs['infer_cfg']:
-                self.llm_engine.generation_config.repetition_penalty = kwargs[
-                    'infer_cfg']['repetition_penalty']
-            resp_list = inference_vllm(self.llm_engine, self.template,
-                                       request_list)
+                self.llm_engine.generation_config.repetition_penalty = kwargs['infer_cfg']['repetition_penalty']
+            resp_list = inference_vllm(self.llm_engine, self.template, request_list)
             response = resp_list[0]['response']
             new_history = resp_list[0]['history']
         else:
@@ -127,8 +108,7 @@ class EvalModel(CustomModel):
                 generation_info=generation_info,
                 generation_config=GenerationConfig(**kwargs['infer_cfg']))
             self.generation_info['time'] += time.time() - ts
-            self.generation_info['tokens'] += generation_info[
-                'num_generated_tokens']
+            self.generation_info['tokens'] += generation_info['num_generated_tokens']
 
         res_d: dict = {
             'choices': [{
@@ -138,12 +118,9 @@ class EvalModel(CustomModel):
                     'role': 'assistant'
                 }
             }],
-            'created':
-            int(time.time()),
-            'model':
-            self.model_name,
-            'object':
-            'chat.completion',
+            'created': int(time.time()),
+            'model': self.model_name,
+            'object': 'chat.completion',
         }
 
         return res_d
@@ -163,15 +140,10 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
             custom_eval = json.load(f)
             for _ds in custom_eval:
                 custom_names.append(_ds['name'])
-                TaskConfig.registry(
-                    _ds['name'],
-                    _ds['pattern'],
-                    _ds['dataset'],
-                    subset_list=_ds.get('subset_list'))
+                TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
     eval_model = EvalModel(args, model_name, config=record or {})
 
-    task_configs = TaskConfig.load(
-        custom_model=eval_model, tasks=args.eval_dataset + custom_names)
+    task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
         task_config.use_cache = args.eval_use_cache
         if args.eval_limit:
@@ -180,13 +152,11 @@ def run_eval_single_model(args: EvalArguments, model_name, record=None):
             for dataset in task_config.datasets:
                 if not task_config.dataset_args.get(dataset):
                     task_config.dataset_args[dataset] = {}
-                task_config.dataset_args[dataset][
-                    'few_shot_num'] = args.eval_few_shot
+                task_config.dataset_args[dataset]['few_shot_num'] = args.eval_few_shot
     logger.warn('Eval does not support temperature/top_p/do_sample argument')
     logger.info(f'Eval task config: {task_configs}')
     run_task(task_cfg=task_configs)
-    final_report: List[dict] = Summarizer.get_report_from_cfg(
-        task_cfg=task_configs)
+    final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
     final_report = {
         'report': final_report,
         'generation_info': eval_model.generation_info,

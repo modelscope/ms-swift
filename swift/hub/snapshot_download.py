@@ -9,13 +9,10 @@ from typing import Dict, List, Optional, Union
 
 from swift.utils.logger import get_logger
 from .api import HubApi, ModelScopeConfig
-from .constants import (FILE_HASH, MODELSCOPE_DOWNLOAD_PARALLELS,
-                        MODELSCOPE_PARALLEL_DOWNLOAD_THRESHOLD_MB)
-from .file_download import (get_file_download_url, http_get_file,
-                            parallel_download)
+from .constants import FILE_HASH, MODELSCOPE_DOWNLOAD_PARALLELS, MODELSCOPE_PARALLEL_DOWNLOAD_THRESHOLD_MB
+from .file_download import get_file_download_url, http_get_file, parallel_download
 from .utils.caching import ModelFileSystemCache
-from .utils.utils import (file_integrity_validation, get_cache_dir,
-                          model_id_to_group_owner_name)
+from .utils.utils import file_integrity_validation, get_cache_dir, model_id_to_group_owner_name
 
 logger = get_logger()
 
@@ -75,32 +72,20 @@ def snapshot_download(model_id: str,
     cache = ModelFileSystemCache(cache_dir, group_or_owner, name)
     if local_files_only:
         if len(cache.cached_files) == 0:
-            raise ValueError(
-                'Cannot find the requested files in the cached path and outgoing'
-                ' traffic has been disabled. To enable model look-ups and downloads'
-                " online, set 'local_files_only' to False.")
-        logger.warning('We can not confirm the cached file is for revision: %s'
-                       % revision)
-        return cache.get_root_location(
-        )  # we can not confirm the cached file is for snapshot 'revision'
+            raise ValueError('Cannot find the requested files in the cached path and outgoing'
+                             ' traffic has been disabled. To enable model look-ups and downloads'
+                             " online, set 'local_files_only' to False.")
+        logger.warning('We can not confirm the cached file is for revision: %s' % revision)
+        return cache.get_root_location()  # we can not confirm the cached file is for snapshot 'revision'
     else:
         # make headers
-        headers = {
-            'user-agent':
-            ModelScopeConfig.get_user_agent(user_agent=user_agent, )
-        }
+        headers = {'user-agent': ModelScopeConfig.get_user_agent(user_agent=user_agent, )}
         _api = HubApi()
         if cookies is None:
             cookies = ModelScopeConfig.get_cookies()
-        revision = _api.get_valid_revision(
-            model_id, revision=revision, cookies=cookies)
+        revision = _api.get_valid_revision(model_id, revision=revision, cookies=cookies)
 
-        snapshot_header = headers if 'CI_TEST' in os.environ else {
-            **headers,
-            **{
-                'Snapshot': 'True'
-            }
-        }
+        snapshot_header = headers if 'CI_TEST' in os.environ else {**headers, **{'Snapshot': 'True'}}
         model_files = _api.get_model_files(
             model_id=model_id,
             revision=revision,
@@ -114,8 +99,7 @@ def snapshot_download(model_id: str,
         if isinstance(ignore_file_pattern, str):
             ignore_file_pattern = [ignore_file_pattern]
 
-        with tempfile.TemporaryDirectory(
-                dir=temporary_cache_dir) as temp_cache_dir:
+        with tempfile.TemporaryDirectory(dir=temporary_cache_dir) as temp_cache_dir:
             for model_file in model_files:
                 if model_file['Type'] == 'tree' or \
                         any([re.search(pattern, model_file['Name']) is not None for pattern in ignore_file_pattern]):
@@ -123,16 +107,11 @@ def snapshot_download(model_id: str,
                 # check model_file is exist in cache, if existed, skip download, otherwise download
                 if cache.exists(model_file):
                     file_name = os.path.basename(model_file['Name'])
-                    logger.debug(
-                        f'File {file_name} already in cache, skip downloading!'
-                    )
+                    logger.debug(f'File {file_name} already in cache, skip downloading!')
                     continue
 
                 # get download url
-                url = get_file_download_url(
-                    model_id=model_id,
-                    file_path=model_file['Path'],
-                    revision=revision)
+                url = get_file_download_url(model_id=model_id, file_path=model_file['Path'], revision=revision)
 
                 if MODELSCOPE_PARALLEL_DOWNLOAD_THRESHOLD_MB * 1000 * 1000 < model_file[
                         'Size'] and MODELSCOPE_DOWNLOAD_PARALLELS > 1:
@@ -141,16 +120,10 @@ def snapshot_download(model_id: str,
                         temp_cache_dir,
                         model_file['Name'],
                         headers=headers,
-                        cookies=None
-                        if cookies is None else cookies.get_dict(),
+                        cookies=None if cookies is None else cookies.get_dict(),
                         file_size=model_file['Size'])
                 else:
-                    http_get_file(
-                        url,
-                        temp_cache_dir,
-                        model_file['Name'],
-                        headers=headers,
-                        cookies=cookies)
+                    http_get_file(url, temp_cache_dir, model_file['Name'], headers=headers, cookies=cookies)
 
                 # check file integrity
                 temp_file = os.path.join(temp_cache_dir, model_file['Name'])

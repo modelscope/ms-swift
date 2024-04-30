@@ -72,8 +72,7 @@ def handle_http_post_error(response, url, request_body):
     except HTTPError as error:
         message = _decode_response_error(response)
         raise HTTPError('Request %s with body: %s exception, '
-                        'Response details: %s' %
-                        (url, request_body, message)) from error
+                        'Response details: %s' % (url, request_body, message)) from error
 
 
 def handle_http_response(response, logger, cookies, model_id):
@@ -123,8 +122,7 @@ def datahub_raise_on_error(url, rsp):
         return True
     else:
         raise RequestError(
-            f"Url = {url}, Message = {rsp.get('Message')}, Please specify correct dataset_name and namespace."
-        )
+            f"Url = {url}, Message = {rsp.get('Message')}, Please specify correct dataset_name and namespace.")
 
 
 def raise_for_http_status(rsp):
@@ -148,12 +146,10 @@ def raise_for_http_status(rsp):
         reason = rsp.reason
 
     if 400 <= rsp.status_code < 500:
-        http_error_msg = u'%s Client Error: %s for url: %s' % (rsp.status_code,
-                                                               reason, rsp.url)
+        http_error_msg = u'%s Client Error: %s for url: %s' % (rsp.status_code, reason, rsp.url)
 
     elif 500 <= rsp.status_code < 600:
-        http_error_msg = u'%s Server Error: %s for url: %s' % (rsp.status_code,
-                                                               reason, rsp.url)
+        http_error_msg = u'%s Server Error: %s for url: %s' % (rsp.status_code, reason, rsp.url)
 
     if http_error_msg:
         req = rsp.request

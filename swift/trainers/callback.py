@@ -3,9 +3,8 @@ import os
 
 import json
 from tqdm.auto import tqdm
-from transformers.trainer_callback import (DefaultFlowCallback,
-                                           ProgressCallback, TrainerCallback,
-                                           TrainerControl, TrainerState)
+from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
+                                           TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
 from swift.utils import is_pai_training_job
@@ -16,34 +15,19 @@ class ProgressCallbackNew(ProgressCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
         if state.is_local_process_zero:
-            self.training_bar = tqdm(
-                desc='Train', total=state.max_steps, dynamic_ncols=True)
+            self.training_bar = tqdm(desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
 
-    def on_prediction_step(self,
-                           args,
-                           state: TrainerState,
-                           control,
-                           eval_dataloader=None,
-                           **kwargs):
+    def on_prediction_step(self, args, state: TrainerState, control, eval_dataloader=None, **kwargs):
         if state.is_local_process_zero and has_length(eval_dataloader):
             if self.prediction_bar is None:
                 if self.training_bar is not None:
                     self.training_bar.fp.write('\n')
                 self.prediction_bar = tqdm(
-                    desc='Val',
-                    total=len(eval_dataloader),
-                    leave=True,
-                    dynamic_ncols=True,
-                    position=0)
+                    desc='Val', total=len(eval_dataloader), leave=True, dynamic_ncols=True, position=0)
             self.prediction_bar.update()
 
-    def on_log(self,
-               args: TrainingArguments,
-               state: TrainerState,
-               control,
-               logs=None,
-               **kwargs):
+    def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
         logs['global_step'] = state.global_step
         for k, v in logs.items():
             if isinstance(v, float):
@@ -59,8 +43,7 @@ class ProgressCallbackNew(ProgressCallback):
 
 class DefaultFlowCallbackNew(DefaultFlowCallback):
 
-    def on_step_end(self, args: TrainingArguments, state: TrainerState,
-                    control: TrainerControl, **kwargs):
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         control = super().on_step_end(args, state, control, **kwargs)
         # save the last ckpt
         if state.global_step == state.max_steps:

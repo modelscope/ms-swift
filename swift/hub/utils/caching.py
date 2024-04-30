@@ -39,8 +39,7 @@ class FileSystemCache(object):
 
     def load_cache(self):
         self.cached_files = []
-        cache_keys_file_path = os.path.join(self.cache_root_location,
-                                            FileSystemCache.KEY_FILE_NAME)
+        cache_keys_file_path = os.path.join(self.cache_root_location, FileSystemCache.KEY_FILE_NAME)
         if os.path.exists(cache_keys_file_path):
             with open(cache_keys_file_path, 'rb') as f:
                 self.cached_files = pickle.load(f)
@@ -48,8 +47,7 @@ class FileSystemCache(object):
     def save_cached_files(self):
         """Save cache metadata."""
         # save new meta to tmp and move to KEY_FILE_NAME
-        cache_keys_file_path = os.path.join(self.cache_root_location,
-                                            FileSystemCache.KEY_FILE_NAME)
+        cache_keys_file_path = os.path.join(self.cache_root_location, FileSystemCache.KEY_FILE_NAME)
         # TODO: Sync file write
         fd, fn = tempfile.mkstemp()
         with open(fd, 'wb') as f:
@@ -137,8 +135,7 @@ class ModelFileSystemCache(FileSystemCache):
             self.save_model_meta()
 
     def load_model_meta(self):
-        meta_file_path = os.path.join(self.cache_root_location,
-                                      MODEL_META_FILE_NAME)
+        meta_file_path = os.path.join(self.cache_root_location, MODEL_META_FILE_NAME)
         if os.path.exists(meta_file_path):
             with open(meta_file_path, 'rb') as f:
                 self.model_meta = pickle.load(f)
@@ -149,8 +146,7 @@ class ModelFileSystemCache(FileSystemCache):
         return self.model_meta[MODEL_META_MODEL_ID]
 
     def save_model_meta(self):
-        meta_file_path = os.path.join(self.cache_root_location,
-                                      MODEL_META_FILE_NAME)
+        meta_file_path = os.path.join(self.cache_root_location, MODEL_META_FILE_NAME)
         with open(meta_file_path, 'wb') as f:
             pickle.dump(self.model_meta, f)
 
@@ -165,8 +161,7 @@ class ModelFileSystemCache(FileSystemCache):
         """
         for cached_file in self.cached_files:
             if file_path == cached_file['Path']:
-                cached_file_path = os.path.join(self.cache_root_location,
-                                                cached_file['Path'])
+                cached_file_path = os.path.join(self.cache_root_location, cached_file['Path'])
                 if os.path.exists(cached_file_path):
                     return cached_file_path
                 else:
@@ -187,8 +182,7 @@ class ModelFileSystemCache(FileSystemCache):
         for cached_file in self.cached_files:
             if file_path == cached_file['Path'] and \
                (cached_file['Revision'].startswith(commit_id) or commit_id.startswith(cached_file['Revision'])):
-                cached_file_path = os.path.join(self.cache_root_location,
-                                                cached_file['Path'])
+                cached_file_path = os.path.join(self.cache_root_location, cached_file['Path'])
                 if os.path.exists(cached_file_path):
                     return cached_file_path
                 else:
@@ -208,8 +202,7 @@ class ModelFileSystemCache(FileSystemCache):
         cache_key = self.__get_cache_key(model_file_info)
         for cached_file in self.cached_files:
             if cached_file == cache_key:
-                orig_path = os.path.join(self.cache_root_location,
-                                         cached_file['Path'])
+                orig_path = os.path.join(self.cache_root_location, cached_file['Path'])
                 if os.path.exists(orig_path):
                     return orig_path
                 else:
@@ -237,19 +230,16 @@ class ModelFileSystemCache(FileSystemCache):
         key = self.__get_cache_key(model_file_info)
         is_exists = False
         for cached_key in self.cached_files:
-            if cached_key['Path'] == key['Path'] and (
-                    cached_key['Revision'].startswith(key['Revision'])
-                    or key['Revision'].startswith(cached_key['Revision'])):
+            if cached_key['Path'] == key['Path'] and (cached_key['Revision'].startswith(key['Revision'])
+                                                      or key['Revision'].startswith(cached_key['Revision'])):
                 is_exists = True
                 break
-        file_path = os.path.join(self.cache_root_location,
-                                 model_file_info['Path'])
+        file_path = os.path.join(self.cache_root_location, model_file_info['Path'])
         if is_exists:
             if os.path.exists(file_path):
                 return True
             else:
-                self.remove_key(
-                    model_file_info)  # someone may manual delete the file
+                self.remove_key(model_file_info)  # someone may manual delete the file
         return False
 
     def remove_if_exists(self, model_file_info):
@@ -261,8 +251,7 @@ class ModelFileSystemCache(FileSystemCache):
         for cached_file in self.cached_files:
             if cached_file['Path'] == model_file_info['Path']:
                 self.remove_key(cached_file)
-                file_path = os.path.join(self.cache_root_location,
-                                         cached_file['Path'])
+                file_path = os.path.join(self.cache_root_location, cached_file['Path'])
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 break
@@ -279,9 +268,8 @@ class ModelFileSystemCache(FileSystemCache):
         """
         self.remove_if_exists(model_file_info)  # backup old revision
         cache_key = self.__get_cache_key(model_file_info)
-        cache_full_path = os.path.join(
-            self.cache_root_location,
-            cache_key['Path'])  # Branch and Tag do not have same name.
+        cache_full_path = os.path.join(self.cache_root_location,
+                                       cache_key['Path'])  # Branch and Tag do not have same name.
         cache_file_dir = os.path.dirname(cache_full_path)
         if not os.path.exists(cache_file_dir):
             os.makedirs(cache_file_dir, exist_ok=True)

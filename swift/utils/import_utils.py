@@ -19,12 +19,7 @@ class _LazyModule(ModuleType):
 
     # Very heavily inspired by optuna.integration._IntegrationModule
     # https://github.com/optuna/optuna/blob/master/optuna/integration/__init__.py
-    def __init__(self,
-                 name,
-                 module_file,
-                 import_structure,
-                 module_spec=None,
-                 extra_objects=None):
+    def __init__(self, name, module_file, import_structure, module_spec=None, extra_objects=None):
         super().__init__(name)
         self._modules = set(import_structure.keys())
         self._class_to_module = {}
@@ -32,8 +27,7 @@ class _LazyModule(ModuleType):
             for value in values:
                 self._class_to_module[value] = key
         # Needed for autocompletion in an IDE
-        self.__all__ = list(import_structure.keys()) + list(
-            chain(*import_structure.values()))
+        self.__all__ = list(import_structure.keys()) + list(chain(*import_structure.values()))
         self.__file__ = module_file
         self.__spec__ = module_spec
         self.__path__ = [os.path.dirname(module_file)]
@@ -60,8 +54,7 @@ class _LazyModule(ModuleType):
             module = self._get_module(self._class_to_module[name])
             value = getattr(module, name)
         else:
-            raise AttributeError(
-                f'module {self.__name__} has no attribute {name}')
+            raise AttributeError(f'module {self.__name__} has no attribute {name}')
 
         setattr(self, name, value)
         return value
@@ -75,5 +68,4 @@ class _LazyModule(ModuleType):
                 f' traceback):\n{e}') from e
 
     def __reduce__(self):
-        return (self.__class__, (self._name, self.__file__,
-                                 self._import_structure))
+        return (self.__class__, (self._name, self.__file__, self._import_structure))

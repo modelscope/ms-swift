@@ -13,14 +13,7 @@ logger = get_logger()
 
 class ResTuner(nn.Module):
 
-    def __init__(self,
-                 dim=None,
-                 layer_num=-1,
-                 depth=-1,
-                 zero_init_last=False,
-                 stage='',
-                 tuner_cfg={},
-                 **kwargs):
+    def __init__(self, dim=None, layer_num=-1, depth=-1, zero_init_last=False, stage='', tuner_cfg={}, **kwargs):
         super().__init__()
         self.dim = dim
         self.layer_num = layer_num
@@ -30,8 +23,7 @@ class ResTuner(nn.Module):
 
         if (isinstance(tuner_cfg, str) and tuner_cfg == 'res_adapter') or \
                 (isinstance(tuner_cfg, dict) and 'res_adapter' in tuner_cfg):
-            tuner_cfg = tuner_cfg['res_adapter'] if isinstance(
-                tuner_cfg, dict) else tuner_cfg
+            tuner_cfg = tuner_cfg['res_adapter'] if isinstance(tuner_cfg, dict) else tuner_cfg
             self.tuner = ResAdapter(
                 dim=dim,
                 layer_num=layer_num,
@@ -42,8 +34,7 @@ class ResTuner(nn.Module):
                 **kwargs)
         elif (isinstance(tuner_cfg, str) and tuner_cfg == 'res_group_adapter') or \
                 (isinstance(tuner_cfg, dict) and 'res_group_adapter' in tuner_cfg):
-            tuner_cfg = tuner_cfg['res_group_adapter'] if isinstance(
-                tuner_cfg, dict) else tuner_cfg
+            tuner_cfg = tuner_cfg['res_group_adapter'] if isinstance(tuner_cfg, dict) else tuner_cfg
             self.tuner = ResGroupAdapter(
                 dim=dim,
                 layer_num=layer_num,
@@ -54,8 +45,7 @@ class ResTuner(nn.Module):
                 **kwargs)
         elif (isinstance(tuner_cfg, str) and tuner_cfg == 'upsample') or \
                 (isinstance(tuner_cfg, dict) and 'upsample' in tuner_cfg):
-            tuner_cfg = tuner_cfg['upsample'] if isinstance(
-                tuner_cfg, dict) else tuner_cfg
+            tuner_cfg = tuner_cfg['upsample'] if isinstance(tuner_cfg, dict) else tuner_cfg
             if 'upsample_out_channels' in kwargs:
                 out_channels = kwargs['upsample_out_channels']
                 use_conv = True if out_channels else False
@@ -63,11 +53,7 @@ class ResTuner(nn.Module):
                 out_channels = dim
                 use_conv = False
             self.tuner = Upsample(
-                channels=dim,
-                use_conv=use_conv,
-                out_channels=out_channels,
-                tuner_cfg=tuner_cfg,
-                **kwargs)
+                channels=dim, use_conv=use_conv, out_channels=out_channels, tuner_cfg=tuner_cfg, **kwargs)
         else:
             self.tuner = Identity()
 
@@ -95,30 +81,23 @@ class ResAdapter(nn.Module):
         self.layer_num = layer_num
         self.depth = depth
 
-        self.adapter_length = tuner_cfg[
-            'adapter_length'] if 'adapter_length' in tuner_cfg else 32
-        self.adapter_type = tuner_cfg[
-            'adapter_type'] if 'adapter_type' in tuner_cfg else None
-        self.adapter_weight = tuner_cfg[
-            'adapter_weight'] if 'adapter_weight' in tuner_cfg else None
+        self.adapter_length = tuner_cfg['adapter_length'] if 'adapter_length' in tuner_cfg else 32
+        self.adapter_type = tuner_cfg['adapter_type'] if 'adapter_type' in tuner_cfg else None
+        self.adapter_weight = tuner_cfg['adapter_weight'] if 'adapter_weight' in tuner_cfg else None
 
-        self.adapter_length = self.adapter_length[
-            self.layer_num] if isinstance(self.adapter_length,
-                                          list) else self.adapter_length
-        assert isinstance(self.adapter_length,
-                          int) or (isinstance(self.adapter_length, tuple)
-                                   and len(self.adapter_length) == 3)
+        self.adapter_length = self.adapter_length[self.layer_num] if isinstance(self.adapter_length,
+                                                                                list) else self.adapter_length
+        assert isinstance(self.adapter_length, int) or (isinstance(self.adapter_length, tuple)
+                                                        and len(self.adapter_length) == 3)
         if isinstance(self.adapter_length, int):
             self.ln1 = nn.Linear(dim, self.adapter_length)
         else:
-            self.ln1 = nn.Linear(self.adapter_length[0],
-                                 self.adapter_length[1])
+            self.ln1 = nn.Linear(self.adapter_length[0], self.adapter_length[1])
         self.activate = act_layer()
         if isinstance(self.adapter_length, int):
             self.ln2 = nn.Linear(self.adapter_length, dim)
         else:
-            self.ln2 = nn.Linear(self.adapter_length[1],
-                                 self.adapter_length[2])
+            self.ln2 = nn.Linear(self.adapter_length[1], self.adapter_length[2])
             dim = self.adapter_length[2]
 
         self._xavier_init_weights(self.ln1)
@@ -157,21 +136,18 @@ class ResAdapter(nn.Module):
         x_shortcut = x
         if len(x_shortcut.size()) == 4:
             B, C, N1, N2 = x.size()
-            x = x.view(x_shortcut.size()[0],
-                       x_shortcut.size()[1], -1).permute(0, 2, 1)
+            x = x.view(x_shortcut.size()[0], x_shortcut.size()[1], -1).permute(0, 2, 1)
 
         x_adapter = self.ln2(self.activate(self.ln1(x)))
 
         if self.adapter_weight:
-            x_adapter = apply_data_weight(x_adapter, self.scaling,
-                                          self.adapter_weight)
+            x_adapter = apply_data_weight(x_adapter, self.scaling, self.adapter_weight)
 
         if len(x_shortcut.size()) == 4:
-            x_adapter = x_adapter.permute(0, 2,
-                                          1).view(x_shortcut.size()[0],
-                                                  x_adapter.size()[-1],
-                                                  x_shortcut.size()[2],
-                                                  x_shortcut.size()[3])
+            x_adapter = x_adapter.permute(0, 2, 1).view(x_shortcut.size()[0],
+                                                        x_adapter.size()[-1],
+                                                        x_shortcut.size()[2],
+                                                        x_shortcut.size()[3])
         x_out = x_shortcut + x_adapter
         return x_out.to(x_dtype)
 
@@ -192,23 +168,18 @@ class ResGroupAdapter(nn.Module):
         self.layer_num = layer_num
         self.depth = depth
 
-        self.adapter_type = tuner_cfg[
-            'adapter_type'] if 'adapter_type' in tuner_cfg else None
-        self.adapter_weight = tuner_cfg[
-            'adapter_weight'] if 'adapter_weight' in tuner_cfg else None
+        self.adapter_type = tuner_cfg['adapter_type'] if 'adapter_type' in tuner_cfg else None
+        self.adapter_weight = tuner_cfg['adapter_weight'] if 'adapter_weight' in tuner_cfg else None
 
         self.adapter_dim = tuner_cfg['dim'] if 'dim' in tuner_cfg else dim
         self.adapter_head = tuner_cfg['head'] if 'head' in tuner_cfg else 4
-        self.adapter_scale_factor = tuner_cfg[
-            'scale_factor'] if 'scale_factor' in tuner_cfg else 2
+        self.adapter_scale_factor = tuner_cfg['scale_factor'] if 'scale_factor' in tuner_cfg else 2
 
         assert self.adapter_dim % self.adapter_head == 0, 'adapter dim should be divisible by adapter head'
         self.dim_mlp = self.adapter_dim // self.adapter_head
 
-        self.ln1 = nn.Linear(self.dim_mlp,
-                             self.dim_mlp * self.adapter_scale_factor)
-        self.ln2 = nn.Linear(self.dim_mlp * self.adapter_scale_factor,
-                             self.dim_mlp)
+        self.ln1 = nn.Linear(self.dim_mlp, self.dim_mlp * self.adapter_scale_factor)
+        self.ln2 = nn.Linear(self.dim_mlp * self.adapter_scale_factor, self.dim_mlp)
         self.activate = act_layer()
 
         self._kaiming_init_weights(self.ln1)
@@ -247,21 +218,16 @@ class ResGroupAdapter(nn.Module):
 
         batch, inner_dim, height, width = x.shape
 
-        x_adapter = x.permute(0, 2, 3, 1).reshape(batch, height * width,
-                                                  inner_dim)
+        x_adapter = x.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
 
-        x_adapter = rearrange(
-            x_adapter, 'b n (c h) -> (b h) n c', h=self.adapter_head)
+        x_adapter = rearrange(x_adapter, 'b n (c h) -> (b h) n c', h=self.adapter_head)
         x_adapter = self.ln2(self.activate(self.ln1(x_adapter)))
-        x_adapter = rearrange(
-            x_adapter, '(b h) n c -> b n (c h)', h=self.adapter_head)
+        x_adapter = rearrange(x_adapter, '(b h) n c -> b n (c h)', h=self.adapter_head)
 
         if self.adapter_weight:
-            x_adapter = apply_data_weight(x_adapter, self.scaling,
-                                          self.adapter_weight)
+            x_adapter = apply_data_weight(x_adapter, self.scaling, self.adapter_weight)
 
-        x_adapter = x_adapter.reshape(batch, height, width,
-                                      -1).permute(0, 3, 1, 2).contiguous()
+        x_adapter = x_adapter.reshape(batch, height, width, -1).permute(0, 3, 1, 2).contiguous()
         x_out = x_shortcut + x_adapter
 
         return x_out.to(x_dtype)
@@ -285,19 +251,13 @@ class Upsample(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self,
-                 channels,
-                 use_conv=False,
-                 out_channels=None,
-                 padding=1,
-                 **kwargs):
+    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, **kwargs):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
         if use_conv:
-            self.conv = nn.Conv2d(
-                self.channels, self.out_channels, 3, padding=padding)
+            self.conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=padding)
         self.init_weights()
 
     def init_weights(self):
@@ -312,11 +272,9 @@ class Upsample(nn.Module):
     def forward(self, x, target_size=None, *args, **kwargs):
         assert x.shape[1] == self.channels
         if target_size is None:
-            x = F.interpolate(
-                x.float(), scale_factor=2, mode='nearest').type_as(x)
+            x = F.interpolate(x.float(), scale_factor=2, mode='nearest').type_as(x)
         else:
-            x = F.interpolate(
-                x.float(), target_size, mode='nearest').type_as(x)
+            x = F.interpolate(x.float(), target_size, mode='nearest').type_as(x)
         if self.use_conv:
             x = self.conv(x)
         return x
@@ -354,10 +312,8 @@ def init_weight_type(dim, weight_type):
 
 def apply_data_weight(data, scaling, weight_type):
     if weight_type in ['gate']:
-        scaling = torch.mean(
-            torch.sigmoid(scaling(data)), dim=1).view(-1, 1, 1)
-    elif weight_type in ['scale', 'scale_channel'
-                         ] or weight_type.startswith('scalar'):
+        scaling = torch.mean(torch.sigmoid(scaling(data)), dim=1).view(-1, 1, 1)
+    elif weight_type in ['scale', 'scale_channel'] or weight_type.startswith('scalar'):
         scaling = scaling
     else:
         scaling = None
@@ -368,10 +324,7 @@ def apply_data_weight(data, scaling, weight_type):
 
 def detach_tensors(feats):
     if type(feats) in [list, tuple]:
-        feats = [
-            detach_tensors(feat) if feat is not None else None
-            for feat in feats
-        ]
+        feats = [detach_tensors(feat) if feat is not None else None for feat in feats]
     elif isinstance(feats, dict):
         feats = {key: detach_tensors(val) for key, val in feats.items()}
     elif isinstance(feats, torch.Tensor):
