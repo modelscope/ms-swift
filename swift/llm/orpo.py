@@ -145,8 +145,6 @@ def llm_orpo(args: ORPOArguments) -> str:
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         template=template,
-        max_prompt_length=args.max_prompt_length,
-        max_length=args.max_length,
         test_oom_error=args.test_oom_error,
         **trainer_kwargs)
     trainer.sft_args = args
