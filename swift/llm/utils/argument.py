@@ -308,7 +308,7 @@ class SftArguments(ArgumentsBase):
     lora_bias_trainable: Literal['none', 'all'] = 'none'
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
-    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
+    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
@@ -963,6 +963,8 @@ class InferArguments(ArgumentsBase):
 
         if self.model_id_or_path is None:
             self.model_id_or_path = sft_args.get('model_id_or_path')
+        if self.dtype == 'AUTO':
+            self.dtype = sft_args.get('dtype')
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:

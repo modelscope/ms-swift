@@ -190,9 +190,9 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
-        if args.sft_type == 'adalora':
-            model = model.to(model.dtype)
+        model = Swift.from_pretrained(
+            model, args.ckpt_dir, inference_mode=True)
+        model = model.to(model.dtype)
 
     if verbose:
         show_layers(model)

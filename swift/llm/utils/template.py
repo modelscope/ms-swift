@@ -42,6 +42,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
+    internvl = 'internvl'
     yi = 'yi'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
@@ -871,17 +872,86 @@ register_template(
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
-register_template(TemplateType.xverse,
-                  Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']], [['eos_token_id']]))
-register_template(TemplateType.yuan, Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
-register_template(TemplateType.ziya,
-                  Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'], ['\n'], [['eos_token_id']]))
 
-register_template(TemplateType.skywork,
-                  Template(['<s>{{SYSTEM}}'], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None, ['[SEP]</s>']))
+class InternvlTemplate(Template):
+    system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
+    internvl_query_template = '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'
+    num_image_token = 256
 
-register_template(TemplateType.bluelm,
-                  Template([['bos_token_id'], '{{SYSTEM}}'], ['[|Human|]:{{QUERY}}[|AI|]:'], [], [['eos_token_id']]))
+    def __init__(self):
+        super().__init__(
+            [],
+            ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'],
+            ['<|im_end|>'], ['<|im_end|>'], self.system,
+            ['<|im_start|>system\n{{SYSTEM}}'])
+
+    def encode(
+            self, example: Dict[str,
+                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        pixel_values = None
+        if example.get('images') is not None:
+            from .vision_utils import load_image
+            images_path = example['images']
+            pixel_values = []
+            for image_path in images_path:
+                pixel_values.append(load_image(image_path))
+            pixel_values = torch.cat(pixel_values, dim=0)
+            image_bs = pixel_values.shape[0]
+            if example.get('query') is not None:
+                example['query'] = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * \
+                    image_bs + '</img>\n' + example['query']
+
+        inputs, _ = super().encode(example)
+        inputs.pop('loss_scale', None)
+        if pixel_values is not None:
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(image_bs)
+
+        return inputs, {}
+
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        res['image_flags'] = torch.concat([b['image_flags'] for b in batch])
+        return res
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor,
+                         input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+
+register_template(
+    TemplateType.internvl,
+    InternvlTemplate(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='round',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.xverse,
+    Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
+             [['eos_token_id']], [['eos_token_id']]))
+register_template(TemplateType.yuan,
+                  Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
+register_template(
+    TemplateType.ziya,
+    Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],
+             ['\n'], [['eos_token_id']]))
+
+register_template(
+    TemplateType.skywork,
+    Template(['<s>{{SYSTEM}}'], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None,
+             ['[SEP]</s>']))
+
+register_template(
+    TemplateType.bluelm,
+    Template([['bos_token_id'], '{{SYSTEM}}'], ['[|Human|]:{{QUERY}}[|AI|]:'],
+             [], [['eos_token_id']]))
 
 register_template(
     TemplateType.codefuse_codellama,

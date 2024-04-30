@@ -40,6 +40,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 ## 🎉 新闻
+- 2024.04.29: 支持InternVL-Chat-V1.5的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/internvl最佳实践.md).
 - 🔥2024.04.26: 支持**LISA** 和 **unsloth**训练！指定 `--lisa_activated_layers=2` 来开启LISA（显存使用降低至全参训练的30%），指定 `--tuner_backend unsloth` 来使用unsloth，用更少的显存（30%或更少）更快的速度（5x）训练一个超大模型！
 - 🔥2024.04.26: 支持Qwen1.5-110B和Qwen1.5-110B-Chat模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_110b_chat/lora_ddp_ds/sft.sh)来开始训练！
 - 2024.04.24: 支持Phi3系列模型的推理与微调. 包括: [phi3-4b-4k-instruct](examples/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
@@ -474,6 +475,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | WizardLM2 | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM) | 多语种 | 7B-8x22B<br>包含量化版本 | chat模型<br>MoE模型 |
 | Atom | [Atom](https://github.com/LlamaFamily/Llama-Chinese) | 中文 | 7B| base模型<br>chat模型|
 | Chinese-LLaMA-Alpaca-2 | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文 | 1.3B-13B| base模型<br>chat模型<br>长文本模型 |
+| Chinese-LLaMA-Alpaca-3 | [Chinese-LLaMA-Alpaca-3](https://github.com/ymcui/Chinese-LLaMA-Alpaca-3) | 中文 | 8B| base模型<br>chat模型|
 | ModelScope-Agent | [ModelScope Agent系列](https://github.com/modelscope/modelscope-agent) | 中文 | 7B-14B| agent模型 |
 
 
@@ -490,6 +492,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | CogVLM<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
 | Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B-34B               | chat模型 |
 | mPLUG-Owl      | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)         | 英文 | 11B               | chat模型 |
+| InternVL         | [InternVL](https://github.com/OpenGVLab/InternVL)                | 中文<br>英文 | 25.5B | chat模型 |
 
 #### 扩散模型
 

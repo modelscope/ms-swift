@@ -63,6 +63,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=200,
                 predict_with_generate=predict_with_generate,
                 dataset=[DatasetName.jd_sentiment_zh],
+                include_num_input_tokens_seen=True,
                 output_dir=output_dir,
                 gradient_checkpointing=True)
             self.assertTrue(sft_args.gradient_accumulation_steps == 8)
