@@ -142,10 +142,16 @@ def llm_orpo(args: ORPOArguments) -> str:
         training_args.model_init_kwargs = None
     if not hasattr(training_args, 'generate_during_eval'):
         training_args.generate_during_eval = None
-    if not hasattr(training_args, 'max_length'):
-        training_args.max_length = args.max_length
-    if not hasattr(training_args, 'max_prompt_length'):
-        training_args.max_prompt_length = args.max_prompt_length
+    if not hasattr(training_args, 'max_completion_length'):
+        training_args.max_completion_length = None
+    if not hasattr(training_args, 'padding_value'):
+        training_args.padding_value = None
+    if not hasattr(training_args, 'dataset_num_proc'):
+        training_args.dataset_num_proc = None
+
+    training_args.max_length = args.max_length
+    training_args.max_prompt_length = args.max_prompt_length
+    training_args.beta = args.beta
     trainer = ORPOTrainer(
         model=model,
         args=training_args,
