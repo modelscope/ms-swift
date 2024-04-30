@@ -2619,13 +2619,13 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
         model_cls = model.__class__
         if not hasattr(model_cls, '__old_encode_img'):  # avoid double patching
-            encode_img = model_cls.encode_img
-            model_cls.__old_encode_img = encode_img
+            model_cls.__old_encode_img = model_cls.encode_img
 
             def _new_encode_img(self, image):
                 if image is None:
                     return None
                 if isinstance(image, str):
+                    from PIL import Image
                     image = Image.open(image).convert('RGB')
                     image = self.vis_processor(image).unsqueeze(0).to(
                         self.device)
