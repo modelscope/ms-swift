@@ -137,7 +137,8 @@ def llm_orpo(args: ORPOArguments) -> str:
     trainer_kwargs = {}
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
-
+    if not hasattr(training_args, 'model_init_kwargs'):
+        training_args.model_init_kwargs = None
     trainer = ORPOTrainer(
         model=model,
         args=training_args,
