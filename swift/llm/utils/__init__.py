@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import (AppUIArguments, DeployArguments, DPOArguments,
+from .argument import (AppUIArguments, DeployArguments, DPOArguments,ORPOArguments,
                        EvalArguments, ExportArguments, InferArguments,
                        RomeArguments, SftArguments, is_adapter,
                        swift_to_peft_format)
