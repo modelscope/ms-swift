@@ -12,9 +12,8 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                        AutoTokenizer, BitsAndBytesConfig, GenerationConfig,
-                        GPTQConfig, snapshot_download)
+from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                        GenerationConfig, GPTQConfig, snapshot_download)
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
@@ -2388,12 +2387,10 @@ def fix_internvl_inplace_bug(model) -> None:
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
         if hasattr(embedding, '_old_forward'):  # device_map
             __old_forward = embedding._old_forward
-            embedding._old_forward = lambda *args, **kwargs: __old_forward(
-                *args, **kwargs).requires_grad_(True).clone()
+            embedding._old_forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).requires_grad_(True).clone()
         else:
             __old_forward = embedding.forward
-            embedding.forward = lambda *args, **kwargs: __old_forward(
-                *args, **kwargs).requires_grad_(True).clone()
+            embedding.forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).requires_grad_(True).clone()
         embedding.__old_forward = __old_forward
 
 
@@ -2412,8 +2409,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
 
-    model_config = AutoConfig.from_pretrained(
-        model_dir, trust_remote_code=True)
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if use_flash_attn:
         model_config.attn_implementation = 'flash_attention_2'
@@ -2462,8 +2458,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             model.extract_feature = _new_extract_feature
 
-        if not hasattr(model.language_model,
-                       '__old_forward'):  # Avoid double patching
+        if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
             old_forward = model.language_model.forward
             model.language_model.__old_forward = old_forward
 
@@ -2479,8 +2474,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.forward = _new_forward
 
         IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
-        img_context_token_id = tokenizer.convert_tokens_to_ids(
-            IMG_CONTEXT_TOKEN)
+        img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
         model.img_context_token_id = img_context_token_id
         if not hasattr(model.config, 'hidden_size'):
             model.config.hidden_size = model.config.llm_config.hidden_size
@@ -2539,8 +2533,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                 if isinstance(image, str):
                     from PIL import Image
                     image = Image.open(image).convert('RGB')
-                    image = self.vis_processor(image).unsqueeze(0).to(
-                        self.device)
+                    image = self.vis_processor(image).unsqueeze(0).to(self.device)
                 else:
                     assert isinstance(image, torch.Tensor)
 

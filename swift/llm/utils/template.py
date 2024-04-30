@@ -879,15 +879,10 @@ class InternvlTemplate(Template):
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(
-            [],
-            ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'],
-            ['<|im_end|>'], ['<|im_end|>'], self.system,
-            ['<|im_start|>system\n{{SYSTEM}}'])
+        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
 
-    def encode(
-            self, example: Dict[str,
-                                Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         pixel_values = None
         if example.get('images') is not None:
             from .vision_utils import load_image
@@ -909,17 +904,14 @@ class InternvlTemplate(Template):
 
         return inputs, {}
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
         res['image_flags'] = torch.concat([b['image_flags'] for b in batch])
         return res
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor,
-                         input_token_len: int) -> List[int]:
+    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
 
@@ -932,26 +924,17 @@ register_template(
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
-register_template(
-    TemplateType.xverse,
-    Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '],
-             [['eos_token_id']], [['eos_token_id']]))
-register_template(TemplateType.yuan,
-                  Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
-register_template(
-    TemplateType.ziya,
-    Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'],
-             ['\n'], [['eos_token_id']]))
+register_template(TemplateType.xverse,
+                  Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']], [['eos_token_id']]))
+register_template(TemplateType.yuan, Template([], ['{{QUERY}}<sep>'], None, [['eos_token_id']]))
+register_template(TemplateType.ziya,
+                  Template([['bos_token_id'], '{{SYSTEM}}'], ['<human>:{{QUERY}}\n<bot>:'], ['\n'], [['eos_token_id']]))
 
-register_template(
-    TemplateType.skywork,
-    Template(['<s>{{SYSTEM}}'], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None,
-             ['[SEP]</s>']))
+register_template(TemplateType.skywork,
+                  Template(['<s>{{SYSTEM}}'], ['</s><s>[USER]{{QUERY}}[SEP][BOT]'], None, ['[SEP]</s>']))
 
-register_template(
-    TemplateType.bluelm,
-    Template([['bos_token_id'], '{{SYSTEM}}'], ['[|Human|]:{{QUERY}}[|AI|]:'],
-             [], [['eos_token_id']]))
+register_template(TemplateType.bluelm,
+                  Template([['bos_token_id'], '{{SYSTEM}}'], ['[|Human|]:{{QUERY}}[|AI|]:'], [], [['eos_token_id']]))
 
 register_template(
     TemplateType.codefuse_codellama,
