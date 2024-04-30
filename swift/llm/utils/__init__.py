@@ -1,8 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import (AppUIArguments, DeployArguments, DPOArguments,
-                       EvalArguments, ExportArguments, InferArguments,
-                       RomeArguments, SftArguments, is_adapter,
-                       swift_to_peft_format)
+from .argument import (AppUIArguments, DeployArguments, DPOArguments, EvalArguments, ExportArguments, InferArguments,
+                       RomeArguments, SftArguments, is_adapter, swift_to_peft_format)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction,
                       HfDataset, get_dataset, get_dataset_from_repo,
@@ -20,29 +18,20 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
                          SmartPreprocessor, SwiftPreprocessor,
                          TextGenerationPreprocessor)
 from .protocol import ChatCompletionResponse  # noqa
-from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice,
-                       ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage,
-                       CompletionRequest, CompletionResponse,
-                       CompletionResponseChoice,
-                       CompletionResponseStreamChoice,
-                       CompletionStreamResponse, DeltaMessage, Model,
-                       ModelList, UsageInfo, XRequestConfig, random_uuid)
-from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt,
-                       StopWords, Template, TemplateType, get_template,
-                       register_template)
-from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset,
-                    find_all_linears, find_embedding, find_ln,
-                    get_max_model_len, get_time_info, history_to_messages,
-                    inference, inference_stream, is_vllm_available,
-                    limit_history_length, messages_to_history, print_example,
-                    safe_tokenizer_decode, set_generation_config,
-                    sort_by_max_length, stat_dataset, to_device)
+from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
+                       CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
+                       Model, ModelList, UsageInfo, XRequestConfig, random_uuid)
+from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
+                       get_template, register_template)
+from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
+                    find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
+                    is_vllm_available, limit_history_length, messages_to_history, print_example, safe_tokenizer_decode,
+                    set_generation_config, sort_by_max_length, stat_dataset, to_device)
 
 try:
     if is_vllm_available():
-        from .vllm_utils import (VllmGenerationConfig, get_vllm_engine,
-                                 inference_stream_vllm, inference_vllm,
+        from .vllm_utils import (VllmGenerationConfig, get_vllm_engine, inference_stream_vllm, inference_vllm,
                                  prepare_vllm_engine_template)
         try:
             from .vllm_utils import LoRARequest

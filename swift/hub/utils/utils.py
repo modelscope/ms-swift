@@ -6,8 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from swift.hub.constants import (DEFAULT_MODELSCOPE_DOMAIN,
-                                 DEFAULT_MODELSCOPE_GROUP, MODEL_ID_SEPARATOR,
+from swift.hub.constants import (DEFAULT_MODELSCOPE_DOMAIN, DEFAULT_MODELSCOPE_GROUP, MODEL_ID_SEPARATOR,
                                  MODELSCOPE_SDK_DEBUG, MODELSCOPE_URL_SCHEME)
 from swift.hub.errors import FileIntegrityError
 from swift.utils.logger import get_logger
@@ -44,10 +43,8 @@ def get_cache_dir(model_id: Optional[str] = None):
         str: the model_id dir if model_id not None, otherwise cache root dir.
     """
     default_cache_dir = get_default_cache_dir()
-    base_path = os.getenv('MODELSCOPE_CACHE',
-                          os.path.join(default_cache_dir, 'hub'))
-    return base_path if model_id is None else os.path.join(
-        base_path, model_id + '/')
+    base_path = os.getenv('MODELSCOPE_CACHE', os.path.join(default_cache_dir, 'hub'))
+    return base_path if model_id is None else os.path.join(base_path, model_id + '/')
 
 
 def get_release_datetime():
@@ -55,16 +52,12 @@ def get_release_datetime():
         rt = int(round(datetime.now().timestamp()))
     else:
         from swift import version
-        rt = int(
-            round(
-                datetime.strptime(version.__release_datetime__,
-                                  '%Y-%m-%d %H:%M:%S').timestamp()))
+        rt = int(round(datetime.strptime(version.__release_datetime__, '%Y-%m-%d %H:%M:%S').timestamp()))
     return rt
 
 
 def get_endpoint():
-    modelscope_domain = os.getenv('MODELSCOPE_DOMAIN',
-                                  DEFAULT_MODELSCOPE_DOMAIN)
+    modelscope_domain = os.getenv('MODELSCOPE_DOMAIN', DEFAULT_MODELSCOPE_DOMAIN)
     return MODELSCOPE_URL_SCHEME + modelscope_domain
 
 

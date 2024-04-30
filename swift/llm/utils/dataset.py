@@ -29,17 +29,13 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {
-                'query', 'response', 'rejected_response', 'system', 'history',
-                'images'
-        }:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
 
 
-GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
-                                                         Optional[HfDataset]]]]
+GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset, Optional[HfDataset]]]]
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -193,8 +189,7 @@ def register_dataset(
         DATASET_MAPPING[dataset_name] = dataset_info
         return
 
-    def _register_dataset(
-            get_function: GetDatasetFunction) -> GetDatasetFunction:
+    def _register_dataset(get_function: GetDatasetFunction) -> GetDatasetFunction:
         _old_get_function = get_function
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
@@ -271,23 +266,16 @@ def load_ms_dataset(
         if is_dist() and not is_local_master():
             force_redownload = False
         else:
-            force_redownload = strtobool(
-                os.environ.get('FORCE_REDOWNLOAD', 'False'))
+            force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
         download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
-        dataset = MsDataset.load(
-            dataset_id,
-            subset_name=subset_name,
-            split=split,
-            download_mode=download_mode)
+        dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
         if hasattr(dataset, 'to_hf_dataset'):
             dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
 
-def load_hf_dataset(
-        dataset_id: str,
-        subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
+def load_hf_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
     dataset_list = []
@@ -463,11 +451,7 @@ def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
         if '&&' in d[response_key]:
             d[response_key] = d[response_key].split('&&')[0]
         response.append(d[response_key])
-    return HfDataset.from_dict({
-        'query': [query] * len(response),
-        'response': response,
-        'images': images
-    })
+    return HfDataset.from_dict({'query': [query] * len(response), 'response': response, 'images': images})
 
 
 register_dataset(
@@ -526,8 +510,7 @@ register_dataset(
     is_main=False)
 
 
-def _repair_agent_conversations(conversations: str,
-                                use_mini: bool) -> List[Dict[str, str]]:
+def _repair_agent_conversations(conversations: str, use_mini: bool) -> List[Dict[str, str]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
     else:
@@ -551,8 +534,7 @@ def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
     if isinstance(conversations, str):
         conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
-    if conversations[0]['from'] == 'system' and conversations[0][
-            'value'] == default_system:
+    if conversations[0]['from'] == 'system' and conversations[0]['value'] == default_system:
         conversations.pop(0)
     # skip MOSS
     for c in conversations:
@@ -622,9 +604,7 @@ register_dataset(
     'damo/MSAgent-Bench',
     None,
     ConversationsPreprocessor(
-        repair_conversations=partial(
-            _repair_agent_conversations, use_mini=True),
-        error_strategy='delete'),
+        repair_conversations=partial(_repair_agent_conversations, use_mini=True), error_strategy='delete'),
     get_dataset_from_repo,
     val_split=['validation'],
     tags=['chat', 'agent', 'multi-round'],
@@ -634,10 +614,7 @@ register_dataset(
     'damo/MSAgent-Bench',
     None,
     ConversationsPreprocessor(
-        repair_conversations=partial(
-            _repair_agent_conversations,
-            use_mini=False,
-            error_strategy='delete')),
+        repair_conversations=partial(_repair_agent_conversations, use_mini=False, error_strategy='delete')),
     get_dataset_from_repo,
     val_split=['validation'],
     tags=['chat', 'agent', 'multi-round'])
@@ -656,16 +633,14 @@ register_dataset(
     hf_dataset_id='shibing624/AdvertiseGen')
 
 _firefly_kind_list = [
-    'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection',
-    'ClassicalChinese', 'BELLE', 'StoryGeneration', 'Couplet', 'Cot',
-    'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA',
-    'AncientPoem', 'TextMatching', 'NLI', 'Summary', 'KeywordRecognition',
-    'ProductDesc', 'LyricGeneration', 'Composition', 'MusicComment', 'NER'
+    'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection', 'ClassicalChinese', 'BELLE', 'StoryGeneration',
+    'Couplet', 'Cot', 'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA', 'AncientPoem',
+    'TextMatching', 'NLI', 'Summary', 'KeywordRecognition', 'ProductDesc', 'LyricGeneration', 'Composition',
+    'MusicComment', 'NER'
 ]
 
 
-def _preprocess_firefly(dataset: List[Dict[str, str]],
-                        kind_list: List[str]) -> HfDataset:
+def _preprocess_firefly(dataset: List[Dict[str, str]], kind_list: List[str]) -> HfDataset:
     kind_set = set(kind_list)
     query: List[str] = []
     response: List[str] = []
@@ -770,14 +745,8 @@ def process_hh_rlhf(dataset):
         import re
         chosen = row['chosen'].strip()
         rejected = row['rejected'].strip()
-        parts_chosen = [
-            s.strip()
-            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
-        ]
-        parts_rejected = [
-            s.strip()
-            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
-        ]
+        parts_chosen = [s.strip() for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)]
+        parts_rejected = [s.strip() for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)]
         if parts_chosen[0].startswith('Human:'):
             assert parts_rejected[0].startswith('Human:')
             parts_chosen[0] = parts_chosen[0][6:].strip()
@@ -811,8 +780,7 @@ def process_hh_rlhf(dataset):
             'history': history,
         }
 
-    return dataset.map(reorganize_row).filter(
-        lambda row: row['query'] is not None)
+    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
@@ -879,8 +847,7 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(
-        lambda row: row['query'])
+    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -911,11 +878,7 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
         for c in conversation[:-1]:
             h.append([c['human'], c['assistant']])
         history.append(h)
-    return HfDataset.from_dict({
-        'query': query,
-        'response': response,
-        'history': history
-    })
+    return HfDataset.from_dict({'query': query, 'response': response, 'history': history})
 
 
 register_dataset(
@@ -937,11 +900,7 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     for d in tqdm(dataset):
         images.append(d[image_key])
         response.append(d[response_key])
-    dataset = HfDataset.from_dict({
-        'query': [query] * len(response),
-        'response': response,
-        'images': images
-    })
+    dataset = HfDataset.from_dict({'query': [query] * len(response), 'response': response, 'images': images})
     dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
@@ -986,10 +945,7 @@ def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
     for d in tqdm(dataset):
         output, answer = d['output'], d['answer']
         response.append(f'{output}\n\nAnswer: {answer}')
-    return HfDataset.from_dict({
-        'query': dataset['input'],
-        'response': response
-    })
+    return HfDataset.from_dict({'query': dataset['input'], 'response': response})
 
 
 register_dataset(
@@ -1108,8 +1064,7 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
         system += history_prompt
         response.append(conv[-1]['value'])
         for i in range(1, len(conv) - 1):
-            system += conv_prompt.format(
-                name=conv[i]['from'], content=conv[i]['value'])
+            system += conv_prompt.format(name=conv[i]['from'], content=conv[i]['value'])
         query.append(system)
     return HfDataset.from_dict({'query': query, 'response': response})
 
@@ -1164,10 +1119,8 @@ register_dataset(
 NoneType = type(None)
 
 
-def _check_dataset(
-    dataset: Optional[None],
-    check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']
-) -> HfDataset:
+def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['none', 'discard', 'error',
+                                                                            'warning']) -> HfDataset:
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
@@ -1443,9 +1396,8 @@ def get_dataset(
     return train_dataset, val_dataset
 
 
-def load_dataset_from_local(
-        dataset_path_list: Optional[Union[str, List[str]]],
-        preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
+def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
+                            preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
     if isinstance(dataset_path_list, str):
         dataset_path_list = [dataset_path_list]
     if dataset_path_list is None or len(dataset_path_list) == 0:
@@ -1465,10 +1417,9 @@ def load_dataset_from_local(
                 obj_list = json.load(f)
             df = transform_jsonl_to_df(obj_list)
         else:
-            raise ValueError(
-                'The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
-                '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
-                'for more information.')
+            raise ValueError('The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
+                             '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
+                             'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
     return concatenate_datasets(dataset_list)

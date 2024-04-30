@@ -49,9 +49,7 @@ class SwiftConfig:
                 The directory where the configuration will be saved.
         """
         if os.path.isfile(save_directory):
-            raise AssertionError(
-                f'Provided path ({save_directory}) should be a directory, not a file'
-            )
+            raise AssertionError(f'Provided path ({save_directory}) should be a directory, not a file')
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -74,20 +72,14 @@ class SwiftConfig:
             **kwargs:
                 Additional keyword arguments passed along to the child class initialization.
         """
-        if os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, CONFIG_NAME)):
-            config_file = os.path.join(pretrained_model_name_or_path,
-                                       CONFIG_NAME)
+        if os.path.isfile(os.path.join(pretrained_model_name_or_path, CONFIG_NAME)):
+            config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
         else:
             try:
-                model_dir = snapshot_download(
-                    pretrained_model_name_or_path,
-                    ignore_file_pattern=BIN_EXTENSIONS)
+                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_file_pattern=BIN_EXTENSIONS)
                 config_file = os.path.join(model_dir, CONFIG_NAME)
             except Exception:
-                raise ValueError(
-                    f"Can't find config.json at '{pretrained_model_name_or_path}'"
-                )
+                raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")
 
         loaded_attributes = cls.from_json_file(config_file)
 
@@ -155,13 +147,10 @@ class ActivationMixin:
     def __init__(self, module_key):
         self.module_key = module_key
         self._thread_inf: Dict[int, Dict[str, bool]] = {}
-        self._unique_thread = bool(
-            int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '1')))
+        self._unique_thread = bool(int(os.environ.get(ActivationMixin.USE_UNIQUE_THREAD, '1')))
         if not self._unique_thread and not ActivationMixin.REMINEDED:
             ActivationMixin.REMINEDED = True
-            logger.warn(
-                'Using multiple thread mode, gradient checkpointing is not supported.'
-            )
+            logger.warn('Using multiple thread mode, gradient checkpointing is not supported.')
 
     @property
     def indent(self):
@@ -182,11 +171,7 @@ class ActivationMixin:
         return self._thread_inf.get(tid, {}).get(adapter_name, False)
 
     def get_activated_adapters(self):
-        return [
-            key
-            for key, value in self._thread_inf.get(self.indent, {}).items()
-            if value
-        ]
+        return [key for key, value in self._thread_inf.get(self.indent, {}).items() if value]
 
 
 class OffloadHelper:
@@ -211,8 +196,7 @@ class OffloadHelper:
             index[weight_name] = {'dtype': dtype, 'shape': list(array.shape)}
         if array.ndim == 0:
             array = array[None]
-        file_array = np.memmap(
-            tensor_file, dtype=array.dtype, mode='w+', shape=array.shape)
+        file_array = np.memmap(tensor_file, dtype=array.dtype, mode='w+', shape=array.shape)
         file_array[:] = array[:]
         file_array.flush()
         return index
@@ -246,8 +230,7 @@ class OffloadHelper:
         state_dict = module.state_dict()
         OffloadHelper.index[md5] = {}
         for key, tensor in state_dict.items():
-            OffloadHelper.offload_weight(tensor, key, sub_folder,
-                                         OffloadHelper.index[md5])
+            OffloadHelper.offload_weight(tensor, key, sub_folder, OffloadHelper.index[md5])
 
     @staticmethod
     def load_disk(module: torch.nn.Module, adapter_name, module_key):
@@ -257,8 +240,7 @@ class OffloadHelper:
         state_dict = {}
         for key, value in OffloadHelper.index[md5].items():
             file = os.path.join(sub_folder, f'{key}.dat')
-            state_dict[key] = OffloadHelper.load_offloaded_weight(
-                file, OffloadHelper.index[md5][key])
+            state_dict[key] = OffloadHelper.load_offloaded_weight(file, OffloadHelper.index[md5][key])
         if version.parse(torch.__version__) >= version.parse('2.1.0'):
             module.load_state_dict(state_dict, assign=True)
         else:
@@ -270,15 +252,12 @@ class OffloadHelper:
                 prefix = name if not name else name + '.'
                 for sub_name, buffer in _module.named_buffers():
                     buffer_cls = type(buffer)
-                    buffers[sub_name] = buffer_cls(state_dict[prefix
-                                                              + sub_name])
+                    buffers[sub_name] = buffer_cls(state_dict[prefix + sub_name])
                 _module._buffers.update(buffers)
                 params = {}
                 for sub_name, param in _module.named_parameters():
                     param_cls = type(param)
-                    params[sub_name] = param_cls(
-                        state_dict[prefix + sub_name],
-                        requires_grad=param.requires_grad)
+                    params[sub_name] = param_cls(state_dict[prefix + sub_name], requires_grad=param.requires_grad)
                 _module._parameters.update(params)
         shutil.rmtree(sub_folder, ignore_errors=True)
 
@@ -286,39 +265,28 @@ class OffloadHelper:
 class SwiftAdapter:
 
     @staticmethod
-    def prepare_model(model: torch.nn.Module, config: SwiftConfig,
-                      adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: torch.nn.Module, config: SwiftConfig, adapter_name: str) -> SwiftOutput:
         raise NotImplementedError
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module,
-                         adapter_name: str,
-                         activate: bool,
-                         offload: str = None):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         raise NotImplementedError
 
     @staticmethod
-    def save_memory(module: torch.nn.Module,
-                    adapter_name: str,
-                    module_key: str,
-                    activate: bool,
-                    offload: str = None):
+    def save_memory(module: torch.nn.Module, adapter_name: str, module_key: str, activate: bool, offload: str = None):
         if not isinstance(module, torch.nn.Module):
             return
         if activate:
             SwiftAdapter.load(module, adapter_name, module_key)
         else:
-            SwiftAdapter.offload(
-                module, adapter_name, module_key, offload=offload)
+            SwiftAdapter.offload(module, adapter_name, module_key, offload=offload)
 
     @staticmethod
-    def offload(module: torch.nn.Module, adapter_name, module_key,
-                offload: str):
+    def offload(module: torch.nn.Module, adapter_name, module_key, offload: str):
         if not offload:
             return
         device = next(iter(module.parameters())).device
-        if hasattr(module,
-                   'origin_device') and module.origin_device != str(device):
+        if hasattr(module, 'origin_device') and module.origin_device != str(device):
             return
         module.origin_device = str(device)
         if offload == 'cpu':
@@ -326,8 +294,7 @@ class SwiftAdapter:
                 module.to('cpu')
         elif offload == 'meta':
             if str(device) != 'meta':
-                OffloadHelper.offload_disk(
-                    module, adapter_name=adapter_name, module_key=module_key)
+                OffloadHelper.offload_disk(module, adapter_name=adapter_name, module_key=module_key)
                 module.to('meta')
         else:
             raise NotImplementedError
@@ -336,15 +303,13 @@ class SwiftAdapter:
     @staticmethod
     def load(module: torch.nn.Module, adapter_name, module_key):
         device = next(iter(module.parameters())).device
-        if not hasattr(module,
-                       'origin_device') or module.origin_device == str(device):
+        if not hasattr(module, 'origin_device') or module.origin_device == str(device):
             return
         if str(device) == 'cpu':
             module.to(module.origin_device)
             delattr(module, 'origin_device')
         elif str(device) == 'meta':
-            OffloadHelper.load_disk(
-                module, adapter_name=adapter_name, module_key=module_key)
+            OffloadHelper.load_disk(module, adapter_name=adapter_name, module_key=module_key)
             module.to(module.origin_device)
             delattr(module, 'origin_device')
 
@@ -358,12 +323,7 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
     def __init__(self, *args, module_key, **kwargs):
         super(ModulesToSaveWrapper, self).__init__(module_key)
         super(ActivationMixin, self).__init__(*args, **kwargs)
-        SwiftAdapter.save_memory(
-            self.original_module,
-            'original_module',
-            self.module_key,
-            False,
-            offload='cpu')
+        SwiftAdapter.save_memory(self.original_module, 'original_module', self.module_key, False, offload='cpu')
 
     @property
     def active_adapter(self):
@@ -371,53 +331,32 @@ class ModulesToSaveWrapper(ActivationMixin, _ModulesToSaveWrapper):
         if not active_adapters:
             return None
         elif len(active_adapters) > 1:
-            raise ValueError(
-                'ModulesToSaveWrapper does not support multiple active adapters'
-            )
+            raise ValueError('ModulesToSaveWrapper does not support multiple active adapters')
         return active_adapters[0]
 
     def set_adapter(self, adapter_name: str, offload: str = None):
         if adapter_name not in self.modules_to_save:
-            raise ValueError(
-                f'Adapter {adapter_name} not found in {self.modules_to_save.keys()}'
-            )
+            raise ValueError(f'Adapter {adapter_name} not found in {self.modules_to_save.keys()}')
         self.modules_to_save[adapter_name].requires_grad_(True)
         self.set_activation(adapter_name, True)
-        SwiftAdapter.save_memory(self.modules_to_save[adapter_name],
-                                 adapter_name, self.module_key, True)
-        SwiftAdapter.save_memory(
-            self.original_module,
-            'original_module',
-            self.module_key,
-            False,
-            offload=offload)
+        SwiftAdapter.save_memory(self.modules_to_save[adapter_name], adapter_name, self.module_key, True)
+        SwiftAdapter.save_memory(self.original_module, 'original_module', self.module_key, False, offload=offload)
 
     def deactivate_adapter(self, adapter_name: str, offload: str = None):
         if adapter_name in self.modules_to_save and self.unique_thread:
             self.modules_to_save[adapter_name].requires_grad_(False)
         self.set_activation(adapter_name, False)
         SwiftAdapter.save_memory(
-            self.modules_to_save[adapter_name],
-            adapter_name,
-            self.module_key,
-            False,
-            offload=offload)
+            self.modules_to_save[adapter_name], adapter_name, self.module_key, False, offload=offload)
         if not self.get_activated_adapters():
-            SwiftAdapter.save_memory(self.original_module, 'original_module',
-                                     self.module_key, True)
+            SwiftAdapter.save_memory(self.original_module, 'original_module', self.module_key, True)
 
     def enable_adapters(self, enabled: bool):
         super().enable_adapters(enabled)
         if not enabled:
-            SwiftAdapter.save_memory(
-                self.original_module,
-                'original_module',
-                self.module_key,
-                False,
-                offload='meta')
+            SwiftAdapter.save_memory(self.original_module, 'original_module', self.module_key, False, offload='meta')
         else:
-            SwiftAdapter.save_memory(self.original_module, 'original_module',
-                                     self.module_key, True)
+            SwiftAdapter.save_memory(self.original_module, 'original_module', self.module_key, True)
 
 
 def set_adapter(model, adapter_name, activate, offload):
@@ -432,15 +371,13 @@ def set_adapter(model, adapter_name, activate, offload):
 def set_trainable(model, adapter_name):
     key_list = [key for key, _ in model.named_modules()]
     for key in key_list:
-        target_module_found = any(
-            key.endswith(target_key) for target_key in model.modules_to_save)
+        target_module_found = any(key.endswith(target_key) for target_key in model.modules_to_save)
         if target_module_found:
             parent, target, target_name = _get_submodules(model, key)
             if isinstance(target, ModulesToSaveWrapper):
                 target.update(adapter_name)
                 target.set_adapter(target.active_adapter)
             else:
-                new_module = ModulesToSaveWrapper(
-                    target, module_key=key, adapter_name=adapter_name)
+                new_module = ModulesToSaveWrapper(target, module_key=key, adapter_name=adapter_name)
                 new_module.set_adapter(adapter_name)
                 setattr(parent, target_name, new_module)

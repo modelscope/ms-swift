@@ -4,18 +4,13 @@ from swift.llm import MODEL_MAPPING, ModelType
 
 
 def get_model_info_table() -> List[str]:
-    fpaths = [
-        'docs/source/LLM/支持的模型和数据集.md',
-        'docs/source_en/LLM/Supported-models-datasets.md'
-    ]
+    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
     end_words = ['## 数据集', '## dataset']
     model_name_list = ModelType.get_model_name_list()
-    result = (
-        '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
-        ' Support Flash Attn | Support VLLM | Requires | Tags | HF Model ID |\n'
-        '| ---------  | -------- | --------------------------- | ---------------- |'
-        ' ------------------ | ------------ | -------- | ---- | ----------- |\n'
-    )
+    result = ('| Model Type | Model ID | Default Lora Target Modules | Default Template |'
+              ' Support Flash Attn | Support VLLM | Requires | Tags | HF Model ID |\n'
+              '| ---------  | -------- | --------------------------- | ---------------- |'
+              ' ------------------ | ------------ | -------- | ---- | ----------- |\n')
     res: List[str] = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
     for model_name in model_name_list:
@@ -36,8 +31,8 @@ def get_model_info_table() -> List[str]:
         if hf_model_id is None:
             hf_model_id = '-'
         r = [
-            model_name, model_id, lora_target_modules, template,
-            support_flash_attn, support_vllm, requires, tags_str, hf_model_id
+            model_name, model_id, lora_target_modules, template, support_flash_attn, support_vllm, requires, tags_str,
+            hf_model_id
         ]
         res.append(r)
     text = ''

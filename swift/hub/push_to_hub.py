@@ -33,8 +33,7 @@ def _api_push_to_hub(repo_name,
         api.push_model(
             repo_name,
             output_dir,
-            visibility=ModelVisibility.PUBLIC
-            if not private else ModelVisibility.PRIVATE,
+            visibility=ModelVisibility.PUBLIC if not private else ModelVisibility.PRIVATE,
             chinese_name=repo_name,
             commit_message=commit_message,
             tag=tag,
@@ -42,14 +41,10 @@ def _api_push_to_hub(repo_name,
             ignore_file_pattern=ignore_file_pattern,
             revision=revision)
         commit_message = commit_message or 'No commit message'
-        logger.info(
-            f'Successfully upload the model to {repo_name} with message: {commit_message}'
-        )
+        logger.info(f'Successfully upload the model to {repo_name} with message: {commit_message}')
         return True
     except Exception as e:
-        logger.error(
-            f'Error happens when uploading model {repo_name} with message: {commit_message}: {e}'
-        )
+        logger.error(f'Error happens when uploading model {repo_name} with message: {commit_message}: {e}')
         return False
 
 
@@ -88,11 +83,9 @@ def push_to_hub(repo_name,
     assert 'configuration.json' in os.listdir(output_dir) or 'configuration.yaml' in os.listdir(output_dir) \
            or 'configuration.yml' in os.listdir(output_dir)
 
-    logger.info(
-        f'Uploading {output_dir} to {repo_name} with message {commit_message}')
+    logger.info(f'Uploading {output_dir} to {repo_name} with message {commit_message}')
     for i in range(retry):
-        if _api_push_to_hub(repo_name, output_dir, token, private,
-                            commit_message, tag, source_repo,
+        if _api_push_to_hub(repo_name, output_dir, token, private, commit_message, tag, source_repo,
                             ignore_file_pattern, revision):
             return True
     return False
@@ -131,10 +124,8 @@ def push_to_hub_async(repo_name,
     assert 'configuration.json' in os.listdir(output_dir) or 'configuration.yaml' in os.listdir(output_dir) \
            or 'configuration.yml' in os.listdir(output_dir)
 
-    logger.info(
-        f'Uploading {output_dir} to {repo_name} with message {commit_message}')
-    return _executor.submit(_api_push_to_hub, repo_name, output_dir, token,
-                            private, commit_message, tag, source_repo,
+    logger.info(f'Uploading {output_dir} to {repo_name} with message {commit_message}')
+    return _executor.submit(_api_push_to_hub, repo_name, output_dir, token, private, commit_message, tag, source_repo,
                             ignore_file_pattern, revision)
 
 
@@ -163,16 +154,14 @@ class UploadStrategy:
 
 
 def push_to_hub_in_queue(queue_name, strategy=UploadStrategy.cancel, **kwargs):
-    assert queue_name is not None and len(
-        queue_name) > 0, 'Please specify a valid queue name!'
+    assert queue_name is not None and len(queue_name) > 0, 'Please specify a valid queue name!'
     global _manager
     if _manager is None:
         _manager = Manager()
     if queue_name not in _queues:
         _queues[queue_name] = _manager.Queue()
         _flags[queue_name] = Value('b', False)
-        process = Process(
-            target=submit_task, args=(_queues[queue_name], _flags[queue_name]))
+        process = Process(target=submit_task, args=(_queues[queue_name], _flags[queue_name]))
         process.start()
         _tasks[queue_name] = process
 
@@ -181,10 +170,8 @@ def push_to_hub_in_queue(queue_name, strategy=UploadStrategy.cancel, **kwargs):
     if kwargs.get('done', False):
         queue.put(kwargs)
     elif flag.value and strategy == UploadStrategy.cancel:
-        logger.error(
-            f'Another uploading is running, '
-            f'this uploading with message {kwargs.get("commit_message")} will be canceled.'
-        )
+        logger.error(f'Another uploading is running, '
+                     f'this uploading with message {kwargs.get("commit_message")} will be canceled.')
     else:
         queue.put(kwargs)
 

@@ -27,9 +27,7 @@ def get_seed(random_state: RandomState) -> int:
     return seed
 
 
-def stat_array(
-        array: Union[ndarray, List[int],
-                     Tensor]) -> Tuple[Dict[str, float], str]:
+def stat_array(array: Union[ndarray, List[int], Tensor]) -> Tuple[Dict[str, float], str]:
     if isinstance(array, list):
         array = np.array(array)
     mean = array.mean().item()
@@ -38,10 +36,4 @@ def stat_array(
     max_ = array.max().item()
     size = array.shape[0]
     string = f'{mean:.6f}±{std:.6f}, min={min_:.6f}, max={max_:.6f}, size={size}'
-    return {
-        'mean': mean,
-        'std': std,
-        'min': min_,
-        'max': max_,
-        'size': size
-    }, string
+    return {'mean': mean, 'std': std, 'min': min_, 'max': max_, 'size': size}, string

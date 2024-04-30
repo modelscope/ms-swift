@@ -62,19 +62,10 @@ class Model(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             model_type = gr.Dropdown(
-                elem_id='model_type',
-                choices=ModelType.get_model_name_list()
-                + cls.get_custom_name_list(),
-                scale=20)
-            model_id_or_path = gr.Textbox(
-                elem_id='model_id_or_path',
-                lines=1,
-                scale=20,
-                interactive=True)
+                elem_id='model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(), scale=20)
+            model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
             template_type = gr.Dropdown(
-                elem_id='template_type',
-                choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
-                scale=20)
+                elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
             reset_btn = gr.Button(elem_id='reset', scale=2)
             model_state = gr.State({})
         with gr.Row():
@@ -87,9 +78,8 @@ class Model(BaseUI):
                 model_id_or_path = model_state[choice]
             else:
                 model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
-            default_system = getattr(
-                TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
-                ['template'], 'default_system', None)
+            default_system = getattr(TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]['template'], 'default_system',
+                                     None)
             template = MODEL_MAPPING[choice]['template']
             return model_id_or_path, default_system, template
 
@@ -100,21 +90,13 @@ class Model(BaseUI):
             return model_state
 
         def reset(model_type):
-            model_id_or_path, default_system, template = update_input_model(
-                model_type)
+            model_id_or_path, default_system, template = update_input_model(model_type)
             return model_id_or_path, default_system, template, {}
 
         model_type.change(
-            update_input_model,
-            inputs=[model_type, model_state],
-            outputs=[model_id_or_path, system, template_type])
+            update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path, system, template_type])
 
         model_id_or_path.change(
-            update_model_id_or_path,
-            inputs=[model_type, model_id_or_path, model_state],
-            outputs=[model_state])
+            update_model_id_or_path, inputs=[model_type, model_id_or_path, model_state], outputs=[model_state])
 
-        reset_btn.click(
-            reset,
-            inputs=[model_type],
-            outputs=[model_id_or_path, system, template_type, model_state])
+        reset_btn.click(reset, inputs=[model_type], outputs=[model_id_or_path, system, template_type, model_state])

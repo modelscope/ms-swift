@@ -15,8 +15,7 @@ class Model(BaseUI):
 
     sub_ui = [Generate]
 
-    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get(
-        'MODELSCOPE_ENVIRONMENT') == 'studio'
+    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
         'checkpoint': {
@@ -94,19 +93,13 @@ class Model(BaseUI):
         with gr.Row():
             model_type = gr.Dropdown(
                 elem_id='model_type',
-                choices=[base_tab.locale('checkpoint', cls.lang)['value']]
-                + ModelType.get_model_name_list() + cls.get_custom_name_list(),
+                choices=[base_tab.locale('checkpoint', cls.lang)['value']] + ModelType.get_model_name_list()
+                + cls.get_custom_name_list(),
                 value=base_tab.locale('checkpoint', cls.lang)['value'],
                 scale=20)
-            model_id_or_path = gr.Textbox(
-                elem_id='model_id_or_path',
-                lines=1,
-                scale=20,
-                interactive=True)
+            model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
             template_type = gr.Dropdown(
-                elem_id='template_type',
-                choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'],
-                scale=20)
+                elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
             reset_btn = gr.Button(elem_id='reset', scale=2)
             model_state = gr.State({})
         with gr.Row():
@@ -128,55 +121,40 @@ class Model(BaseUI):
                 if model_state and choice in model_state:
                     model_id_or_path = model_state[choice]
                 else:
-                    model_id_or_path = MODEL_MAPPING[choice][
-                        'model_id_or_path']
-                default_system = getattr(
-                    TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]
-                    ['template'], 'default_system', None)
+                    model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
+                default_system = getattr(TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]['template'],
+                                         'default_system', None)
                 template = MODEL_MAPPING[choice]['template']
             return model_id_or_path, default_system, template
 
-        def update_model_id_or_path(model_type, path, system, template_type,
-                                    model_state):
+        def update_model_id_or_path(model_type, path, system, template_type, model_state):
             if not path or not os.path.exists(path):
                 return gr.update(), gr.update(), gr.update()
             local_path = os.path.join(path, 'sft_args.json')
             if not os.path.exists(local_path):
-                default_system = getattr(
-                    TEMPLATE_MAPPING[MODEL_MAPPING[model_type]['template']]
-                    ['template'], 'default_system', None)
+                default_system = getattr(TEMPLATE_MAPPING[MODEL_MAPPING[model_type]['template']]['template'],
+                                         'default_system', None)
                 template = MODEL_MAPPING[model_type]['template']
                 return default_system, template, model_state
 
             with open(local_path, 'r') as f:
                 sft_args = json.load(f)
             base_model_type = sft_args['model_type']
-            system = getattr(
-                TEMPLATE_MAPPING[MODEL_MAPPING[base_model_type]['template']]
-                ['template'], 'default_system', None)
+            system = getattr(TEMPLATE_MAPPING[MODEL_MAPPING[base_model_type]['template']]['template'], 'default_system',
+                             None)
             model_state[model_type] = path
-            return sft_args['system'] or system, sft_args[
-                'template_type'], model_state
+            return sft_args['system'] or system, sft_args['template_type'], model_state
 
         model_type.change(
-            update_input_model,
-            inputs=[model_type, model_state],
-            outputs=[model_id_or_path, system, template_type])
+            update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path, system, template_type])
 
         model_id_or_path.change(
             update_model_id_or_path,
-            inputs=[
-                model_type, model_id_or_path, system, template_type,
-                model_state
-            ],
+            inputs=[model_type, model_id_or_path, system, template_type, model_state],
             outputs=[system, template_type, model_state])
 
         def reset(model_type):
-            model_id_or_path, default_system, template = update_input_model(
-                model_type)
+            model_id_or_path, default_system, template = update_input_model(model_type)
             return model_id_or_path, default_system, template, {}
 
-        reset_btn.click(
-            reset,
-            inputs=[model_type],
-            outputs=[model_id_or_path, system, template_type, model_state])
+        reset_btn.click(reset, inputs=[model_type], outputs=[model_id_or_path, system, template_type, model_state])

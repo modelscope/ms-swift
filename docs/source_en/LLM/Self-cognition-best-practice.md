@@ -8,7 +8,6 @@ Fine-tune your own large model in just 10 minutes!
 - [Inference After Fine-Tuning](#inference-after-fine-tuning)
 - [Web-UI](#web-ui)
 
-
 ## Environment Setup
 ```bash
 # Set the global pip mirror (for faster downloads)
@@ -70,9 +69,9 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-4b-chat
 ```
 
 ## Fine-Tuning
-Note: Since self-cognition training involves knowledge editing, it's suggested to add lora_target_modules to **MLP**. You can specify `--lora_target_modules ALL` to add LoRA to all the linear layers (including qkvo and mlp), which **usually yields the best results**.
+Note: Self-cognition training involves knowledge editing, so it is recommended to add `lora_target_modules` to **MLP**. You can specify `--lora_target_modules ALL` to add LoRA to all linear layers (including qkvo and mlp), which **usually yields the best results**.
 
-Using python:
+Using Python:
 ```python
 # Experimental environment: A10, 3090, V100, ...
 # 23GB GPU memory

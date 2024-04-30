@@ -2,17 +2,13 @@ import os
 
 from datasets import concatenate_datasets
 
-from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map,
-                       get_dataset, get_default_template_type,
+from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map, get_dataset, get_default_template_type,
                        get_model_tokenizer, get_template)
 from swift.utils import stat_array
 
 
 def write_dataset_info() -> None:
-    fpaths = [
-        'docs/source/LLM/支持的模型和数据集.md',
-        'docs/source_en/LLM/Supported-models-datasets.md'
-    ]
+    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
     pre_texts = []
     for fpath in fpaths:
         if os.path.exists(fpath):
@@ -40,18 +36,12 @@ def write_dataset_info() -> None:
     else:
         text_list = []
 
-    ignore_dataset = {
-        text.split('|', 2)[1].lstrip('🔥 '): text
-        for text in text_list
-    }
+    ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
     dataset_name_list = DatasetName.get_dataset_name_list()
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
-        [
-            ModelType.qwen_7b_chat, ModelType.qwen_vl_chat,
-            ModelType.qwen_audio_chat
-        ],
+        [ModelType.qwen_7b_chat, ModelType.qwen_vl_chat, ModelType.qwen_audio_chat],
     )
     try:
         for task_type, model_type in _iter:

@@ -10,9 +10,7 @@ import torch
 import transformers
 from packaging import version
 from torch import dtype as Dtype
-from transformers.utils import (is_torch_bf16_gpu_available,
-                                is_torch_cuda_available,
-                                is_torch_npu_available, strtobool)
+from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
@@ -32,9 +30,7 @@ logger = get_logger()
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {
-        'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'
-    }
+    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'}
 
 
 class ArgumentsBase:
@@ -120,29 +116,22 @@ class ArgumentsBase:
             value = self._check_path(k, value, check_exist_path_set)
             setattr(self, k, value)
 
-    def check_flash_attn(
-            self: Union['SftArguments', 'InferArguments']) -> None:
+    def check_flash_attn(self: Union['SftArguments', 'InferArguments']) -> None:
         model_info = MODEL_MAPPING[self.model_type]
         support_flash_attn = model_info.get('support_flash_attn', False)
         if self.use_flash_attn and not support_flash_attn:
-            logger.warning(f'use_flash_attn: {self.use_flash_attn}, '
-                           f'but support_flash_attn: {support_flash_attn}')
+            logger.warning(f'use_flash_attn: {self.use_flash_attn}, ' f'but support_flash_attn: {support_flash_attn}')
 
-    def handle_generation_config(
-            self: Union['SftArguments', 'InferArguments']) -> None:
+    def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.do_sample is False:
             # fix warning
             self.temperature = 1.
             self.top_p = 1.
             self.top_k = 50
-            logger.info(
-                'Due to do_sample=False, the following settings are applied: args.temperature: '
-                f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.'
-            )
+            logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
+                        f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
-    def select_dtype(
-        self: Union['SftArguments', 'InferArguments']
-    ) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
             # cpu
             if self.dtype == 'AUTO':
@@ -160,8 +149,7 @@ class ArgumentsBase:
             if not is_torch_bf16_gpu_available():
                 self.dtype = 'fp16'
             else:
-                model_torch_dtype = MODEL_MAPPING[self.model_type].get(
-                    'torch_dtype')
+                model_torch_dtype = MODEL_MAPPING[self.model_type].get('torch_dtype')
                 if model_torch_dtype is not None:
                     self.dtype = dtype_mapping[model_torch_dtype]
                 elif isinstance(self, SftArguments):
@@ -178,8 +166,7 @@ class ArgumentsBase:
                 torch_dtype = torch.float32
                 logger.warning(
                     'Fine-tuning with full parameters does not support fp16, and is prone to NaN. '
-                    'We will use the fp32 & AMP approach, which consumes approximately twice the memory of bf16.'
-                )
+                    'We will use the fp32 & AMP approach, which consumes approximately twice the memory of bf16.')
                 logger.info(f'Setting torch_dtype: {torch_dtype}')
             fp16, bf16 = True, False
         elif torch_dtype == torch.bfloat16:
@@ -191,18 +178,13 @@ class ArgumentsBase:
             fp16, bf16 = False, False
         return torch_dtype, fp16, bf16
 
-    def select_bnb(
-        self: Union['SftArguments', 'InferArguments']
-    ) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_bnb(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if self.bnb_4bit_comp_dtype == 'AUTO':
             self.bnb_4bit_comp_dtype = self.dtype
 
         if self.bnb_4bit_comp_dtype != 'AUTO':
-            bnb_4bit_compute_dtype = dtype_mapping_reversed[
-                self.bnb_4bit_comp_dtype]
-            assert bnb_4bit_compute_dtype in {
-                torch.float16, torch.bfloat16, torch.float32
-            }
+            bnb_4bit_compute_dtype = dtype_mapping_reversed[self.bnb_4bit_comp_dtype]
+            assert bnb_4bit_compute_dtype in {torch.float16, torch.bfloat16, torch.float32}
         else:
             bnb_4bit_compute_dtype = None
         quantization_bit = self.quantization_bit
@@ -217,12 +199,8 @@ class ArgumentsBase:
 
         return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
 
-    def handle_compatibility(
-            self: Union['SftArguments', 'InferArguments']) -> None:
-        template_type_mapping = {
-            'chatglm2-generation': 'chatglm-generation',
-            'chatml': 'qwen'
-        }
+    def handle_compatibility(self: Union['SftArguments', 'InferArguments']) -> None:
+        template_type_mapping = {'chatglm2-generation': 'chatglm-generation', 'chatml': 'qwen'}
         model_type_mapping = {
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
@@ -263,24 +241,16 @@ class ArgumentsBase:
             self.model_cache_dir = None
 
         if self.model_id_or_path is not None:
-            model_mapping_reversed = {
-                v['model_id_or_path'].lower(): k
-                for k, v in MODEL_MAPPING.items()
-            }
+            model_mapping_reversed = {v['model_id_or_path'].lower(): k for k, v in MODEL_MAPPING.items()}
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
             if model_id_or_path_lower not in model_mapping_reversed:
-                if (isinstance(self, InferArguments)
-                        and 'checkpoint' in model_id_or_path
-                        and 'merged' not in model_id_or_path
-                        and self.ckpt_dir is None):
-                    raise ValueError(
-                        'Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.'
-                    )
+                if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
+                        and 'merged' not in model_id_or_path and self.ckpt_dir is None):
+                    raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:
-                    raise ValueError(
-                        f"model_id_or_path: '{model_id_or_path}' is not registered. "
-                        'Please set `--model_type <model_type>` additionally.')
+                    raise ValueError(f"model_id_or_path: '{model_id_or_path}' is not registered. "
+                                     'Please set `--model_type <model_type>` additionally.')
                 assert self.model_cache_dir is None
             else:
                 model_type = model_mapping_reversed[model_id_or_path_lower]
@@ -292,24 +262,19 @@ class ArgumentsBase:
 
         error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
         if self.model_type is None:
-            raise ValueError('please setting `--model_type <model_type>`. '
-                             + error_msg)
+            raise ValueError('please setting `--model_type <model_type>`. ' + error_msg)
         elif self.model_type not in MODEL_MAPPING:
-            raise ValueError(
-                f"model_type: '{self.model_type}' is not registered. "
-                + error_msg)
+            raise ValueError(f"model_type: '{self.model_type}' is not registered. " + error_msg)
         model_info = MODEL_MAPPING[self.model_type]
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
         if self.model_revision is not None:
             model_info['revision'] = self.model_revision
-            logger.info(
-                f"Setting model_info['revision']: {self.model_revision}")
+            logger.info(f"Setting model_info['revision']: {self.model_revision}")
         elif use_hf:
             model_info['revision'] = 'main'
         self.model_revision = model_info['revision']
         if self.model_id_or_path is None:
-            self.model_id_or_path = model_info[
-                'hf_model_id'] if use_hf else model_info['model_id_or_path']
+            self.model_id_or_path = model_info['hf_model_id'] if use_hf else model_info['model_id_or_path']
         requires = model_info['requires']
         for require in requires:
             require_version(require)
@@ -319,28 +284,19 @@ class ArgumentsBase:
 class SftArguments(ArgumentsBase):
     # You can specify the model by either using the model_type or model_id_or_path.
     model_type: Optional[str] = field(
-        default=None,
-        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
     model_layer_cls_name: Optional[str] = field(
         default=None,
-        metadata={
-            'help':
-            "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"
-        })
+        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro',
-                      'adapter'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
-        default='AUTO',
-        metadata={
-            'help':
-            f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
-        })
+        default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
     ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl']] = None
@@ -353,25 +309,20 @@ class SftArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
     dataset: List[str] = field(
-        default_factory=list,
-        metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
-    check_dataset_strategy: Literal['none', 'discard', 'error',
-                                    'warning'] = 'none'
+    check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     # Chinese name and English name
-    model_name: List[str] = field(
-        default_factory=lambda: [None, None],
-        metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
+    model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
-        default_factory=lambda: [None, None],
-        metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
+        default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
     # If you want to use qlora, set the quantization_bit to 8 or 4.
     # And you need to install bitsandbytes: `pip install bitsandbytes -U`
     # note: bf16 and quantization have requirements for gpu architecture
@@ -465,14 +416,9 @@ class SftArguments(ArgumentsBase):
     hub_model_id: Optional[str] = None
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
-        default=None,
-        metadata={
-            'help':
-            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
-        })
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
-    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint',
-                               'all_checkpoints'] = 'push_best'
+    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'] = 'push_best'
 
     # other
     test_oom_error: bool = field(
@@ -534,8 +480,7 @@ class SftArguments(ArgumentsBase):
         if self.hub_token is not None:
             api.login(self.hub_token)
         else:
-            assert ModelScopeConfig.get_token(
-            ) is not None, 'Please enter hub_token'
+            assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
         logger.info('hub login successful!')
 
     def _prepare_target_modules(self, target_modules) -> List[str]:
@@ -600,12 +545,9 @@ class SftArguments(ArgumentsBase):
         self.lora_m2s_use_embedding = False
         self.lora_m2s_use_ln = False
         if self.sft_type == 'ia3':
-            self.ia3_feedforward_modules = self._prepare_target_modules(
-                self.ia3_feedforward_modules)
-            self.ia3_target_modules = self._prepare_target_modules(
-                self.ia3_target_modules)
-            self.ia3_modules_to_save = self._prepare_modules_to_save(
-                self.ia3_modules_to_save)
+            self.ia3_feedforward_modules = self._prepare_target_modules(self.ia3_feedforward_modules)
+            self.ia3_target_modules = self._prepare_target_modules(self.ia3_target_modules)
+            self.ia3_modules_to_save = self._prepare_modules_to_save(self.ia3_modules_to_save)
         else:
             self.lora_target_modules = self._prepare_target_modules(
                 self.lora_target_modules)
@@ -619,9 +561,7 @@ class SftArguments(ArgumentsBase):
             )
 
         if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
-            raise ValueError(
-                '`adalora` and `ia3` do not support setting embedding as target_modules.'
-            )
+            raise ValueError('`adalora` and `ia3` do not support setting embedding as target_modules.')
 
         self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
         world_size = 1
@@ -639,32 +579,25 @@ class SftArguments(ArgumentsBase):
 
         if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
-                'lora does not support `freeze_parameters`, please set `--sft_type full`'
-            )
+                'lora does not support `freeze_parameters`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
-                'lora does not support `additional_trainable_parameters`, please set `--sft_type full`'
-            )
+                'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
             if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
                 assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
-                if self.deepspeed is not None and version.parse(
-                        transformers.__version__) < version.parse('4.37'):
+                if self.deepspeed is not None and version.parse(transformers.__version__) < version.parse('4.37'):
                     self.save_only_model = True
                 else:
                     self.save_only_model = False
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
-            assert self.dtype != 'fp16', (
-                "Fine-tuning with dtype=='fp16' can lead to NaN issues. "
-                'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.'
-            )
+            assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
+                                          'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.')
             if isinstance(self.additional_trainable_parameters, str):
-                self.additional_trainable_parameters = [
-                    self.additional_trainable_parameters
-                ]
+                self.additional_trainable_parameters = [self.additional_trainable_parameters]
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
             if self.save_only_model is None:
@@ -680,8 +613,7 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(
-        )
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
         if self.neftune_backend is None:
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
@@ -705,40 +637,31 @@ class SftArguments(ArgumentsBase):
                                  f'n_gpu: {torch.cuda.device_count()}, '
                                  f'local_world_size: {get_dist_setting()[3]}.')
             require_version('deepspeed')
-            if self.deepspeed.endswith('.json') or os.path.isfile(
-                    self.deepspeed):
+            if self.deepspeed.endswith('.json') or os.path.isfile(self.deepspeed):
                 with open(self.deepspeed, 'r', encoding='utf-8') as f:
                     self.deepspeed = json.load(f)
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
         if self.gradient_accumulation_steps is None:
-            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size
-                                                         / world_size)
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         if 'dataloader_num_workers' in template_info:
-            self.dataloader_num_workers = template_info[
-                'dataloader_num_workers']
-            logger.info(
-                f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}'
-            )
+            self.dataloader_num_workers = template_info['dataloader_num_workers']
+            logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
         if 'dataloader_pin_memory' in template_info:
             self.dataloader_pin_memory = template_info['dataloader_pin_memory']
-            logger.info(
-                f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}'
-            )
+            logger.info(f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}')
         if 'qwen-audio' in self.model_type:
             assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
         model_info = MODEL_MAPPING[self.model_type]
-        support_gradient_checkpointing = model_info.get(
-            'support_gradient_checkpointing', True)
+        support_gradient_checkpointing = model_info.get('support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
-            logger.warning(
-                f'{self.model_type} not support gradient_checkpointing.')
+            logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
         self._init_training_args()
 
@@ -759,18 +682,15 @@ class SftArguments(ArgumentsBase):
     def _init_training_args(self) -> None:
         additional_saved_files = []
         if self.sft_type == 'full':
-            additional_saved_files = get_additional_saved_files(
-                self.model_type)
+            additional_saved_files = get_additional_saved_files(self.model_type)
 
         kwargs = {}
         if self.neftune_backend != 'swift':
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
-        parameters = inspect.signature(
-            Seq2SeqTrainingArguments.__init__).parameters
+        parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
         if 'include_num_input_tokens_seen' in parameters:
-            kwargs[
-                'include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+            kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
@@ -796,8 +716,7 @@ class SftArguments(ArgumentsBase):
             eval_steps=self.eval_steps,
             dataloader_num_workers=self.dataloader_num_workers,
             dataloader_pin_memory=self.dataloader_pin_memory,
-            metric_for_best_model='rouge-l'
-            if self.predict_with_generate else 'loss',
+            metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
             sortish_sampler=True,
             optim=self.optim,
@@ -854,31 +773,22 @@ class SftArguments(ArgumentsBase):
             logger.info(f'Setting args.logging_dir: {self.logging_dir}')
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = False
-            logger.info(
-                f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}'
-            )
+            logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
 
 
 @dataclass
 class InferArguments(ArgumentsBase):
     # You can specify the model by either using the model_type or model_id_or_path.
     model_type: Optional[str] = field(
-        default=None,
-        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3',
-                      'llamapro'] = 'lora'
+    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro'] = 'lora'
     template_type: str = field(
-        default='AUTO',
-        metadata={
-            'help':
-            f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"
-        })
+        default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     infer_backend: Literal['AUTO', 'vllm', 'pt'] = 'AUTO'
-    ckpt_dir: Optional[str] = field(
-        default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+    ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
@@ -887,8 +797,7 @@ class InferArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
     dataset: List[str] = field(
-        default_factory=list,
-        metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     val_dataset_sample: int = 10  # -1: all dataset
@@ -896,8 +805,7 @@ class InferArguments(ArgumentsBase):
     system: Optional[str] = None
     max_length: int = -1  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
-    check_dataset_strategy: Literal['none', 'discard', 'error',
-                                    'warning'] = 'none'
+    check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     # Chinese name and English name
@@ -945,20 +853,16 @@ class InferArguments(ArgumentsBase):
     model_cache_dir: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(
-                self.ckpt_dir):
-            logger.warning(
-                f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
-                'the dir contains a `configuration.json` file.')
+        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
+            logger.warning(f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
+                           'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
         self._register_custom()
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
-            logger.info(
-                'Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.'
-            )
+            logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')
         if self.load_args_from_ckpt_dir:
             self.load_from_ckpt_dir()
         else:
@@ -980,8 +884,7 @@ class InferArguments(ArgumentsBase):
                 'Please provide the dataset or set `--load_dataset_config true`.'
             )
 
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(
-        )
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
         if self.max_length == -1:
             self.max_length = None
@@ -990,9 +893,7 @@ class InferArguments(ArgumentsBase):
                 self.overwrite_generation_config = False
             else:
                 self.overwrite_generation_config = True
-            logger.info(
-                f'Setting overwrite_generation_config: {self.overwrite_generation_config}'
-            )
+            logger.info(f'Setting overwrite_generation_config: {self.overwrite_generation_config}')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
 
@@ -1023,8 +924,7 @@ class InferArguments(ArgumentsBase):
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
-                if ((self.sft_type == 'full'
-                     or self.sft_type == 'lora' and self.merge_lora)
+                if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
                 if self.vllm_enable_lora:
@@ -1035,9 +935,8 @@ class InferArguments(ArgumentsBase):
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora' and not self.vllm_enable_lora:
-                assert self.merge_lora is True, (
-                    'To use VLLM, you need to provide the complete weight parameters. '
-                    'Please set `--merge_lora true`.')
+                assert self.merge_lora is True, ('To use VLLM, you need to provide the complete weight parameters. '
+                                                 'Please set `--merge_lora true`.')
             if self.vllm_enable_lora:
                 self.vllm_lora_modules.append(f'default-lora={self.ckpt_dir}')
                 self.vllm_lora_request_list = self._parse_vllm_lora_modules(
@@ -1061,9 +960,8 @@ class InferArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type',
-            'system', 'quantization_bit', 'bnb_4bit_comp_dtype',
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quantization_bit',
+            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
         ]
         if self.load_dataset_config:
             imported_keys += [
@@ -1073,10 +971,8 @@ class InferArguments(ArgumentsBase):
                 'model_name', 'model_author'
             ]
         for key in imported_keys:
-            if (key in {
-                    'dataset', 'custom_train_dataset_path',
-                    'custom_val_dataset_path'
-            } and len(getattr(self, key)) > 0):
+            if (key in {'dataset', 'custom_train_dataset_path', 'custom_val_dataset_path'}
+                    and len(getattr(self, key)) > 0):
                 continue
             setattr(self, key, sft_args.get(key))
 
@@ -1117,8 +1013,7 @@ class DeployArguments(InferArguments):
         model_info = MODEL_MAPPING[self.model_type]
         tags = model_info.get('tags', [])
         if 'multi-modal' in tags:
-            raise ValueError(
-                'Deployment of multimodal models is currently not supported.')
+            raise ValueError('Deployment of multimodal models is currently not supported.')
 
 
 @dataclass
@@ -1132,8 +1027,7 @@ class EvalArguments(InferArguments):
 
     eval_is_chat_model: bool = None
 
-    eval_dataset: List[str] = field(
-        default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
+    eval_dataset: List[str] = field(default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
 
     eval_few_shot: Optional[int] = None
 
@@ -1180,11 +1074,7 @@ class ExportArguments(InferArguments):
     hub_model_id: Optional[str] = None
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
-        default=None,
-        metadata={
-            'help':
-            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
-        })
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
     commit_message: str = 'update files'
 
@@ -1214,8 +1104,7 @@ class ExportArguments(InferArguments):
 class DPOArguments(SftArguments):
 
     ref_model_type: Optional[str] = field(
-        default=None,
-        metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
     ref_model_id_or_path: Optional[str] = None
 
@@ -1229,12 +1118,8 @@ class DPOArguments(SftArguments):
 @dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The rome request file, please check the documentation '
-            'to get the format'
-        })
+        default=None, metadata={'help': 'The rome request file, please check the documentation '
+                                'to get the format'})
 
     def __post_init__(self) -> None:
         self.handle_compatibility()
@@ -1257,8 +1142,7 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     if 'default' in os.listdir(lora_checkpoint_path):  # swift_backend
         new_lora_checkpoint_path = f'{lora_checkpoint_path}-peft'
-        Swift.save_to_peft_format(lora_checkpoint_path,
-                                  new_lora_checkpoint_path)
+        Swift.save_to_peft_format(lora_checkpoint_path, new_lora_checkpoint_path)
         lora_checkpoint_path = new_lora_checkpoint_path
         logger.info('Converting the swift format checkpoint to peft format, '
                     f"and saving it to: '{new_lora_checkpoint_path}'")

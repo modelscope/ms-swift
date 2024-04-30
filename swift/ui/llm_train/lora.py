@@ -23,10 +23,8 @@ class LoRA(BaseUI):
                 'en': 'LoRA target modules'
             },
             'info': {
-                'zh':
-                '设置LoRA目标模块，如训练所有Linear请改为ALL',
-                'en':
-                'Set the LoRA target modules, fill in ALL if train all Linears'
+                'zh': '设置LoRA目标模块，如训练所有Linear请改为ALL',
+                'en': 'Set the LoRA target modules, fill in ALL if train all Linears'
             }
         },
         'lora_rank': {
@@ -82,24 +80,10 @@ class LoRA(BaseUI):
         with gr.Accordion(elem_id='lora_tab', open=True):
             with gr.Blocks():
                 with gr.Row():
-                    lora_target_modules = gr.Textbox(
-                        elem_id='lora_target_modules',
-                        lines=1,
-                        scale=20,
-                        is_list=True)
+                    lora_target_modules = gr.Textbox(elem_id='lora_target_modules', lines=1, scale=20, is_list=True)
                 with gr.Row():
-                    gr.Slider(
-                        elem_id='lora_rank',
-                        value=32,
-                        minimum=1,
-                        maximum=512,
-                        step=8)
-                    gr.Slider(
-                        elem_id='lora_alpha',
-                        value=8,
-                        minimum=1,
-                        maximum=512,
-                        step=8)
+                    gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8)
+                    gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8)
                     gr.Dropdown(elem_id='lora_dtype')
                     gr.Textbox(elem_id='lora_lr_ratio')
                     gr.Checkbox(elem_id='use_rslora')
@@ -108,11 +92,8 @@ class LoRA(BaseUI):
 
             def update_lora(choice):
                 if choice is not None:
-                    return ' '.join(
-                        MODEL_MAPPING[choice]['lora_target_modules'])
+                    return ' '.join(MODEL_MAPPING[choice]['lora_target_modules'])
                 return None
 
             base_tab.element('model_type').change(
-                update_lora,
-                inputs=[base_tab.element('model_type')],
-                outputs=[lora_target_modules])
+                update_lora, inputs=[base_tab.element('model_type')], outputs=[lora_target_modules])

@@ -36,14 +36,11 @@ def compute_u(
         track='in',
         batch_first=batch_first,
     )
-    if 'subject_' in hparams.fact_token and hparams.fact_token.index(
-            'subject_') == 0:
+    if 'subject_' in hparams.fact_token and hparams.fact_token.index('subject_') == 0:
         word = request['subject']
         logger.info(f'Selected u projection object {word}')
         cur_repr = get_reprs_at_word_tokens(
-            context_templates=[
-                templ.format(request['prompt']) for templ in context_templates
-            ],
+            context_templates=[templ.format(request['prompt']) for templ in context_templates],
             words=[word for _ in range(len(context_templates))],
             subtoken=hparams.fact_token[len('subject_'):],
             **word_repr_args,
@@ -53,10 +50,7 @@ def compute_u(
         # edge case (e.g. multi-token word) because the function below will
         # take the last token.
         cur_repr = get_reprs_at_idxs(
-            contexts=[
-                templ.format(request['prompt'].format(request['subject']))
-                for templ in context_templates
-            ],
+            contexts=[templ.format(request['prompt'].format(request['subject'])) for templ in context_templates],
             idxs=[[-1] for _ in range(len(context_templates))],
             **word_repr_args,
         ).mean(0)

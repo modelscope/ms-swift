@@ -3,30 +3,26 @@ import argparse
 import os
 
 import torch
-from diffusers import (ControlNetModel, StableDiffusionControlNetPipeline,
-                       UniPCMultistepScheduler)
+from diffusers import ControlNetModel, StableDiffusionControlNetPipeline, UniPCMultistepScheduler
 from diffusers.utils import load_image
 from modelscope import snapshot_download
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Simple example of a ControlNet inference.')
+    parser = argparse.ArgumentParser(description='Simple example of a ControlNet inference.')
     parser.add_argument(
         '--base_model_path',
         type=str,
         default='AI-ModelScope/stable-diffusion-v1-5',
         required=True,
-        help=
-        'Path to pretrained model or model identifier from modelscope.cn/models.',
+        help='Path to pretrained model or model identifier from modelscope.cn/models.',
     )
     parser.add_argument(
         '--revision',
         type=str,
         default=None,
         required=False,
-        help=
-        'Revision of pretrained model identifier from modelscope.cn/models.',
+        help='Revision of pretrained model identifier from modelscope.cn/models.',
     )
     parser.add_argument(
         '--controlnet_path',
@@ -40,8 +36,7 @@ def parse_args():
         type=str,
         default=None,
         required=True,
-        help=
-        'The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`',
+        help='The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`',
     )
     parser.add_argument(
         '--control_image_path',
@@ -62,30 +57,24 @@ def parse_args():
         type=str,
         default=None,
         choices=['no', 'fp16', 'bf16'],
-        help=
-        ('Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >='
-         ' 1.10.and an Nvidia Ampere GPU.  Default to the value of the'
-         ' mixed_precision passed with the `accelerate.launch` command in training script.'
-         ),
+        help=('Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >='
+              ' 1.10.and an Nvidia Ampere GPU.  Default to the value of the'
+              ' mixed_precision passed with the `accelerate.launch` command in training script.'),
     )
-    parser.add_argument(
-        '--seed', type=int, default=None, help='A seed for inference.')
+    parser.add_argument('--seed', type=int, default=None, help='A seed for inference.')
     parser.add_argument(
         '--num_inference_steps',
         type=int,
         default=20,
-        help=
-        ('The number of denoising steps. More denoising steps usually lead to a higher quality image at the \
+        help=('The number of denoising steps. More denoising steps usually lead to a higher quality image at the \
                 expense of slower inference.'),
     )
     parser.add_argument(
         '--guidance_scale',
         type=float,
         default=7.5,
-        help=
-        ('A higher guidance scale value encourages the model to generate images closely linked to the text \
-                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.'
-         ),
+        help=('A higher guidance scale value encourages the model to generate images closely linked to the text \
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.'),
     )
 
     args = parser.parse_args()
@@ -98,8 +87,7 @@ def main():
     if os.path.exists(args.base_model_path):
         base_model_path = args.base_model_path
     else:
-        base_model_path = snapshot_download(
-            args.base_model_path, revision=args.revision)
+        base_model_path = snapshot_download(args.base_model_path, revision=args.revision)
 
     if args.torch_dtype == 'fp16':
         torch_dtype = torch.float16
@@ -108,8 +96,7 @@ def main():
     else:
         torch_dtype = torch.float32
 
-    controlnet = ControlNetModel.from_pretrained(
-        args.controlnet_path, torch_dtype=torch_dtype)
+    controlnet = ControlNetModel.from_pretrained(args.controlnet_path, torch_dtype=torch_dtype)
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
         base_model_path, controlnet=controlnet, torch_dtype=torch_dtype)
 
@@ -124,8 +111,5 @@ def main():
     # generate image
     generator = torch.manual_seed(args.seed)
     image = pipe(
-        args.prompt,
-        num_inference_steps=args.num_inference_steps,
-        generator=generator,
-        image=control_image).images[0]
+        args.prompt, num_inference_steps=args.num_inference_steps, generator=generator, image=control_image).images[0]
     image.save(args.image_save_path)

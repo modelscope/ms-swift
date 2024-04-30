@@ -10,15 +10,11 @@ _T = TypeVar('_T')
 NoneType = type(None)
 
 
-def get_main(
-    args_class: Type[_TArgsClass], llm_x: Callable[[_TArgsClass], _T]
-) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
+def get_main(args_class: Type[_TArgsClass],
+             llm_x: Callable[[_TArgsClass], _T]) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
 
-    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None,
-               **kwargs) -> _T:
-        logger.info(
-            f'Start time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}'
-        )
+    def x_main(argv: Union[List[str], _TArgsClass, NoneType] = None, **kwargs) -> _T:
+        logger.info(f'Start time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         if not isinstance(argv, (list, tuple, NoneType)):
             args, remaining_argv = argv, []
         else:
@@ -29,9 +25,7 @@ def get_main(
             else:
                 raise ValueError(f'remaining_argv: {remaining_argv}')
         result = llm_x(args, **kwargs)
-        logger.info(
-            f'End time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}'
-        )
+        logger.info(f'End time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         return result
 
     return x_main

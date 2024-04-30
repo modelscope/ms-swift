@@ -5,10 +5,9 @@ from modelscope import GenerationConfig
 
 from swift.tuners import Swift
 from swift.tuners.rome import RomeConfig
-from swift.utils import (get_logger, get_main, get_model_info, seed_everything,
-                         show_layers)
-from .utils import (RomeArguments, Template, get_dataset, get_model_tokenizer,
-                    get_template, inference, set_generation_config)
+from swift.utils import get_logger, get_main, get_model_info, seed_everything, show_layers
+from .utils import (RomeArguments, Template, get_dataset, get_model_tokenizer, get_template, inference,
+                    set_generation_config)
 
 logger = get_logger()
 
@@ -16,16 +15,13 @@ logger = get_logger()
 def rome_infer(args: RomeArguments) -> None:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
-    logger.info(
-        'Rome does not support quantization for now, all quantization args will be ignored.'
-    )
+    logger.info('Rome does not support quantization for now, all quantization args will be ignored.')
     logger.info(f'device_count: {torch.cuda.device_count()}')
 
     # Loading Model and Tokenizer
     model_kwargs = {'low_cpu_mem_usage': True, 'device_map': 'auto'}
     kwargs = {'use_flash_attn': args.use_flash_attn}
-    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype,
-                                           model_kwargs, **kwargs)
+    model, tokenizer = get_model_tokenizer(args.model_type, args.torch_dtype, model_kwargs, **kwargs)
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -46,12 +42,10 @@ def rome_infer(args: RomeArguments) -> None:
         request = json.load(f)
 
     rome_type: str = None
-    if args.model_type in ('llama2-13b-chat', 'llama2-13b', 'llama-13b-chat',
-                           'llama-13b'):
+    if args.model_type in ('llama2-13b-chat', 'llama2-13b', 'llama-13b-chat', 'llama-13b'):
         rome_type = 'llama-13b'
         batch_first = True
-    elif args.model_type in ('llama2-7b-chat', 'llama2-7b', 'llama-7b-chat',
-                             'llama-7b'):
+    elif args.model_type in ('llama2-7b-chat', 'llama2-7b', 'llama-7b-chat', 'llama-7b'):
         rome_type = 'llama-7b'
         batch_first = True
     elif 'chatglm' in args.model_type and '6b' in args.model_type:
@@ -70,8 +64,7 @@ def rome_infer(args: RomeArguments) -> None:
     logger.info(get_model_info(model))
 
     # Inference
-    template: Template = get_template(args.template_type, tokenizer,
-                                      args.system, args.max_length,
+    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
                                       args.truncation_strategy)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
@@ -82,10 +75,8 @@ def rome_infer(args: RomeArguments) -> None:
             query = input('<<< ')
             inference(model, template, query, stream=args.stream, verbose=True)
     else:
-        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio,
-                                     args.dataset_seed)
-        mini_val_dataset = val_dataset.select(
-            range(min(args.val_dataset_sample, val_dataset.shape[0])))
+        _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, args.dataset_seed)
+        mini_val_dataset = val_dataset.select(range(min(args.val_dataset_sample, val_dataset.shape[0])))
         for data in mini_val_dataset:
             inference(
                 model,

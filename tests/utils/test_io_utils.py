@@ -3,8 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from swift.utils import (append_to_jsonl, get_logger, read_from_jsonl,
-                         write_to_jsonl)
+from swift.utils import append_to_jsonl, get_logger, read_from_jsonl, write_to_jsonl
 
 logger = get_logger()
 
