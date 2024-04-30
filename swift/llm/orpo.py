@@ -7,6 +7,7 @@ import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import is_torch_npu_available
 
 from swift.trainers.orpo_trainers import ORPOTrainer
 from swift.utils import (check_json_format, get_dist_setting, get_logger, get_main, get_model_info, is_ddp_plus_mp,
@@ -18,23 +19,33 @@ from .utils import (ORPOArguments, Template, get_dataset, get_model_tokenizer, g
 logger = get_logger()
 
 
-def llm_dpo(args: ORPOArguments) -> str:
+def llm_orpo(args: ORPOArguments) -> str:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
-    print(f'device_count: {torch.cuda.device_count()}')
+    if is_torch_npu_available():
+        print(f'device_count: {torch.npu.device_count()}')
+    else:
+        print(f'device_count: {torch.cuda.device_count()}')
     rank, local_rank, world_size, local_world_size = get_dist_setting()
     print(f'rank: {rank}, local_rank: {local_rank}, ' f'world_size: {world_size}, local_world_size: {local_world_size}')
+
+    if args.gpu_memory_fraction is not None:
+        for device_id in range(torch.cuda.device_count()):
+            torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
     # Loading Model and Tokenizer
     if is_deepspeed_zero3_enabled():
         model_kwargs = {'device_map': None}
+    elif is_torch_npu_available():
+        model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
             model_kwargs['device_map'] = {'': local_rank}
         else:
             model_kwargs['device_map'] = 'auto'
+
     if args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
@@ -59,16 +70,6 @@ def llm_dpo(args: ORPOArguments) -> str:
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
         **kwargs)
-    if args.ref_model_type is not None:
-        ref_model, _ = get_model_tokenizer(
-            args.ref_model_type,
-            args.torch_dtype,
-            model_kwargs,
-            model_id_or_path=args.ref_model_id_or_path,
-            revision=args.model_revision,
-            **kwargs)
-    else:
-        ref_model = None
 
     logger.info(f'model_config: {model.config}')
     if hasattr(model, 'hf_device_map'):
@@ -142,7 +143,6 @@ def llm_dpo(args: ORPOArguments) -> str:
         beta=args.beta,
         label_smoothing=args.label_smoothing,
         loss_type=args.loss_type,
-        ref_model=ref_model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
@@ -169,9 +169,10 @@ def llm_dpo(args: ORPOArguments) -> str:
     train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master():
-        images_dir = os.path.join(args.output_dir, 'images')
-        logger.info(f'images_dir: {images_dir}')
-        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
+        if 'tensorboard' in args.training_args.report_to:
+            images_dir = os.path.join(args.output_dir, 'images')
+            logger.info(f'images_dir: {images_dir}')
+            plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
             trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
@@ -192,4 +193,4 @@ def llm_dpo(args: ORPOArguments) -> str:
     return run_info
 
 
-dpo_main = get_main(DPOArguments, llm_dpo)
+orpo_main = get_main(ORPOArguments, llm_orpo)
