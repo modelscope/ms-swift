@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -8,6 +8,8 @@ from trl import ORPOTrainer as HFORPOTrainer
 from swift.llm.utils.template import Context, Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
+from .callback import (DefaultFlowCallbackNew, PrinterCallbackNew,
+                       ProgressCallbackNew)
 from .dpo_trainers import DPOTrainer
 from .mixin import PushToMsHubMixin, SwiftMixin
 
@@ -92,6 +94,116 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         return res_context_list, feature['response'], feature[
             'rejected_response'], compute_loss_idx
 
+    def build_tokenized_answer(self, answer):
+        tgt_input_ids = self.template._encode_context_list([answer], [1.0])[0]
+        tgt_input_ids += self.template._encode_context_list(
+            self.template.suffix, [1.0])[0]
+        return dict(
+            input_ids=tgt_input_ids,
+            attention_mask=[1] * len(tgt_input_ids),
+        )
+
+    def tokenize_row(self,
+                     feature,
+                     model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
+        batch = {}
+        if not self.is_encoder_decoder:
+            prompt, chosen, rejected, loss_scale = self.concat_template(
+                feature)
+
+            prompt_tokens, _, _, _ = self.template._encode_context_list(
+                prompt, loss_scale)
+            prompt_tokens = {
+                'input_ids': prompt_tokens,
+                'attention_mask': [1] * len(prompt_tokens),
+            }
+            prompt_tokens = {
+                f'prompt_{k}': v
+                for k, v in prompt_tokens.items()
+            }
+
+            if not isinstance(chosen, str):
+                raise ValueError(
+                    f'chosen should be an str but got {type(chosen)}')
+            chosen_tokens = self.build_tokenized_answer(chosen)
+            # Avoid tokenizing the prompt repeatedly.
+            chosen_tokens.update(prompt_tokens)
+
+            if not isinstance(rejected, str):
+                raise ValueError(
+                    f'rejected should be an str but got {type(rejected)}')
+            rejected_tokens = self.build_tokenized_answer(rejected)
+            rejected_tokens.update(prompt_tokens)
+
+            longer_response_length = max(
+                len(chosen_tokens['input_ids']),
+                len(rejected_tokens['input_ids']))
+
+            # if combined sequence is too long, truncate the prompt
+            for answer_tokens in [
+                    chosen_tokens, rejected_tokens, prompt_tokens
+            ]:
+                if len(answer_tokens['prompt_input_ids']
+                       ) + longer_response_length > self.max_length:
+                    if self.truncation_mode == 'keep_start':
+                        for k in ['prompt_input_ids', 'prompt_attention_mask']:
+                            answer_tokens[k] = answer_tokens[
+                                k][:self.max_prompt_length]
+                    elif self.truncation_mode == 'keep_end':
+                        for k in ['prompt_input_ids', 'prompt_attention_mask']:
+                            answer_tokens[k] = answer_tokens[k][
+                                -self.max_prompt_length:]
+                    else:
+                        raise ValueError(
+                            f'Unknown truncation mode: {self.truncation_mode}')
+
+            # if that's still too long, truncate the response
+            for answer_tokens in [chosen_tokens, rejected_tokens]:
+                if len(answer_tokens['prompt_input_ids']
+                       ) + longer_response_length > self.max_length:
+                    for k in ['input_ids', 'attention_mask']:
+                        answer_tokens[k] = answer_tokens[k][:self.max_length
+                                                            - self.
+                                                            max_prompt_length]
+
+            # Create labels
+            chosen_sequence_tokens = {
+                k: chosen_tokens[f'prompt_{k}'] + chosen_tokens[k]
+                for k in ['input_ids', 'attention_mask']
+            }
+            rejected_sequence_tokens = {
+                k: rejected_tokens[f'prompt_{k}'] + rejected_tokens[k]
+                for k in ['input_ids', 'attention_mask']
+            }
+            chosen_sequence_tokens['labels'] = chosen_sequence_tokens[
+                'input_ids'][:]
+            _paddings = [self.label_pad_token_id] * len(
+                chosen_tokens['prompt_input_ids'])
+            chosen_sequence_tokens[
+                'labels'][:len(chosen_tokens['prompt_input_ids'])] = _paddings
+            rejected_sequence_tokens['labels'] = rejected_sequence_tokens[
+                'input_ids'][:]
+            _paddings = [self.label_pad_token_id] * len(
+                rejected_tokens['prompt_input_ids'])
+            rejected_sequence_tokens['labels'][:len(
+                rejected_tokens['prompt_input_ids'])] = _paddings
+
+            for k, toks in {
+                    'chosen_': chosen_sequence_tokens,
+                    'rejected_': rejected_sequence_tokens,
+                    '': prompt_tokens,
+            }.items():
+                for type_key, tokens in toks.items():
+                    if type_key == 'token_type_ids':
+                        continue
+                    batch[f'{k}{type_key}'] = tokens
+
+        else:
+            # encoder-decoder
+            batch = super().tokenize_row(feature, model)
+
+        return batch
+
     @staticmethod
     def stat_dataset(llm_dataset) -> Any:
         _token_len = []
@@ -111,3 +223,8 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
+
+
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew

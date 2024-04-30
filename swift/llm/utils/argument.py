@@ -1232,6 +1232,11 @@ class DPOArguments(SftArguments):
     loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
     sft_beta: float = 0.1
 
+@dataclass
+class ORPOArguments(SftArguments):
+    max_prompt_length: int = 1024
+    beta: float = 0.1
+    label_smoothing: float = 0.0
 
 @dataclass
 class RomeArguments(InferArguments):
