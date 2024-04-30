@@ -143,7 +143,7 @@ class ModelType:
     llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
     llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
     llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
-    # chinese-llama-alpaca-2
+    # chinese-llama-alpaca
     chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
     chinese_llama_2_7b = 'chinese-llama-2-7b'
     chinese_llama_2_7b_16k = 'chinese-llama-2-7b-16k'
@@ -156,6 +156,8 @@ class ModelType:
     chinese_alpaca_2_7b_64k = 'chinese-alpaca-2-7b-64k'
     chinese_alpaca_2_13b = 'chinese-alpaca-2-13b'
     chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
+    llama_3_chinese_8b = 'llama-3-chinese-8b'
+    llama_3_chinese_8b_instruct = 'llama-3-chinese-8b-instruct'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -2878,6 +2880,22 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='meta-llama/Meta-Llama-3-8B')
+@register_model(
+    ModelType.llama_3_chinese_8b,
+    'ChineseAlpacaGroup/llama-3-chinese-8b',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='hfl/llama-3-chinese-8b')
+@register_model(
+    ModelType.llama_3_chinese_8b_instruct,
+    'ChineseAlpacaGroup/llama-3-chinese-8b-instruct',
+    LoRATM.llama2,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='hfl/llama-3-chinese-8b-instruct')
 @register_model(
     ModelType.llama2_7b_aqlm_2bit_1x16,
     'AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf',
