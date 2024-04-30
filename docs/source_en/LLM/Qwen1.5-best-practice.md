@@ -193,8 +193,8 @@ sft_args = SftArguments(
     output_dir='output',
     lora_target_modules=['ALL'],
     self_cognition_sample=500,
-    model_name=['Xiao Huang', 'Xiao Huang'],
-    model_author=['ModelScope', 'ModelScope'])
+    model_name=['小黄', 'Xiao Huang'],
+    model_author=['魔搭', 'ModelScope'])
 output = sft_main(sft_args)
 best_model_checkpoint = output['best_model_checkpoint']
 print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -220,8 +220,8 @@ swift sft \
     --output_dir output \
     --lora_target_modules ALL \
     --self_cognition_sample 500 \
-    --model_name Xiao Huang 'Xiao Huang' \
-    --model_author ModelScope ModelScope \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
 ```
 
 script for distributed training using **zero2**:
@@ -495,8 +495,8 @@ swift sft \
     --output_dir output \
     --lora_target_modules ALL \
     --self_cognition_sample 500 \
-    --model_name Xiao Huang 'Xiao Huang' \
-    --model_author ModelScope ModelScope \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
     --deepspeed default-zero3 \
 ```
 
