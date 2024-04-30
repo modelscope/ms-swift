@@ -31,4 +31,3 @@ python llm_sft.py \
     --save_total_limit 2 \
     --logging_steps 10 \
     --use_flash_attn true \
-    --save_only_model true \

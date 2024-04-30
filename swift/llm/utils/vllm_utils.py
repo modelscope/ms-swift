@@ -47,7 +47,8 @@ def get_vllm_engine(model_type: str,
         load_model=False,
         model_id_or_path=model_id_or_path,
         model_dir=model_dir,
-        revision=revision)[1]
+        revision=revision,
+        download_model=True)[1]
     model_dir = tokenizer.model_dir
 
     if engine_kwargs is None:

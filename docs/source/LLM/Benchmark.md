@@ -725,6 +725,14 @@ swift sft \
 |lora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.95(87543 samples/91974.29 seconds)|18.11(2415 tokens/133.32 seconds)|0.53|1.01|0.462|0.676|0.304|
 |qwen-7b-chat-eval|qwen-7b-chat|None|0.0|None||None(None)||||None||30.81(13765 tokens/446.83 seconds)|||**0.517**|0.679|0.568|
 |rslora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=True/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.94(87543 samples/92758.63 seconds)|18.87(2762 tokens/146.34 seconds)|**0.53**|0.99|0.451|0.679|0.339|
+| full+lisa_2          | qwen-7b-chat | ms-agent | 2.0                | full     | lisa_activated_layers=2/lisa_step_interval=20                | -                    | True       | True                   | lr=5e-05/epoch=2 | 31.11GiB | 2.66(76837 samples/28881.28 seconds)  | 36.10(134469 tokens/3725.21 seconds) | 0.62       | 1.06      | 0.349              | 0.653            | 0.592              |
+| full+lisa_4          | qwen-7b-chat | ms-agent | 2.0                | full     | lisa_activated_layers=4/lisa_step_interval=20                | -                    | True       | True                   | lr=5e-05/epoch=2 | 31.87GiB | 2.63(76837 samples/29215.15 seconds)  | 36.75(135477 tokens/3686.17 seconds) | 0.63       | 1.06      | 0.377              | 0.656            | **0.607**          |
+
+## unsloth
+
+| exp_name        | model_type         | dataset  | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers           | memory   | train speed(samples/s)               | infer speed(tokens/s)                 | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
+| --------------- | ------------------ | -------- | ------------------ | ----- | ------------ | ------------------- | ---------- | ---------------------- | ---------------- | -------- | ------------------------------------ | ------------------------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |
+| unsloth+lora+q4 | llama3-8b-instruct | ms-agent | 2.0                | lora  |              | 4.7186(0.1038%)     | True       | True                   | lr=5e-05/epoch=2 | 21.69GiB | 1.76(76839 samples/43763.01 seconds) | 15.22(160885 tokens/10570.90 seconds) | 0.58       | 1.03      | 0.668              | 0.755            | 0.501              |
 
 ## Export
 

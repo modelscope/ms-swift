@@ -364,14 +364,15 @@ def find_all_linears(model: Module, quantization_bit: int,
     else:
         linear_cls = [Linear]
     if 'int4' in model_type or 'int8' in model_type:
-        from bitsandbytes.nn import Linear4bit
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
             gptq_quantization_config)
-        linear_cls = [Linear4bit]
-        if AutoGPTQQuantLinear is not None:
-            linear_cls.append(AutoGPTQQuantLinear)
+        if AutoGPTQQuantLinear is None:
+            from bitsandbytes.nn import Linear4bit
+            linear_cls = [Linear4bit]
+        else:
+            linear_cls = [AutoGPTQQuantLinear]
     if 'awq' in model_type:
         from awq.modules.linear import WQLinear_GEMM
         linear_cls.append(WQLinear_GEMM)

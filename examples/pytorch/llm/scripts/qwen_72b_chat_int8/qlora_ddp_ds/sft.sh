@@ -39,4 +39,3 @@ torchrun \
     --logging_steps 10 \
     --use_flash_attn true \
     --deepspeed default-zero2 \
-    --save_only_model true \

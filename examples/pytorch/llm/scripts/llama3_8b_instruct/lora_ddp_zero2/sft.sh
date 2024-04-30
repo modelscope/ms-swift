@@ -10,7 +10,7 @@ swift sft \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type llama3 \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
@@ -35,4 +35,3 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --deepspeed default-zero2 \
-    --save_only_model true \

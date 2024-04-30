@@ -65,6 +65,7 @@ class TestRun(unittest.TestCase):
                 train_dataset_sample=200,
                 predict_with_generate=predict_with_generate,
                 dataset=[DatasetName.jd_sentiment_zh],
+                include_num_input_tokens_seen=True,
                 output_dir=output_dir,
                 gradient_checkpointing=True)
             self.assertTrue(sft_args.gradient_accumulation_steps == 8)
@@ -184,18 +185,26 @@ class TestRun(unittest.TestCase):
         ]
         mixture_dataset = val_dataset_fnames
         folder = os.path.join(os.path.dirname(__file__), 'data')
-        sft_args = SftArguments(
-            model_type='qwen-7b-chat',
-            custom_train_dataset_path=[
-                os.path.join(folder, fname) for fname in train_dataset_fnames
-            ],
-            train_dataset_mix_ds=[
-                os.path.join(folder, fname) for fname in mixture_dataset
-            ],
-            train_dataset_mix_ratio=0.1,
-            check_dataset_strategy='warning')
-        torch.cuda.empty_cache()
-        best_model_checkpoint = sft_main(sft_args)['best_model_checkpoint']
+        resume_from_checkpoint = None
+        for num_train_epochs in [5, 10]:
+            sft_args = SftArguments(
+                model_type='qwen-7b-chat',
+                custom_train_dataset_path=[
+                    os.path.join(folder, fname)
+                    for fname in train_dataset_fnames
+                ],
+                train_dataset_mix_ds=[
+                    os.path.join(folder, fname) for fname in mixture_dataset
+                ],
+                train_dataset_mix_ratio=0.1,
+                resume_from_checkpoint=resume_from_checkpoint,
+                num_train_epochs=num_train_epochs,
+                check_dataset_strategy='warning')
+            torch.cuda.empty_cache()
+            result = sft_main(sft_args)
+            best_model_checkpoint = result['best_model_checkpoint']
+            resume_from_checkpoint = result['last_model_checkpoint']
+
         for load_args_from_ckpt_dir in [True, False]:
             kwargs = {}
             if load_args_from_ckpt_dir is False:

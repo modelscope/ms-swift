@@ -1,17 +1,18 @@
-# Experimental environment: V100, A10, 3090
-# 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 \
+# Experimental environment: 4*A100
+# 4*75GB GPU memory
+nproc_per_node=4
+CUDA_VISIBLE_DEVICES=0,1,2,3\
+NPROC_PER_NODE=$nproc_per_node \
 swift sft \
-    --model_id_or_path qwen/Qwen-14B-Chat-Int8 \
-    --model_revision master \
+    --model_type qwen1half-110b-chat \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type AUTO \
-    --dtype fp16 \
+    --dtype AUTO \
     --output_dir output \
-    --dataset blossom-math-zh \
+    --ddp_backend nccl \
+    --dataset alpaca-zh \
     --train_dataset_sample -1 \
-    --num_train_epochs 1 \
+    --num_train_epochs 2 \
     --max_length 2048 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
@@ -22,11 +23,12 @@ swift sft \
     --batch_size 1 \
     --weight_decay 0.1 \
     --learning_rate 1e-4 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --max_grad_norm 0.5 \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --use_flash_attn false \
+    --use_flash_attn true \
+    --deepspeed default-zero3
