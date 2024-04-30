@@ -148,7 +148,8 @@ def llm_orpo(args: ORPOArguments) -> str:
         training_args.padding_value = None
     if not hasattr(training_args, 'dataset_num_proc'):
         training_args.dataset_num_proc = None
-
+    if not hasattr(training_args, 'label_pad_token_id'):
+        training_args.label_pad_token_id = -100
     training_args.max_length = args.max_length
     training_args.max_prompt_length = args.max_prompt_length
     training_args.beta = args.beta
