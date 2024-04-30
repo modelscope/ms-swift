@@ -75,7 +75,7 @@ def write_dataset_info() -> None:
                 train_size, val_size, stat_str = ignore_dataset[
                     dataset_name].split('|')[4:7]
             else:
-                train_dataset, val_dataset = get_dataset([f'{dataset_name}'])
+                train_dataset, val_dataset = get_dataset([dataset_name])
                 train_size = len(train_dataset)
                 val_size = 0 if val_dataset is None else len(val_dataset)
 
