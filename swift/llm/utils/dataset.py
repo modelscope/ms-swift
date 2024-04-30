@@ -65,10 +65,13 @@ class DatasetName:
     wikipedia_zh = 'wikipedia-zh'
     open_orca = 'open-orca'
     open_orca_gpt4 = 'open-orca-gpt4'
+    open_orca_chinese = 'open-orca-chinese'
     sharegpt_gpt4 = 'sharegpt-gpt4'
     sharegpt_gpt4_mini = 'sharegpt-gpt4-mini'
     deepctrl_sft_zh = 'deepctrl-sft-zh'
     deepctrl_sft_en = 'deepctrl-sft-en'
+    chinese_c4 = 'chinese-c4'
+    guanaco_belle_merge = 'guanaco-belle-merge'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric_default = 'ms-agent-for-agentfabric-default'
@@ -132,7 +135,7 @@ class DatasetName:
     aishell1_zh = 'aishell1-zh'
     aishell1_mini_zh = 'aishell1-mini-zh'
 
-    # dpo/hfrl dataset
+    # dpo/rlhf dataset
     hh_rlhf_harmless_base = 'hh-rlhf-harmless-base'
     hh_rlhf_helpful_base = 'hh-rlhf-helpful-base'
     hh_rlhf_helpful_online = 'hh-rlhf-helpful-online'
@@ -144,6 +147,7 @@ class DatasetName:
     hh_rlhf_cn_harmless_base_en = 'hh-rlhf-cn-harmless-base-en'
     hh_rlhf_cn_helpful_base_en = 'hh-rlhf-cn-helpful-base-en'
     stack_exchange_paired = 'stack-exchange-paired'
+    zhihu_rlhf = 'zhihu-rlhf'
 
     # for awq
     pileval = 'pileval'
@@ -854,7 +858,7 @@ register_dataset(
         'response_k': 'rejected_response',
     }),
     get_dataset_from_repo,
-    tags=['hfrl', 'dpo', 'pairwise'])
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 
 def process_hh_rlhf(dataset):
@@ -1058,6 +1062,58 @@ register_dataset(
     process_hh_rlhf_cn,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
+
+
+register_dataset(
+    DatasetName.zhihu_rlhf,
+    'AI-ModelScope/zhihu_rlhf_3k', [('default', 'train')], [],
+    RenameColumnsPreprocessor(
+        {
+            'prompt': 'query',
+            'chosen': 'response',
+            'rejected': 'rejected_response',
+        }
+    ),
+    get_dataset_from_repo,
+    hf_dataset_id='liyucheng/zhihu_rlhf_3k',
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+
+register_dataset(
+    DatasetName.chinese_c4,
+    'AI-ModelScope/chinese-c4', [('default', 'train')],
+    [],
+    RenameColumnsPreprocessor({
+        'text': 'response',
+    }),
+    get_dataset_from_repo,
+    hf_dataset_id='shjwudp/chinese-c4',
+    tags=['pretrain', 'common'])
+
+
+register_dataset(
+    DatasetName.open_orca_chinese,
+    'AI-ModelScope/OpenOrca-Chinese', [('default', 'train')],
+    [],
+    RenameColumnsPreprocessor({
+        'system_prompt': 'system',
+        'question': 'query',
+        'response': 'response',
+    }),
+    get_dataset_from_repo,
+    hf_dataset_id='yys/OpenOrca-Chinese',
+    tags=['pretrain', 'common'])
+
+
+register_dataset(
+    DatasetName.guanaco_belle_merge,
+    'AI-ModelScope/guanaco_belle_merge_v1.0', [('default', 'train')],
+    [],
+    SmartPreprocessor(),
+    get_dataset_from_repo,
+    hf_dataset_id='Chinese-Vicuna/guanaco_belle_merge_v1.0',
+    tags=['pretrain', 'common'])
+
 
 register_dataset(
     DatasetName.medical_zh,
