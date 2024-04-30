@@ -79,20 +79,14 @@ class Trace(contextlib.AbstractContextManager):
                     retain_grad=False,
                 )  # retain_grad applies to output only.
             if edit_output:
-                output = invoke_with_optional_args(
-                    edit_output, output=output, layer=self.layer)
+                output = invoke_with_optional_args(edit_output, output=output, layer=self.layer)
             if retain_output:
-                retainer.output = recursive_copy(
-                    output,
-                    clone=clone,
-                    detach=detach,
-                    retain_grad=retain_grad)
+                retainer.output = recursive_copy(output, clone=clone, detach=detach, retain_grad=retain_grad)
                 # When retain_grad is set, also insert a trivial
                 # copy operation.  That allows in-place operations
                 # to follow without error.
                 if retain_grad:
-                    output = recursive_copy(
-                        retainer.output, clone=True, detach=False)
+                    output = recursive_copy(retainer.output, clone=True, detach=False)
             if stop:
                 raise StopForward()
             return output
@@ -248,14 +242,12 @@ def subsequence(
     and their parameters without copying them.  Otherwise, by default,
     makes a separate brand-new copy.
     """
-    assert (single_layer is None) or (first_layer is last_layer is after_layer
-                                      is upto_layer is None)
+    assert (single_layer is None) or (first_layer is last_layer is after_layer is upto_layer is None)
     if single_layer is not None:
         first_layer = single_layer
         last_layer = single_layer
     first, last, after, upto = [
-        None if d is None else d.split('.')
-        for d in [first_layer, last_layer, after_layer, upto_layer]
+        None if d is None else d.split('.') for d in [first_layer, last_layer, after_layer, upto_layer]
     ]
     return hierarchical_subsequence(
         sequential,
@@ -267,13 +259,7 @@ def subsequence(
     )
 
 
-def hierarchical_subsequence(sequential,
-                             first,
-                             last,
-                             after,
-                             upto,
-                             share_weights=False,
-                             depth=0):
+def hierarchical_subsequence(sequential, first, last, after, upto, share_weights=False, depth=0):
     """
     Recursive helper for subsequence() to support descent into dotted
     layer names.  In this helper, first, last, after, and upto are
@@ -290,10 +276,8 @@ def hierarchical_subsequence(sequential,
     included_children = OrderedDict()
     # A = current level short name of A.
     # AN = full name for recursive descent if not innermost.
-    (F, FN), (L, LN), (A, AN), (U, UN) = [
-        (d[depth], (None if len(d) == depth + 1 else d)) if d is not None else
-        (None, None) for d in [first, last, after, upto]
-    ]
+    (F, FN), (L, LN), (A, AN), (U, UN) = [(d[depth], (None if len(d) == depth + 1 else d)) if d is not None else
+                                          (None, None) for d in [first, last, after, upto]]
     for name, layer in sequential._modules.items():
         if name == F:
             first = None
@@ -306,10 +290,7 @@ def hierarchical_subsequence(sequential,
             including_children = False
         if including_children:
             # AR = full name for recursive descent if name matches.
-            FR, LR, AR, UR = [
-                n if n is None or n[depth] == name else None
-                for n in [FN, LN, AN, UN]
-            ]
+            FR, LR, AR, UR = [n if n is None or n[depth] == name else None for n in [FN, LN, AN, UN]]
             chosen = hierarchical_subsequence(
                 layer,
                 first=FR,
@@ -412,8 +393,7 @@ def invoke_with_optional_args(fn, *args, **kwargs):
     used_kw = set()
     unmatched_pos = []
     used_pos = 0
-    defaulted_pos = len(
-        argspec.args) - (0 if not argspec.defaults else len(argspec.defaults))
+    defaulted_pos = len(argspec.args) - (0 if not argspec.defaults else len(argspec.defaults))
     # Pass positional args that match name first, then by position.
     for i, n in enumerate(argspec.args):
         if n in kwargs:
@@ -424,8 +404,7 @@ def invoke_with_optional_args(fn, *args, **kwargs):
             used_pos += 1
         else:
             unmatched_pos.append(len(pass_args))
-            pass_args.append(None if i < defaulted_pos else argspec.
-                             defaults[i - defaulted_pos])
+            pass_args.append(None if i < defaulted_pos else argspec.defaults[i - defaulted_pos])
     # Fill unmatched positional args with unmatched keyword args in order.
     if len(unmatched_pos):
         for k, v in kwargs.items():
@@ -438,15 +417,12 @@ def invoke_with_optional_args(fn, *args, **kwargs):
                 break
         else:
             if unmatched_pos[0] < defaulted_pos:
-                unpassed = ', '.join(argspec.args[u] for u in unmatched_pos
-                                     if u < defaulted_pos)
-                raise TypeError(
-                    f'{fn.__name__}() cannot be passed {unpassed}.')
+                unpassed = ', '.join(argspec.args[u] for u in unmatched_pos if u < defaulted_pos)
+                raise TypeError(f'{fn.__name__}() cannot be passed {unpassed}.')
     # Pass remaining kw args if they can be accepted.
     pass_kw = {
         k: v
-        for k, v in kwargs.items() if k not in used_kw and (
-            k in argspec.kwonlyargs or argspec.varargs is not None)
+        for k, v in kwargs.items() if k not in used_kw and (k in argspec.kwonlyargs or argspec.varargs is not None)
     }
     # Pass remaining positional args if they can be accepted.
     if argspec.varargs is not None:

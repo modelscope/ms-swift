@@ -13,10 +13,7 @@ logger = get_logger()
 
 def detach_tensors(feats):
     if type(feats) in [list, tuple]:
-        feats = [
-            detach_tensors(feat) if feat is not None else None
-            for feat in feats
-        ]
+        feats = [detach_tensors(feat) if feat is not None else None for feat in feats]
     elif isinstance(feats, dict):
         feats = {key: detach_tensors(val) for key, val in feats.items()}
     elif isinstance(feats, torch.Tensor):
@@ -62,8 +59,7 @@ def choose_weight_type(weight_type, dim):
 def get_weight_value(weight_type, scaling, x):
     if weight_type in ['gate']:
         scaling = torch.mean(torch.sigmoid(scaling(x)), dim=1).view(-1, 1, 1)
-    elif weight_type in ['scale', 'scale_channel'
-                         ] or weight_type.startswith('scalar'):
+    elif weight_type in ['scale', 'scale_channel'] or weight_type.startswith('scalar'):
         scaling = scaling
     else:
         scaling = None

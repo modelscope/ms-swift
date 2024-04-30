@@ -7,9 +7,7 @@ from swift.utils.utils import split_str_parts_by
 logger = get_logger()
 
 
-def calculate_loss_scale(response: str,
-                         use_loss_scale=False
-                         ) -> Tuple[List[str], List[float]]:
+def calculate_loss_scale(response: str, use_loss_scale=False) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 
     This algorithm comes from paper: https://arxiv.org/pdf/2309.00986.pdf
@@ -35,10 +33,7 @@ def calculate_loss_scale(response: str,
         A tuple of agent response parts and their weights.
     """
     if 'Action:' in response and 'Observation:' in response and use_loss_scale:
-        agent_keyword = [
-            'Action:', 'Action Input:', 'Thought:', 'Final Answer:',
-            'Observation:'
-        ]
+        agent_keyword = ['Action:', 'Action Input:', 'Thought:', 'Final Answer:', 'Observation:']
         agent_parts = split_str_parts_by(response, agent_keyword)
         weights = []
         agent_content = []
@@ -55,8 +50,7 @@ def calculate_loss_scale(response: str,
             agent_content.append(c['key'])
             agent_content.append(c['content'])
         return agent_content, weights
-    elif ('Action:' in response
-          or 'Next:' in response) and use_loss_scale:  # alpha-umi
+    elif ('Action:' in response or 'Next:' in response) and use_loss_scale:  # alpha-umi
         agent_keyword = ['Next:', 'Action:', 'Action Input:']
         agent_parts = split_str_parts_by(response, agent_keyword)
         weights = []

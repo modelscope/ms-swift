@@ -26,8 +26,7 @@ class StableDiffusionLoraArguments(TrainingArgs):
         })
 
     lora_rank: int = field(
-        default=4,
-        metadata={
+        default=4, metadata={
             'help': 'The rank size of lora intermediate linear.',
         })
 
@@ -37,14 +36,12 @@ class StableDiffusionLoraArguments(TrainingArgs):
         })
 
     lora_dropout: float = field(
-        default=0.0,
-        metadata={
+        default=0.0, metadata={
             'help': 'The dropout rate of the lora module',
         })
 
     bias: str = field(
-        default='none',
-        metadata={
+        default='none', metadata={
             'help': 'Bias type. Values ca be "none", "all" or "lora_only"',
         })
 
@@ -59,8 +56,7 @@ class StableDiffusionLoraArguments(TrainingArgs):
         })
 
 
-training_args = StableDiffusionLoraArguments(
-    task='text-to-image-synthesis').parse_cli()
+training_args = StableDiffusionLoraArguments(task='text-to-image-synthesis').parse_cli()
 config, args = training_args.to_config()
 
 if os.path.exists(args.train_dataset_name):
@@ -69,14 +65,9 @@ if os.path.exists(args.train_dataset_name):
     validation_dataset = MsDataset.load(args.train_dataset_name)
 else:
     # Load online dataset
-    train_dataset = MsDataset.load(
-        args.train_dataset_name,
-        split='train',
-        download_mode=DownloadMode.FORCE_REDOWNLOAD)
+    train_dataset = MsDataset.load(args.train_dataset_name, split='train', download_mode=DownloadMode.FORCE_REDOWNLOAD)
     validation_dataset = MsDataset.load(
-        args.train_dataset_name,
-        split='validation',
-        download_mode=DownloadMode.FORCE_REDOWNLOAD)
+        args.train_dataset_name, split='validation', download_mode=DownloadMode.FORCE_REDOWNLOAD)
 
 
 def cfg_modify_fn(cfg):
@@ -84,26 +75,19 @@ def cfg_modify_fn(cfg):
         cfg.merge_from_dict(config)
     else:
         cfg = config
-    cfg.train.lr_scheduler = {
-        'type': 'LambdaLR',
-        'lr_lambda': lambda _: 1,
-        'last_epoch': -1
-    }
+    cfg.train.lr_scheduler = {'type': 'LambdaLR', 'lr_lambda': lambda _: 1, 'last_epoch': -1}
     return cfg
 
 
 # build models
-model = Model.from_pretrained(
-    training_args.model, revision=args.model_revision)
+model = Model.from_pretrained(training_args.model, revision=args.model_revision)
 model_dir = snapshot_download(args.model)
 lora_config = LoRAConfig(
     r=args.lora_rank,
     lora_alpha=args.lora_alpha,
     lora_dropout=args.lora_dropout,
     bias=args.bias,
-    target_modules=[
-        'to_q', 'to_k', 'to_v', 'query', 'key', 'value', 'to_out.0'
-    ])
+    target_modules=['to_q', 'to_k', 'to_v', 'query', 'key', 'value', 'to_out.0'])
 model.unet = Swift.prepare_model(model.unet, lora_config)
 
 # build trainer and training
@@ -133,8 +117,5 @@ pipe = pipeline(
     use_swift=True)
 
 for index in range(args.sample_nums):
-    image = pipe({
-        'text': args.prompt,
-        'num_inference_steps': args.num_inference_steps
-    })
+    image = pipe({'text': args.prompt, 'num_inference_steps': args.num_inference_steps})
     cv2.imwrite(f'./lora_result_{index}.png', image['output_imgs'][0])

@@ -20,9 +20,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType,
-                       SftArguments, dpo_main, infer_main, merge_lora_main,
-                       sft_main)
+from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType, SftArguments, dpo_main, infer_main,
+                       merge_lora_main, sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -47,8 +46,7 @@ class TestRun(unittest.TestCase):
             quantization_bit_list = [4]
         model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
-            if quantization_bit == 4 and version.parse(
-                    transformers.__version__) >= version.parse('4.38'):
+            if quantization_bit == 4 and version.parse(transformers.__version__) >= version.parse('4.38'):
                 continue
             predict_with_generate = True
             if quantization_bit == 0:
@@ -102,13 +100,10 @@ class TestRun(unittest.TestCase):
                 bool_var = False
             torch.cuda.empty_cache()
             output = sft_main([
-                '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5',
-                '--tuner_backend', tuner_backend, '--train_dataset_sample',
-                '200', '--dataset', DatasetName.leetcode_python_en,
-                '--output_dir', output_dir, '--gradient_checkpointing', 'true',
-                '--max_new_tokens', '100', '--use_flash_attn', 'true',
-                '--lora_target_modules', 'ALL', '--seed', '0',
-                '--lora_bias_trainable', 'all', '--lora_modules_to_save',
+                '--model_type', ModelType.qwen_7b_chat, '--eval_steps', '5', '--tuner_backend', tuner_backend,
+                '--train_dataset_sample', '200', '--dataset', DatasetName.leetcode_python_en, '--output_dir',
+                output_dir, '--gradient_checkpointing', 'true', '--max_new_tokens', '100', '--use_flash_attn', 'true',
+                '--lora_target_modules', 'ALL', '--seed', '0', '--lora_bias_trainable', 'all', '--lora_modules_to_save',
                 'EMBEDDING', 'LN', 'lm_head'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
@@ -121,8 +116,7 @@ class TestRun(unittest.TestCase):
             torch.cuda.empty_cache()
             infer_main([
                 '--ckpt_dir', best_model_checkpoint, '--show_dataset_sample',
-                str(show_dataset_sample), '--max_new_tokens', '100',
-                '--use_flash_attn', 'false', '--verbose',
+                str(show_dataset_sample), '--max_new_tokens', '100', '--use_flash_attn', 'false', '--verbose',
                 str(not bool_var), '--merge_lora_and_save',
                 str(bool_var), '--load_dataset_config',
                 str(load_dataset_config)
@@ -176,12 +170,10 @@ class TestRun(unittest.TestCase):
             # ignore citest error in github
             return
         train_dataset_fnames = [
-            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl',
-            'swift_single.csv', 'swift_multi.jsonl', 'swift_multi.json'
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl', 'swift_multi.json'
         ]
         val_dataset_fnames = [
-            'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl',
-            'swift_pre.csv', 'swift_single.jsonl'
+            'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl', 'swift_pre.csv', 'swift_single.jsonl'
         ]
         mixture_dataset = val_dataset_fnames
         folder = os.path.join(os.path.dirname(__file__), 'data')
@@ -189,13 +181,8 @@ class TestRun(unittest.TestCase):
         for num_train_epochs in [5, 10]:
             sft_args = SftArguments(
                 model_type='qwen-7b-chat',
-                custom_train_dataset_path=[
-                    os.path.join(folder, fname)
-                    for fname in train_dataset_fnames
-                ],
-                train_dataset_mix_ds=[
-                    os.path.join(folder, fname) for fname in mixture_dataset
-                ],
+                custom_train_dataset_path=[os.path.join(folder, fname) for fname in train_dataset_fnames],
+                train_dataset_mix_ds=[os.path.join(folder, fname) for fname in mixture_dataset],
                 train_dataset_mix_ratio=0.1,
                 resume_from_checkpoint=resume_from_checkpoint,
                 num_train_epochs=num_train_epochs,
@@ -215,9 +202,7 @@ class TestRun(unittest.TestCase):
                 load_dataset_config=load_args_from_ckpt_dir and NO_EVAL_HUMAN,
                 merge_lora_and_save=load_args_from_ckpt_dir,
                 val_dataset_sample=-1,
-                custom_val_dataset_path=[
-                    os.path.join(folder, fname) for fname in val_dataset_fnames
-                ],
+                custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
                 **kwargs)
             torch.cuda.empty_cache()
             infer_main(infer_args)
@@ -251,10 +236,7 @@ class TestRun(unittest.TestCase):
             if len(dataset) == 0:
                 continue
             infer_args = InferArguments(
-                ckpt_dir=ckpt_dir,
-                show_dataset_sample=2,
-                verbose=False,
-                load_dataset_config=True)
+                ckpt_dir=ckpt_dir, show_dataset_sample=2, verbose=False, load_dataset_config=True)
             # merge_lora_main(infer_args)
             torch.cuda.empty_cache()
             result = infer_main(infer_args)
@@ -278,11 +260,7 @@ class TestRun(unittest.TestCase):
                 quantization_bit=quantization_bit))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(
-            InferArguments(
-                ckpt_dir=best_model_checkpoint,
-                load_dataset_config=True,
-                val_dataset_sample=2))
+        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_xcomposer_chat(self):
         if not __name__ == '__main__':
@@ -298,11 +276,7 @@ class TestRun(unittest.TestCase):
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(
-            InferArguments(
-                ckpt_dir=best_model_checkpoint,
-                load_dataset_config=True,
-                val_dataset_sample=2))
+        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_yi_vl_6b_chat(self):
         if not __name__ == '__main__':
@@ -317,17 +291,11 @@ class TestRun(unittest.TestCase):
                 lora_target_modules='ALL',
                 train_dataset_sample=100,
                 eval_steps=5,
-                custom_train_dataset_path=[
-                    os.path.join(folder, 'multi_modal.jsonl')
-                ],
+                custom_train_dataset_path=[os.path.join(folder, 'multi_modal.jsonl')],
                 lazy_tokenize=False))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(
-            InferArguments(
-                ckpt_dir=best_model_checkpoint,
-                load_dataset_config=True,
-                val_dataset_sample=2))
+        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_dpo(self):
         if not __name__ == '__main__':
@@ -343,11 +311,7 @@ class TestRun(unittest.TestCase):
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(
-            InferArguments(
-                ckpt_dir=best_model_checkpoint,
-                load_dataset_config=True,
-                val_dataset_sample=2))
+        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_pai_compat(self):
         if not __name__ == '__main__':
@@ -406,32 +370,20 @@ class TestRun(unittest.TestCase):
                 lora_target_modules='ALL',
                 train_dataset_sample=100,
                 eval_steps=5,
-                custom_train_dataset_path=[
-                    os.path.join(folder, 'multi_modal2.jsonl')
-                ],
+                custom_train_dataset_path=[os.path.join(folder, 'multi_modal2.jsonl')],
                 lazy_tokenize=False))
 
 
-def data_collate_fn(batch: List[Dict[str, Any]],
-                    tokenizer) -> Dict[str, Tensor]:
+def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Tensor]:
     # text-classification
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
     labels = torch.tensor([b['labels'] for b in batch])
-    attention_mask = [
-        torch.ones(len(input_ids[i]), dtype=torch.int64)
-        for i in range(len(input_ids))
-    ]
+    attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
 
-    input_ids = pad_sequence(
-        input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    attention_mask = pad_sequence(
-        attention_mask, batch_first=True, padding_value=0)
-    return {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'labels': labels
-    }
+    input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+    attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
+    return {'input_ids': input_ids, 'attention_mask': attention_mask, 'labels': labels}
 
 
 class BertTrainer(Trainer):
@@ -472,10 +424,8 @@ class TestTrainer(unittest.TestCase):
         tokenizer = AutoTokenizer.from_pretrained(model_dir)
         dataset = MsDataset.load('clue', subset_name='tnews')
         num_labels = max(dataset['train']['label']) + 1
-        model = Model.from_pretrained(
-            model_dir, task='text-classification', num_labels=num_labels)
-        train_dataset, val_dataset = dataset['train'].to_hf_dataset(
-        ), dataset['validation'].to_hf_dataset()
+        model = Model.from_pretrained(model_dir, task='text-classification', num_labels=num_labels)
+        train_dataset, val_dataset = dataset['train'].to_hf_dataset(), dataset['validation'].to_hf_dataset()
         train_dataset: HfDataset = train_dataset.select(range(100))
         val_dataset: HfDataset = val_dataset.select(range(20))
 
@@ -515,8 +465,7 @@ class TestTrainer(unittest.TestCase):
                 eval_steps=10,
                 save_only_model=save_only_model)
         trainer_args._n_gpu = 1
-        trainer = BertTrainer(model, trainer_args, data_collator,
-                              train_dataset, val_dataset, tokenizer)
+        trainer = BertTrainer(model, trainer_args, data_collator, train_dataset, val_dataset, tokenizer)
         self.hub_model_id = trainer_args.hub_model_id
         trainer.train()
         if trainer_args.push_to_hub:

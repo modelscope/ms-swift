@@ -30,8 +30,7 @@ def get_reprs_at_word_tokens(
     for more details.
     """
 
-    idxs = get_words_idxs_in_templates(tokenizer, context_templates, words,
-                                       subtoken)
+    idxs = get_words_idxs_in_templates(tokenizer, context_templates, words, subtoken)
     return get_reprs_at_idxs(
         model,
         tokenizer,
@@ -44,8 +43,7 @@ def get_reprs_at_word_tokens(
     )
 
 
-def get_words_idxs_in_templates(tokenizer: AutoTokenizer,
-                                context_templates: List[str], words: List[str],
+def get_words_idxs_in_templates(tokenizer: AutoTokenizer, context_templates: List[str], words: List[str],
                                 subtoken: str) -> List:
     """
     Given list of template strings, each with *one* format specifier
@@ -53,14 +51,13 @@ def get_words_idxs_in_templates(tokenizer: AutoTokenizer,
     template, computes the post-tokenization index of their last tokens.
     """
 
-    assert all(tmp.count('{}') == 1 for tmp in context_templates
-               ), 'We currently do not support multiple fill-ins for context'
+    assert all(tmp.count('{}') == 1
+               for tmp in context_templates), 'We currently do not support multiple fill-ins for context'
 
     # Compute prefixes and suffixes of the tokenized context
     fill_idxs = [tmp.index('{}') for tmp in context_templates]
-    prefixes, suffixes = [
-        tmp[:fill_idxs[i]] for i, tmp in enumerate(context_templates)
-    ], [tmp[fill_idxs[i] + 2:] for i, tmp in enumerate(context_templates)]
+    prefixes, suffixes = [tmp[:fill_idxs[i]] for i, tmp in enumerate(context_templates)
+                          ], [tmp[fill_idxs[i] + 2:] for i, tmp in enumerate(context_templates)]
 
     lens = []
     for prefix, word, suffix in zip(prefixes, words, suffixes):
@@ -73,8 +70,7 @@ def get_words_idxs_in_templates(tokenizer: AutoTokenizer,
         if subtoken == 'last' or subtoken == 'first_after_last':
             lens.append([
                 len(prefix_word_token) -
-                (1 if subtoken == 'last' or suffix_len == 0 else 0)
-                - len(prefix_word_suffix_token)
+                (1 if subtoken == 'last' or suffix_len == 0 else 0) - len(prefix_word_suffix_token)
             ])
         elif subtoken == 'first':
             lens.append([len(prefix_token) - len(prefix_word_suffix_token)])
@@ -121,9 +117,7 @@ def get_reprs_at_idxs(
 
     for batch_contexts, batch_idxs in _batch(n=512):
         contexts_tok = tokenizer(
-            batch_contexts,
-            padding=True,
-            return_token_type_ids=False,
+            batch_contexts, padding=True, return_token_type_ids=False,
             return_tensors='pt').to(next(model.parameters()).device)
 
         with torch.no_grad():
@@ -140,10 +134,7 @@ def get_reprs_at_idxs(
         if tout:
             _process(tr.output, batch_idxs, 'out')
 
-    to_return = {
-        k: torch.stack(v, 0)
-        for k, v in to_return.items() if len(v) > 0
-    }
+    to_return = {k: torch.stack(v, 0) for k, v in to_return.items() if len(v) > 0}
 
     if len(to_return) == 1:
         return to_return['in'] if tin else to_return['out']

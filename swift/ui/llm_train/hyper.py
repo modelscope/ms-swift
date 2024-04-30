@@ -72,10 +72,8 @@ class Hyper(BaseUI):
                 'en': 'Max steps',
             },
             'info': {
-                'zh':
-                '设置最大迭代步数，该值如果大于零则数据集迭代次数不生效',
-                'en':
-                'Set the max steps, if the value > 0 then num_train_epochs has no effects',
+                'zh': '设置最大迭代步数，该值如果大于零则数据集迭代次数不生效',
+                'en': 'Set the max steps, if the value > 0 then num_train_epochs has no effects',
             }
         },
         'gradient_accumulation_steps': {
@@ -125,35 +123,14 @@ class Hyper(BaseUI):
         with gr.Accordion(elem_id='hyper_param', open=True):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Slider(
-                        elem_id='batch_size',
-                        minimum=1,
-                        maximum=256,
-                        step=2,
-                        scale=20)
-                    learning_rate = gr.Textbox(
-                        elem_id='learning_rate',
-                        value='1e-4',
-                        lines=1,
-                        scale=20)
+                    gr.Slider(elem_id='batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    learning_rate = gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
                     gr.Textbox(elem_id='max_steps', lines=1, scale=20)
-                    gr.Slider(
-                        elem_id='gradient_accumulation_steps',
-                        minimum=1,
-                        maximum=256,
-                        step=2,
-                        value=16,
-                        scale=20)
+                    gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, value=16, scale=20)
                 with gr.Row():
-                    gr.Slider(
-                        elem_id='eval_batch_size',
-                        minimum=1,
-                        maximum=256,
-                        step=2,
-                        scale=20)
-                    gr.Textbox(
-                        elem_id='eval_steps', lines=1, value='500', scale=20)
+                    gr.Slider(elem_id='eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Checkbox(elem_id='predict_with_generate', scale=20)
                     gr.Checkbox(elem_id='use_flash_attn', scale=20)
@@ -165,6 +142,4 @@ class Hyper(BaseUI):
                     return 1e-4
 
             base_tab.element('sft_type').change(
-                update_lr,
-                inputs=[base_tab.element('sft_type')],
-                outputs=[learning_rate])
+                update_lr, inputs=[base_tab.element('sft_type')], outputs=[learning_rate])

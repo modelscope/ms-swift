@@ -38,17 +38,15 @@ def _get_closet_bucket(bucket_sizes, data_length):
     return cloest_length
 
 
-def pad_and_split_batch(padding_to, input_ids, attention_mask, labels,
-                        loss_scale, max_length, tokenizer, rank, world_size):
+def pad_and_split_batch(padding_to, input_ids, attention_mask, labels, loss_scale, max_length, tokenizer, rank,
+                        world_size):
     if padding_to is None:
         longest_len = input_ids.shape[-1]
         bucket_sizes = get_bucket_sizes(max_length)
         bucket_data_length = _get_closet_bucket(bucket_sizes, longest_len)
         padding_length = bucket_data_length - input_ids.shape[1]
-        input_ids = F.pad(input_ids, (0, padding_length), 'constant',
-                          tokenizer.pad_token_id)
-        attention_mask = F.pad(attention_mask, (0, padding_length), 'constant',
-                               0)
+        input_ids = F.pad(input_ids, (0, padding_length), 'constant', tokenizer.pad_token_id)
+        attention_mask = F.pad(attention_mask, (0, padding_length), 'constant', 0)
         if loss_scale:
             loss_scale = F.pad(loss_scale, (0, padding_length), 'constant', 0.)
         labels = F.pad(labels, (0, padding_length), 'constant', -100)
@@ -66,13 +64,11 @@ def pad_and_split_batch(padding_to, input_ids, attention_mask, labels,
     return input_ids, attention_mask, labels, loss_scale
 
 
-def ta_train_dataloader(train_dataset, data_collator, sampler, args,
-                        batch_size):
+def ta_train_dataloader(train_dataset, data_collator, sampler, args, batch_size):
     # patch skip_first_batches for customized dataloader.
     def acc_skip_first_batches(dataloader, num_batches=0):
         from accelerate.data_loader import SkipBatchSampler
-        batch_sampler = SkipBatchSampler(
-            dataloader._loader.batch_sampler, skip_batches=num_batches)
+        batch_sampler = SkipBatchSampler(dataloader._loader.batch_sampler, skip_batches=num_batches)
         dataset = dataloader.dataset
         dataloader_params = {
             'collate_fn': data_collator,
@@ -85,8 +81,7 @@ def ta_train_dataloader(train_dataset, data_collator, sampler, args,
             dataloader_params['batch_sampler'] = batch_sampler
             dataloader_params['worker_init_fn'] = trainer.seed_worker
 
-        return ta.AsyncLoader(
-            DataLoader(dataset, **dataloader_params), args.device)
+        return ta.AsyncLoader(DataLoader(dataset, **dataloader_params), args.device)
 
     trainer.skip_first_batches = acc_skip_first_batches
 
@@ -106,8 +101,7 @@ def ta_train_dataloader(train_dataset, data_collator, sampler, args,
         dataloader_params['drop_last'] = args.dataloader_drop_last
         dataloader_params['worker_init_fn'] = trainer.seed_worker
 
-    return ta.AsyncLoader(
-        DataLoader(train_dataset, **dataloader_params), args.device)
+    return ta.AsyncLoader(DataLoader(train_dataset, **dataloader_params), args.device)
 
 
 def ta_eval_dataloader(eval_dataset, data_collator, sampler, args):
@@ -125,8 +119,7 @@ def ta_eval_dataloader(eval_dataset, data_collator, sampler, args):
         dataloader_params['sampler'] = sampler
         dataloader_params['drop_last'] = args.dataloader_drop_last
 
-    return ta.AsyncLoader(
-        DataLoader(eval_dataset, **dataloader_params), args.device)
+    return ta.AsyncLoader(DataLoader(eval_dataset, **dataloader_params), args.device)
 
 
 def ta_test_dataloader(test_dataset, data_collator, sampler, args):
@@ -145,8 +138,7 @@ def ta_test_dataloader(test_dataset, data_collator, sampler, args):
         dataloader_params['drop_last'] = args.dataloader_drop_last
 
     # We use the same batch_size as for eval.
-    return ta.AsyncLoader(
-        DataLoader(test_dataset, **dataloader_params), args.device)
+    return ta.AsyncLoader(DataLoader(test_dataset, **dataloader_params), args.device)
 
 
 # Save/load checkpoint
@@ -180,11 +172,9 @@ def consolidate_checkpoint(resume_from_checkpoint, model_name='adapter_model'):
             shard_dir = os.path.join(resume_from_checkpoint, f'{rank}')
             filename = os.path.join(shard_dir, f'{model_name}.safetensors')
             state_dict = load_file(filename, device='cpu')
-            state_dict = OrderedDict(('_fsdp_wrapped_module.' + k, v)
-                                     for k, v in state_dict.items())
+            state_dict = OrderedDict(('_fsdp_wrapped_module.' + k, v) for k, v in state_dict.items())
             state_dict_list.append(state_dict)
-        shard_metadata = torch.load(
-            os.path.join(model_dir, 'shard_meta.pth'), map_location='cpu')
+        shard_metadata = torch.load(os.path.join(model_dir, 'shard_meta.pth'), map_location='cpu')
     elif xm.is_master_ordinal(local=False):
         for rank in range(xm.xrt_world_size()):
             shard_dir = os.path.join(resume_from_checkpoint, f'{rank}')
@@ -193,24 +183,18 @@ def consolidate_checkpoint(resume_from_checkpoint, model_name='adapter_model'):
             else:
                 filename = os.path.join(shard_dir, 'pytorch_model.bin')
             state_dict = torch.load(filename, map_location='cpu')
-            state_dict = OrderedDict(('_fsdp_wrapped_module.' + k, v)
-                                     for k, v in state_dict.items())
+            state_dict = OrderedDict(('_fsdp_wrapped_module.' + k, v) for k, v in state_dict.items())
             state_dict_list.append(state_dict)
-        shard_metadata = torch.load(
-            os.path.join(model_dir, 'shard_meta.pth'), map_location='cpu')
+        shard_metadata = torch.load(os.path.join(model_dir, 'shard_meta.pth'), map_location='cpu')
 
     if xm.is_master_ordinal(local=False):
-        full_state_dict = consolidate_sharded_state_dicts(
-            state_dict_list, shard_metadata)
+        full_state_dict = consolidate_sharded_state_dicts(state_dict_list, shard_metadata)
         # peft will prepend "default." prefix automatically, so we remove the
         # "default." prefix to prevent the duplication of the prefix.
-        full_state_dict = OrderedDict(
-            (k.replace('default.', ''), v) for k, v in full_state_dict.items())
-        torch.save(full_state_dict,
-                   os.path.join(resume_from_checkpoint, f'{model_name}.bin'))
+        full_state_dict = OrderedDict((k.replace('default.', ''), v) for k, v in full_state_dict.items())
+        torch.save(full_state_dict, os.path.join(resume_from_checkpoint, f'{model_name}.bin'))
         if model_name == 'adapter_model':
-            config_path = os.path.join(resume_from_checkpoint,
-                                       'adapter_config.json')
+            config_path = os.path.join(resume_from_checkpoint, 'adapter_config.json')
             old_config_path = os.path.join(model_dir, 'adapter_config.json')
             os.system(f'cp {old_config_path} {config_path}')
     xm.rendezvous('ckpt_consolidation')
@@ -219,21 +203,14 @@ def consolidate_checkpoint(resume_from_checkpoint, model_name='adapter_model'):
 def ta_save_optimizer_and_scheduler(optimizer, lr_scheduler, output_dir):
     import torch_xla.core.xla_model as xm
     xm.rendezvous('saving_optimizer_states')
-    torch.save(optimizer.state_dict(),
-               os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
-    torch.save(lr_scheduler.state_dict(),
-               os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
+    torch.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
+    torch.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
 
 
-def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint,
-                                    device):
+def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint, device):
     import torch_xla.core.xla_model as xm
-    optimizer_state = torch.load(
-        os.path.join(checkpoint, f'optimizer_{xm.get_ordinal()}.pt'),
-        map_location='cpu')
-    lr_scheduler_state = torch.load(
-        os.path.join(checkpoint, f'scheduler_{xm.get_ordinal()}.pt'),
-        map_location='cpu')
+    optimizer_state = torch.load(os.path.join(checkpoint, f'optimizer_{xm.get_ordinal()}.pt'), map_location='cpu')
+    lr_scheduler_state = torch.load(os.path.join(checkpoint, f'scheduler_{xm.get_ordinal()}.pt'), map_location='cpu')
     xm.send_cpu_data_to_device(optimizer_state, device)
     xm.send_cpu_data_to_device(lr_scheduler_state, device)
 
@@ -261,18 +238,13 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
         state_dict = model.state_dict()
         _unwrap_model = unwrap_model(model)
         if isinstance(_unwrap_model, supported_classes):
-            _unwrap_model.save_pretrained(
-                out_dir, safe_serialization=save_safetensors)
+            _unwrap_model.save_pretrained(out_dir, safe_serialization=save_safetensors)
         else:
-            logger.info(
-                'Trainer.model is not a `PreTrainedModel`, only saving its state dict.'
-            )
+            logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
             if save_safetensors:
-                safetensors.torch.save_file(
-                    state_dict, os.path.join(out_dir, 'model.safetensors'))
+                safetensors.torch.save_file(state_dict, os.path.join(out_dir, 'model.safetensors'))
             else:
-                torch.save(state_dict,
-                           os.path.join(out_dir, 'pytorch_model.bin'))
+                torch.save(state_dict, os.path.join(out_dir, 'pytorch_model.bin'))
     else:
         model.save_pretrained(out_dir, safe_serialization=save_safetensors)
     # save shard_metadata for consolidation.
@@ -281,7 +253,4 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
     xm.rendezvous('saving_checkpoint_done')
 
     if tokenizer is not None and args.should_save:
-        tokenizer.save_pretrained(
-            output_dir,
-            is_main_process=xm.is_master_ordinal(local=False),
-            save_function=xm.save)
+        tokenizer.save_pretrained(output_dir, is_main_process=xm.is_master_ordinal(local=False), save_function=xm.save)

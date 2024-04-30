@@ -186,7 +186,6 @@ from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_vllm
 )
-from swift.tuners import Swift
 
 ckpt_dir = 'vx-xxx/checkpoint-100-merged'
 model_type = ModelType.qwen_7b_chat
@@ -240,7 +239,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 ## 部署
 swift使用VLLM作为推理后端, 并兼容openai的API样式.
 
-服务端的部署命令行参数可以参考: [deploy命令行参数](命令行参数.md#deploy-命令行参数).
+服务端的部署命令行参数可以参考: [deploy命令行参数](命令行参数.md#deploy-参数).
 
 客户端的openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction.
 

@@ -22,12 +22,10 @@ class AnimateDiffArguments:
 
     dataset_sample_size: int = None
 
-    sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+    sft_type: str = field(default='lora', metadata={'choices': ['lora', 'full']})
 
     output_dir: str = 'output'
-    ddp_backend: str = field(
-        default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
+    ddp_backend: str = field(default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
 
     seed: int = 42
 
@@ -56,34 +54,21 @@ class AnimateDiffArguments:
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
     hub_private_repo: bool = False
-    push_hub_strategy: str = field(
-        default='push_best',
-        metadata={'choices': ['push_last', 'all_checkpoints']})
+    push_hub_strategy: str = field(default='push_best', metadata={'choices': ['push_last', 'all_checkpoints']})
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
-        default=None,
-        metadata={
-            'help':
-            'SDK token can be found in https://modelscope.cn/my/myaccesstoken'
-        })
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     ignore_args_error: bool = False  # True: notebook compatibility
 
     text_dropout_rate: float = 0.1
 
     validation_prompts_path: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The validation prompts file path, use llm/configs/ad_validation.txt is None'
-        })
+        default=None, metadata={'help': 'The validation prompts file path, use llm/configs/ad_validation.txt is None'})
 
     trainable_modules: str = field(
         default='.*motion_modules.*',
-        metadata={
-            'help':
-            'The trainable modules, by default, the .*motion_modules.* will be trained'
-        })
+        metadata={'help': 'The trainable modules, by default, the .*motion_modules.* will be trained'})
 
     mixed_precision: bool = True
 
@@ -114,8 +99,7 @@ class AnimateDiffArguments:
 
         current_dir = os.path.dirname(__file__)
         if self.validation_prompts_path is None:
-            self.validation_prompts_path = os.path.join(
-                current_dir, 'configs/animatediff', 'validation.txt')
+            self.validation_prompts_path = os.path.join(current_dir, 'configs/animatediff', 'validation.txt')
         if self.learning_rate is None:
             self.learning_rate = 1e-4
         if self.save_steps is None:
@@ -141,11 +125,9 @@ class AnimateDiffInferArguments:
     model_id_or_path: str = None
     model_revision: str = None
 
-    sft_type: str = field(
-        default='lora', metadata={'choices': ['lora', 'full']})
+    sft_type: str = field(default='lora', metadata={'choices': ['lora', 'full']})
 
-    ckpt_dir: Optional[str] = field(
-        default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+    ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     eval_human: bool = False  # False: eval val_dataset
 
     seed: int = 42
@@ -184,8 +166,7 @@ class AnimateDiffInferArguments:
         handle_compatibility(self)
 
 
-def handle_compatibility(
-        args: Union[AnimateDiffArguments, AnimateDiffInferArguments]) -> None:
+def handle_compatibility(args: Union[AnimateDiffArguments, AnimateDiffInferArguments]) -> None:
     if isinstance(args, AnimateDiffInferArguments):
         if args.merge_lora_and_save is not None:
             args.merge_lora = args.merge_lora_and_save

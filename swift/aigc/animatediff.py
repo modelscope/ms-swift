@@ -16,8 +16,7 @@ import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 from decord import VideoReader
-from diffusers import (AutoencoderKL, DDIMScheduler, MotionAdapter,
-                       UNet2DConditionModel, UNetMotionModel)
+from diffusers import AutoencoderKL, DDIMScheduler, MotionAdapter, UNet2DConditionModel, UNetMotionModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines import AnimateDiffPipeline
 from diffusers.utils import export_to_gif
@@ -62,8 +61,7 @@ class AnimateDiffDataset(Dataset):
             file_name = content_url.split('/')[-1]
             if os.path.isfile(os.path.join(video_folder, file_name)):
                 dataset.append(d)
-            if dataset_sample_size is not None and len(
-                    dataset) > dataset_sample_size:
+            if dataset_sample_size is not None and len(dataset) > dataset_sample_size:
                 break
 
         self.dataset = dataset
@@ -74,14 +72,12 @@ class AnimateDiffDataset(Dataset):
         self.sample_stride = sample_stride
         self.sample_n_frames = sample_n_frames
 
-        sample_size = tuple(sample_size) if not isinstance(
-            sample_size, int) else (sample_size, sample_size)
+        sample_size = tuple(sample_size) if not isinstance(sample_size, int) else (sample_size, sample_size)
         self.pixel_transforms = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.Resize(sample_size[0]),
             transforms.CenterCrop(sample_size),
-            transforms.Normalize(
-                mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
         ])
 
     def get_batch(self, idx):
@@ -94,18 +90,11 @@ class AnimateDiffDataset(Dataset):
         video_reader = VideoReader(video_dir)
         video_length = len(video_reader)
 
-        clip_length = min(video_length,
-                          (self.sample_n_frames - 1) * self.sample_stride + 1)
+        clip_length = min(video_length, (self.sample_n_frames - 1) * self.sample_stride + 1)
         start_idx = random.randint(0, video_length - clip_length)
-        batch_index = np.linspace(
-            start_idx,
-            start_idx + clip_length - 1,
-            self.sample_n_frames,
-            dtype=int)
+        batch_index = np.linspace(start_idx, start_idx + clip_length - 1, self.sample_n_frames, dtype=int)
 
-        pixel_values = torch.from_numpy(
-            video_reader.get_batch(batch_index).asnumpy()).permute(
-                0, 3, 1, 2).contiguous()
+        pixel_values = torch.from_numpy(video_reader.get_batch(batch_index).asnumpy()).permute(0, 3, 1, 2).contiguous()
         pixel_values = pixel_values / 255.
         del video_reader
         return pixel_values, name
@@ -128,11 +117,7 @@ class AnimateDiffDataset(Dataset):
         return sample
 
 
-def save_videos_grid(videos: torch.Tensor,
-                     path: str,
-                     rescale=False,
-                     n_rows=6,
-                     duration=4):
+def save_videos_grid(videos: torch.Tensor, path: str, rescale=False, n_rows=6, duration=4):
     import imageio
     videos = rearrange(videos, 'b c t h w -> t b c h w')
     outputs = []
@@ -199,25 +184,19 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         clip_sample=args.clip_sample,
     )
     if not os.path.exists(args.model_id_or_path):
-        pretrained_model_path = snapshot_download(
-            args.model_id_or_path, revision=args.model_revision)
+        pretrained_model_path = snapshot_download(args.model_id_or_path, revision=args.model_revision)
     vae = AutoencoderKL.from_pretrained(pretrained_model_path, subfolder='vae')
-    tokenizer = CLIPTokenizer.from_pretrained(
-        pretrained_model_path, subfolder='tokenizer')
-    text_encoder = CLIPTextModel.from_pretrained(
-        pretrained_model_path, subfolder='text_encoder')
+    tokenizer = CLIPTokenizer.from_pretrained(pretrained_model_path, subfolder='tokenizer')
+    text_encoder = CLIPTextModel.from_pretrained(pretrained_model_path, subfolder='text_encoder')
 
     motion_adapter = None
     if args.motion_adapter_id_or_path is not None:
         if not os.path.exists(args.motion_adapter_id_or_path):
             args.motion_adapter_id_or_path = snapshot_download(
-                args.motion_adapter_id_or_path,
-                revision=args.motion_adapter_revision)
-        motion_adapter = MotionAdapter.from_pretrained(
-            args.motion_adapter_id_or_path)
+                args.motion_adapter_id_or_path, revision=args.motion_adapter_revision)
+        motion_adapter = MotionAdapter.from_pretrained(args.motion_adapter_id_or_path)
     unet: UNetMotionModel = UNetMotionModel.from_unet2d(
-        UNet2DConditionModel.from_pretrained(
-            pretrained_model_path, subfolder='unet'),
+        UNet2DConditionModel.from_pretrained(pretrained_model_path, subfolder='unet'),
         motion_adapter=motion_adapter,
         load_weights=True,
     )
@@ -235,8 +214,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     # Preparing LoRA
     if args.sft_type == 'lora':
         if args.motion_adapter_id_or_path is None:
-            raise ValueError(
-                'No AnimateDiff weight found, Please do not use LoRA.')
+            raise ValueError('No AnimateDiff weight found, Please do not use LoRA.')
         lora_config = LoRAConfig(
             r=args.lora_rank,
             target_modules=args.trainable_modules,
@@ -246,8 +224,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         unet = Swift.prepare_model(unet, lora_config)
         logger.info(f'lora_config: {lora_config}')
 
-    trainable_params = list(
-        filter(lambda p: p.requires_grad, unet.parameters()))
+    trainable_params = list(filter(lambda p: p.requires_grad, unet.parameters()))
     optimizer = torch.optim.AdamW(
         trainable_params,
         lr=args.learning_rate,
@@ -256,18 +233,14 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
     if is_main_process:
         print(f'trainable params number: {len(trainable_params)}')
-        print(
-            f'trainable params scale: {sum(p.numel() for p in trainable_params) / 1e6:.3f} M'
-        )
+        print(f'trainable params scale: {sum(p.numel() for p in trainable_params) / 1e6:.3f} M')
 
     # Enable xformers
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError(
-                'xformers is not available. Make sure it is installed correctly'
-            )
+            raise ValueError('xformers is not available. Make sure it is installed correctly')
 
     # Enable gradient checkpointing
     if args.gradient_checkpointing:
@@ -291,11 +264,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         sampler = RandomSampler(train_dataset)
     else:
         sampler = DistributedSampler(
-            train_dataset,
-            num_replicas=num_processes,
-            rank=global_rank,
-            shuffle=True,
-            seed=global_seed)
+            train_dataset, num_replicas=num_processes, rank=global_rank, shuffle=True, seed=global_seed)
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -316,8 +285,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
     lr_scheduler = get_scheduler(
         args.lr_scheduler_type,
         optimizer=optimizer,
-        num_warmup_steps=int(args.warmup_ratio * max_train_steps)
-        // args.gradient_accumulation_steps,
+        num_warmup_steps=int(args.warmup_ratio * max_train_steps) // args.gradient_accumulation_steps,
         num_training_steps=max_train_steps // args.gradient_accumulation_steps,
     )
 
@@ -334,21 +302,15 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
         logging.info('***** Running training *****')
         logging.info(f'  Num examples = {len(train_dataset)}')
         logging.info(f'  Num Epochs = {num_train_epochs}')
-        logging.info(
-            f'  Instantaneous batch size per device = {args.batch_size}')
-        logging.info(
-            f'  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}'
-        )
-        logging.info(
-            f'  Gradient Accumulation steps = {args.gradient_accumulation_steps}'
-        )
+        logging.info(f'  Instantaneous batch size per device = {args.batch_size}')
+        logging.info(f'  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}')
+        logging.info(f'  Gradient Accumulation steps = {args.gradient_accumulation_steps}')
         logging.info(f'  Total optimization steps = {max_train_steps}')
     global_step = 0
     first_epoch = 0
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(
-        range(global_step, max_train_steps), disable=not is_main_process)
+    progress_bar = tqdm(range(global_step, max_train_steps), disable=not is_main_process)
     progress_bar.set_description('Steps')
 
     # Support mixed-precision training
@@ -362,37 +324,26 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
 
         for step, batch in enumerate(train_dataloader):
             if args.text_dropout_rate > 0:
-                batch['text'] = [
-                    name if random.random() > args.text_dropout_rate else ''
-                    for name in batch['text']
-                ]
+                batch['text'] = [name if random.random() > args.text_dropout_rate else '' for name in batch['text']]
 
             # Data batch sanity check
             if epoch == first_epoch and step == 0:
-                pixel_values, texts = batch['pixel_values'].cpu(
-                ), batch['text']
-                pixel_values = rearrange(pixel_values,
-                                         'b f c h w -> b c f h w')
-                for idx, (pixel_value,
-                          text) in enumerate(zip(pixel_values, texts)):
+                pixel_values, texts = batch['pixel_values'].cpu(), batch['text']
+                pixel_values = rearrange(pixel_values, 'b f c h w -> b c f h w')
+                for idx, (pixel_value, text) in enumerate(zip(pixel_values, texts)):
                     pixel_value = pixel_value[None, ...]
-                    file_name = '-'.join(text.replace('/', '').split(
-                    )[:10]) if not text == '' else f'{global_rank}-{idx}'
-                    save_videos_grid(
-                        pixel_value,
-                        f'{output_dir}/sanity_check/{file_name}.gif',
-                        rescale=True)
+                    file_name = '-'.join(text.replace('/',
+                                                      '').split()[:10]) if not text == '' else f'{global_rank}-{idx}'
+                    save_videos_grid(pixel_value, f'{output_dir}/sanity_check/{file_name}.gif', rescale=True)
 
             # Convert videos to latent space
             pixel_values = batch['pixel_values'].to(local_rank)
             video_length = pixel_values.shape[1]
             with torch.no_grad():
-                pixel_values = rearrange(pixel_values,
-                                         'b f c h w -> (b f) c h w')
+                pixel_values = rearrange(pixel_values, 'b f c h w -> (b f) c h w')
                 latents = vae.encode(pixel_values).latent_dist
                 latents = latents.sample()
-                latents = rearrange(
-                    latents, '(b f) c h w -> b c f h w', f=video_length)
+                latents = rearrange(latents, '(b f) c h w -> b c f h w', f=video_length)
                 latents = latents * 0.18215
 
             # Sample noise that we'll add to the latents
@@ -400,16 +351,12 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
             bsz = latents.shape[0]
 
             # Sample a random timestep for each video
-            timesteps = torch.randint(
-                0,
-                noise_scheduler.config.num_train_timesteps, (bsz, ),
-                device=latents.device)
+            timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz, ), device=latents.device)
             timesteps = timesteps.long()
 
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(latents, noise,
-                                                      timesteps)
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
             # Get the text embedding for conditioning
             with torch.no_grad():
@@ -427,17 +374,13 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
             elif noise_scheduler.config.prediction_type == 'v_prediction':
                 raise NotImplementedError
             else:
-                raise ValueError(
-                    f'Unknown prediction type {noise_scheduler.config.prediction_type}'
-                )
+                raise ValueError(f'Unknown prediction type {noise_scheduler.config.prediction_type}')
 
             # Predict the noise residual and compute loss
             # Mixed-precision training
             with torch.cuda.amp.autocast(enabled=args.mixed_precision):
-                model_pred = unet(noisy_latents, timesteps,
-                                  encoder_hidden_states).sample
-                loss = F.mse_loss(
-                    model_pred.float(), target.float(), reduction='mean')
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                loss = F.mse_loss(model_pred.float(), target.float(), reduction='mean')
 
             # Backpropagate
             if args.mixed_precision:
@@ -449,13 +392,11 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                 # Backpropagate
                 if args.mixed_precision:
                     scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(unet.parameters(),
-                                                   args.max_grad_norm)
+                    torch.nn.utils.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
                     scaler.step(optimizer)
                     scaler.update()
                 else:
-                    torch.nn.utils.clip_grad_norm_(unet.parameters(),
-                                                   args.max_grad_norm)
+                    torch.nn.utils.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
                     optimizer.step()
                 optimizer.zero_grad()
                 lr_scheduler.step()
@@ -468,16 +409,13 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                 wandb.log({'train_loss': loss.item()}, step=global_step)
 
             # Save checkpoint
-            if is_main_process and (global_step % args.save_steps == 0
-                                    or step == len(train_dataloader) - 1):
+            if is_main_process and (global_step % args.save_steps == 0 or step == len(train_dataloader) - 1):
                 save_path = os.path.join(output_dir, 'checkpoints')
                 if step == len(train_dataloader) - 1:
                     if isinstance(unet, DDP):
-                        unet.module.save_pretrained(
-                            os.path.join(save_path, 'iter-last'))
+                        unet.module.save_pretrained(os.path.join(save_path, 'iter-last'))
                     else:
-                        unet.save_pretrained(
-                            os.path.join(save_path, 'iter-last'))
+                        unet.save_pretrained(os.path.join(save_path, 'iter-last'))
                     if args.push_to_hub:
                         push_to_hub(
                             repo_name=args.hub_model_id,
@@ -485,12 +423,9 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                             token=args.hub_token,
                             private=True,
                         )
-                    logging.info(
-                        f'Saved state to {os.path.join(save_path, "iter-last")} on the last step'
-                    )
+                    logging.info(f'Saved state to {os.path.join(save_path, "iter-last")} on the last step')
                 else:
-                    iter_save_path = os.path.join(save_path,
-                                                  f'iter-{global_step}')
+                    iter_save_path = os.path.join(save_path, f'iter-{global_step}')
                     if isinstance(unet, DDP):
                         unet.module.save_pretrained(iter_save_path)
                     else:
@@ -498,14 +433,12 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     if args.push_to_hub and args.push_hub_strategy == 'all_checkpoints':
                         push_to_hub(
                             repo_name=args.hub_model_id,
-                            output_dir=os.path.join(save_path,
-                                                    f'iter-{global_step}'),
+                            output_dir=os.path.join(save_path, f'iter-{global_step}'),
                             token=args.hub_token,
                             private=True,
                         )
                     logging.info(
-                        f'Saved state to {os.path.join(save_path, f"iter-{global_step}")} (global_step: {global_step})'
-                    )
+                        f'Saved state to {os.path.join(save_path, f"iter-{global_step}")} (global_step: {global_step})')
 
             # Periodically validation
             if is_main_process and global_step % args.eval_steps == 0:
@@ -526,8 +459,7 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     state_dict = self.state_dict_origin()
                     return {
                         key.replace('base_layer.', ''): value
-                        for key, value in state_dict.items()
-                        if 'lora' not in key
+                        for key, value in state_dict.items() if 'lora' not in key
                     }
 
                 motion_adapter = MotionAdapter(
@@ -535,29 +467,23 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                     motion_max_seq_length=args.motion_max_seq_length)
 
                 module = unet if not isinstance(unet, DDP) else unet.module
-                motion_adapter.mid_block.motion_modules = deepcopy(
-                    module.mid_block.motion_modules)
+                motion_adapter.mid_block.motion_modules = deepcopy(module.mid_block.motion_modules)
                 motion_adapter.mid_block.motion_modules.state_dict_origin = \
                     motion_adapter.mid_block.motion_modules.state_dict
-                motion_adapter.mid_block.motion_modules.state_dict = MethodType(
-                    state_dict, motion_adapter.mid_block.motion_modules)
-                for db1, db2 in zip(motion_adapter.down_blocks,
-                                    module.down_blocks):
+                motion_adapter.mid_block.motion_modules.state_dict = MethodType(state_dict,
+                                                                                motion_adapter.mid_block.motion_modules)
+                for db1, db2 in zip(motion_adapter.down_blocks, module.down_blocks):
                     db1.motion_modules = deepcopy(db2.motion_modules)
                     db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
-                    db1.motion_modules.state_dict = MethodType(
-                        state_dict, db1.motion_modules)
-                for db1, db2 in zip(motion_adapter.up_blocks,
-                                    module.up_blocks):
+                    db1.motion_modules.state_dict = MethodType(state_dict, db1.motion_modules)
+                for db1, db2 in zip(motion_adapter.up_blocks, module.up_blocks):
                     db1.motion_modules = deepcopy(db2.motion_modules)
                     db1.motion_modules.state_dict_origin = db1.motion_modules.state_dict
-                    db1.motion_modules.state_dict = MethodType(
-                        state_dict, db1.motion_modules)
+                    db1.motion_modules.state_dict = MethodType(state_dict, db1.motion_modules)
 
                 Swift.unmerge(unet)
                 validation_pipeline = AnimateDiffPipeline(
-                    unet=UNet2DConditionModel.from_pretrained(
-                        pretrained_model_path, subfolder='unet'),
+                    unet=UNet2DConditionModel.from_pretrained(pretrained_model_path, subfolder='unet'),
                     vae=vae,
                     tokenizer=tokenizer,
                     motion_adapter=motion_adapter,
@@ -576,19 +502,13 @@ def animatediff_sft(args: AnimateDiffArguments) -> None:
                         width=width,
                         guidance_scale=args.guidance_scale,
                         num_inference_steps=args.num_inference_steps,
-                        generator=torch.Generator('cpu').manual_seed(
-                            global_seed),
+                        generator=torch.Generator('cpu').manual_seed(global_seed),
                     )
                     frames = output.frames[0]
-                    export_to_gif(
-                        frames,
-                        f'{output_dir}/samples/sample-{global_step}-{idx}.gif')
+                    export_to_gif(frames, f'{output_dir}/samples/sample-{global_step}-{idx}.gif')
                 unet.train()
 
-            logs = {
-                'step_loss': loss.detach().item(),
-                'lr': lr_scheduler.get_last_lr()[0]
-            }
+            logs = {'step_loss': loss.detach().item(), 'lr': lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= max_train_steps:

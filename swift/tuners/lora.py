@@ -30,34 +30,19 @@ class LoRAConfig(LoraConfig, SwiftConfig):
     """
 
     use_qa_lora: bool = field(
-        default=False,
-        metadata={
-            'help':
-            'Use [qa-lora](https://github.com/yuhuixu1993/qa-lora) or not'
-        })
+        default=False, metadata={'help': 'Use [qa-lora](https://github.com/yuhuixu1993/qa-lora) or not'})
 
-    use_merged_linear: bool = field(
-        default=False, metadata={'help': 'Use merged Linear'})
+    use_merged_linear: bool = field(default=False, metadata={'help': 'Use merged Linear'})
 
     enable_lora: List[bool] = field(
-        default=None,
-        metadata={
-            'help':
-            'The modules need to be turned on when using the merged linear layer'
-        })
+        default=None, metadata={'help': 'The modules need to be turned on when using the merged linear layer'})
 
     lora_dtype: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The lora dtype, default None means following the original layer\'s dtype'
-        })
+        default=None, metadata={'help': 'The lora dtype, default None means following the original layer\'s dtype'})
 
-    lorap_lr_ratio: float = field(
-        default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
+    lorap_lr_ratio: float = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
 
-    lorap_emb_lr: float = field(
-        default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
+    lorap_emb_lr: float = field(default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
     def __post_init__(self):
         super().__post_init__()
@@ -66,8 +51,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
 
     def can_be_saved_to_peft(self) -> bool:
         if self.use_qa_lora or self.use_merged_linear:
-            logger.warn(
-                'QA-LoRA and MergedLinear cannot be saved to peft format')
+            logger.warn('QA-LoRA and MergedLinear cannot be saved to peft format')
             return False
         return True
 
@@ -95,17 +79,14 @@ class LoRA(SwiftAdapter):
         if config.use_qa_lora:
             auto_gptq_config = get_quantization_config(model, method='gptq')
             if auto_gptq_config:
-                config.group_size = getattr(auto_gptq_config, 'group_size',
-                                            None)
+                config.group_size = getattr(auto_gptq_config, 'group_size', None)
         LoraModel(model, config, adapter_name)
 
         def state_dict_callback(state_dict, adapter_name, cfg=None):
-            return lora_state_dict(state_dict, adapter_name,
-                                   cfg.bias if cfg else config.bias)
+            return lora_state_dict(state_dict, adapter_name, cfg.bias if cfg else config.bias)
 
         def mark_trainable_callback(model, cfg=None):
-            mark_lora_as_trainable(model, adapter_name,
-                                   cfg.bias if cfg else config.bias)
+            mark_lora_as_trainable(model, adapter_name, cfg.bias if cfg else config.bias)
 
         def optimizer_group_callback(model, **defaults):
             if config.lorap_lr_ratio is None:
@@ -168,14 +149,10 @@ class LoRA(SwiftAdapter):
             ]
             return all_params, param_groups
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback, optimizer_group_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback, optimizer_group_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module,
-                         adapter_name: str,
-                         activate: bool,
-                         offload: str = None):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         set_adapter(module, adapter_name, activate, offload)
         for sub_module in module.modules():
             if isinstance(sub_module, (LoraLayer, LoRALayer)):
@@ -201,13 +178,11 @@ class LoRA(SwiftAdapter):
                 logger.info('All adapters will be merged.')
                 LoraModel(model, None, '').merge_and_unload()
             else:
-                LoraModel(model, None,
-                          '').merge_and_unload(adapter_names=[adapter_name])
+                LoraModel(model, None, '').merge_and_unload(adapter_names=[adapter_name])
         else:
             for name, sub_module in model.named_modules():
                 if isinstance(sub_module, MergedLinear):
                     sub_module.merge()
-                    parent = model.get_submodule('.'.join(
-                        name.split('.')[:-1]))
+                    parent = model.get_submodule('.'.join(name.split('.')[:-1]))
                     target_name = name.split('.')[-1]
                     setattr(parent, target_name, sub_module.base_layer)
