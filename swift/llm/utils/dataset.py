@@ -1220,7 +1220,7 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
             use_hf = strtobool(os.environ.get('USE_HF', 'False'))
         elif isinstance(use_hf, str):
             use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
-        if '/' in d:
+        if '/' in d_name:
             dataset_list.append((d, use_hf, d_name))
         else:
             res_dataset.append(d)

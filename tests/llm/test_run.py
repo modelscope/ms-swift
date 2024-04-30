@@ -46,7 +46,7 @@ class TestRun(unittest.TestCase):
             f'{DatasetName.alpaca_zh}#20',
             f'{DatasetName.jd_sentiment_zh}#20/10',
             'AI-ModelScope/alpaca-gpt4-data-zh#20',
-            'HF::c-s-ale/alpaca-gpt4-data-zh#20',
+            'HF::llm-wizard/alpaca-gpt4-data-zh#20',
             'hurner/alpaca-gpt4-data-zh#20',
             'HF::shibing624/alpaca-zh#20',
         ]

@@ -18,7 +18,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job)
-from .dataset import DATASET_MAPPING, _dataset_name_exists, register_dataset_info
+from .dataset import DATASET_MAPPING, _dataset_name_exists, register_local_dataset
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -69,15 +69,10 @@ class ArgumentsBase:
             if isinstance(value, str):
                 setattr(self, key, [value])
         if len(self.custom_train_dataset_path) > 0 or len(self.custom_val_dataset_path) > 0:
-            d_info = {
-                'train_dataset_path': self.custom_train_dataset_path,
-                'val_dataset_path': self.custom_val_dataset_path
-            }
+            register_local_dataset('_custom', self.custom_train_dataset_path, self.custom_val_dataset_path)
+            logger.info('Registered `_custom` to dataset_info')
             if len(_dataset_name_exists(self.dataset, '_custom')) == 0:
                 self.dataset.append('_custom')
-            logger.info('Registered `_custom` to dataset_info')
-
-            register_dataset_info('_custom', d_info)
 
     @classmethod
     def _check_path(cls, k: str, value: Union[str, List[str]],

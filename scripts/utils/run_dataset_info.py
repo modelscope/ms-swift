@@ -73,6 +73,7 @@ def write_dataset_info() -> None:
                     num_proc = 1
                 else:
                     num_proc = 4
+
                 dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
 
                 _token_len = []
