@@ -74,7 +74,7 @@ Note: Self-cognition training involves knowledge editing, so it is recommended t
 Using Python:
 ```python
 # Experimental environment: A10, 3090, V100, ...
-# 23GB GPU memory
+# 22GB GPU memory
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -82,7 +82,7 @@ from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
     model_type=ModelType.qwen1half_4b_chat,
-    dataset=[DatasetName.ms_bench_mini],
+    dataset=[DatasetName.alpaca_zh, DatasetName.alpaca_en],
     train_dataset_sample=1000,
     logging_steps=5,
     max_length=2048,
@@ -105,12 +105,12 @@ print(f'best_model_checkpoint: {best_model_checkpoint}')
 Using CLI (single GPU):
 ```bash
 # Experimental environment: A10, 3090, V100, ...
-# 23GB GPU memory
+# 22GB GPU memory
 CUDA_VISIBLE_DEVICES=```
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type qwen1half-4b-chat \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh alpaca-en \
     --train_dataset_sample 1000 \
     --logging_steps 5 \
     --max_length 2048 \
@@ -123,16 +123,16 @@ swift sft \
     --model_author 魔搭 ModelScope \
 ```
 
-Using CLI (DDP):
+Using CLI (DeepSpeed-ZeRO2):
 > If you have GPUs like the 3090, you can reduce `max_length` to decrease memory usage.
 ```bash
-# Experimental environment: 4 * A100
-# 4 * 32GB GPU memory
+# Experimental environment: 4 * 3090
+# 4 * 24GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen1half-4b-chat \
-    --dataset ms-bench-mini \
+    --dataset alpaca-zh alpaca-en \
     --train_dataset_sample 1000 \
     --logging_steps 5 \
     --max_length 2048 \
@@ -143,6 +143,7 @@ swift sft \
     --self_cognition_sample 500 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
+    --deepspeed default-zero2
 ```
 
 ## Inference After Fine-Tuning
@@ -212,7 +213,9 @@ best_model_checkpoint = 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx'
 app_ui_args = AppUIArguments(ckpt_dir=best_model_checkpoint)
 merge_lora(app_ui_args, device_map='cpu')
 result = app_ui_main(app_ui_args)
-``Using CLI:
+```
+
+Using CLI:
 ```bash
 # Directly use app-ui
 CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'qwen1half-4b-chat/vx-xxx/checkpoint-xxx'
