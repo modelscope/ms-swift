@@ -9,7 +9,6 @@ from swift.llm.utils.template import Context, Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
-from .dpo_trainers import DPOTrainer
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 logger = get_logger()
