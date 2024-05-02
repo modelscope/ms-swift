@@ -175,7 +175,7 @@
     },
     "sharegpt-gpt4": {
         "dataset_id": "AI-ModelScope/sharegpt_gpt4",
-        "subsets": ["default"],
+        "subsets": ["default", "V3_format", "zh_38K_format"],
         "conversations": {
             "user_role": "human",
             "assistant_role": "gpt",

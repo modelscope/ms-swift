@@ -82,7 +82,7 @@ from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
     model_type=ModelType.qwen1half_4b_chat,
-    dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500', 
+    dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500',
              f'{DatasetName.self_cognition}#500'],
     logging_steps=5,
     max_length=2048,

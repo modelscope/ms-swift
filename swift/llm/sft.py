@@ -127,15 +127,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             fsdp_flatten_parameters=False)
 
     # Loading Dataset
-    random_state = np.random.RandomState(args.dataset_seed)
     train_dataset, val_dataset = get_dataset(
         args.dataset,
         args.dataset_test_ratio,
-        random_state,
+        args.dataset_seed,
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author)
-
+    train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}

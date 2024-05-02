@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Set, Tuple, Union
 
 import json
+import numpy as np
 import torch
 import transformers
+from datasets import Dataset as HfDataset
+from datasets import concatenate_datasets
 from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
@@ -18,7 +21,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job)
-from .dataset import DATASET_MAPPING, _dataset_name_exists, register_local_dataset
+from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_local_dataset
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -192,14 +195,53 @@ class ArgumentsBase:
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
         }
-        for k, v in template_type_mapping.items():
-            if k == self.template_type:
-                self.template_type = v
+        dataset_name_mapping = {
+            'ms-bench-mini': 'ms-bench#20000',
+            'multi-alpaca-all': 'multi-alpaca',
+            'instinwild-en': 'instinwild:subset',
+            'instinwild-zh': 'instinwild:default',
+            'firefly-all-zh': 'firefly-zh',
+            'sharegpt-en': 'sharegpt:common-en/computer-en',
+            'sharegpt-zh': 'sharegpt:common-zh/computer-zh/unknow-zh',
+            'open-orca-gpt4': 'open-orca:default',
+            'sharegpt-gpt4-mini': 'sharegpt-gpt4:default',
+            'deepctrl-sft-zh': 'deepctrl-sft:default',
+            'deepctrl-sft-en': 'deepctrl-sft:en',
+            'ms-agent-for-agentfabric-default': 'ms-agent-for-agentfabric:default',
+            'ms-agent-for-agentfabric-addition': 'ms-agent-for-agentfabric:addition',
+            **{
+                f'toolbench-for-alpha-umi-{sn}': f'toolbench-for-alpha-umi:{sn}'
+                for sn in DATASET_MAPPING['toolbench-for-alpha-umi']['subsets']
+            },
+            'medical-mini-zh': 'medical-zh#50000',
+            'cmnli-mini-zh': 'cmnli-zh#20000/200',
+            'coco-mini-en': 'coco-en-mini',
+            'coco-mini-en-2': 'coco-en-2-mini',
+            'aishell1-mini-zh': 'aishell1-zh-mini',
+            **{f'hh-rlhf-{sn}': f'hh-rlhf:{sn}'
+               for sn in DATASET_MAPPING['hh-rlhf']['subsets']},
+            **{
+                f"hh-rlhf-cn-{sn.replace('_', '-')}": f'hh-rlhf-cn:{sn}'
+                for sn in DATASET_MAPPING['hh-rlhf-cn']['subsets']
+            },
+            **{
+                f"coig-cqia-{sn.replace('_', '-')}": f'coig-cqia:{sn}'
+                for sn in DATASET_MAPPING['coig-cqia']['subsets']
+            },
+            **{f'ruozhiba-{sn}': f'ruozhiba:{sn}'
+               for sn in DATASET_MAPPING['ruozhiba']['subsets']},
+        }
+        for _name, _mapping in [['template_type', template_type_mapping], ['model_type', model_type_mapping]]:
+            k = getattr(self, _name)
+            if k in _mapping:
+                v = _mapping[k]
+                setattr(self, _name, v)
                 break
-        for k, v in model_type_mapping.items():
-            if k == self.model_type:
-                self.model_type = v
-                break
+
+        for i, dataset in enumerate(self.dataset):
+            if dataset in dataset_name_mapping:
+                self.dataset[i] = dataset_name_mapping[dataset]
+
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
         if len(self.dataset) == 1 and ',' in self.dataset[0]:
@@ -210,11 +252,74 @@ class ArgumentsBase:
             self.truncation_strategy = 'delete'
         if self.safe_serialization is not None:
             self.save_safetensors = self.safe_serialization
+        if isinstance(self, InferArguments):
+            if self.merge_lora_and_save is not None:
+                self.merge_lora = self.merge_lora_and_save
+        if isinstance(self, AppUIArguments):
+            if self.server_name is not None:
+                self.host = self.server_name
+            if self.server_port is not None:
+                self.port = self.server_port
         if isinstance(self, SftArguments):
+            if isinstance(self.train_dataset_mix_ds, str):
+                self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
+            if self.only_save_model is not None:
+                self.save_only_model = self.only_save_model
+            if self.neftune_alpha is not None:
+                self.neftune_noise_alpha = self.neftune_alpha
             if self.per_device_train_batch_size is not None:
                 self.batch_size = self.per_device_train_batch_size
             if self.per_device_eval_batch_size is not None:
                 self.eval_batch_size = self.per_device_eval_batch_size
+            if self.deepspeed_config_path is not None:
+                self.deepspeed = self.deepspeed_config_path
+
+    def _handle_dataset_sample(self):
+        # compatibility. (Deprecated)
+        if len(self.dataset) == 1 and '#' not in self.dataset[0] and self.train_dataset_sample >= 0:
+            if self.val_dataset_sample is None:
+                self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}'
+            else:
+                self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}/{self.val_dataset_sample}'
+
+    def _handle_dataset_compat(self, train_dataset: HfDataset,
+                               val_dataset: Optional[HfDataset]) -> Tuple[HfDataset, Optional[HfDataset]]:
+        # compatibility. (Deprecated)
+        random_state = np.random.RandomState(self.dataset_seed)
+        val_dataset_sample = self.val_dataset_sample
+        if train_dataset is not None and self.train_dataset_sample >= 0:
+            train_dataset_sample = min(self.train_dataset_sample, train_dataset.shape[0])
+            if train_dataset.shape[0] > train_dataset_sample:
+                logger.info(f'train_dataset_sample: {train_dataset_sample}')
+                train_idxs = random_state.permutation(train_dataset_sample)
+                train_dataset = train_dataset.select(train_idxs)
+            if val_dataset_sample is None:
+                val_dataset_sample = max(int(train_dataset_sample * self.dataset_test_ratio), 1)
+        if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
+            if val_dataset.shape[0] > val_dataset_sample:
+                logger.info(f'val_dataset_sample: {val_dataset_sample}')
+                val_idxs = random_state.permutation(val_dataset_sample)
+                val_dataset = val_dataset.select(val_idxs)
+
+        if (train_dataset is None or not hasattr(self, 'train_dataset_mix_ratio') or self.train_dataset_mix_ratio <= 0
+                or len(self.train_dataset_mix_ds) == 0):
+            return train_dataset, val_dataset
+
+        mix_dataset_sample = int(len(train_dataset) * self.train_dataset_mix_ratio)
+        logger.info(f'train_dataset_mix_ds: {self.train_dataset_mix_ds}')
+        logger.info(f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}')
+        mixed_dataset = get_dataset(
+            self.train_dataset_mix_ds, 0.0, random_state, check_dataset_strategy=self.check_dataset_strategy)[0]
+        if len(mixed_dataset) < mix_dataset_sample:
+            logger.warn(f'The length of dataset used for mixin: {self.train_dataset_mix_ds} are '
+                        'lesser than the ratio required by the `train_dataset_mix_ratio` '
+                        f'argument: {self.train_dataset_mix_ratio}. '
+                        f'the actual ratio is: {len(mixed_dataset) / len(train_dataset):.6}.')
+        else:
+            train_idxs = random_state.permutation(mix_dataset_sample)
+            mixed_dataset = mixed_dataset.select(train_idxs)
+        train_dataset = concatenate_datasets([train_dataset, mixed_dataset])
+        return train_dataset, val_dataset
 
     def prepare_template(self):
         if self.template_type == 'AUTO':
@@ -451,7 +556,15 @@ class SftArguments(ArgumentsBase):
     per_device_eval_batch_size: Optional[int] = None
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
+    train_dataset_mix_ratio: float = 0.
+    train_dataset_mix_ds: List[str] = field(default_factory=lambda: ['ms-bench'])
+    train_dataset_sample: int = -1  # -1: all dataset
+    val_dataset_sample: Optional[int] = None  # -1: all dataset
     safe_serialization: Optional[bool] = None
+    model_cache_dir: Optional[str] = None
+    only_save_model: Optional[bool] = None
+    neftune_alpha: Optional[float] = None
+    deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
 
     def prepare_push_ms_hub(self) -> None:
@@ -508,6 +621,7 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         self.handle_compatibility()
         self._register_custom()
+        self._handle_dataset_sample()
         if is_pai_training_job():
             self._handle_pai_compat()
         ds_config_folder = os.path.abspath(os.path.join(__file__, '..', '..', 'ds_config'))
@@ -780,7 +894,9 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    val_dataset_sample: int = 10  # -1: all dataset
+    train_dataset_sample: int = -1  # Used for splitting the validation set.
+    val_dataset_sample: Optional[int] = None  # -1: all dataset
+    show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
     max_length: int = -1  # -1: no limit
@@ -828,6 +944,7 @@ class InferArguments(ArgumentsBase):
     self_cognition_sample: int = 0
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
+    merge_lora_and_save: Optional[bool] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
@@ -844,6 +961,7 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+        self._handle_dataset_sample()
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -934,7 +1052,8 @@ class InferArguments(ArgumentsBase):
         if self.load_dataset_config:
             imported_keys += [
                 'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'custom_train_dataset_path',
-                'custom_val_dataset_path', 'self_cognition_sample', 'model_name', 'model_author'
+                'custom_val_dataset_path', 'self_cognition_sample', 'model_name', 'model_author',
+                'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
             if (key in {'dataset', 'custom_train_dataset_path', 'custom_val_dataset_path'}
@@ -962,9 +1081,12 @@ class InferArguments(ArgumentsBase):
 
 @dataclass
 class AppUIArguments(InferArguments):
-    server_name: str = '127.0.0.1'
-    server_port: int = 7860
+    host: str = '127.0.0.1'
+    port: int = 7860
     share: bool = False
+    # compatibility. (Deprecated)
+    server_name: Optional[str] = None
+    server_port: Optional[int] = None
 
 
 @dataclass

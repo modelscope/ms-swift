@@ -65,7 +65,7 @@ class DatasetName:
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
     ms_agent_multirole = 'ms-agent-multirole'
-    alpha_umi_toolbench = 'alpha-umi-toolbench'
+    toolbench_for_alpha_umi = 'toolbench-for-alpha-umi'
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_zh_mini = 'damo-agent-zh-mini'
     agent_instruct_all_en = 'agent-instruct-all-en'
@@ -209,10 +209,11 @@ def register_local_dataset(
     elif isinstance(val_dataset_path, str):
         val_dataset_path = [val_dataset_path]
     assert len(train_dataset_path) > 0 or len(val_dataset_path) > 0
-    for dataset_path in [train_dataset_path, val_dataset_path]:
-        for i, path in enumerate(dataset_path):
-            if not os.path.isabs(path):
-                dataset_path[i] = os.path.join(base_dir, dataset_path[i])
+    if base_dir is not None:
+        for dataset_path in [train_dataset_path, val_dataset_path]:
+            for i, path in enumerate(dataset_path):
+                if not os.path.isabs(path):
+                    dataset_path[i] = os.path.join(base_dir, dataset_path[i])
 
     register_dataset(
         dataset_name,
@@ -482,8 +483,8 @@ register_dataset(
     get_dataset_from_repo,
     train_split=['validation'],
     val_split=['test'],
-    function_kwargs={'val_dataset_sample': 200},
     tags=['chat', 'multi-modal', 'audio', '🔥'],
+    val_sample=200,  # default val sample
     is_main=False)
 
 
@@ -546,7 +547,7 @@ register_dataset(
 def _preprocess_ruozhiba(dataset: HfDataset):
 
     def map_row(row):
-        title = row['title'] if 'title' in row else row['content']
+        title = row['title'] if row.get('title', None) is not None else row['content']
         abs = row['abs'] if 'abs' in row else None
         if abs and abs != title:
             title = title + '，' + abs
@@ -891,7 +892,7 @@ register_dataset(
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
-    DatasetName.alpha_umi_toolbench,
+    DatasetName.toolbench_for_alpha_umi,
     'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'], {
         'backbone': ConversationsPreprocessor('system', system_role='-'),
         'caller': ConversationsPreprocessor('system', 'caller', '-'),
@@ -1236,12 +1237,15 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
 
     for i, (d, use_hf, d_name) in enumerate(extra_dataset):
         d_info = {}
-        if use_hf:
-            d_info['hf_dataset_id'] = d_name
-        else:
-            d_info['dataset_id'] = d_name
         d_name2 = f'_{i}'
-        register_dataset_info(d_name2, d_info)
+        if os.path.isfile(d_name):
+            register_local_dataset(d_name2, d_name)
+        else:
+            if use_hf:
+                d_info['hf_dataset_id'] = d_name
+            else:
+                d_info['dataset_id'] = d_name
+            register_dataset_info(d_name2, d_info)
         res_dataset.append(d.replace(d_name, d_name2))
     return res_dataset
 
@@ -1249,7 +1253,7 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
 def get_dataset(
         dataset_name_list: Union[List[str], str],
         dataset_test_ratio: float = 0.,
-        dataset_seed: Union[RandomState, int] = 42,
+        dataset_seed: int = 42,
         check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none',
         *,
         # for self-cognition
@@ -1260,8 +1264,6 @@ def get_dataset(
         dataset_name_list = [dataset_name_list]
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
-    if isinstance(dataset_seed, int):
-        dataset_seed = RandomState(dataset_seed)
 
     dataset_name_list = _dataset_id_to_name(dataset_name_list)
     for dataset_name in dataset_name_list:
@@ -1271,13 +1273,16 @@ def get_dataset(
             subsets = dataset_info['subsets']
         if train_sample == -1:
             train_sample = dataset_info.get('train_sample', -1)
-        if val_sample is None:
+        if val_sample == -1:
             val_sample = dataset_info.get('val_sample', -1)
+        if isinstance(dataset_seed, int):
+            dataset_seed = RandomState()
 
         get_function: GetDatasetFunction = dataset_info['get_function']
         is_local = dataset_info.get('is_local', False)
         dataset_id_or_path = dataset_info['dataset_id_or_path']
         remove_useless_columns = dataset_info.get('remove_useless_columns', True)
+
         if not is_local:
             if use_hf is None:
                 use_hf = strtobool(os.environ.get('USE_HF', 'False'))
