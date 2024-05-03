@@ -601,11 +601,12 @@ class SwiftMixin:
     def get_max_cuda_memory(self,
                             device: Optional[Union[torch.device,
                                                    int]] = None) -> float:
-        mem = torch.cuda.max_memory_allocated(device=device)
+        mem = torch.cuda.max_memory_reserved(device=device)
         mem = float(mem) / 1024 / 1024 / 1024
         if self.max_memory < mem:
             self.max_memory = mem
         torch.cuda.reset_peak_memory_stats()
+        torch.cuda.empty_cache()
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
@@ -633,6 +634,11 @@ class SwiftMixin:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
             logs['memory'] = round(self.get_max_cuda_memory(), 2)
+            import time
+            time_now = time.time()
+            elapse_time = time_now - self.start_time
+            logs['total_train_time'] = ((float(self.state.max_steps)/self.state.global_step) * elapse_time)/60.0
+            logs['train_speed'] = self.state.max_steps/((float(self.state.max_steps)/self.state.global_step) * elapse_time)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
