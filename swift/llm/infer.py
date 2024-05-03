@@ -448,11 +448,12 @@ def llm_infer(args: InferArguments) -> None:
                 else:
                     response, _ = inference(
                         model, template, stream=args.stream and args.verbose, verbose=args.verbose, **kwargs)
+                label = data.pop('response', None)
                 obj = {
                     'system': kwargs['system'],
                     'query': kwargs['query'],
                     'response': response,
-                    'label': data.pop('response', None),
+                    'label': label,
                     'history': kwargs['history'],
                 }
                 if jsonl_path is not None:

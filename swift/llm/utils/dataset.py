@@ -591,7 +591,7 @@ register_dataset(
     'damo/MSAgent-Bench',
     None,
     ConversationsPreprocessor(
-        repair_conversations=partial(_repair_agent_conversations, use_mini=False, error_strategy='delete')),
+        repair_conversations=partial(_repair_agent_conversations, use_mini=False), error_strategy='delete'),
     get_dataset_from_repo,
     val_split=['validation'],
     tags=['chat', 'agent', 'multi-round'])
@@ -874,14 +874,6 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     return dataset
 
 
-def _repair_planner(conversations: list) -> list:
-    if isinstance(conversations, str):
-        conversations = ast.literal_eval(conversations)
-    if len(conversations) == 2 and conversations[0]['from'] != 'user':
-        conversations[0]['from'] = 'user'
-    return conversations
-
-
 register_dataset(
     DatasetName.capcha_images,
     'AI-ModelScope/captcha-images',
@@ -891,14 +883,18 @@ register_dataset(
     val_split=['validation'],
     tags=['chat', 'multi-modal', 'vision'])
 
+
+def _repair_toolbench(conversations: Dict[str, str]) -> Dict[str, str]:
+    assert len(conversations) == 2
+    if (conversations[1]['from'] in {'caller', 'conclusion'}):
+        conversations[1]['from'] = 'assistant'
+    return conversations
+
+
 register_dataset(
     DatasetName.toolbench_for_alpha_umi,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'], {
-        'backbone': ConversationsPreprocessor('system', system_role='-'),
-        'caller': ConversationsPreprocessor('system', 'caller', '-'),
-        'planner': ConversationsPreprocessor(repair_conversations=_repair_planner, error_strategy='delete'),
-        'summarizer': ConversationsPreprocessor('system', 'conclusion', None),
-    },
+    'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'],
+    ConversationsPreprocessor('system', system_role='-', repair_conversations=_repair_toolbench),
     get_dataset_from_repo,
     tags=['chat', 'agent', '🔥'])
 
@@ -1143,9 +1139,13 @@ def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
     return part
 
 
-def parse_dataset_name(dataset_name: str) -> Tuple[Optional[str], str, List[str], int, int]:
+def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int, int]:
     # HF::dataset_name:subset1/subset2/subset3#train_sample/val_sample
     use_hf, other = _safe_split(dataset_name, '::', False)
+    if use_hf is None:
+        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+    elif isinstance(use_hf, str):
+        use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
     part1, part2 = _safe_split(other, '#', True)
     dataset_name, subsets = _safe_split(part1, ':', True)
     if subsets is not None:
@@ -1187,6 +1187,9 @@ def _preprocess_self_cognition_dataset(
         model_author = (model_author[0], model_author[0])
     res_d_list = []
     for dataset in dataset_list:
+        if dataset is None:
+            res_d_list.append(dataset)
+            continue
         response = []
         for d in dataset:
             if d['tag'] == 'zh':
@@ -1217,10 +1220,6 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
     res_dataset = []
     for d in dataset_name_list:
         use_hf, d_name = parse_dataset_name(d)[:2]
-        if use_hf is None:
-            use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-        elif isinstance(use_hf, str):
-            use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
         if '/' in d_name:
             dataset_list.append((d, use_hf, d_name))
         else:
@@ -1245,6 +1244,13 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
                 d_info['hf_dataset_id'] = d_name
             else:
                 d_info['dataset_id'] = d_name
+                # get all subsets
+                file_name = f"{d_name.split('/')[1]}.json"
+                dataset_dir = download_dataset(d_name, [file_name])
+                dataset_json = os.path.join(dataset_dir, file_name)
+                with open(dataset_json, 'r') as f:
+                    obj = json.load(f)
+                d_info['subsets'] = list(obj.keys())
             register_dataset_info(d_name2, d_info)
         res_dataset.append(d.replace(d_name, d_name2))
     return res_dataset
@@ -1276,7 +1282,7 @@ def get_dataset(
         if val_sample == -1:
             val_sample = dataset_info.get('val_sample', -1)
         if isinstance(dataset_seed, int):
-            dataset_seed = RandomState()
+            dataset_seed = RandomState(dataset_seed)
 
         get_function: GetDatasetFunction = dataset_info['get_function']
         is_local = dataset_info.get('is_local', False)
@@ -1284,10 +1290,6 @@ def get_dataset(
         remove_useless_columns = dataset_info.get('remove_useless_columns', True)
 
         if not is_local:
-            if use_hf is None:
-                use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-            elif isinstance(use_hf, str):
-                use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if use_hf:
                 dataset_id_or_path = dataset_info['hf_dataset_id']

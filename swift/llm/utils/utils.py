@@ -63,6 +63,7 @@ def download_files(url: str, local_path: str, cookies) -> None:
 
 
 def download_dataset(model_id: str, files: List[str], force_download: bool = False) -> str:
+    assert isinstance(files, list)
     url = f'http://www.modelscope.cn/api/v1/datasets/{model_id}/repo?Revision=master&FilePath={{fpath}}'
     cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', model_id, 'master')
     local_dir = os.path.join(cache_dir, 'raw')

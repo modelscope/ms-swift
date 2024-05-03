@@ -237,15 +237,13 @@ class ArgumentsBase:
                 v = _mapping[k]
                 setattr(self, _name, v)
                 break
-
-        for i, dataset in enumerate(self.dataset):
-            if dataset in dataset_name_mapping:
-                self.dataset[i] = dataset_name_mapping[dataset]
-
         if isinstance(self.dataset, str):
             self.dataset = [self.dataset]
         if len(self.dataset) == 1 and ',' in self.dataset[0]:
             self.dataset = self.dataset[0].split(',')
+        for i, dataset in enumerate(self.dataset):
+            if dataset in dataset_name_mapping:
+                self.dataset[i] = dataset_name_mapping[dataset]
         for d in self.dataset:
             assert ',' not in d, f'dataset: {d}, please use `/`'
         if self.truncation_strategy == 'ignore':
@@ -333,7 +331,17 @@ class ArgumentsBase:
             self.model_cache_dir = None
 
         if self.model_id_or_path is not None:
-            model_mapping_reversed = {v['model_id_or_path'].lower(): k for k, v in MODEL_MAPPING.items()}
+            use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+            model_mapping_reversed = {}
+            for k, v in MODEL_MAPPING.items():
+                if use_hf:
+                    model_id = v.get('hf_model_id')
+                else:
+                    model_id = v.get('model_id_or_path')
+                if model_id is None:
+                    continue
+                model_id = model_id.lower()
+                model_mapping_reversed[model_id] = k
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
             if model_id_or_path_lower not in model_mapping_reversed:
@@ -561,7 +569,6 @@ class SftArguments(ArgumentsBase):
     train_dataset_sample: int = -1  # -1: all dataset
     val_dataset_sample: Optional[int] = None  # -1: all dataset
     safe_serialization: Optional[bool] = None
-    model_cache_dir: Optional[str] = None
     only_save_model: Optional[bool] = None
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
@@ -894,8 +901,6 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
-    train_dataset_sample: int = -1  # Used for splitting the validation set.
-    val_dataset_sample: Optional[int] = None  # -1: all dataset
     show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
@@ -942,6 +947,8 @@ class InferArguments(ArgumentsBase):
     vllm_lora_modules: List[str] = field(default_factory=list)
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
+    train_dataset_sample: int = -1  # Used for splitting the validation set.
+    val_dataset_sample: Optional[int] = None  # -1: all dataset
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
     merge_lora_and_save: Optional[bool] = None
