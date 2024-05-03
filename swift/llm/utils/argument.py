@@ -2,6 +2,7 @@
 import inspect
 import math
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Set, Tuple, Union
 
@@ -21,7 +22,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job)
-from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_local_dataset
+from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_local_dataset, register_dataset_info_file
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -35,47 +36,6 @@ def is_adapter(sft_type: str) -> bool:
 
 
 class ArgumentsBase:
-
-    def _register_custom(self: Union['SftArguments', 'InferArguments']) -> None:
-
-        # self-cognition
-        idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
-        assert len(idx_list) <= 1
-        self.use_self_cognition = idx_list == 1
-        # compatibility
-        if self.self_cognition_sample > 0:
-            d = f'self-cognition#{self.self_cognition_sample}'
-            if len(idx_list) == 1:
-                self.dataset[idx_list[0]] = d
-            else:
-                self.dataset.append(d)
-            self.use_self_cognition = True
-
-        if self.use_self_cognition:
-            for k in ['model_name', 'model_author']:
-                v = getattr(self, k)
-                if isinstance(v, str):
-                    v = [v]
-                elif v is None:
-                    v = []
-                if len(v) == 1:
-                    v = v * 2
-                if v[0] is None and v[1] is None:
-                    raise ValueError('Please set self.model_name self.model_author. '
-                                     'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
-                                     'Representing the model name and model author in Chinese and English.')
-                setattr(self, k, v)
-
-        # register _custom
-        for key in ['custom_train_dataset_path', 'custom_val_dataset_path']:
-            value = getattr(self, key)
-            if isinstance(value, str):
-                setattr(self, key, [value])
-        if len(self.custom_train_dataset_path) > 0 or len(self.custom_val_dataset_path) > 0:
-            register_local_dataset('_custom', self.custom_train_dataset_path, self.custom_val_dataset_path)
-            logger.info('Registered `_custom` to dataset_info')
-            if len(_dataset_name_exists(self.dataset, '_custom')) == 0:
-                self.dataset.append('_custom')
 
     @classmethod
     def _check_path(cls, k: str, value: Union[str, List[str]],
@@ -93,7 +53,7 @@ class ArgumentsBase:
         return value
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
-        check_exist_path = ['ckpt_dir', 'resume_from_checkpoint']
+        check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path', 'dataset_info_path']
         if self.model_id_or_path is not None and (self.model_id_or_path.startswith('~')
                                                   or self.model_id_or_path.startswith('/')):
             check_exist_path.append('model_id_or_path')
@@ -189,6 +149,14 @@ class ArgumentsBase:
 
         return bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
 
+    def handle_custom_register(self: Union['SftArguments', 'InferArguments']) -> None:
+        if self.custom_register_path is None:
+            return
+        folder, fname = os.path.split(self.custom_register_path)
+        sys.path.append(folder)
+        __import__(fname.rstrip('.py'))
+
+
     def handle_compatibility(self: Union['SftArguments', 'InferArguments']) -> None:
         template_type_mapping = {'chatglm2-generation': 'chatglm-generation', 'chatml': 'qwen'}
         model_type_mapping = {
@@ -250,6 +218,11 @@ class ArgumentsBase:
             self.truncation_strategy = 'delete'
         if self.safe_serialization is not None:
             self.save_safetensors = self.safe_serialization
+        if len(self.custom_train_dataset_path) > 0:
+            self.dataset += self.custom_train_dataset_path
+        if len(self.custom_val_dataset_path) > 0:
+            self.dataset += self.custom_val_dataset_path
+
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
                 self.merge_lora = self.merge_lora_and_save
@@ -274,11 +247,38 @@ class ArgumentsBase:
 
     def _handle_dataset_sample(self):
         # compatibility. (Deprecated)
+        # Avoid post-processing
         if len(self.dataset) == 1 and '#' not in self.dataset[0] and self.train_dataset_sample >= 0:
-            if self.val_dataset_sample is None:
-                self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}'
+            self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}'
+
+    def _register_self_cognition(self: Union['SftArguments', 'InferArguments']) -> None:
+        
+        # compatibility. (Deprecated)
+        idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
+        assert len(idx_list) <= 1
+        self.use_self_cognition = idx_list == 1
+        if self.self_cognition_sample > 0:
+            d = f'self-cognition#{self.self_cognition_sample}'
+            if len(idx_list) == 1:
+                self.dataset[idx_list[0]] = d
             else:
-                self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}/{self.val_dataset_sample}'
+                self.dataset.append(d)
+            self.use_self_cognition = True
+        # check
+        if self.use_self_cognition:
+            for k in ['model_name', 'model_author']:
+                v = getattr(self, k)
+                if isinstance(v, str):
+                    v = [v]
+                elif v is None:
+                    v = []
+                if len(v) == 1:
+                    v = v * 2
+                if v[0] is None and v[1] is None:
+                    raise ValueError('Please set self.model_name self.model_author. '
+                                     'For example: `--model_name 小黄 "Xiao Huang" --model_author 魔搭 ModelScope`. '
+                                     'Representing the model name and model author in Chinese and English.')
+                setattr(self, k, v)
 
     def _handle_dataset_compat(self, train_dataset: HfDataset,
                                val_dataset: Optional[HfDataset]) -> Tuple[HfDataset, Optional[HfDataset]]:
@@ -417,8 +417,6 @@ class SftArguments(ArgumentsBase):
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
-    custom_train_dataset_path: List[str] = field(default_factory=list)
-    custom_val_dataset_path: List[str] = field(default_factory=list)
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
@@ -544,6 +542,8 @@ class SftArguments(ArgumentsBase):
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
+    custom_register_path: Optional[str] = None  # .py
+    dataset_info_path: Optional[str] = None  # .json
 
     # generation config
     max_new_tokens: int = 2048
@@ -573,6 +573,8 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+    custom_train_dataset_path: List[str] = field(default_factory=list)
+    custom_val_dataset_path: List[str] = field(default_factory=list)
 
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
@@ -627,7 +629,7 @@ class SftArguments(ArgumentsBase):
 
     def __post_init__(self) -> None:
         self.handle_compatibility()
-        self._register_custom()
+        self._register_self_cognition()
         self._handle_dataset_sample()
         if is_pai_training_job():
             self._handle_pai_compat()
@@ -643,6 +645,9 @@ class SftArguments(ArgumentsBase):
                 break
 
         self.handle_path()
+        self.handle_custom_register()
+        if self.dataset_info_path is not None:
+            register_dataset_info_file(self.dataset_info_path)
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -907,8 +912,6 @@ class InferArguments(ArgumentsBase):
     max_length: int = -1  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
-    custom_train_dataset_path: List[str] = field(default_factory=list)
-    custom_val_dataset_path: List[str] = field(default_factory=list)
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
@@ -938,6 +941,9 @@ class InferArguments(ArgumentsBase):
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
+    custom_register_path: Optional[str] = None  # .py
+    dataset_info_path: Optional[str] = None  # .json
+
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
@@ -952,13 +958,15 @@ class InferArguments(ArgumentsBase):
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
     merge_lora_and_save: Optional[bool] = None
+    custom_train_dataset_path: List[str] = field(default_factory=list)
+    custom_val_dataset_path: List[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
             logger.warning(f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                            'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
-        self._register_custom()
+        self._register_self_cognition()
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
@@ -969,6 +977,9 @@ class InferArguments(ArgumentsBase):
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
         self._handle_dataset_sample()
+        self.handle_custom_register()
+        if self.dataset_info_path is not None:
+            register_dataset_info_file(self.dataset_info_path)
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -1058,18 +1069,18 @@ class InferArguments(ArgumentsBase):
         ]
         if self.load_dataset_config:
             imported_keys += [
-                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'custom_train_dataset_path',
-                'custom_val_dataset_path', 'self_cognition_sample', 'model_name', 'model_author',
+                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'self_cognition_sample', 'model_name', 'model_author',
                 'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
-            if (key in {'dataset', 'custom_train_dataset_path', 'custom_val_dataset_path'}
-                    and len(getattr(self, key)) > 0):
+            if key == 'dataset' and len(getattr(self, key)) > 0:
                 continue
             setattr(self, key, sft_args.get(key))
 
-        if self.model_id_or_path is None:
-            self.model_id_or_path = sft_args.get('model_id_or_path')
+        for k in ['model_id_or_path', 'custom_register_path', 'dataset_info_path']:
+            if getattr(self, k) is None:
+                setattr(self, k, sft_args.get(k))
+
         if self.dtype == 'AUTO':
             self.dtype = sft_args.get('dtype')
 

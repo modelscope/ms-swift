@@ -66,7 +66,7 @@
     },
     "poetry-zh": {
         "dataset_id": "modelscope/chinese-poetry-collection",
-        "val_split": ["test"],
+        "split": ["test"],
         "columns": {"text1": "response"},
         "tags": ["text-generation", "poetry"]
     },
@@ -84,7 +84,7 @@
         "columns": {"prompt": "query", "answer": "response"},
         "tags": ["chat", "classification"]
     },
-    "ner-java-zh": {
+    "ner-jave-zh": {
         "dataset_id": "damo/zh_ner-JAVE",
         "columns": {"prompt": "query", "answer": "response"},
         "tags": ["chat", "ner"]
@@ -142,7 +142,7 @@
     "pileval": {
         "dataset_id": "huangjintao/pile-val-backup",
         "columns": {"text": "response"},
-        "train_split": ["validation"],
+        "split": ["validation"],
         "tags": ["text-generation", "awq"],
         "hf_dataset_id": "mit-han-lab/pile-val-backup"
     },
@@ -169,7 +169,8 @@
             "assistant_role": "bot",
             "conversations_key": "chat_rounds",
             "from_key": "role",
-            "value_key": "content"
+            "value_key": "content",
+            "error_strategy": "delete"
         },
         "tags": ["chat", "coding", "🔥"]
     },
@@ -198,8 +199,7 @@
     "medical-en": {
         "dataset_id": "huangjintao/medical_zh",
         "subsets": ["en"],
-        "train_split": ["train", "val"],
-        "val_split": ["test"],
+        "split": ["train", "val", "test"],
         "columns": {
             "input": "query",
             "output": "response"
@@ -209,8 +209,7 @@
     "medical-zh": {
         "dataset_id": "huangjintao/medical_zh",
         "subsets": ["zh"],
-        "train_split": ["train", "val"],
-        "val_split": ["test"],
+        "split": ["train", "val", "test"],
         "columns": {
             "instruction": "query",
             "output": "response"
@@ -218,7 +217,7 @@
         "tags": ["chat", "medical"]
     },
     "self-cognition": {
-        "train_dataset_path": "self_cognition.jsonl",
+        "dataset_path": "self_cognition.jsonl",
         "remove_useless_columns": false,
         "tags": ["chat", "self_cognition", "🔥"]
     }
