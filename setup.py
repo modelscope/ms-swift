@@ -124,10 +124,13 @@ if __name__ == '__main__':
     extra_requires['llm'], _ = parse_requirements('requirements/llm.txt')
     extra_requires['aigc'], _ = parse_requirements('requirements/aigc.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
+    extra_requires['seq_parallel'], _ = parse_requirements('requirements/seq_parallel.txt')
     all_requires.extend(install_requires)
     all_requires.extend(extra_requires['llm'])
     all_requires.extend(extra_requires['aigc'])
     all_requires.extend(extra_requires['eval'])
+    all_requires.extend(extra_requires['seq_parallel'])
+    extra_requires['seq_parallel'].extend(extra_requires['llm'])
     extra_requires['all'] = all_requires
 
     setup(
