@@ -22,7 +22,8 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job)
-from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_local_dataset, register_dataset_info_file
+from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file,
+                      register_local_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -156,7 +157,6 @@ class ArgumentsBase:
         sys.path.append(folder)
         __import__(fname.rstrip('.py'))
 
-
     def handle_compatibility(self: Union['SftArguments', 'InferArguments']) -> None:
         template_type_mapping = {'chatglm2-generation': 'chatglm-generation', 'chatml': 'qwen'}
         model_type_mapping = {
@@ -252,7 +252,7 @@ class ArgumentsBase:
             self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}'
 
     def _register_self_cognition(self: Union['SftArguments', 'InferArguments']) -> None:
-        
+
         # compatibility. (Deprecated)
         idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
         assert len(idx_list) <= 1
@@ -1069,8 +1069,8 @@ class InferArguments(ArgumentsBase):
         ]
         if self.load_dataset_config:
             imported_keys += [
-                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'self_cognition_sample', 'model_name', 'model_author',
-                'train_dataset_sample', 'val_dataset_sample'
+                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'self_cognition_sample',
+                'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
             if key == 'dataset' and len(getattr(self, key)) > 0:

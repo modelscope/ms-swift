@@ -3612,7 +3612,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    model, tokenizer = get_model_tokenizer_minicpm(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(torch_dtype)  # fix float32
         func_list = ['generate', 'get_input_embeddings', 'forward']

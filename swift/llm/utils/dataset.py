@@ -206,12 +206,7 @@ def register_local_dataset(
                 dataset_path[i] = os.path.join(base_dir, dataset_path[i])
 
     register_dataset(
-        dataset_name,
-        get_function=get_local_dataset,
-        split=dataset_path,
-        exist_ok=True,
-        is_local=True,
-        **kwargs)
+        dataset_name, get_function=get_local_dataset, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
 
 
 def register_dataset_info(dataset_name: str, d_info: Dict[str, Any]) -> None:
@@ -674,21 +669,6 @@ register_dataset(
 
 def process_hh_rlhf(dataset):
 
-    def extract_anthropic_prompt(prompt_and_response):
-        """Extract the anthropic prompt from a prompt and response pair."""
-        search_term = '\n\nAssistant:'
-        search_term_idx = prompt_and_response.rfind(search_term)
-        assert search_term_idx != -1, f"Prompt and response does not contain '{search_term}'"
-        return prompt_and_response[:search_term_idx + len(search_term)]
-
-    def reorganize_row_simple(sample) -> Dict[str, str]:
-        prompt = extract_anthropic_prompt(sample['chosen'])
-        return {
-            'query': prompt,
-            'response': sample['chosen'][len(prompt):],
-            'rejected_response': sample['rejected'][len(prompt):],
-        }
-
     def reorganize_row(row):
         import re
         chosen = row['chosen'].strip()
@@ -733,8 +713,7 @@ def process_hh_rlhf(dataset):
 
 register_dataset(
     DatasetName.hh_rlhf,
-    'AI-ModelScope/hh-rlhf',
-    ['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled', 'red-team-attempts'],
+    'AI-ModelScope/hh-rlhf', ['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
     process_hh_rlhf,
     get_dataset_from_repo,
     split=['train', 'test'],
@@ -1131,8 +1110,7 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
         dataset_sample = -1
     else:
         dataset_sample = int(dataset_sample)
-    return tuple(t.strip() if isinstance(t, str) else t
-                 for t in [use_hf, dataset_name, subset_list, dataset_sample])
+    return tuple(t.strip() if isinstance(t, str) else t for t in [use_hf, dataset_name, subset_list, dataset_sample])
 
 
 def _dataset_name_exists(dataset_list: str, dataset_name: str) -> List[int]:
@@ -1347,8 +1325,7 @@ def get_local_dataset(_1: str,
                       remove_useless_columns: bool = True,
                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset = load_dataset_from_local(split, preprocess_func)
-    return _post_preprocess(dataset, dataset_sample, random_state, None,
-                            dataset_test_ratio, remove_useless_columns)
+    return _post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio, remove_useless_columns)
 
 
 def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:

@@ -42,14 +42,19 @@ class TestRun(unittest.TestCase):
     def test_basic(self):
         output_dir = 'output'
         quantization_bit_list = [0, 4]
+        train_dataset_fnames = [
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
+            'swift_multi.json#2'
+        ]
+        folder = os.path.join(os.path.dirname(__file__), 'data')
         dataset = [
-            f'{DatasetName.alpaca_zh}#20',
-            f'{DatasetName.jd_sentiment_zh}#20/10',
+            f'MS::{DatasetName.alpaca_zh}#20',
+            f'{DatasetName.jd_sentiment_zh}#20',
             'AI-ModelScope/alpaca-gpt4-data-zh#20',
             'HF::llm-wizard/alpaca-gpt4-data-zh#20',
             'hurner/alpaca-gpt4-data-zh#20',
             'HF::shibing624/alpaca-zh#20',
-        ]
+        ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
             quantization_bit_list = [4]
@@ -134,9 +139,9 @@ class TestRun(unittest.TestCase):
             loss = output['log_history'][-1]['train_loss']
             losses.append(loss)
         self.assertTrue(abs(losses[0] - losses[1]) < 5e-4)
-        self.assertTrue(0.95 <= losses[0] <= 1)
         print(f'swift_loss: {losses[0]}')
         print(f'peft_loss: {losses[1]}')
+        self.assertTrue(0.95 <= losses[0] <= 1)
 
     def test_vl_audio(self):
         output_dir = 'output'
@@ -144,7 +149,7 @@ class TestRun(unittest.TestCase):
             # ignore citest error in github
             return
         model_type_list = [ModelType.qwen_vl_chat, ModelType.qwen_audio_chat]
-        dataset_list = [DatasetName.coco_mini_en, DatasetName.aishell1_mini_zh]
+        dataset_list = [DatasetName.coco_en_mini, DatasetName.aishell1_zh_mini]
         for model_type, dataset in zip(model_type_list, dataset_list):
             sft_args = SftArguments(
                 model_type=model_type,
@@ -191,7 +196,7 @@ class TestRun(unittest.TestCase):
         for num_train_epochs in [1, 2]:
             sft_args = SftArguments(
                 model_type='qwen-7b-chat',
-                dataset=['_custom#100', 'self-cognition#20'],
+                dataset=['self-cognition#20'],
                 custom_train_dataset_path=[os.path.join(folder, fname) for fname in train_dataset_fnames],
                 custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
                 lora_target_modules='ALL',
@@ -267,7 +272,7 @@ class TestRun(unittest.TestCase):
         output = sft_main(
             SftArguments(
                 model_type=ModelType.cogagent_18b_instruct,
-                dataset=DatasetName.coco_mini_en_2,
+                dataset=DatasetName.coco_en_2_mini,
                 train_dataset_sample=100,
                 lora_target_modules='ALL',
                 eval_steps=5,
@@ -284,7 +289,7 @@ class TestRun(unittest.TestCase):
         output = sft_main(
             SftArguments(
                 model_type=ModelType.internlm_xcomposer2_7b_chat,
-                dataset=DatasetName.coco_mini_en,
+                dataset=DatasetName.coco_en_mini,
                 lora_target_modules='DEFAULT',
                 train_dataset_sample=100,
                 eval_steps=5))
@@ -320,7 +325,7 @@ class TestRun(unittest.TestCase):
             DPOArguments(
                 model_type=ModelType.qwen_1_8b_chat,
                 sft_type='full',
-                dataset=DatasetName.hh_rlhf_cn_harmless_base_cn,
+                dataset='hh-rlhf-cn-harmless-base-cn',
                 train_dataset_sample=100,
                 eval_steps=5))
         best_model_checkpoint = output['best_model_checkpoint']

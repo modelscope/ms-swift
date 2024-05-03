@@ -26,9 +26,9 @@ def write_dataset_info() -> None:
     res_text_list = []
 
     res_text_list.append(
-        '| Dataset Name | Dataset ID | Subsets | Train Size | Val Size | Statistic (token) | Tags | HF Dataset ID |')
+        '| Dataset Name | Dataset ID | Subsets | Dataset Size | Statistic (token) | Tags | HF Dataset ID |')
     res_text_list.append(
-        '| ------------ | ---------- | ------- |---------- | -------- | ----------------- | ---- | ------------- |')
+        '| ------------ | ---------- | ------- |------------- | ----------------- | ---- | ------------- |')
     if len(text_list) >= 2:
         text_list = text_list[2:]
     else:
@@ -60,11 +60,13 @@ def write_dataset_info() -> None:
             else:
                 template = mapping['llm']
             if dataset_name in ignore_dataset:
-                train_size, val_size, stat_str = ignore_dataset[dataset_name].split('|')[4:7]
+                dataset_size, stat_str = ignore_dataset[dataset_name].split('|')[4:6]
             else:
-                train_dataset, val_dataset = get_dataset([dataset_name])
-                train_size = len(train_dataset)
-                val_size = 0 if val_dataset is None else len(val_dataset)
+                train_dataset, val_dataset = get_dataset([dataset_name],
+                                                         model_name=['小黄', 'Xiao Huang'],
+                                                         model_author=['魔搭', 'ModelScope'])
+                dataset_size = len(train_dataset)
+                assert val_dataset is None
 
                 raw_dataset = train_dataset
                 if val_dataset is not None:
@@ -99,9 +101,8 @@ def write_dataset_info() -> None:
                 hf_url = f'https://huggingface.co/datasets/{hf_dataset_id}'
                 hf_dataset_id_str = f'[{hf_dataset_id}]({hf_url})'
 
-            res_text_list.append(
-                f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|{train_size}|"
-                f'{val_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
+            res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
+                                 f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
     finally:
         print(f'数据集总数: {len(dataset_name_list)}')
 
