@@ -653,8 +653,11 @@ def inference(model: PreTrainedModel,
     if 'adapter_names' in kwargs:
         adapter_info = {'adapter_names': kwargs.pop('adapter_names')}
     generate_ids = model.generate(
-        streamer=streamer, generation_config=generation_config, stopping_criteria=stopping_criteria,
-        **inputs, **adapter_info)
+        streamer=streamer,
+        generation_config=generation_config,
+        stopping_criteria=stopping_criteria,
+        **inputs,
+        **adapter_info)
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     if generation_info is not None:
         generation_info['num_generated_tokens'] = len(generate_ids)

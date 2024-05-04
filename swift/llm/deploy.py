@@ -322,7 +322,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     created_time = int(time.time())
 
-
     async def _generate_full():
         generation_info = {}
         response, _ = inference(

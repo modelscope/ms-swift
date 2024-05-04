@@ -837,17 +837,21 @@ class Swift:
                 _json = json.load(f)
             is_peft_model = SWIFT_TYPE_KEY not in _json and 'extra_state_keys' not in _json
         if is_peft_model:
+
             def load_peft_model(_model, _adapter_name, _new_name=None):
                 if not _new_name:
                     _new_name = _adapter_name
                 import peft
                 if not isinstance(_model, peft.PeftModel):
                     return PeftModel.from_pretrained(
-                        _model, os.path.join(model_id, _adapter_name) if _adapter_name != 'default' else model_id,
-                        revision=revision, adapter_name=_new_name, **kwargs)
+                        _model,
+                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default' else model_id,
+                        revision=revision,
+                        adapter_name=_new_name,
+                        **kwargs)
                 else:
-                    _model.load_adapter(os.path.join(model_id, _adapter_name) if _adapter_name != 'default'
-                                        else model_id, _new_name)
+                    _model.load_adapter(
+                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default' else model_id, _new_name)
                     return _model
 
             if not adapter_name:
