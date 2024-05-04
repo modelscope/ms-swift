@@ -432,6 +432,7 @@ def inference_stream(model: PreTrainedModel,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
                      generation_info: Optional[Dict[str, int]] = None,
+                     adapter_names: Optional[str] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -505,15 +506,13 @@ def inference_stream(model: PreTrainedModel,
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
     streamer = TokenListIteratorStreamer()
-    adapter_info = {}
-    if 'adapter_names' in kwargs:
-        adapter_info = {'adapter_names': kwargs.pop('adapter_names')}
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generation_kwargs = {
         'streamer': streamer,
         'generation_config': generation_config,
         'stopping_criteria': stopping_criteria,
         **inputs,
-        **adapter_info,
     }
     _model_generate = model.generate
     if is_torch_npu_available():
@@ -568,6 +567,7 @@ def inference(model: PreTrainedModel,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
               generation_info: Optional[Dict[str, int]] = None,
+              adapter_names: Optional[str] = None,
               **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -649,15 +649,10 @@ def inference(model: PreTrainedModel,
         generation_info['num_prompt_tokens'] = token_len
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
-    adapter_info = {}
-    if 'adapter_names' in kwargs:
-        adapter_info = {'adapter_names': kwargs.pop('adapter_names')}
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generate_ids = model.generate(
-        streamer=streamer,
-        generation_config=generation_config,
-        stopping_criteria=stopping_criteria,
-        **inputs,
-        **adapter_info)
+        streamer=streamer, generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     if generation_info is not None:
         generation_info['num_generated_tokens'] = len(generate_ids)
