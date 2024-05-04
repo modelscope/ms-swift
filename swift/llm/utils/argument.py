@@ -22,8 +22,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job)
-from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file,
-                      register_local_dataset)
+from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -54,10 +53,16 @@ class ArgumentsBase:
         return value
 
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
-        check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path', 'dataset_info_path']
-        if self.model_id_or_path is not None and (self.model_id_or_path.startswith('~')
-                                                  or self.model_id_or_path.startswith('/')):
-            check_exist_path.append('model_id_or_path')
+        check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path']
+        maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info']
+        if isinstance(self, SftArguments):
+            check_exist_path.append('deepspeed_config_path')
+            maybe_check_exist_path.append('deepspeed')
+
+        for k in maybe_check_exist_path:
+            v = getattr(self, k)
+            if v is not None and (v.startswith('~') or v.startswith('/')):
+                check_exist_path.append(k)
         check_exist_path_set = set(check_exist_path)
         other_path = ['output_dir', 'logging_dir']
         for k in check_exist_path + other_path:
@@ -244,6 +249,11 @@ class ArgumentsBase:
                 self.eval_batch_size = self.per_device_eval_batch_size
             if self.deepspeed_config_path is not None:
                 self.deepspeed = self.deepspeed_config_path
+
+    def handle_custom_dataset_info(self):
+        if self.custom_dataset_info is None:
+            return
+        register_dataset_info_file(self.custom_dataset_info)
 
     def _handle_dataset_sample(self):
         # compatibility. (Deprecated)
@@ -543,7 +553,7 @@ class SftArguments(ArgumentsBase):
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
     custom_register_path: Optional[str] = None  # .py
-    dataset_info_path: Optional[str] = None  # .json
+    custom_dataset_info: Optional[str] = None  # .json
 
     # generation config
     max_new_tokens: int = 2048
@@ -646,8 +656,7 @@ class SftArguments(ArgumentsBase):
 
         self.handle_path()
         self.handle_custom_register()
-        if self.dataset_info_path is not None:
-            register_dataset_info_file(self.dataset_info_path)
+        self.handle_custom_dataset_info()
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -942,7 +951,7 @@ class InferArguments(ArgumentsBase):
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
     custom_register_path: Optional[str] = None  # .py
-    dataset_info_path: Optional[str] = None  # .json
+    custom_dataset_info: Optional[str] = None  # .json
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -978,8 +987,7 @@ class InferArguments(ArgumentsBase):
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
         self._handle_dataset_sample()
         self.handle_custom_register()
-        if self.dataset_info_path is not None:
-            register_dataset_info_file(self.dataset_info_path)
+        self.handle_custom_dataset_info()
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -1077,7 +1085,7 @@ class InferArguments(ArgumentsBase):
                 continue
             setattr(self, key, sft_args.get(key))
 
-        for k in ['model_id_or_path', 'custom_register_path', 'dataset_info_path']:
+        for k in ['model_id_or_path', 'custom_register_path', 'custom_dataset_info']:
             if getattr(self, k) is None:
                 setattr(self, k, sft_args.get(k))
 

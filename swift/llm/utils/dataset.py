@@ -210,7 +210,13 @@ def register_local_dataset(
         dataset_name, get_function=get_local_dataset, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
 
 
-def register_dataset_info(dataset_name: str, d_info: Dict[str, Any]) -> None:
+def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
+    if 'dataset_path' in d_info:
+        base_dir = kwargs.pop('base_dir', None)
+        register_local_dataset(dataset_name, d_info.pop('dataset_path', None), base_dir, **d_info)
+        return
+
+    assert 'dataset_id' in d_info or 'hf_dataset_id' in d_info
     preprocess_func = None
     if 'columns' in d_info:
         preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
@@ -1179,13 +1185,13 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
         d_info = {}
         d_name2 = f'_{i}'
         if os.path.isfile(d_name):
-            register_local_dataset(d_name2, d_name)
+            d_info['dataset_path'] = d_name
         else:
             if use_hf:
                 d_info['hf_dataset_id'] = d_name
             else:
                 d_info['dataset_id'] = d_name
-            register_dataset_info(d_name2, d_info)
+        register_dataset_info(d_name2, d_info)
         res_dataset.append(d.replace(d_name, d_name2))
     return res_dataset
 
@@ -1313,20 +1319,19 @@ def get_local_dataset(_1: str,
 
 
 def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
+    # dataset_info_path: path, json or None
     if dataset_info_path is None:
         dataset_info_path = os.path.abspath(os.path.join(__file__, '..', '..', 'data', 'dataset_info.json'))
-    if not os.path.isfile(dataset_info_path):
-        return
-
-    with open(dataset_info_path, 'r') as f:
-        dataset_info = json.load(f)
-
+    if os.path.isfile(dataset_info_path):
+        with open(dataset_info_path, 'r') as f:
+            dataset_info = json.load(f)
+        base_dir = os.path.dirname(dataset_info_path)
+    else:
+        dataset_info = dataset_info_path
+        dataset_info_path = list(dataset_info.keys())
+        base_dir = None
     for dataset_name, d_info in dataset_info.items():
-        if 'dataset_id' in d_info or 'hf_dataset_id' in d_info:
-            register_dataset_info(dataset_name, d_info)
-        elif 'dataset_path' in d_info:
-            base_dir = os.path.abspath(os.path.join(__file__, '..', '..', 'data'))
-            register_local_dataset(dataset_name, d_info.pop('dataset_path', None), base_dir, **d_info)
+        register_dataset_info(dataset_name, d_info, base_dir=base_dir)
     logger.info(f'Successfully registered `{dataset_info_path}`')
 
 
