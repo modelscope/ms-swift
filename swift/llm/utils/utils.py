@@ -512,7 +512,7 @@ def inference_stream(model: PreTrainedModel,
         'streamer': streamer,
         'generation_config': generation_config,
         'stopping_criteria': stopping_criteria,
-        **inputs,
+        **inputs
     }
     _model_generate = model.generate
     if is_torch_npu_available():
