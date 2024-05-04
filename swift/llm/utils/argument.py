@@ -852,11 +852,13 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
+
     # compatibility. (Deprecated)
     show_dataset_sample: int = 10
     safe_serialization: Optional[bool] = None
     model_cache_dir: Optional[str] = None
     merge_lora_and_save: Optional[bool] = None
+    vllm_lora_modules: List[str] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
@@ -904,6 +906,9 @@ class InferArguments(ArgumentsBase):
             logger.info(f'Setting overwrite_generation_config: {self.overwrite_generation_config}')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
+
+        if self.vllm_lora_modules is not None:
+            self.lora_modules = self.vllm_lora_modules
 
         self.handle_infer_backend()
 
