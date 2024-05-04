@@ -845,13 +845,15 @@ class Swift:
                 if not isinstance(_model, peft.PeftModel):
                     return PeftModel.from_pretrained(
                         _model,
-                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default' else model_id,
+                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default'
+                        and os.path.exists(os.path.join(model_id, _adapter_name)) else model_id,
                         revision=revision,
                         adapter_name=_new_name,
                         **kwargs)
                 else:
                     _model.load_adapter(
-                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default' else model_id, _new_name)
+                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default'
+                        and os.path.exists(os.path.join(model_id, _adapter_name)) else model_id, _new_name)
                     return _model
 
             if not adapter_name:
