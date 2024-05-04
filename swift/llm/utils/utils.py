@@ -432,6 +432,7 @@ def inference_stream(model: PreTrainedModel,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
                      generation_info: Optional[Dict[str, int]] = None,
+                     adapter_names: Optional[List[str]] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -505,6 +506,8 @@ def inference_stream(model: PreTrainedModel,
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
     streamer = TokenListIteratorStreamer()
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generation_kwargs = {
         'streamer': streamer,
         'generation_config': generation_config,
@@ -564,6 +567,7 @@ def inference(model: PreTrainedModel,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
               generation_info: Optional[Dict[str, int]] = None,
+              adapter_names: Optional[List[str]] = None,
               **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -645,6 +649,8 @@ def inference(model: PreTrainedModel,
         generation_info['num_prompt_tokens'] = token_len
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generate_ids = model.generate(
         streamer=streamer, generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)
