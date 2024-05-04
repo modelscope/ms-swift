@@ -47,7 +47,7 @@ class XRequestConfig:
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
     length_penalty: float = 1.
-    adapters = List[str] = None
+    adapters: List[str] = None
 
     # additional
     num_beams: int = 1
