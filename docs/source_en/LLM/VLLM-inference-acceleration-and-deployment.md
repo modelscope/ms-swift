@@ -481,48 +481,36 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 
 The example code for the client side is the same as the original models.
 
-### Multiple LoRA Deployment
+### Multiple LoRA Deployments
 
-Currently, the `pt` method for model deployment already supports `peft>=0.10.0` for multiple LoRA deployment, and the specific method is as follows:
+The current model deployment method now supports multiple LoRA deployments with `peft>=0.10.0`. The specific steps are:
 
-- Ensure that `merge_lora` is `False` during deployment
-- Assuming that the folder specified by the `ckpt_dir` parameter **contains at least one LoRA tuner**, then `swift deploy --ckpt_dir xxx` will automatically load all tuners inside
-- When the client sends a request, add an extra parameter `adapters=['default']` to use a specific LoRA for inference
+- Ensure `merge_lora` is set to `False` during deployment.
+- Use the `--lora_modules` argument, which can be referenced in the [command line documentation](Command-line-parameters.md).
+- Specify the name of the LoRA tuner in the model field during inference.
 
 Example:
 
 ```shell
-# Assuming a LoRA model named 'Kakarot' has been trained
+# Assuming a LoRA model named Kakarot was trained from llama3-8b-instruct
+# Server side
+swift deploy --ckpt_dir /mnt/ckpt-1000 --infer_backend pt --lora_modules my_tuner=/mnt/my-tuner
+# This loads two tuners, one is `default-lora` from `/mnt/ckpt-1000`, and the other is `my_tuner` from `/mnt/my-tuner`
+
+# Client side
 curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d '{
-"model": "llama3-8b-instruct",
+"model": "my-tuner",
 "messages": [{"role": "user", "content": "who are you?"}],
 "max_tokens": 256,
-"temperature": 0,
-"adapters": ["default"]
+"temperature": 0
 }'
-# resp: I'm Kakarot...
-# If a non-existent adapter is specified, it will return I'm llama3..., which is the original model's response
-
-# If using Python:
-...
-request_config = XRequestConfig(..., adapters=['xxx']) # Add the adapters parameter
-...
-# If using the OpenAI way:
-...
-resp = client.chat.completions.create(
-	  ...
-    extra_body={'adapters': ['xxx']}, # Add this line
-    ...)
-...
+# resp: I am Kakarot...
+# If the mode='llama3-8b-instruct' is specified, it will return I'm llama3..., which is the response of the original model
 ```
 
 > [!NOTE]
 >
-> If the adapters parameter is not passed, `default` will be used
->
-> If a non-existent LoRA tuner is passed, the `original model` will be used
->
-> This capability is not yet supported for VLLM deployment
+> If the `--ckpt_dir` parameter is a LoRA path, the original default will be loaded onto the default-lora tuner, and other tuners need to be loaded through `lora_modules` manually.
 
 ## VLLM & LoRA
 

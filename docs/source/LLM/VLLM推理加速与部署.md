@@ -489,43 +489,31 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 目前pt方式部署模型已经支持`peft>=0.10.0`进行多LoRA部署，具体方法为：
 
 - 确保部署时`merge_lora`为`False`
-- 假设`ckpt_dir`参数指代的文件夹内**包含了至少一个LoRA tuner**，那么`swift deploy --ckpt_dir xxx`会自动将其内所有的tuner都加载起来
-- 客户端传递时多传递一个参数`adapters=['default']`即可使用某个LoRA进行推理
+- 使用`--lora_modules`参数,  可以查看[命令行文档](命令行参数.md)
+- 推理时指定lora tuner的名字到模型字段
 
 举例：
 
 ```shell
-# 假设训练了一个名字叫卡卡罗特的LoRA模型
+# 假设从llama3-8b-instruct训练了一个名字叫卡卡罗特的LoRA模型
+# 服务端
+swift deploy --ckpt_dir /mnt/ckpt-1000 --infer_backend pt --lora_modules my_tuner=/mnt/my-tuner
+# 会加载起来两个tuner，一个是`/mnt/ckpt-1000`的`default-lora`，一个是`/mnt/my-tuner`的`my_tuner`
+
+# 客户端
 curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d '{
-"model": "llama3-8b-instruct",
+"model": "my-tuner",
 "messages": [{"role": "user", "content": "who are you?"}],
 "max_tokens": 256,
-"temperature": 0,
-"adapters": ["default"]
+"temperature": 0
 }'
 # resp: 我是卡卡罗特...
-# 如果指定不存在的adapter，则返回I'm llama3...，即原模型的返回值
-
-# 如果是python方式调用：
-...
-request_config = XRequestConfig(..., adapters=['xxx']) # 增加adapters参数
-...
-# 如果是openai方式调用：
-...
-resp = client.chat.completions.create(
-	  ...
-    extra_body={'adapters': ['xxx']}, # 增加这一项
-    ...)
-...
+# 如果指定mode='llama3-8b-instruct'，则返回I'm llama3...，即原模型的返回值
 ```
 
 > [!NOTE]
 >
-> 如果不传递adapters参数，则会使用`default`
->
-> 如果传递一个不存在的LoRA tuner，则会使用`原模型`
->
-> VLLM部署方式尚不支持这个能力
+> `--ckpt_dir`参数如果是个lora路径，则原来的default会被加载到default-lora的tuner上，其他的tuner需要通过`lora_modules`自行加载
 
 ## VLLM & LoRA
 
