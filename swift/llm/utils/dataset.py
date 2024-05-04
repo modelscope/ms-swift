@@ -10,7 +10,8 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets, load_dataset
+from datasets import concatenate_datasets
+from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame
 from tqdm.auto import tqdm
@@ -222,8 +223,12 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any]) -> None:
     register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info, exist_ok=True)
 
 
-def load_ms_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
-    from modelscope import MsDataset
+def load_ms_dataset(dataset_id: str,
+                    subset_split_list: Optional[List[SubsetSplit]],
+                    use_hf: bool = False) -> Optional[HfDataset]:
+    if not use_hf:
+        from modelscope import MsDataset
+
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
     dataset_list = []
@@ -232,28 +237,17 @@ def load_ms_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSpli
             subset_split = ('default', subset_split)
         assert len(subset_split) == 2
         subset_name, split = subset_split
-        if is_dist() and not is_local_master():
-            force_redownload = False
+        if use_hf:
+            dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
         else:
-            force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
-        download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
-        dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
-        if hasattr(dataset, 'to_hf_dataset'):
-            dataset = dataset.to_hf_dataset()
-        dataset_list.append(dataset)
-    return concatenate_datasets(dataset_list)
-
-
-def load_hf_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
-    if subset_split_list is None or len(subset_split_list) == 0:
-        return None
-    dataset_list = []
-    for subset_split in subset_split_list:
-        if isinstance(subset_split, str):
-            subset_split = (None, subset_split)
-        assert len(subset_split) == 2
-        subset_name, split = subset_split
-        dataset = load_dataset(dataset_id, name=subset_name, split=split)
+            if is_dist() and not is_local_master():
+                force_redownload = False
+            else:
+                force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
+            download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
+            dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+            if hasattr(dataset, 'to_hf_dataset'):
+                dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
@@ -327,10 +321,7 @@ def get_dataset_from_repo(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    if use_hf:
-        dataset = load_hf_dataset(dataset_id, subset_split_list)
-    else:
-        dataset = load_ms_dataset(dataset_id, subset_split_list)
+    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf)
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns)
 
@@ -1194,13 +1185,6 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
                 d_info['hf_dataset_id'] = d_name
             else:
                 d_info['dataset_id'] = d_name
-                # get all subsets
-                file_name = f"{d_name.split('/')[1]}.json"
-                dataset_dir = download_dataset(d_name, [file_name])
-                dataset_json = os.path.join(dataset_dir, file_name)
-                with open(dataset_json, 'r') as f:
-                    obj = json.load(f)
-                d_info['subsets'] = list(obj.keys())
             register_dataset_info(d_name2, d_info)
         res_dataset.append(d.replace(d_name, d_name2))
     return res_dataset

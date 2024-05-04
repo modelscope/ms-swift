@@ -506,20 +506,20 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 | Dataset Type | Training Task  | Documentation                                                                                                                                                                                                                                                                                                        |
 |--------------|:---------------|--------------------------------------------------------------- |
-| General      | Fine-tuning    | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4. |
-| Agent        | Fine-tuning    | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥alpha-umi-toolbench, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                    |
+| General      | Fine-tuning    | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
+| Agent        | Fine-tuning    | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                    |
 | General      | Human Alignment | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired.                            |
 | Code         | Fine-tuning    | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.    |
 | Medical      | Fine-tuning    | medical-en, medical-zh, 🔥disc-med-sft-zh.               |
-| Legal        | Fine-tuning    | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.                                               |
+| Legal        | Fine-tuning    | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.               |
 | Math         | Fine-tuning    | 🔥blossom-math-zh, school-math-zh, open-platypus-en.                      |
 | SQL          | Fine-tuning    | text2sql-en, 🔥sql-create-context-en.                                    |
 | Text Generation | Fine-tuning | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                            |
 | Classification | Fine-tuning  | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.           |
 | Quantization Assist | Quantization | pileval.  |
 | Other        | Fine-tuning    | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.   |
-| Vision       | Fine-tuning    | coco-en, 🔥coco-mini-en, coco-en-2, coco-mini-en-2, capcha-images.         |
-| Audio        | Fine-tuning    | aishell1-zh, 🔥aishell1-mini-zh.       |
+| Vision       | Fine-tuning    | coco-en, 🔥coco-en-mini, coco-en-2, coco-en-2-mini, capcha-images.         |
+| Audio        | Fine-tuning    | aishell1-zh, 🔥aishell1-zh-mini.       |
 
 ### Supported Technologies
 
