@@ -87,6 +87,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
 
     if request.seed is not None:
         seed_everything(request.seed, verbose=False)
+    if request.adapters is not None:
+        return create_error_response(HTTPStatus.BAD_REQUEST, 'vllm backend does not support multiple lora switching.')
     _request = {'model': request.model}
     if isinstance(request, ChatCompletionRequest):
         if is_generation_template(template.template_type):
@@ -259,6 +261,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     if request.seed is not None:
         seed_everything(request.seed, verbose=False)
+    if request.adapters is not None:
+        if len(request.adapters) != 1:
+            return create_error_response(HTTPStatus.BAD_REQUEST, 'Only one lora adapter is supported.')
     _request = {'model': request.model}
     if isinstance(request, ChatCompletionRequest):
         if is_generation_template(template.template_type):
@@ -311,7 +316,12 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
     logger.info(request_info)
 
+    adapter_info = {}
+    if request.adapters is not None:
+        adapter_info = {'adapter_names': request.adapters}
+
     created_time = int(time.time())
+
 
     async def _generate_full():
         generation_info = {}
@@ -321,7 +331,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **example,
             stop_words=request.stop,
             generation_config=generation_config,
-            generation_info=generation_info)
+            generation_info=generation_info,
+            **adapter_info)
         num_prompt_tokens = generation_info['num_prompt_tokens']
         num_generated_tokens = generation_info['num_generated_tokens']
         usage_info = UsageInfo(
@@ -357,7 +368,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **example,
             stop_words=request.stop,
             generation_config=generation_config,
-            generation_info=generation_info)
+            generation_info=generation_info,
+            **adapter_info)
 
         print_idx = 0
         for response, _ in gen:
