@@ -1146,11 +1146,13 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
 
 
 def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List['LoRARequest']:
-    try:
-        from .vllm_utils import LoRARequest as VllmLoRARequest
-    except ImportError:
-        logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
-        raise
+    VllmLoRARequest = None
+    if use_vllm:
+        try:
+            from .vllm_utils import LoRARequest as VllmLoRARequest
+        except ImportError:
+            logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
+            raise
 
     @dataclass
     class PtLoRARequest:
