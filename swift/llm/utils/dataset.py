@@ -17,7 +17,7 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
@@ -295,7 +295,8 @@ def _post_preprocess(
     val_dataset = None
     if val_sample > 0:
         assert isinstance(val_sample, int)
-        train_dataset, val_dataset = train_dataset.train_test_split(test_size=val_sample).values()
+        train_dataset, val_dataset = train_dataset.train_test_split(
+            test_size=val_sample, seed=get_seed(random_state)).values()
 
     assert train_sample > 0
     train_dataset = sample_dataset(train_dataset, train_sample, random_state)
