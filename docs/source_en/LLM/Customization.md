@@ -161,7 +161,7 @@ from typing import Optional, Tuple
 from datasets import Dataset as HfDataset
 from modelscope import MsDataset
 
-from swift.llm import get_dataset, register_dataset
+from swift.llm import get_dataset, register_dataset, get_dataset_from_repo
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -183,15 +183,7 @@ Similarity score: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(
-    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
-def get_stsb_dataset(dataset_id_or_path: str,
-                     **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    dataset_dict = MsDataset.load(dataset_id_or_path)
-    train_dataset = dataset_dict['train'].to_hf_dataset()
-    val_dataset = dataset_dict['validation'].to_hf_dataset()
-    return tuple(
-        _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
+register_dataset(CustomDatasetName.stsb_en, 'huangjintao/stsb', None, _preprocess_stsb, get_dataset_from_repo)
 
 
 if __name__ == '__main__':
