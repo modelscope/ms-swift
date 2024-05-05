@@ -235,7 +235,6 @@ swift sft \
     --warmup_ratio 0.4 \
     --output_dir output \
     --lora_target_modules ALL \
-    --self_cognition_sample 500 \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
     --deepspeed default-zero2 \

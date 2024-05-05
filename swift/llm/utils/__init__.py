@@ -4,7 +4,7 @@ from .argument import (AppUIArguments, DeployArguments, DPOArguments, EvalArgume
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction, HfDataset, get_dataset, get_dataset_from_repo,
                       load_dataset_from_local, load_ms_dataset, register_dataset, register_dataset_info,
-                      register_local_dataset)
+                      register_local_dataset, sample_dataset)
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type, get_model_tokenizer,
                     get_model_tokenizer_from_repo, get_model_tokenizer_with_flash_attn, register_model)

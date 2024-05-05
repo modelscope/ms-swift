@@ -16,7 +16,8 @@ from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
 from .utils import (DeployArguments, InferArguments, Template, get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, set_generation_config)
+                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, sample_dataset,
+                    set_generation_config)
 
 logger = get_logger()
 
@@ -367,8 +368,7 @@ def llm_infer(args: InferArguments) -> None:
         if args.show_dataset_sample >= 0 and val_dataset.shape[0] > args.show_dataset_sample:
             random_state = np.random.RandomState(args.dataset_seed)
             logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
-            val_idxs = random_state.permutation(args.show_dataset_sample)
-            val_dataset = val_dataset.select(val_idxs)
+            val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)
 
         logger.info(f'val_dataset: {val_dataset}')
         if args.verbose is None:
