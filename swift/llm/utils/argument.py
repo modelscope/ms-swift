@@ -22,7 +22,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job)
-from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file
+from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file, sample_dataset
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -61,7 +61,7 @@ class ArgumentsBase:
 
         for k in maybe_check_exist_path:
             v = getattr(self, k)
-            if v is not None and (v.startswith('~') or v.startswith('/')):
+            if isinstance(v, str) and v is not None and (v.startswith('~') or v.startswith('/')):
                 check_exist_path.append(k)
         check_exist_path_set = set(check_exist_path)
         other_path = ['output_dir', 'logging_dir']
@@ -327,8 +327,7 @@ class ArgumentsBase:
                         f'argument: {self.train_dataset_mix_ratio}. '
                         f'the actual ratio is: {len(mixed_dataset) / len(train_dataset):.6}.')
         else:
-            train_idxs = random_state.permutation(mix_dataset_sample)
-            mixed_dataset = mixed_dataset.select(train_idxs)
+            mixed_dataset = sample_dataset(mixed_dataset, mix_dataset_sample, random_state)
         train_dataset = concatenate_datasets([train_dataset, mixed_dataset])
         return train_dataset, val_dataset
 

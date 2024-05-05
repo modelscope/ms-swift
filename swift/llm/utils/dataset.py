@@ -1199,7 +1199,7 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
 def get_dataset(
         dataset_name_list: Union[List[str], str],
         dataset_test_ratio: float = 0.,
-        dataset_seed: int = 42,
+        dataset_seed: Union[int, RandomState] = 42,
         check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none',
         *,
         # for self-cognition
@@ -1220,7 +1220,9 @@ def get_dataset(
         if dataset_sample == -1:
             dataset_sample = dataset_info.get('dataset_sample', -1)
         if isinstance(dataset_seed, int):
-            dataset_seed = RandomState(dataset_seed)
+            random_state = RandomState(dataset_seed)
+        else:
+            random_state = dataset_seed
 
         get_function: GetDatasetFunction = dataset_info['get_function']
         is_local = dataset_info.get('is_local', False)
@@ -1243,7 +1245,7 @@ def get_dataset(
             dataset_info['preprocess_func'],
             dataset_info['split'],
             dataset_sample,
-            random_state=dataset_seed,
+            random_state=random_state,
             dataset_test_ratio=dataset_test_ratio,
             remove_useless_columns=remove_useless_columns,
             use_hf=use_hf)
@@ -1322,11 +1324,17 @@ def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
     # dataset_info_path: path, json or None
     if dataset_info_path is None:
         dataset_info_path = os.path.abspath(os.path.join(__file__, '..', '..', 'data', 'dataset_info.json'))
-    if os.path.isfile(dataset_info_path):
-        with open(dataset_info_path, 'r') as f:
-            dataset_info = json.load(f)
-        base_dir = os.path.dirname(dataset_info_path)
+    if isinstance(dataset_info_path, str):
+        if os.path.isfile(dataset_info_path):
+            with open(dataset_info_path, 'r') as f:
+                dataset_info = json.load(f)
+            base_dir = os.path.dirname(dataset_info_path)
+        else:
+            dataset_info = json.loads(dataset_info_path)
+            dataset_info_path = list(dataset_info.keys())
+            base_dir = None
     else:
+        assert isinstance(dataset_info_path, dict)
         dataset_info = dataset_info_path
         dataset_info_path = list(dataset_info.keys())
         base_dir = None
