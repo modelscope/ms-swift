@@ -15,8 +15,8 @@ from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
-from .utils import (InferArguments, Template, get_additional_saved_files, get_dataset, get_model_tokenizer,
-                    get_template, inference, inference_stream, is_adapter, set_generation_config)
+from .utils import (DeployArguments, InferArguments, Template, get_additional_saved_files, get_dataset,
+                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, set_generation_config)
 
 logger = get_logger()
 
@@ -190,7 +190,12 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
+        if isinstance(args, DeployArguments):
+            for lora_request in args.lora_request_list:
+                model = Swift.from_pretrained(
+                    model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
+        else:
+            model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
         model = model.to(model.dtype)
 
     if verbose:
@@ -233,8 +238,8 @@ def llm_infer(args: InferArguments) -> None:
             model.generation_config.save_pretrained(args.ckpt_dir)
     lora_request = None
     if args.vllm_enable_lora:
-        assert len(args.vllm_lora_request_list) == 1
-        lora_request = args.vllm_lora_request_list[0]
+        assert len(args.lora_request_list) == 1
+        lora_request = args.lora_request_list[0]
     # Inference
     result = []
     jsonl_path = None

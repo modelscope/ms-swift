@@ -803,7 +803,7 @@ class Swift:
             shutil.rmtree(os.path.join(output_dir, 'default'))
 
     @staticmethod
-    def from_pretrained(model: Union[nn.Module, SwiftModel],
+    def from_pretrained(model: Union[nn.Module, SwiftModel, PeftModel],
                         model_id: str = None,
                         adapter_name: Union[str, List[str], Dict[str, str]] = None,
                         revision: str = None,
@@ -837,7 +837,41 @@ class Swift:
                 _json = json.load(f)
             is_peft_model = SWIFT_TYPE_KEY not in _json and 'extra_state_keys' not in _json
         if is_peft_model:
-            return PeftModel.from_pretrained(
-                model, model_id, revision=revision, adapter_name=adapter_name or 'default', **kwargs)
+
+            def load_peft_model(_model, _adapter_name, _new_name=None):
+                if not _new_name:
+                    _new_name = _adapter_name
+                import peft
+                if not isinstance(_model, peft.PeftModel):
+                    return PeftModel.from_pretrained(
+                        _model,
+                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default'
+                        and os.path.exists(os.path.join(model_id, _adapter_name)) else model_id,
+                        revision=revision,
+                        adapter_name=_new_name,
+                        **kwargs)
+                else:
+                    _model.load_adapter(
+                        os.path.join(model_id, _adapter_name) if _adapter_name != 'default'
+                        and os.path.exists(os.path.join(model_id, _adapter_name)) else model_id, _new_name)
+                    return _model
+
+            if not adapter_name:
+                peft_model = load_peft_model(model, 'default')
+                for _dir in os.listdir(model_id):
+                    if os.path.isdir(os.path.join(model_id, _dir)) and \
+                            os.path.exists(os.path.join(model_id, _dir, CONFIG_NAME)):
+                        peft_model = load_peft_model(peft_model, _dir)
+            elif isinstance(adapter_name, str):
+                return load_peft_model(model, adapter_name)
+            elif isinstance(adapter_name, list):
+                peft_model = model
+                for name in adapter_name:
+                    peft_model = load_peft_model(peft_model, name)
+            else:
+                peft_model = model
+                for key, value in adapter_name.items():
+                    peft_model = load_peft_model(peft_model, key, value)
+            return peft_model
         else:
             return SwiftModel.from_pretrained(model, model_id, revision=revision, adapter_name=adapter_name, **kwargs)

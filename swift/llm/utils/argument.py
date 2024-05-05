@@ -231,6 +231,8 @@ class ArgumentsBase:
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
                 self.merge_lora = self.merge_lora_and_save
+            if self.vllm_lora_modules is not None:
+                self.lora_modules = self.vllm_lora_modules
         if isinstance(self, AppUIArguments):
             if self.server_name is not None:
                 self.host = self.server_name
@@ -960,7 +962,8 @@ class InferArguments(ArgumentsBase):
     max_model_len: Optional[int] = None
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
-    vllm_lora_modules: List[str] = field(default_factory=list)
+    lora_modules: List[str] = field(default_factory=list)
+
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
     train_dataset_sample: int = -1  # Used for splitting the validation set.
@@ -970,6 +973,7 @@ class InferArguments(ArgumentsBase):
     merge_lora_and_save: Optional[bool] = None
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
+    vllm_lora_modules: List[str] = None
 
     def __post_init__(self) -> None:
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
@@ -1017,26 +1021,12 @@ class InferArguments(ArgumentsBase):
         if self.ckpt_dir is None:
             self.sft_type = 'full'
 
-        self.prepare_vllm()
+        self.handle_infer_backend()
 
-    @staticmethod
-    def _parse_vllm_lora_modules(vllm_lora_modules: List[str]) -> List['LoRARequest']:
-        try:
-            from .vllm_utils import LoRARequest
-        except ImportError:
-            logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
-            raise
-        lora_request_list = []
-        for i, vllm_lora_module in enumerate(vllm_lora_modules):
-            lora_name, lora_local_path = vllm_lora_module.split('=')
-            lora_local_path = swift_to_peft_format(lora_local_path)
-            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
-        return lora_request_list
-
-    def prepare_vllm(self):
+    def handle_infer_backend(self):
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
-        self.vllm_lora_request_list = None
+        self.lora_request_list = None
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm:
@@ -1053,10 +1043,13 @@ class InferArguments(ArgumentsBase):
             if self.sft_type == 'lora' and not self.vllm_enable_lora:
                 assert self.merge_lora is True, ('To use VLLM, you need to provide the complete weight parameters. '
                                                  'Please set `--merge_lora true`.')
-            if self.vllm_enable_lora:
-                self.vllm_lora_modules.append(f'default-lora={self.ckpt_dir}')
-                self.vllm_lora_request_list = self._parse_vllm_lora_modules(self.vllm_lora_modules)
-                logger.info(f'args.vllm_lora_request_list: {self.vllm_lora_request_list}')
+        if (self.infer_backend == 'vllm' and self.vllm_enable_lora
+                or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
+            assert self.ckpt_dir is not None
+            self.lora_modules.append(f'default-lora={self.ckpt_dir}')
+            self.lora_request_list = _parse_lora_modules(self.lora_modules, True)
+            logger.info(f'args.lora_request_list: {self.lora_request_list}')
+
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
             self.stream = False
@@ -1164,9 +1157,9 @@ class EvalArguments(InferArguments):
         if self.eval_url is None:
             super().prepare_template()
 
-    def prepare_vllm(self) -> None:
+    def handle_infer_backend(self) -> None:
         if self.eval_url is None:
-            super().prepare_vllm()
+            super().handle_infer_backend()
 
 
 @dataclass
@@ -1259,3 +1252,27 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     else:
         logger.info('The format of the checkpoint is already in peft format.')
     return lora_checkpoint_path
+
+
+def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List['LoRARequest']:
+    VllmLoRARequest = None
+    if use_vllm:
+        try:
+            from .vllm_utils import LoRARequest as VllmLoRARequest
+        except ImportError:
+            logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
+            raise
+
+    @dataclass
+    class PtLoRARequest:
+        lora_name: str
+        lora_int_id: int
+        lora_local_path: str
+
+    LoRARequest = VllmLoRARequest if use_vllm else PtLoRARequest
+    lora_request_list = []
+    for i, lora_module in enumerate(lora_modules):
+        lora_name, lora_local_path = lora_module.split('=')
+        lora_local_path = swift_to_peft_format(lora_local_path)
+        lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
+    return lora_request_list
