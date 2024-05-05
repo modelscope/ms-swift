@@ -141,6 +141,7 @@ Supported parameters include:
 
 - dataset_id: The corresponding ModelScope dataset_id, default is `None`. The simplest setup requires specifying one of `dataset_id`, `hf_dataset_id`, or `dataset_path`.
 - subsets: A list of names of the subsets, default is `[]`, which means using the 'default' subset.
+- split: Default is ['train'], usually not necessary to set.
 - hf_dataset_id: The corresponding HuggingFace dataset_id, default is `None`.
 - dataset_path: Used to specify the local path of the dataset, e.g. 1.jsonl, default is `None`. It can take relative or absolute paths. If using a relative path, it is relative to the directory where the dataset_info.json is located. If dataset_path is set, then dataset_id, subsets, and hf_dataset_id parameters are ignored.
 - columns: The default preprocessor used is `SmartPreprocessor`. Specifying this parameter sets it to `RenameColumnsPreprocessor`. You need to rename the columns in the dataset and convert them to the style of **format 1** mentioned above.
@@ -207,6 +208,7 @@ The `register_dataset` function will register the dataset in the `DATASET_MAPPIN
 - `dataset_name`: Required, representing the name of the dataset, which is also the unique ID of the dataset.
 - `dataset_id_or_path`: Required, representing the `dataset_id` on the ModelScope Hub or the local `dataset_dir`.
 - `subsets`: List of subsets of the dataset, default is `[]`.
+- `split`: Default is ['train'].
 - `preprocess_func`: Preprocessing function.
 - `get_function`: Default value is `None`. The function to get the dataset. If passed `None`, the decorator approach will be used to register the dataset. If passed a function, the normal approach will be used to register.
    > `get_function` should return `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. If only one dataset is returned, it will be the train_dataset. If two datasets are returned, they will be the train_dataset and val_dataset, respectively. The `get_dataset` function supports obtaining multiple datasets, for example: `get_dataset(['dataset1', 'dataset2'])`. We will concatenate the training and validation parts of each subset and return the merged train_dataset and val_dataset.

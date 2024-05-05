@@ -260,6 +260,7 @@ class ArgumentsBase:
         # Avoid post-processing
         if len(self.dataset) == 1 and '#' not in self.dataset[0] and self.train_dataset_sample >= 0:
             self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}'
+            self.train_dataset_sample = -1
 
     def _register_self_cognition(self: Union['SftArguments', 'InferArguments']) -> None:
 
