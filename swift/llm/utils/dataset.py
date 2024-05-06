@@ -137,6 +137,7 @@ class DatasetName:
     hh_rlhf_cn_harmless_base_en = 'hh-rlhf-cn-harmless-base-en'
     hh_rlhf_cn_helpful_base_en = 'hh-rlhf-cn-helpful-base-en'
     stack_exchange_paired = 'stack-exchange-paired'
+    shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
 
     # for awq
     pileval = 'pileval'
@@ -949,6 +950,33 @@ register_dataset(
     DatasetName.hh_rlhf_cn_helpful_base_en,
     'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')], [('helpful_base_en', 'test')],
     process_hh_rlhf_cn,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
+
+def process_shareai_dpo(dataset):
+
+    def reorganize_row(row):
+        # if isinstance(row['question'], str):
+        #     row['question'] = ast.literal_eval(row['question'])
+        # if isinstance(row['answer_zh'], str):
+        #     row['answer_zh'] = ast.literal_eval(row['answer_zh'])
+        # if isinstance(row['rejected'], str):
+        #     row['answer_en'] = ast.literal_eval(row['answer_en'])
+        # response = row['chosen']['text']
+        # rejected_response = row['rejected']['text']
+        return {
+            'query': row['question'],
+            'response': row['answer_zh'],
+            'rejected_response': row['answer_en'],
+        }
+
+
+    return dataset.map(reorganize_row)
+
+register_dataset(
+    DatasetName.shareai_llama3_dpo_zh_en_emoji,
+    'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', [('default', 'train')], None,
+    process_shareai_dpo,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
