@@ -132,8 +132,8 @@ def llm_orpo(args: ORPOArguments) -> str:
         logger.info(
             'The current template does not support multi-turn dialogue. The chatml template is used by default. \
 You can also use the --model_type parameter to specify the  template.')
-        from .utils.template import TEMPLATE_MAPPING
-        template = TEMPLATE_MAPPING['chatml']['template']
+        template: Template = get_template(
+            'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
 
