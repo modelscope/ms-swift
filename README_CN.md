@@ -505,38 +505,39 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 数据集类型 | 训练任务 | 文档                                                         |
 | ---------- | :------- | ------------------------------------------------------------ |
-| 通用       | 微调     | 🔥ruozhiba, 🔥ms-bench, 🔥ms-bench-mini, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca-all, instinwild-en, instinwild-zh, cot-en, cot-zh, firefly-all-zh, instruct-en, gpt4all-en, sharegpt-en, sharegpt-zh, tulu-v2-sft-mixture, wikipedia-zh, open-orca, open-orca-gpt4, sharegpt-gpt4, 🔥sharegpt-gpt4-mini. |
-| Agent      | 微调     | 🔥ms-agent, ms-agent-for-agentfabric-default, ms-agent-for-agentfabric-addition, damo-mini-agent-zh, damo-agent-zh, agent-instruct-all-en. |
-| 通用       | 人类对齐 | 🔥hh-rlhf-cn, stack-exchange-paired, hh-rlhf-harmless-base, hh-rlhf-helpful-base, hh-rlhf-helpful-online, hh-rlhf-helpful-rejection-sampled, hh-rlhf-red-team-attempts, hh-rlhf-cn-harmless-base-cn, hh-rlhf-cn-helpful-base-cn, hh-rlhf-cn-harmless-base-en, hh-rlhf-cn-helpful-base-en. |
+| 通用       | 微调     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
+| Agent      | 微调     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en. |
+| 通用       | 人类对齐 | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired. |
 | 代码       | 微调     | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh. |
-| 医疗       | 微调     | medical-en, medical-zh, medical-mini-zh, 🔥disc-med-sft-zh.   |
+| 医疗       | 微调     | medical-en, medical-zh, 🔥disc-med-sft-zh.   |
 | 法律       | 微调     | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.          |
 | 数学       | 微调     | 🔥blossom-math-zh, school-math-zh, open-platypus-en.          |
 | SQL        | 微调     | text2sql-en, 🔥sql-create-context-en.                         |
 | 文本生成   | 微调     | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                      |
-| 分类       | 微调     | cmnli-zh, 🔥cmnli-mini-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
+| 分类       | 微调     | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
 | 量化辅助   | 量化     | pileval.                                                     |
 | 其他       | 微调     | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh. |
-| 视觉       | 微调     | coco-en, 🔥coco-mini-en, coco-mini-en-2, capcha-images.       |
-| 音频       | 微调     | aishell1-zh, 🔥aishell1-mini-zh.                              |
+| 视觉       | 微调     | coco-en, 🔥coco-en-mini, coco-en-2, coco-en-2-mini, capcha-images.       |
+| 音频       | 微调     | aishell1-zh, 🔥aishell1-zh-mini.                              |
 
 ### 支持的技术
 
-| 技术名称                                                     |
-| ------------------------------------------------------------ |
-| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685) |
-| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf) |
-| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf) |
-| 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  \|  [Project Page](https://scedit.github.io/) > |
-| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914) |
-| QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717) |
-| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307) |
-| ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317) |
-| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751) |
-| Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119) |
-| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503) |
-| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \|  [Project Page](https://res-tuning.github.io/)  \|  [Usage](docs/source/GetStarted/ResTuning.md) > |
-| [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等 |
+| 技术名称                                                                                                                                                                                    |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)                                                                                          |
+| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)                                                                                   |
+| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf)                                                                                  |
+| 🔥GaLore:[GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507)                                                                      |
+| 🔥LISA: [LISA: Layerwise Importance Sampling for Memory-Efficient Large Language Model Fine-Tuning](https://arxiv.org/abs/2403.17919)                                                   |
+| 🔥UnSloth: https://github.com/unslothai/unsloth                                                                                                                                         |
+| 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  \ |  [Project Page](https://scedit.github.io/) > |
+| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)                                                                                          |
+| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)                                                                               |
+| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)                                                                                               |
+| Vision Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)                                                                                                          |
+| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)                                                                     |
+| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \  |  [Project Page](https://res-tuning.github.io/)  \|  [Usage](docs/source/GetStarted/ResTuning.md) > |
+| [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等                                                                                                                    |
 
 ### 支持的硬件
 

@@ -410,10 +410,10 @@ def register_model(
         revision: Optional[str] = None,  # only modelscope
         ignore_file_pattern: Optional[List[str]] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
-        exists_ok: bool = False,
+        exist_ok: bool = False,
         eos_token: Optional[str] = None,
         **kwargs) -> Optional[Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]]:
-    if not exists_ok and model_type in MODEL_MAPPING:
+    if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
     if requires is None:
         requires = []
@@ -3612,7 +3612,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    model, tokenizer = get_model_tokenizer_minicpm(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(torch_dtype)  # fix float32
         func_list = ['generate', 'get_input_embeddings', 'forward']

@@ -85,7 +85,7 @@ class ModelOutput:
         if args['sft_type'] == 'llamapro':
             hyper_params += f'num_blocks={args["llamapro_num_new_blocks"]}/'
         if 'neftune_noise_alpha' in args and args['neftune_noise_alpha']:
-            hyper_params += f'neftune_alpha={args["neftune_noise_alpha"]}/'
+            hyper_params += f'neftune_noise_alpha={args["neftune_noise_alpha"]}/'
 
         if hyper_params.endswith('/'):
             hyper_params = hyper_params[:-1]

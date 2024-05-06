@@ -506,8 +506,8 @@ class Template:
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
-def register_template(template_type: str, template: Template, *, exists_ok: bool = False, **kwargs) -> None:
-    if not exists_ok and template_type in TEMPLATE_MAPPING:
+def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
+    if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     template_info = {'template': template, **kwargs}
     TEMPLATE_MAPPING[template_type] = template_info

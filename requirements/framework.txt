@@ -3,7 +3,7 @@ dacite
 datasets<=2.18  # modelscope
 jieba
 matplotlib
-modelscope>=1.13.3
+modelscope>=1.14
 nltk
 numpy
 optimum>=1.17.0

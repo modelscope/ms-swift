@@ -8,7 +8,6 @@ swift sft \
     --dtype AUTO \
     --output_dir output \
     --dataset coco-mini-en-2 \
-    --train_dataset_sample -1 \
     --num_train_epochs 2 \
     --max_length 2048 \
     --check_dataset_strategy warning \
