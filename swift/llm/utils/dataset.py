@@ -811,7 +811,7 @@ def process_shareai_dpo(dataset):
 
 register_dataset(
     DatasetName.shareai_llama3_dpo_zh_en_emoji,
-    'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', [('default', 'train')], None,
+    'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', [('default', 'train')],
     process_shareai_dpo,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
