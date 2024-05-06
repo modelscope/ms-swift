@@ -110,7 +110,7 @@ AAAAA,BBBBB,CCCCC
 
 ### Adding dataset_info.json
 
-You can refer to the [builtin dataset_info.json in Swift](https://github.com/modelscope/swift/blob/main/swift/llm/data/dataset_info.json) to expand datasets:
+You can refer to the [builtin dataset_info.json in Swift](https://github.com/modelscope/swift/blob/main/swift/llm/data/dataset_info.json) to expand datasets. You can directly add it in the built-in dataset_info.json, or you can pass in the path to an external dataset_info.json, a JSON string, or a dictionary using `--custom_dataset_info 1.json`.
 
 Adding dataset_id:
 
@@ -153,7 +153,7 @@ If the parameters in `dataset_info.json` are not sufficient for your needs, such
 
 ### Registering Datasets
 
-The following is an example of **registering datasets**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom).
+The following is an example of **registering datasets**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom). You can parse the registered content by specifying `--custom_register_path xxx.py`.
 
 ```python
 from typing import Optional, Tuple
@@ -210,7 +210,7 @@ The `register_dataset` function will register the dataset in the `DATASET_MAPPIN
 - `**kwargs`: Other parameters used to annotate the dataset. This parameter generally does not need to be set.
 
 ## Custom Models
-The following is an example of **custom models**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom).
+The following is an example of **custom models**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom). You can parse the registered content by specifying `--custom_register_path xxx.py`.
 
 ```python
 from typing import Any, Dict

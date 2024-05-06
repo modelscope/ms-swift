@@ -110,6 +110,9 @@
 - `--train_dataset_mix_ratio`: Default is `0.`. This parameter defines how to mix datasets for training. When this parameter is specified, it will mix the training dataset with a multiple of `train_dataset_mix_ratio` of the general knowledge dataset specified by `train_dataset_mix_ds`. This parameter has been deprecated, please use `--dataset {dataset_name}#{dataset_sample}` to mix datasets.
 - `--train_dataset_mix_ds`: Default is `['ms-bench']`. Used for preventing knowledge forgetting, this is the general knowledge dataset. This parameter has been deprecated, please use `--dataset {dataset_name}#{dataset_sample}` to mix datasets.
 - `--use_loss_scale`: Default is `False`. When taking effect, strengthens loss weight of some Agent fields (Action/Action Input part) to enhance CoT, has no effect in regular SFT scenarios.
+- `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
+- `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used for expanding datasets.
+
 
 ### FSDP Parameters
 
@@ -237,6 +240,9 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--vllm_enable_lora`: Default `False`. Whether to support vllm with lora.
 - `--vllm_max_lora_rank`: Default `16`.  Lora rank in VLLM.
 - `--lora_modules`: Default`[]`, the input format is `'{lora_name}={lora_path}'`, e.g. `--lora_modules lora_name1=lora_path1 lora_name2=lora_path2`. `ckpt_dir` will be added with `f'default-lora={args.ckpt_dir}'` by default.
+- `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
+- `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used for expanding datasets.
+
 
 ## export Parameters
 
