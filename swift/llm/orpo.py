@@ -129,10 +129,11 @@ def llm_orpo(args: ORPOArguments) -> str:
     template: Template = get_template(
         args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     if not template.support_multi_round and 'history' in train_dataset[0]:
-        logger.info('The current template does not support multi-turn dialogue. The chatml template is used by default. \
-                    You can also use the --model_type parameter to specify the  template.')
-        from .utils.template import TemplateType
-        template = TemplateType.chatml
+        logger.info(
+            'The current template does not support multi-turn dialogue. The chatml template is used by default. \
+You can also use the --model_type parameter to specify the  template.')
+        from .utils.template import TEMPLATE_MAPPING
+        template = TEMPLATE_MAPPING['chatml']['template']
     args.system = template.default_system
     logger.info(f'system: {args.system}')
 
