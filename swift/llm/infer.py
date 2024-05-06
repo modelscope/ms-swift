@@ -16,7 +16,8 @@ from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
 from .utils import (DeployArguments, InferArguments, Template, get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, set_generation_config)
+                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, sample_dataset,
+                    set_generation_config)
 
 logger = get_logger()
 
@@ -284,14 +285,19 @@ def llm_infer(args: InferArguments) -> None:
                 history = []
                 infer_kwargs = {}
                 continue
-            elif query.strip() == '':
+            elif query.strip() == '' and not read_system:
                 continue
             elif query.strip().lower() == 'reset-system':
                 read_system = True
                 continue
             if read_system:
-                system = query
+                if query == '':
+                    system = None
+                else:
+                    system = query
                 read_system = False
+                history = []
+                infer_kwargs = {}
                 continue
             if input_mode == 'S' and query.strip().lower() == 'multi-line':
                 input_mode = 'M'
@@ -306,6 +312,8 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type)
+            if system is None and template.use_default_system:
+                system = template.default_system
             if args.infer_backend == 'vllm':
                 request_list = [{'query': query, 'history': history, 'system': system}]
                 if args.stream:
@@ -339,6 +347,7 @@ def llm_infer(args: InferArguments) -> None:
                     print(response)
             print('-' * 50)
             obj = {
+                'system': system,
                 'query': query,
                 'response': response,
                 'history': history,
@@ -348,13 +357,18 @@ def llm_infer(args: InferArguments) -> None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
     else:
-        random_state = np.random.RandomState(args.dataset_seed)
         _, val_dataset = get_dataset(
-            args.dataset, args.dataset_test_ratio, random_state, check_dataset_strategy=args.check_dataset_strategy)
-        if args.val_dataset_sample >= 0 and val_dataset.shape[0] > args.val_dataset_sample:
-            logger.info(f'val_dataset_sample: {args.val_dataset_sample}')
-            val_idxs = random_state.permutation(args.val_dataset_sample)
-            val_dataset = val_dataset.select(val_idxs)
+            args.dataset,
+            args.dataset_test_ratio,
+            args.dataset_seed,
+            check_dataset_strategy=args.check_dataset_strategy,
+            model_name=args.model_name,
+            model_author=args.model_author)
+        _, val_dataset = args._handle_dataset_compat(_, val_dataset)
+        if args.show_dataset_sample >= 0 and val_dataset.shape[0] > args.show_dataset_sample:
+            random_state = np.random.RandomState(args.dataset_seed)
+            logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
+            val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)
 
         logger.info(f'val_dataset: {val_dataset}')
         if args.verbose is None:
@@ -374,15 +388,35 @@ def llm_infer(args: InferArguments) -> None:
             label_list = None
             if 'response' in val_dataset.features:
                 label_list = val_dataset['response']
-            val_dataset = val_dataset.remove_columns('response')
-            request_list = val_dataset.to_list()
+                val_dataset = val_dataset.remove_columns('response')
+            request_list = []
+            for data in val_dataset:
+                request = {'query': data['query']}
+                history = data.get('history')
+                system = data.get('system')
+                images = data.get('images')
+                if history is None:
+                    history = []
+                request['history'] = history
+                if system is None and template.use_default_system:
+                    system = template.default_system
+                request['system'] = system
+                if images is not None:
+                    request['images'] = images
+                request_list.append(request)
             resp_list = inference_vllm(llm_engine, template, request_list, use_tqdm=True)
             result = []
             if label_list is not None:
                 for request, label in zip(request_list, label_list):
                     request['label'] = label
             for request, resp in zip(request_list, resp_list):
-                obj = {'response': resp['response'], **request}
+                obj = {
+                    'system': request['system'],
+                    'query': request['query'],
+                    'response': resp['response'],
+                    'label': request.pop('label', None),
+                    'history': request['history'],
+                }
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
@@ -396,10 +430,12 @@ def llm_infer(args: InferArguments) -> None:
                 images = data.get('images')
                 if args.verbose and system is not None:
                     print(f'[SYSTEM]{system}')
-                if history is not None:
-                    kwargs['history'] = history
-                if system is not None:
-                    kwargs['system'] = system
+                if history is None:
+                    history = []
+                kwargs['history'] = history
+                if system is None and template.use_default_system:
+                    system = template.default_system
+                kwargs['system'] = system
                 if images is not None:
                     kwargs['images'] = images
                 if args.infer_backend == 'vllm':
@@ -417,10 +453,14 @@ def llm_infer(args: InferArguments) -> None:
                 else:
                     response, _ = inference(
                         model, template, stream=args.stream and args.verbose, verbose=args.verbose, **kwargs)
-                label = data.pop('response')
-                if label is not None:
-                    kwargs['label'] = label
-                obj = {'response': response, **kwargs}
+                label = data.pop('response', None)
+                obj = {
+                    'system': kwargs['system'],
+                    'query': kwargs['query'],
+                    'response': response,
+                    'label': label,
+                    'history': kwargs['history'],
+                }
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
@@ -432,8 +472,8 @@ def llm_infer(args: InferArguments) -> None:
                     print('-' * 50)
     if jsonl_path is not None:
         logger.info(f'save_result_path: {jsonl_path}')
-    if args.val_dataset_sample == 10:  # is default
-        logger.info('You can set `--val_dataset_sample -1` to perform inference on the entire dataset.')
+    if not args.eval_human and args.show_dataset_sample == 10:  # is default
+        logger.info('You can set `--show_dataset_sample -1` to perform inference on the entire dataset.')
     return {'result': result}
 
 

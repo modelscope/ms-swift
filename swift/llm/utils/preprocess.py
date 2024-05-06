@@ -85,7 +85,8 @@ class ConversationsPreprocessor:
                  conversations_key: str = 'conversations',
                  from_key: str = 'from',
                  value_key: str = 'value',
-                 repair_conversations: Callable[[str], Optional[Dict[str, str]]] = _default_repair_conversations,
+                 repair_conversations: Callable[[Union[str, Dict[str, str]]],
+                                                Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise'):
         self.user_role = user_role
         self.assistant_role = assistant_role
