@@ -789,34 +789,6 @@ register_dataset(
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
 
-register_dataset(
-    DatasetName.hh_rlhf_cn_harmless_base_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')], [('harmless_base_cn', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_harmless_base_en,
-    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_en', 'train')], [('harmless_base_en', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_helpful_base_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_cn', 'train')], [('helpful_base_cn', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.hh_rlhf_cn_helpful_base_en,
-    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')], [('helpful_base_en', 'test')],
-    process_hh_rlhf_cn,
-    get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'pairwise'])
-
 def process_shareai_dpo(dataset):
 
     def reorganize_row(row):
@@ -843,28 +815,6 @@ register_dataset(
     process_shareai_dpo,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.medical_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')], [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'medical'])
-
-register_dataset(
-    DatasetName.medical_mini_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')], [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    function_kwargs={'train_dataset_sample': 50000},
-    tags=['chat', 'medical'])
-
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     query = []
