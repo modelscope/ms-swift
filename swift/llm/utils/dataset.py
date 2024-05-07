@@ -127,6 +127,7 @@ class DatasetName:
     hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
     stack_exchange_paired = 'stack-exchange-paired'
+    shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
 
     # for awq
     pileval = 'pileval'
@@ -788,6 +789,26 @@ register_dataset(
     get_dataset_from_repo,
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
+
+def process_shareai_dpo(dataset):
+
+    def reorganize_row(row):
+        return {
+            'query': row['question'],
+            'response': row['answer_zh'],
+            'rejected_response': row['answer_en'],
+        }
+
+    return dataset.map(reorganize_row)
+
+
+register_dataset(
+    DatasetName.shareai_llama3_dpo_zh_en_emoji,
+    'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', ['default'],
+    process_shareai_dpo,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:

@@ -1223,6 +1223,12 @@ class DPOArguments(SftArguments):
 
 
 @dataclass
+class ORPOArguments(SftArguments):
+    max_prompt_length: int = 1024
+    beta: float = 0.1
+
+
+@dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(
         default=None, metadata={'help': 'The rome request file, please check the documentation '

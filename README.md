@@ -39,6 +39,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 ## 🎉 News
+- 2024.05.07: Supoprts **ORPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/ORPO.md) to start training!
 - 2024.04.29: Supports inference and fine-tuning of InternVL-Chat-V1.5 model. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.04.26: Support **LISA** and **unsloth** training! Specify `--lisa_activated_layers=2` to use LISA(to reduce the memory cost to 30 percent!), specify `--tuner_backend unsloth` to use unsloth to train a huge model(full or lora) with lesser memory(30 percent or lesser) and faster speed(5x)!
 - 🔥2024.04.26: Support the fine-tuning and inference of Qwen1.5-110B and Qwen1.5-110B-Chat model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_110b_chat/lora_ddp_ds/sft.sh) to start training!
@@ -103,7 +104,7 @@ Additionally, we are expanding capabilities for other modalities. Currently, we 
 
 - 2024.01.04: Update [Benchmark](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Benchmark.md) for convenient viewing of training speed and memory usage of different models.
 - 🔥2023.12.29: Support web-ui for sft training and inference, use `swift web-ui` after installing ms-swift to start.
-- 🔥2023.12.29: Support DPO RLHF (Reinforcement Learning from Human Feedback) and three datasets for this task: AI-ModelScope/stack-exchange-paired, AI-ModelScope/hh-rlhf and AI-ModelScope/hh_rlhf_cn. See [documentation](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E4%BA%BA%E7%B1%BB%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) to start training!
+- 🔥2023.12.29: Support DPO RLHF (Reinforcement Learning from Human Feedback) and three datasets for this task: AI-ModelScope/stack-exchange-paired, AI-ModelScope/hh-rlhf and AI-ModelScope/hh_rlhf_cn. See [documentation](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/DPO.md) to start training!
 - 🔥2023.12.28: Support SCEdit! This tuner can significantly reduce memory usage in U-Net and support low-memory controllable image generation (replacing ControlNet), read the section below to learn more.
 - 2023.12.23: Support [codegeex2-6b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/codegeex2_6b).
 - 2023.12.19: Support [phi2-3b](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/phi2_3b).
@@ -209,7 +210,7 @@ You can refer to the following scripts to customize your own training script.
 |------------------|-------------------------------------------------------------------------------|
 | Pretraining      | Text Generation                                                               |
 | Fine-tuning      | Single-turn/Multi-turn<br>Agent Training/Self-cognition<br>Multi-modal Vision/Multi-modal Speech|
-| Human Alignment  | DPO                                                                           |
+| Human Alignment  | DPO<br>ORPO                                                                   |
 | Text-to-Image    | DreamBooth, etc.                                                              |
 | Text-to-Video    | -                                                                             |
 
@@ -570,7 +571,8 @@ make docs
 | [LLM Evaluation](docs/source_en/LLM/LLM-eval.md)     |
 | [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
 | [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
-| [DPO Human Alignment Training](docs/source_en/LLM/RLHF.md)   |
+| [DPO Human Alignment Training](docs/source_en/LLM/DPO.md)   |
+| [ORPO Human Alignment Training](docs/source_en/LLM/ORPO.md)   |
 | [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
 
 ### Reference Documentation

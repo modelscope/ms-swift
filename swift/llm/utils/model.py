@@ -2399,7 +2399,7 @@ def fix_internvl_inplace_bug(model) -> None:
     'AI-ModelScope/InternVL-Chat-V1-5',
     LoRATM.internlm2,
     TemplateType.internvl,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
@@ -2411,8 +2411,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config.attn_implementation = 'flash_attention_2'
+    model_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -3606,6 +3605,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True,
+    requires=['timm'],
     hf_model_id='openbmb/MiniCPM-V-2')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,

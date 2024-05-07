@@ -18,13 +18,13 @@ Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)
 
 1. [LLM Inference](LLM-inference.md)
 2. [LLM Finetuning](LLM-fine-tuning.md)
-3. [DPO Training](RLHF.md)
+3. [DPO Training](DPO.md)
 4. [Web-ui Training and Inference](../GetStarted/Web-ui.md)
 5. [LLM Evaluation](LLM-eval.md)
 6. [LLM Quantization](LLM-quantization.md)
 7. [VLLM Inference and Deployment](VLLM-inference-acceleration-and-deployment.md)
 8. [LLM Experimental](LLM-exp.md)
-
+9. [ORPO Training](ORPO.md)
 
 ### 🐔References！
 1. [Customization for models and datasets](Customization.md)
