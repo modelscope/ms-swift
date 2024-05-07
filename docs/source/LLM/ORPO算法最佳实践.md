@@ -41,17 +41,11 @@ swift内置了处理方法将`answer_zh`作为`response`,将`answer_en`作为`re
 
 ## 训练
 ```shell
-# Experimental environment: 4*A100
-# Memory usage: 4 * 20G，双卡device_map * 2ddp
-
 # Experimental environment: A100
-
 # DDP + MP
-# Memory usage: 4*
-nproc_per_node=2
-
-NPROC_PER_NODE=$nproc_per_node \
+# Memory usage: 4*24G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=2 \
 swift orpo \
     --model_type  llama3-8b-instruct \
     --beta 0.5 \
@@ -66,7 +60,7 @@ swift orpo \
     --warmup_ratio  0.03  \
     --save_total_limit  10
 # MP(device map)
-# Memory usage: 2*20G
+# Memory usage: 2*24G
 CUDA_VISIBLE_DEVICES=0,1 \
 swift orpo \
     --model_type  llama3-8b-instruct \
@@ -82,7 +76,7 @@ swift orpo \
     --warmup_ratio  0.03  \
     --save_total_limit  10
 
-# Memory usage: 30G
+# Memory usage: 40G
 CUDA_VISIBLE_DEVICES=0 \
 swift orpo \
     --model_type  llama3-8b-instruct \

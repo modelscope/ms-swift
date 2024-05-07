@@ -33,6 +33,59 @@ Swift has built-in methods for processing this dataset, using `answer_zh` as `re
 
 ## Training
 
+```shell
+# Experimental environment: A100
+# DDP + MP
+# Memory usage: 4*24G
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=2 \
+swift orpo \
+    --model_type  llama3-8b-instruct \
+    --beta 0.5 \
+    --sft_type  lora \
+    --dataset shareai-llama3-dpo-zh-en-emoji \
+    --num_train_epochs  2  \
+    --lora_target_modules  ALL  \
+    --gradient_checkpointing  true  \
+    --batch_size  1  \
+    --learning_rate  5e-5  \
+    --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
+    --warmup_ratio  0.03  \
+    --save_total_limit  10
+# MP(device map)
+# Memory usage: 2*24G
+CUDA_VISIBLE_DEVICES=0,1 \
+swift orpo \
+    --model_type  llama3-8b-instruct \
+    --beta 0.5 \
+    --sft_type  lora \
+    --dataset shareai-llama3-dpo-zh-en-emoji \
+    --num_train_epochs  2  \
+    --lora_target_modules  ALL  \
+    --gradient_checkpointing  true  \
+    --batch_size  1  \
+    --learning_rate  5e-5  \
+    --gradient_accumulation_steps  16  \
+    --warmup_ratio  0.03  \
+    --save_total_limit  10
+
+# Memory usage: 40G
+CUDA_VISIBLE_DEVICES=0 \
+swift orpo \
+    --model_type  llama3-8b-instruct \
+    --beta 0.5 \
+    --sft_type  lora \
+    --dataset shareai-llama3-dpo-zh-en-emoji \
+    --num_train_epochs  2  \
+    --lora_target_modules  ALL  \
+    --gradient_checkpointing  true  \
+    --batch_size  1  \
+    --learning_rate  5e-5  \
+    --gradient_accumulation_steps  16  \
+    --warmup_ratio  0.03  \
+    --save_total_limit  10
+```
+
 **Notes**:
 
 - If training the base model with data containing history, specify a template supporting multi-turn dialogue (base models often do not support multi-turn dialogue). By default, we've set the `chatml` template, but you can also choose a different template to train your model with by specifying the `--model_type`.
