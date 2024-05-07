@@ -793,14 +793,6 @@ register_dataset(
 def process_shareai_dpo(dataset):
 
     def reorganize_row(row):
-        # if isinstance(row['question'], str):
-        #     row['question'] = ast.literal_eval(row['question'])
-        # if isinstance(row['answer_zh'], str):
-        #     row['answer_zh'] = ast.literal_eval(row['answer_zh'])
-        # if isinstance(row['rejected'], str):
-        #     row['answer_en'] = ast.literal_eval(row['answer_en'])
-        # response = row['chosen']['text']
-        # rejected_response = row['rejected']['text']
         return {
             'query': row['question'],
             'response': row['answer_zh'],
