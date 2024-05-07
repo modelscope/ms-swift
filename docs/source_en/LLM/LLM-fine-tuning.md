@@ -163,7 +163,10 @@ If you want to **customize scripts**, you can refer to the following scripts for
 - qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
 
 ## DPO
-If you want to use DPO for human-aligned fine-tuning, you can check the [Human-Aligned Fine-Tuning Documentation](RLHF.md).
+If you want to use DPO for human-aligned fine-tuning, you can check the [DPO Fine-Tuning Documentation](DPO.md).
+
+## ORPO
+If you want to use ORPO for human-aligned fine-tuning, you can check the [ORPO Fine-Tuning Documentation](ORPO.md).
 
 ## Merge LoRA
 Tip: **Currently**, merging LoRA is not supported for bnb and auto_gptq quantized models, as this would result in significant accuracy loss.

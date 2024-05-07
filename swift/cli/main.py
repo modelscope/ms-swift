@@ -13,6 +13,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
     'dpo': 'swift.cli.dpo',
+    'orpo': 'swift.cli.orpo',
     'export': 'swift.cli.export',
     'eval': 'swift.cli.eval'
 }
@@ -46,7 +47,7 @@ def cli_main() -> None:
     argv = argv[1:]
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
-    if torchrun_args is None or method_name not in ('sft', 'dpo'):
+    if torchrun_args is None or method_name not in ('sft', 'dpo', 'orpo'):
         try:
             python_cmd = 'python'
             subprocess.run(

@@ -3,6 +3,7 @@ import ast
 import itertools
 import os
 import re
+from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -126,6 +127,7 @@ class DatasetName:
     hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
     stack_exchange_paired = 'stack-exchange-paired'
+    shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
 
     # for awq
     pileval = 'pileval'
@@ -284,22 +286,28 @@ def _post_preprocess(
     assert train_dataset is not None
     if dataset_sample == -1:
         dataset_sample = len(train_dataset)
-    if dataset_test_ratio > 0:
-        assert dataset_test_ratio < 1
-        # Avoid having a high train_sample causing a high val_sample.
-        _train_len = min(len(train_dataset), dataset_sample)
-        val_sample = max(int(_train_len * dataset_test_ratio), 1)
-        train_sample = dataset_sample - val_sample
+    assert 0 <= dataset_test_ratio <= 1
+    if dataset_test_ratio == 1:
+        train_dataset, val_dataset = None, train_dataset
+        val_sample = dataset_sample
+        assert val_sample <= len(val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
+        val_dataset = sample_dataset(val_dataset, val_sample, random_state)
     else:
-        train_sample, val_sample = dataset_sample, 0
-    val_dataset = None
-    if val_sample > 0:
-        assert isinstance(val_sample, int)
-        train_dataset, val_dataset = train_dataset.train_test_split(
-            test_size=val_sample, seed=get_seed(random_state)).values()
+        if dataset_test_ratio == 0:
+            train_sample = dataset_sample
+            val_dataset = None
+        else:
+            # Avoid having a high train_sample causing a high val_sample.
+            _train_len = min(len(train_dataset), dataset_sample)
+            val_sample = max(int(_train_len * dataset_test_ratio), 1)
+            train_sample = dataset_sample - val_sample
+            assert isinstance(val_sample, int)
+            train_dataset, val_dataset = train_dataset.train_test_split(
+                test_size=val_sample, seed=get_seed(random_state)).values()
 
-    assert train_sample > 0
-    train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+        assert train_sample > 0
+        train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+
     res = []
     for dataset in [train_dataset, val_dataset]:
         if dataset is not None and preprocess_func is not None:
@@ -781,6 +789,26 @@ register_dataset(
     get_dataset_from_repo,
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
+
+def process_shareai_dpo(dataset):
+
+    def reorganize_row(row):
+        return {
+            'query': row['question'],
+            'response': row['answer_zh'],
+            'rejected_response': row['answer_en'],
+        }
+
+    return dataset.map(reorganize_row)
+
+
+register_dataset(
+    DatasetName.shareai_llama3_dpo_zh_en_emoji,
+    'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', ['default'],
+    process_shareai_dpo,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'pairwise'])
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
@@ -1336,7 +1364,7 @@ def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
             base_dir = None
     else:
         assert isinstance(dataset_info_path, dict)
-        dataset_info = dataset_info_path
+        dataset_info = deepcopy(dataset_info_path)
         dataset_info_path = list(dataset_info.keys())
         base_dir = None
     for dataset_name, d_info in dataset_info.items():
