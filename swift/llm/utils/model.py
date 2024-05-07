@@ -177,6 +177,8 @@ class ModelType:
     # yi-vl
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
+    # llava-llama
+    llava_llama3_8b_v1_1 = 'llava-llama-3-8b-v1_1'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -786,6 +788,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
+            if 'qwen' in model_dir:
+                logger.warn('If using qwen2 models, please install unsloth with '
+                            '`pip install git+https://github.com/yangjianxin1/unsloth`')
             from unsloth import FastLanguageModel
             model, tokenizer = FastLanguageModel.from_pretrained(
                 model_name=model_dir,
@@ -802,6 +807,36 @@ def get_model_tokenizer_from_repo(model_dir: str,
             model.is_awq = is_awq
         if load_model and gptq_bits > 0:
             model.gptq_bits = gptq_bits
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.llava_llama3_8b_v1_1,
+    'AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
+    LoRATM.llama2,
+    TemplateType.llava_llama_instruct,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='xtuner/llava-llama-3-8b-v1_1-transformers')
+def get_model_tokenizer_llava_llama(model_dir: str,
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers import LlavaForConditionalGeneration, LlavaConfig, AutoProcessor
+
+    model_config = LlavaConfig.from_pretrained(model_dir)
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        automodel_class=LlavaForConditionalGeneration,
+        **kwargs)
+    model.processor = processor
     return model, tokenizer
 
 
@@ -2399,7 +2434,7 @@ def fix_internvl_inplace_bug(model) -> None:
     'AI-ModelScope/InternVL-Chat-V1-5',
     LoRATM.internlm2,
     TemplateType.internvl,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
@@ -2411,8 +2446,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config.attn_implementation = 'flash_attention_2'
+    model_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -3606,6 +3640,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True,
+    requires=['timm'],
     hf_model_id='openbmb/MiniCPM-V-2')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
