@@ -2399,7 +2399,7 @@ def fix_internvl_inplace_bug(model) -> None:
     'AI-ModelScope/InternVL-Chat-V1-5',
     LoRATM.internlm2,
     TemplateType.internvl,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
