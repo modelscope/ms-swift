@@ -136,7 +136,6 @@ You can also use the --model_type parameter to specify the  template.')
         template: Template = get_template(
             'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     args.system = template.default_system
-    args.system = template.default_system
     logger.info(f'system: {args.system}')
 
     # Trainer

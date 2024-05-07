@@ -58,7 +58,7 @@ swift orpo \
     --learning_rate  5e-5  \
     --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
     --warmup_ratio  0.03  \
-    --save_total_limit  10
+    --save_total_limit  2
 # MP(device map)
 # Memory usage: 2*24G
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -74,7 +74,7 @@ swift orpo \
     --learning_rate  5e-5  \
     --gradient_accumulation_steps  16  \
     --warmup_ratio  0.03  \
-    --save_total_limit  10
+    --save_total_limit  2
 
 # Memory usage: 40G
 CUDA_VISIBLE_DEVICES=0 \
@@ -90,7 +90,7 @@ swift orpo \
     --learning_rate  5e-5  \
     --gradient_accumulation_steps  16  \
     --warmup_ratio  0.03  \
-    --save_total_limit  10
+    --save_total_limit  2
 ```
 **提示**:
 

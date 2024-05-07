@@ -168,7 +168,7 @@ cd examples/pytorch/llm
 
 
 ## DPO
-如果你要使用DPO进行人类对齐, 你可以查看[DPO微调文档](DPO训练文档.md).
+如果你要使用DPO进行人类对齐, 你可以查看[DPO训练文档](DPO训练文档.md).
 
 ## ORPO
 如果你要使用ORPO进行人类对齐, 你可以查看[ORPO最佳实践](ORPO算法最佳实践.md).

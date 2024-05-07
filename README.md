@@ -39,7 +39,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 ## 🎉 News
-- 2024.05.06: Supoprts **ORPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/ORPO.md) to start training!
+- 2024.05.07: Supoprts **ORPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/ORPO.md) to start training!
 - 2024.04.29: Supports inference and fine-tuning of InternVL-Chat-V1.5 model. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.04.26: Support **LISA** and **unsloth** training! Specify `--lisa_activated_layers=2` to use LISA(to reduce the memory cost to 30 percent!), specify `--tuner_backend unsloth` to use unsloth to train a huge model(full or lora) with lesser memory(30 percent or lesser) and faster speed(5x)!
 - 🔥2024.04.26: Support the fine-tuning and inference of Qwen1.5-110B and Qwen1.5-110B-Chat model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_110b_chat/lora_ddp_ds/sft.sh) to start training!
