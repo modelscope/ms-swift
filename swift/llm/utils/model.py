@@ -394,7 +394,13 @@ class LoRATM(NamedTuple):
         'c_attn.multiway.0',
         'c_attn.multiway.1',
     ]
-
+    deepseek2 = [
+        'q_a_proj',
+        'q_b_proj',
+        'kv_a_proj_with_mqa',
+        'kv_b_proj',
+        'o_proj',
+    ]
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 
@@ -2385,7 +2391,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 @register_model(
     ModelType.deepseek_v2_chat,
     'deepseek-ai/DeepSeek-V2-Chat',
-    LoRATM.llama2,
+    LoRATM.deepseek2,
     TemplateType.deepseek2,
     support_flash_attn=True,
     support_vllm=True,
