@@ -2393,6 +2393,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-V2-Chat',
     LoRATM.deepseek2,
     TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.39.3'],
@@ -2409,8 +2410,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     model.generation_config.pad_token_id = model.generation_config.eos_token_id
-    tokenizer.eos_token = '<｜end▁of▁sentence｜>'
-    tokenizer.bos_token = '<｜begin▁of▁sentence｜>'
     return model, tokenizer
 
 
