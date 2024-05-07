@@ -1539,14 +1539,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='deepseek-ai/deepseek-llm-7b-base')
 @register_model(
-    ModelType.deepseek_v2_chat,
-    'deepseek-ai/DeepSeek-V2-Chat',
-    LoRATM.llama2,
-    TemplateType.deepseek2,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='deepseek-ai/DeepSeek-V2-Chat')
-@register_model(
     ModelType.sus_34b_chat,
     'SUSTC/SUS-Chat-34B',
     LoRATM.llama2,
@@ -2388,6 +2380,28 @@ def get_model_tokenizer_internlm2(model_dir: str,
             del tokenizer.__class__.eos_token_id
         tokenizer.eos_token = eos_token
 
+    return model, tokenizer
+
+@register_model(
+    ModelType.deepseek_v2_chat,
+    'deepseek-ai/DeepSeek-V2-Chat',
+    LoRATM.llama2,
+    TemplateType.deepseek2,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2-Chat')
+def get_model_tokenizer_deepseek2(model_dir: str,
+                                  torch_dtype: Dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    model_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     return model, tokenizer
 
 
