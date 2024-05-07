@@ -2409,6 +2409,8 @@ def get_model_tokenizer_deepseek2(model_dir: str,
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    tokenizer.eos_token = '<｜end▁of▁sentence｜>'
+    tokenizer.bos_token = '<｜begin▁of▁sentence｜>'
     return model, tokenizer
 
 
