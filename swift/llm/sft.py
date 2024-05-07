@@ -148,7 +148,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    if not args.lazy_tokenize:
+    if args.packing:
+        from swift.llm.utils.utils import ConstantLengthDataset
+        train_dataset = ConstantLengthDataset.get_packed_dataset(template, train_dataset, args.max_length)
+        val_dataset = ConstantLengthDataset.get_packed_dataset(template, val_dataset, args.max_length)
+    elif not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)

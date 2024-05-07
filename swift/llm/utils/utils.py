@@ -182,7 +182,17 @@ class ConstantLengthDataset(IterableDataset):
         self.add_special_tokens = add_special_tokens
 
     @staticmethod
-    def get_packed_dataset(constant_length_iterator: 'ConstantLengthDataset'):
+    def get_packed_dataset(
+            template: 'Template',
+            dataset,
+            seq_length=1024,
+            num_of_sequences=1024,
+            chars_per_token=3.6,
+            append_concat_token=True,
+            add_special_tokens=True):
+        constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length,
+                                                         num_of_sequences, chars_per_token, append_concat_token,
+                                                         add_special_tokens)
 
         def data_generator(constant_length_iterator):
             yield from constant_length_iterator
