@@ -206,7 +206,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
 - `--dataset_seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
-- `--dataset_test_ratio`: Default is `0.01`, see `sft.sh command line arguments` for parameter details.
+`--dataset_test_ratio`: Default value is `None`, if `--load_dataset_config true` is set, then use the dataset_test_ratio from training, else set it to 1. For specific parameter details, refer to the `sft.sh command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
 - `--system`: Default is `None`. See `sft.sh command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
