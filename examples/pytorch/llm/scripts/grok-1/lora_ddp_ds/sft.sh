@@ -1,8 +1,13 @@
 # Experimental environment: 8 * A100
 # Memory cost: 8 * 21G
 nproc_per_node=8
-swift sft \
-    --model_type deepseek-v2-chat \
+
+PYTHONPATH=../../.. \
+torchrun \
+    --nproc_per_node=$nproc_per_node \
+    --master_port 29500 \
+    llm_sft.py \
+    --model_type grok-1 \
     --sft_type lora \
     --tuner_backend peft \
     --dtype bf16 \
