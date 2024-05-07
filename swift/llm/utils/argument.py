@@ -1076,7 +1076,7 @@ class InferArguments(ArgumentsBase):
                 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
-        value = getattr(self, key)
+            value = getattr(self, key)
             if key == 'dataset' and len(value) > 0:
                 continue
             if key == 'dataset_test_ratio' and value is not None:
