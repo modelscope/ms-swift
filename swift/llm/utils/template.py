@@ -55,6 +55,7 @@ class TemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
     deepseek_vl = 'deepseek-vl'
+    deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
     cogvlm_instruct = 'cogvlm-instruct'
@@ -673,6 +674,10 @@ register_template(
     TemplateType.deepseek,
     Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'], [['eos_token_id']], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
+register_template(
+    TemplateType.deepseek2,
+    Template([['<｜begin▁of▁sentence｜>]']], ['User: {{QUERY}}\n\nAssistant:'],
+             ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], None, [['<｜begin▁of▁sentence｜>]'], '{{SYSTEM}}\n\n']))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (

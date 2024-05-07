@@ -225,6 +225,8 @@ class ModelType:
     # deepseek-vl
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
+    # deepseek-v2
+    deepseek_v2_chat = 'deepseek-v2-chat'
     # gemma
     gemma_2b = 'gemma-2b'
     gemma_7b = 'gemma-7b'
@@ -1536,6 +1538,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='deepseek-ai/deepseek-llm-7b-base')
+@register_model(
+    ModelType.deepseek_v2_chat,
+    'deepseek-ai/DeepSeek-V2-Chat',
+    LoRATM.llama2,
+    TemplateType.deepseek2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='deepseek-ai/DeepSeek-V2-Chat')
 @register_model(
     ModelType.sus_34b_chat,
     'SUSTC/SUS-Chat-34B',
