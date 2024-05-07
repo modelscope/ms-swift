@@ -789,6 +789,7 @@ register_dataset(
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
 
+
 def process_shareai_dpo(dataset):
 
     def reorganize_row(row):
@@ -806,8 +807,8 @@ def process_shareai_dpo(dataset):
             'rejected_response': row['answer_en'],
         }
 
-
     return dataset.map(reorganize_row)
+
 
 register_dataset(
     DatasetName.shareai_llama3_dpo_zh_en_emoji,
@@ -815,6 +816,7 @@ register_dataset(
     process_shareai_dpo,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
+
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     query = []

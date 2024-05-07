@@ -25,7 +25,8 @@ Swift DOCUMENTATION
    LLM/Agent微调最佳实践.md
    LLM/LLM推理文档.md
    LLM/LLM微调文档.md
-   LLM/LLM人类对齐训练文档.md
+   LLM/DPO训练文档.md
+   LLM/ORPO算法最佳实践.md
    LLM/VLLM推理加速与部署.md
    LLM/支持的模型和数据集.md
    LLM/自定义与拓展.md

@@ -129,6 +129,13 @@ def llm_dpo(args: DPOArguments) -> str:
     logger.info(f'val_dataset: {val_dataset}')
     template: Template = get_template(
         args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
+    if not template.support_multi_round and 'history' in train_dataset[0]:
+        logger.info(
+            'The current template does not support multi-turn dialogue. The chatml template is used by default. \
+You can also use the --model_type parameter to specify the  template.')
+        template: Template = get_template(
+            'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
+    args.system = template.default_system
     args.system = template.default_system
     logger.info(f'system: {args.system}')
 
