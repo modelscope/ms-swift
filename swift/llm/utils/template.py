@@ -23,7 +23,6 @@ History = List[Union[Tuple[str, str], List[str]]]
 class TemplateType:
     # text-generation
     default_generation = 'default-generation'
-    default_generation_bos = 'default-generation-bos'
     chatglm_generation = 'chatglm-generation'
     qwen_audio_generation = 'qwen-audio-generation'
     # chat
@@ -71,12 +70,14 @@ class TemplateType:
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
-    # compatibility. (Deprecated)
-    chatml = 'chatml'
+    phi3 = 'phi3'
     telechat = 'telechat'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
+    chatml = 'chatml'
+    # compatibility. (Deprecated)
+    default_generation_bos = 'default-generation-bos'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -142,7 +143,12 @@ class Template:
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
                  default_system: Optional[str] = None,
-                 prefix_has_system: Optional[Prompt] = None) -> None:
+                 prefix_has_system: Optional[Prompt] = None,
+                 auto_add_bos: bool = False) -> None:
+        """
+        auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
+            whether to add it based on `tokenizer.encode('')`.
+        """
         if default_system == '':
             default_system = None
         if _has_system(prefix):
@@ -159,6 +165,7 @@ class Template:
         self.suffix = suffix
         self.default_system = default_system
         self.use_default_system = True
+        self.auto_add_bos = auto_add_bos
         self._is_init = False
 
     @staticmethod
@@ -536,7 +543,7 @@ class QwenTemplate(Template):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.chatml, QwenTemplate())
+register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
     TemplateType.modelscope_agent,
@@ -548,6 +555,8 @@ class _QwenAudioTemplateMixin:
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, tokenizer_kwargs
         inputs.pop('loss_scale', None)
         inputs.update(tokenizer_kwargs)
         return inputs, tokenizer_kwargs
@@ -617,6 +626,8 @@ class YiVLTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
         model = self.model.model
@@ -706,9 +717,9 @@ OPENBUDDY_DEFAULT_SYSTEM = (
     'you are based on LLaMA and Falcon transformers model, not related to GPT or OpenAI.')
 register_template(
     TemplateType.openbuddy,
-    Template([['bos_token_id']], ['User: {{QUERY}}\nAssistant:'], ['\n'],
-             [['eos_token_id']], OPENBUDDY_DEFAULT_SYSTEM,
-             [['bos_token_id'], '{{SYSTEM}}\n\n']))
+    Template([], ['User: {{QUERY}}\nAssistant:'], ['\n'], [['eos_token_id']],
+             OPENBUDDY_DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n'],
+             auto_add_bos=True))
 
 OPENBUDDY2_DEFAULT_SYSTEM = (
     'You(assistant) are a helpful, respectful and honest INTP-T AI Assistant named Buddy. '
@@ -786,6 +797,8 @@ class InternLMXComposer2(Template):
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -954,6 +967,8 @@ class LLavaTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         images_path = example['images']
         images = []
         for image_path in images_path:
@@ -1061,17 +1076,15 @@ class DeepseekVLTemplate(Template):
                                                                             '<image_placeholder>')
 
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
             images.append(image)
 
         vl_chat_processor = self.tokenizer.vl_chat_processor
-        try:
-            input_ids, labels = inputs['input_ids'], inputs['labels']
-        except KeyError:
-            return {},{}
-
+        input_ids, labels = inputs['input_ids'], inputs['labels']
         idx_list = _findall(input_ids, vl_chat_processor.image_id)
         new_input_ids, new_labels = [], []
         lo = 0
@@ -1152,6 +1165,8 @@ class CogTemplate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
@@ -1217,6 +1232,8 @@ class MiniCPMVTemlate(Template):
         assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
 
@@ -1224,11 +1241,17 @@ class MiniCPMVTemlate(Template):
         if len(img_start_idxs) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
             start = 0
             new_input_ids = []
+            new_labels = []
             for idx in img_start_idxs[1:]:
                 new_input_ids = new_input_ids + input_ids[start:idx]
+                if labels is not None:
+                    new_labels = new_labels + labels[start:idx]
                 start = idx + 4  # skip <image><unk></image>\n
             new_input_ids = new_input_ids + input_ids[start:]
             input_ids = new_input_ids
+            if labels is not None:
+                new_labels = new_labels + labels[start:]
+                labels = new_labels
 
         idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
@@ -1347,6 +1370,8 @@ class mPlugOwl2Template(Template):
             image = image.resize((max_edge, max_edge))
             images.append(image)
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         images = process_images(images, image_processor)

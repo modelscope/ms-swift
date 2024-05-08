@@ -955,13 +955,10 @@ class InferArguments(ArgumentsBase):
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
-<<<<<<< HEAD
     local_repo_path: Optional[str] = None
-=======
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
 
->>>>>>> 4de01a35102020b5173affc67eaa637de6135704
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
