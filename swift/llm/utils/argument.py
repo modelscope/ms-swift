@@ -916,7 +916,7 @@ class InferArguments(ArgumentsBase):
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_test_ratio: float = 0.01
+    dataset_test_ratio: Optional[float] = None
     show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
@@ -998,6 +998,8 @@ class InferArguments(ArgumentsBase):
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
+        if self.dataset_test_ratio is None:
+            self.dataset_test_ratio = 1
         if self.eval_human is None:
             if not len(self.dataset) > 0:
                 self.eval_human = True
@@ -1074,7 +1076,10 @@ class InferArguments(ArgumentsBase):
                 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
-            if key == 'dataset' and len(getattr(self, key)) > 0:
+            value = getattr(self, key)
+            if key == 'dataset' and len(value) > 0:
+                continue
+            if key == 'dataset_test_ratio' and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 

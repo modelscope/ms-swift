@@ -37,6 +37,7 @@ class TemplateType:
     llama3 = 'llama3'
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
+    llava_llama_instruct = 'llava-llama-instruct'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -1009,6 +1010,36 @@ class LLavaYiTemplate(LLavaTemplate):
 
 register_template(
     TemplateType.llava_yi_instruct, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+
+class LLavaLlamaTemplate(Template):
+
+    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
+                                '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+
+    def __init__(self):
+        Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        image_path = example['images']
+        raw_image = _read_from_path(image_path[0])
+        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.llava_llama_instruct,
+    LLavaLlamaTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:

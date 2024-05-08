@@ -223,7 +223,7 @@ class TextGenerationPreprocessor:
 
 class ClsPreprocessor:
 
-    def __init__(self, labels: List[str], task_name: str, is_pair_seq: bool) -> None:
+    def __init__(self, labels: List[str], task_name: str, is_pair_seq: bool = False) -> None:
         self.labels = labels
         category = ', '.join(labels)
         if is_pair_seq:

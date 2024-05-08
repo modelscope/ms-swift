@@ -3,6 +3,7 @@ import ast
 import itertools
 import os
 import re
+from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -1363,7 +1364,7 @@ def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
             base_dir = None
     else:
         assert isinstance(dataset_info_path, dict)
-        dataset_info = dataset_info_path
+        dataset_info = deepcopy(dataset_info_path)
         dataset_info_path = list(dataset_info.keys())
         base_dir = None
     for dataset_name, d_info in dataset_info.items():
