@@ -53,6 +53,22 @@
         }
       },
       {
+        "name": "lora+packing+ddp",
+        "requirements":{
+          "gpu": "2",
+          "ddp": "2"
+        },
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "packing": true,
+          "eval_steps": 100,
+          "save_steps": 100
+        }
+      },
+      {
         "name": "lora+packing+lazytokenize",
         "args": {
           "sft_type": "lora",
