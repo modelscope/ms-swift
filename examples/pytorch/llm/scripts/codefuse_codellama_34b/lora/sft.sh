@@ -11,7 +11,6 @@ python llm_sft.py \
     --output_dir output \
     --custom_train_dataset_path xxx.jsonl \
     --custom_val_dataset_path yyy.jsonl \
-    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 4096 \
     --check_dataset_strategy warning \

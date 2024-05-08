@@ -32,18 +32,12 @@ class LongLoRAConfig(LoRAConfig):
     embedder_and_normalizer: Union[str, List[str], Tuple[str]] = field(
         default=('embed', 'norm'),
         metadata={
-            'help':
-            'The names of embedder and normalizer, regex format if is a str, else will match with sub sequences'
+            'help': 'The names of embedder and normalizer, regex format if is a str, else will match with sub sequences'
         })
 
-    model_type: str = field(
-        default=None,
-        metadata={
-            'help': 'The model type, now only support `llama` structure.'
-        })
+    model_type: str = field(default=None, metadata={'help': 'The model type, now only support `llama` structure.'})
 
-    group_size_ratio: float = field(
-        default=0.25, metadata={'help': 'The S2 attention group ratio'})
+    group_size_ratio: float = field(default=0.25, metadata={'help': 'The S2 attention group ratio'})
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
@@ -53,30 +47,24 @@ class LongLoRAConfig(LoRAConfig):
 class LongLoRA(LoRA):
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: LongLoRAConfig,
-                      adapter_name: str):
+    def prepare_model(model: nn.Module, config: LongLoRAConfig, adapter_name: str):
         """Prepare a model with `LongLoRAConfig`"""
         LoraModel(model, config, adapter_name)
 
         def state_dict_callback(state_dict, adapter_name):
-            _state_dict = lora_state_dict(state_dict, adapter_name,
-                                          config.bias)
+            _state_dict = lora_state_dict(state_dict, adapter_name, config.bias)
             for name, value in state_dict.items():
                 if isinstance(config.embedder_and_normalizer, str):
-                    target_module_found = re.fullmatch(
-                        config.embedder_and_normalizer, name)
+                    target_module_found = re.fullmatch(config.embedder_and_normalizer, name)
                 else:
-                    target_module_found = any(
-                        target_key in name
-                        for target_key in config.embedder_and_normalizer)
+                    target_module_found = any(target_key in name for target_key in config.embedder_and_normalizer)
                 if target_module_found and name not in _state_dict:  # noqa
                     _state_dict[name] = value
             return _state_dict
 
         def mark_trainable_callback(model):
             mark_lora_as_trainable(model, adapter_name, config.bias)
-            mark_embedding_normalizer_as_trainable(
-                model, config.embedder_and_normalizer)
+            mark_embedding_normalizer_as_trainable(model, config.embedder_and_normalizer)
 
         if config.model_type == LongLoRAModelType.LLAMA:
             from .llama import replace_llama_attn
@@ -84,18 +72,15 @@ class LongLoRA(LoRA):
             # only support code base from transformers
             model.config.group_size_ratio = config.group_size_ratio
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
 
-def mark_embedding_normalizer_as_trainable(
-        model: nn.Module, extra_parameters: Union[str, List[str],
-                                                  Tuple[str]]) -> None:
+def mark_embedding_normalizer_as_trainable(model: nn.Module, extra_parameters: Union[str, List[str],
+                                                                                     Tuple[str]]) -> None:
     for name, sub_module in model.named_parameters():
         if isinstance(extra_parameters, str):
             target_module_found = re.fullmatch(extra_parameters, name)
         else:
-            target_module_found = any(target_key in name
-                                      for target_key in extra_parameters)
+            target_module_found = any(target_key in name for target_key in extra_parameters)
         if target_module_found:  # noqa
             sub_module.requires_grad = True

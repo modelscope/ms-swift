@@ -16,15 +16,12 @@ from tqdm import tqdm
 
 from swift.utils.logger import get_logger
 from .api import HubApi, ModelScopeConfig
-from .constants import (API_FILE_DOWNLOAD_CHUNK_SIZE,
-                        API_FILE_DOWNLOAD_RETRY_TIMES,
-                        API_FILE_DOWNLOAD_TIMEOUT, DEFAULT_MODEL_REVISION,
-                        FILE_HASH, MODELSCOPE_DOWNLOAD_PARALLELS,
+from .constants import (API_FILE_DOWNLOAD_CHUNK_SIZE, API_FILE_DOWNLOAD_RETRY_TIMES, API_FILE_DOWNLOAD_TIMEOUT,
+                        DEFAULT_MODEL_REVISION, FILE_HASH, MODELSCOPE_DOWNLOAD_PARALLELS,
                         MODELSCOPE_PARALLEL_DOWNLOAD_THRESHOLD_MB)
 from .errors import FileDownloadError, NotExistError
 from .utils.caching import ModelFileSystemCache
-from .utils.utils import (file_integrity_validation, get_cache_dir,
-                          get_endpoint, model_id_to_group_owner_name)
+from .utils.utils import file_integrity_validation, get_cache_dir, get_endpoint, model_id_to_group_owner_name
 
 logger = get_logger()
 
@@ -89,33 +86,24 @@ def model_file_download(
     if local_files_only:
         cached_file_path = cache.get_file_by_path(file_path)
         if cached_file_path is not None:
-            logger.warning(
-                "File exists in local cache, but we're not sure it's up to date"
-            )
+            logger.warning("File exists in local cache, but we're not sure it's up to date")
             return cached_file_path
         else:
-            raise ValueError(
-                'Cannot find the requested files in the cached path and outgoing'
-                ' traffic has been disabled. To enable model look-ups and downloads'
-                " online, set 'local_files_only' to False.")
+            raise ValueError('Cannot find the requested files in the cached path and outgoing'
+                             ' traffic has been disabled. To enable model look-ups and downloads'
+                             " online, set 'local_files_only' to False.")
 
     _api = HubApi()
-    headers = {
-        'user-agent': ModelScopeConfig.get_user_agent(user_agent=user_agent, )
-    }
+    headers = {'user-agent': ModelScopeConfig.get_user_agent(user_agent=user_agent, )}
     if cookies is None:
         cookies = ModelScopeConfig.get_cookies()
 
-    revision = _api.get_valid_revision(
-        model_id, revision=revision, cookies=cookies)
+    revision = _api.get_valid_revision(model_id, revision=revision, cookies=cookies)
     file_to_download_info = None
     # we need to confirm the version is up-to-date
     # we need to get the file list to check if the latest version is cached, if so return, otherwise download
     model_files = _api.get_model_files(
-        model_id=model_id,
-        revision=revision,
-        recursive=True,
-        use_cookies=False if cookies is None else cookies)
+        model_id=model_id, revision=revision, recursive=True, use_cookies=False if cookies is None else cookies)
 
     for model_file in model_files:
         if model_file['Type'] == 'tree':
@@ -123,17 +111,14 @@ def model_file_download(
 
         if model_file['Path'] == file_path:
             if cache.exists(model_file):
-                logger.debug(
-                    f'File {model_file["Name"]} already in cache, skip downloading!'
-                )
+                logger.debug(f'File {model_file["Name"]} already in cache, skip downloading!')
                 return cache.get_file_by_info(model_file)
             else:
                 file_to_download_info = model_file
             break
 
     if file_to_download_info is None:
-        raise NotExistError('The file path: %s not exist in: %s' %
-                            (file_path, model_id))
+        raise NotExistError('The file path: %s not exist in: %s' % (file_path, model_id))
 
     # we need to download again
     url_to_download = get_file_download_url(model_id, file_path, revision)
@@ -159,10 +144,8 @@ def model_file_download(
     temp_file_path = os.path.join(temporary_cache_dir, temp_file_name)
     # for download with commit we can't get Sha256
     if file_to_download_info[FILE_HASH] is not None:
-        file_integrity_validation(temp_file_path,
-                                  file_to_download_info[FILE_HASH])
-    return cache.put_file(file_to_download_info,
-                          os.path.join(temporary_cache_dir, temp_file_name))
+        file_integrity_validation(temp_file_path, file_to_download_info[FILE_HASH])
+    return cache.put_file(file_to_download_info, os.path.join(temporary_cache_dir, temp_file_name))
 
 
 def get_file_download_url(model_id: str, file_path: str, revision: str):
@@ -194,12 +177,7 @@ def download_part(params):
     get_headers['Range'] = 'bytes=%s-%s' % (start, end)
     with open(file_name, 'rb+') as f:
         f.seek(start)
-        r = requests.get(
-            url,
-            stream=True,
-            headers=get_headers,
-            cookies=cookies,
-            timeout=API_FILE_DOWNLOAD_TIMEOUT)
+        r = requests.get(url, stream=True, headers=get_headers, cookies=cookies, timeout=API_FILE_DOWNLOAD_TIMEOUT)
         for chunk in r.iter_content(chunk_size=API_FILE_DOWNLOAD_CHUNK_SIZE):
             if chunk:  # filter out keep-alive new chunks
                 f.write(chunk)
@@ -215,8 +193,7 @@ def parallel_download(
     file_size: int = None,
 ):
     # create temp file
-    temp_file_manager = partial(
-        tempfile.NamedTemporaryFile, mode='wb', dir=local_dir, delete=False)
+    temp_file_manager = partial(tempfile.NamedTemporaryFile, mode='wb', dir=local_dir, delete=False)
     with temp_file_manager() as temp_file:
         progress = tqdm(
             unit='B',
@@ -231,15 +208,11 @@ def parallel_download(
         for idx in range(int(file_size / PART_SIZE)):
             start = idx * PART_SIZE
             end = (idx + 1) * PART_SIZE - 1
-            tasks.append(
-                (progress, start, end, url, temp_file.name, cookies, headers))
+            tasks.append((progress, start, end, url, temp_file.name, cookies, headers))
         if end + 1 < file_size:
-            tasks.append((progress, end + 1, file_size - 1, url,
-                          temp_file.name, cookies, headers))
+            tasks.append((progress, end + 1, file_size - 1, url, temp_file.name, cookies, headers))
         parallels = MODELSCOPE_DOWNLOAD_PARALLELS if MODELSCOPE_DOWNLOAD_PARALLELS <= 4 else 4
-        with ThreadPoolExecutor(
-                max_workers=parallels,
-                thread_name_prefix='download') as executor:
+        with ThreadPoolExecutor(max_workers=parallels, thread_name_prefix='download') as executor:
             list(executor.map(download_part, tasks))
 
         progress.close()
@@ -273,30 +246,21 @@ def http_get_file(
 
     """
     total = -1
-    temp_file_manager = partial(
-        tempfile.NamedTemporaryFile, mode='wb', dir=local_dir, delete=False)
+    temp_file_manager = partial(tempfile.NamedTemporaryFile, mode='wb', dir=local_dir, delete=False)
     get_headers = {} if headers is None else copy.deepcopy(headers)
     with temp_file_manager() as temp_file:
         logger.debug('downloading %s to %s', url, temp_file.name)
         # retry sleep 0.5s, 1s, 2s, 4s
-        retry = Retry(
-            total=API_FILE_DOWNLOAD_RETRY_TIMES,
-            backoff_factor=1,
-            allowed_methods=['GET'])
+        retry = Retry(total=API_FILE_DOWNLOAD_RETRY_TIMES, backoff_factor=1, allowed_methods=['GET'])
         while True:
             try:
                 downloaded_size = temp_file.tell()
                 get_headers['Range'] = 'bytes=%d-' % downloaded_size
                 r = requests.get(
-                    url,
-                    stream=True,
-                    headers=get_headers,
-                    cookies=cookies,
-                    timeout=API_FILE_DOWNLOAD_TIMEOUT)
+                    url, stream=True, headers=get_headers, cookies=cookies, timeout=API_FILE_DOWNLOAD_TIMEOUT)
                 r.raise_for_status()
                 content_length = r.headers.get('Content-Length')
-                total = int(
-                    content_length) if content_length is not None else None
+                total = int(content_length) if content_length is not None else None
                 progress = tqdm(
                     unit='B',
                     unit_scale=True,
@@ -305,8 +269,7 @@ def http_get_file(
                     initial=downloaded_size,
                     desc='Downloading',
                 )
-                for chunk in r.iter_content(
-                        chunk_size=API_FILE_DOWNLOAD_CHUNK_SIZE):
+                for chunk in r.iter_content(chunk_size=API_FILE_DOWNLOAD_CHUNK_SIZE):
                     if chunk:  # filter out keep-alive new chunks
                         progress.update(len(chunk))
                         temp_file.write(chunk)
@@ -321,8 +284,7 @@ def http_get_file(
     if total != downloaded_length:
         os.remove(temp_file.name)
         msg = 'File %s download incomplete, content_length: %s but the \
-                    file downloaded length: %s, please download again' % (
-            file_name, total, downloaded_length)
+                    file downloaded length: %s, please download again' % (file_name, total, downloaded_length)
         logger.error(msg)
         raise FileDownloadError(msg)
     os.replace(temp_file.name, os.path.join(local_dir, file_name))

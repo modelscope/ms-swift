@@ -15,8 +15,7 @@ else:
         'dpo_trainers': ['DPOTrainer'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'utils': [
-            'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend',
-            'HubStrategy', 'IntervalStrategy', 'SchedulerType',
+            'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
             'ShardedDDPOption', 'TrainerCallback'
         ]
     }

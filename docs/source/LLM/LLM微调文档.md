@@ -3,6 +3,7 @@
 - [环境准备](#环境准备)
 - [微调](#微调)
 - [DPO](#dpo)
+- [ORPO](#orpo)
 - [Merge LoRA](#merge-lora)
 - [量化](#量化)
 - [推理](#推理)
@@ -49,7 +50,7 @@ import torch
 
 from swift.llm import (
     DatasetName, InferArguments, ModelType, SftArguments,
-    infer_main, sft_main, app_ui_main, merge_lora
+    infer_main, sft_main, app_ui_main
 )
 
 model_type = ModelType.qwen_7b_chat
@@ -167,7 +168,10 @@ cd examples/pytorch/llm
 
 
 ## DPO
-如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](LLM人类对齐训练文档.md).
+如果你要使用DPO进行人类对齐, 你可以查看[DPO训练文档](DPO训练文档.md).
+
+## ORPO
+如果你要使用ORPO进行人类对齐, 你可以查看[ORPO最佳实践](ORPO算法最佳实践.md).
 
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
@@ -182,10 +186,10 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档.md#微调后模型)
 
 ## 推理
-如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md调后的模型)
+如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#微调后的模型)
 
 ### 原始模型
-**单样本推理**可以查看[LLM推理文档](LLM推理文档.md推理)
+**单样本推理**可以查看[LLM推理文档](LLM推理文档.md#推理)
 
 使用**数据集**评估:
 ```bash
@@ -271,10 +275,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
-如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md署)
+如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#部署)
 
 ### 原始模型
-使用原始模型的web-ui可以查看[LLM推理文档](LLM推理文档.mdWeb-UI)
+使用原始模型的web-ui可以查看[LLM推理文档](LLM推理文档.md#Web-UI)
 
 ### 微调后模型
 ```bash

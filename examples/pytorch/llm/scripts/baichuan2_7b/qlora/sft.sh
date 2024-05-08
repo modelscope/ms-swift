@@ -10,8 +10,7 @@ python llm_sft.py \
     --template_type default-generation \
     --dtype AUTO \
     --output_dir output \
-    --dataset advertise-gen-zh \
-    --train_dataset_sample 20000 \
+    --dataset advertise-gen-zh#20000 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \

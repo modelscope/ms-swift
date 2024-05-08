@@ -3,8 +3,7 @@ from typing import Iterator, Tuple
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import (AppUIArguments, History, inference_stream,
-                    limit_history_length)
+from .utils import AppUIArguments, History, inference_stream, limit_history_length
 
 logger = get_logger()
 
@@ -23,9 +22,7 @@ def gradio_generation_demo(args: AppUIArguments) -> None:
 
     def model_generation(query: str) -> Iterator[str]:
         if args.infer_backend == 'vllm':
-            gen = inference_stream_vllm(llm_engine, template, [{
-                'query': query
-            }])
+            gen = inference_stream_vllm(llm_engine, template, [{'query': query}])
             for resp_list in gen:
                 response = resp_list[0]['response']
                 yield response
@@ -49,11 +46,7 @@ def gradio_generation_demo(args: AppUIArguments) -> None:
     share = getattr(args, 'share', False)
     server_name = getattr(args, 'server_name', '127.0.0.1')
     server_port = getattr(args, 'server_port', 7860)
-    demo.queue().launch(
-        height=1000,
-        share=share,
-        server_name=server_name,
-        server_port=server_port)
+    demo.queue().launch(height=1000, share=share, server_name=server_name, server_port=server_port)
 
 
 def gradio_chat_demo(args: AppUIArguments) -> None:
@@ -64,16 +57,10 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
     else:
         model, template = prepare_model_template(args)
 
-    def model_chat(query: str,
-                   history: History) -> Iterator[Tuple[str, History]]:
-        old_history, history = limit_history_length(template, query, history,
-                                                    args.max_length)
+    def model_chat(query: str, history: History) -> Iterator[Tuple[str, History]]:
+        old_history, history = limit_history_length(template, query, history, args.max_length)
         if args.infer_backend == 'vllm':
-            gen = inference_stream_vllm(llm_engine, template,
-                                        [{
-                                            'query': query,
-                                            'history': history
-                                        }])
+            gen = inference_stream_vllm(llm_engine, template, [{'query': query, 'history': history}])
             for resp_list in gen:
                 history = resp_list[0]['history']
                 total_history = old_history + history
@@ -93,19 +80,13 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
         with gr.Row():
             clear_history = gr.Button('🧹 清除历史对话')
             send = gr.Button('🚀 发送')
-        send.click(
-            model_chat, inputs=[message, chatbot], outputs=[message, chatbot])
-        clear_history.click(
-            fn=clear_session, inputs=[], outputs=[chatbot], queue=False)
+        send.click(model_chat, inputs=[message, chatbot], outputs=[message, chatbot])
+        clear_history.click(fn=clear_session, inputs=[], outputs=[chatbot], queue=False)
     # Compatible with InferArguments
     share = getattr(args, 'share', False)
     server_name = getattr(args, 'server_name', '127.0.0.1')
     server_port = getattr(args, 'server_port', 7860)
-    demo.queue().launch(
-        height=1000,
-        share=share,
-        server_name=server_name,
-        server_port=server_port)
+    demo.queue().launch(height=1000, share=share, server_name=server_name, server_port=server_port)
 
 
 def llm_app_ui(args: AppUIArguments) -> None:

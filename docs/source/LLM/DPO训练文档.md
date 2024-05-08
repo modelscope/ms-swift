@@ -1,4 +1,4 @@
-# LLM人类对齐训练文档
+# DPO训练文档
 ## 目录
 - [环境准备](#环境准备)
 - [人类对齐训练](#人类对齐训练)
@@ -32,12 +32,10 @@ cd examples/pytorch/llm
 # Memory usage: 4 * 20G，双卡device_map * 2ddp
 nproc_per_node=2
 
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-torchrun \
-    --nproc_per_node=$nproc_per_node \
-    --master_port 29500 \
-    llm_dpo.py \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
+swift dpo \
     --model_type  yi-6b-chat \
     --ref_model_type  yi-6b-chat \
     --model_revision  master \
@@ -45,10 +43,7 @@ torchrun \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  hh-rlhf-cn-harmless-base-cn  \
-    --train_dataset_sample  -1  \
-    --truncation_strategy  truncation_left  \
-    --val_dataset_sample  2000  \
+    --dataset  hh-rlhf-cn:harmless_base_cn  \
     --num_train_epochs  3  \
     --max_length  1024  \
     --max_prompt_length  512  \
@@ -81,6 +76,7 @@ cd examples/pytorch/llm
 
 **提示**:
 
+- 如果用带有history的数据训练base模型，需要指定支持多轮对话的template(base模型往往不支持多轮对话)，对于这种情况我们默认设置了`chatml`template，你也可以支持--model_type 来选择训练模型的template
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且使用的是qwen系列模型, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](支持的模型和数据集.md#模型)

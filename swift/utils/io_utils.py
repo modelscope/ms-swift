@@ -17,9 +17,7 @@ def read_from_jsonl(fpath: str, encoding: str = 'utf-8') -> List[Any]:
     return res
 
 
-def write_to_jsonl(fpath: str,
-                   obj_list: List[Any],
-                   encoding: str = 'utf-8') -> None:
+def write_to_jsonl(fpath: str, obj_list: List[Any], encoding: str = 'utf-8') -> None:
     res: List[str] = []
     for obj in obj_list:
         res.append(json.dumps(obj, ensure_ascii=False))

@@ -15,9 +15,7 @@ from .utils import subprocess_run
 logger = get_logger()
 
 
-def create_ms_repo(hub_model_id: str,
-                   hub_token: Optional[str] = None,
-                   hub_private_repo: bool = False) -> str:
+def create_ms_repo(hub_model_id: str, hub_token: Optional[str] = None, hub_private_repo: bool = False) -> str:
     assert hub_model_id is not None, 'Please enter a valid hub_model_id'
 
     api = HubApi()
@@ -31,8 +29,7 @@ def create_ms_repo(hub_model_id: str,
         user_name = ModelScopeConfig.get_user_info()[0]
         assert isinstance(user_name, str)
         hub_model_id = f'{user_name}/{hub_model_id}'
-        logger.info(
-            f"'/' not in hub_model_id, setting hub_model_id: {hub_model_id}")
+        logger.info(f"'/' not in hub_model_id, setting hub_model_id: {hub_model_id}")
     try:
         api.create_model(hub_model_id, visibility)
     except HTTPError:
@@ -48,14 +45,12 @@ def push_to_ms_hub(ckpt_dir: str,
                    commit_message: str = 'update files'):
     logger.info(f'Starting push to hub. ckpt_dir: {ckpt_dir}.')
     tmp_file_name = tempfile.TemporaryDirectory().name
-    subprocess_run(['git', 'lfs', 'env'],
-                   stdout=subprocess.PIPE)  # check git-lfs install
+    subprocess_run(['git', 'lfs', 'env'], stdout=subprocess.PIPE)  # check git-lfs install
 
     hub_model_id = create_ms_repo(hub_model_id, hub_token, hub_private_repo)
     git_token = ModelScopeConfig.get_token()
     ms_url = f'https://oauth2:{git_token}@www.modelscope.cn/{hub_model_id}.git'
-    subprocess_run(['git', '-C', ckpt_dir, 'clone', ms_url, tmp_file_name],
-                   env={'GIT_LFS_SKIP_SMUDGE': '1'})
+    subprocess_run(['git', '-C', ckpt_dir, 'clone', ms_url, tmp_file_name], env={'GIT_LFS_SKIP_SMUDGE': '1'})
     tmp_dir = os.path.join(ckpt_dir, tmp_file_name)
     subprocess_run(['git', '-C', tmp_dir, 'lfs', 'pull'])
     logger.info('Git clone the repo successfully.')
@@ -64,9 +59,7 @@ def push_to_ms_hub(ckpt_dir: str,
     if os.path.exists(dst_git_path):
         shutil.rmtree(dst_git_path)
     shutil.copytree(os.path.join(tmp_dir, '.git'), dst_git_path)
-    shutil.copy(
-        os.path.join(tmp_dir, '.gitattributes'),
-        os.path.join(ckpt_dir, '.gitattributes'))
+    shutil.copy(os.path.join(tmp_dir, '.gitattributes'), os.path.join(ckpt_dir, '.gitattributes'))
     shutil.rmtree(tmp_dir)
     # add commit push
     subprocess_run(['git', '-C', ckpt_dir, 'lfs', 'install'])
@@ -83,6 +76,5 @@ def push_to_ms_hub(ckpt_dir: str,
 
 
 def is_repo_clean(ckpt_dir: str) -> bool:
-    resp = subprocess_run(['git', '-C', ckpt_dir, 'status', '--porcelain'],
-                          stdout=subprocess.PIPE)
+    resp = subprocess_run(['git', '-C', ckpt_dir, 'status', '--porcelain'], stdout=subprocess.PIPE)
     return len(resp.stdout.strip()) == 0

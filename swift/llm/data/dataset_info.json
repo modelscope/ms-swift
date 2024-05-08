@@ -1,0 +1,224 @@
+{
+    "multi-alpaca": {
+        "dataset_id": "damo/nlp_polylm_multialpaca_sft",
+        "subsets": ["ar", "de", "es", "fr", "id", "ja", "ko", "pt", "ru", "th", "vi"],
+        "tags": ["chat", "general", "multilingual"]
+    },
+    "text2sql-en": {
+        "dataset_id": "AI-ModelScope/texttosqlv2_25000_v2",
+        "tags": ["chat", "sql"],
+        "hf_dataset_id": "Clinton/texttosqlv2_25000_v2"
+    },
+    "school-math-zh": {
+        "dataset_id": "AI-ModelScope/school_math_0.25M",
+        "tags": ["chat", "math"],
+        "hf_dataset_id": "BelleGroup/school_math_0.25M"
+    },
+    "gpt4all-en": {
+        "dataset_id": "wyj123456/GPT4all",
+        "tags": ["chat", "general"]
+    },
+    "cot-zh": {
+        "dataset_id": "YorickHe/CoT_zh",
+        "tags": ["chat", "general"]
+    },
+    "cot-en": {
+        "dataset_id": "YorickHe/CoT",
+        "tags": ["chat", "general"]
+    },
+    "instinwild": {
+        "dataset_id": "wyj123456/instinwild",
+        "subsets": ["default", "subset"],
+        "tag": ["chat", "general"],
+        "help": "`default` is in Chinese, `subset` is in English."
+    },
+    "code-alpaca-en": {
+        "dataset_id": "wyj123456/code_alpaca_en",
+        "tag": ["chat", "coding"],
+        "hf_dataset_id": "sahil2801/CodeAlpaca-20k"
+    },
+    "finance-en": {
+        "dataset_id": "wyj123456/finance_en",
+        "tags": ["chat", "financial"],
+        "hf_dataset_id": "ssbuild/alpaca_finance_en"
+    },
+    "alpaca-en": {
+        "dataset_id": "AI-ModelScope/alpaca-gpt4-data-en",
+        "tags": ["chat", "general", "🔥"],
+        "hf_dataset_id": "vicgalle/alpaca-gpt4"
+    },
+    "coig-cqia": {
+        "dataset_id": "AI-ModelScope/COIG-CQIA",
+        "subsets": ["chinese_traditional", "coig_pc", "exam", "finance", "douban", "human_value", "logi_qa",
+                    "ruozhiba", "segmentfault", "wiki", "wikihow", "xhs", "zhihu"],
+        "tags": ["general", "🔥"]
+    },
+    "ms-agent-for-agentfabric": {
+        "dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
+        "subsets": ["default", "addition"],
+        "tags": ["chat", "agent", "multi-round", "🔥"]
+    },
+    "deepctrl-sft": {
+        "dataset_id": "AI-ModelScope/deepctrl-sft-data",
+        "subsets": ["default", "en"],
+        "tags": ["chat", "general", "sft", "multi-round"],
+        "help": "`default` is in Chinese, `en` is in English."
+    },
+    "poetry-zh": {
+        "dataset_id": "modelscope/chinese-poetry-collection",
+        "split": ["test"],
+        "columns": {"text1": "response"},
+        "tags": ["text-generation", "poetry"]
+    },
+    "instruct-en": {
+        "dataset_id": "wyj123456/instruct",
+        "columns": {
+            "prompt": "query",
+            "completion": "response"
+        },
+        "tags": ["chat", "general"]
+    },
+
+    "cls-fudan-news-zh": {
+        "dataset_id": "damo/zh_cls_fudan-news",
+        "columns": {"prompt": "query", "answer": "response"},
+        "tags": ["chat", "classification"]
+    },
+    "ner-jave-zh": {
+        "dataset_id": "damo/zh_ner-JAVE",
+        "columns": {"prompt": "query", "answer": "response"},
+        "tags": ["chat", "ner"]
+    },
+    "lawyer-llama-zh": {
+        "dataset_id": "AI-ModelScope/lawyer_llama_data",
+        "columns": {"instruction": "query", "output": "response", "history": "-"},
+        "tags": ["chat", "law"],
+        "hf_dataset_id": "Skepsun/lawyer_llama_data"
+    },
+    "codefuse-evol-instruction-zh": {
+        "dataset_id": "codefuse-ai/Evol-instruction-66k",
+        "columns": {"instruction": "query", "output": "response"},
+        "tags": ["chat", "coding", "🔥"]
+    },
+    "tulu-v2-sft-mixture": {
+        "dataset_id": "AI-ModelScope/tulu-v2-sft-mixture",
+        "tags": ["chat", "multilingual", "general", "multi-round"],
+        "hf_dataset_id": "allenai/tulu-v2-sft-mixture"
+    },
+    "webnovel-zh": {
+        "dataset_id": "AI-ModelScope/webnovel_cn",
+        "tags": ["chat", "novel"],
+        "hf_dataset_id": "zxbsmk/webnovel_cn"
+    },
+    "generated-chat-zh": {
+        "dataset_id": "AI-ModelScope/generated_chat_0.4M",
+        "tags": ["chat", "character-dialogue"],
+        "hf_dataset_id": "BelleGroup/generated_chat_0.4M"
+    },
+    "wikipedia-zh": {
+        "dataset_id": "AI-ModelScope/wikipedia-cn-20230720-filtered",
+        "columns": {"completion": "response"},
+        "tags": ["text-generation", "general", "pretrained"],
+        "hf_dataset_id": "pleisto/wikipedia-cn-20230720-filtered"
+    },
+    "open-platypus-en": {
+        "dataset_id": "AI-ModelScope/Open-Platypus",
+        "tags": ["chat", "math"],
+        "hf_dataset_id": "garage-bAInd/Open-Platypus"
+    },
+    "open-orca": {
+        "dataset_id": "AI-ModelScope/OpenOrca",
+        "subset": ["default", "3_5M"],
+        "columns": {"question": "query"},
+        "tags": ["chat", "multilingual", "general"],
+        "help": ["`default` uses gpt4 for data cleaning."]
+    },
+    "disc-law-sft-zh": {
+        "dataset_id": "AI-ModelScope/DISC-Law-SFT",
+        "columns": {"input": "query", "output": "response"},
+        "tags": ["chat", "law", "🔥"],
+        "hf_dataset_id": "ShengbinYue/DISC-Law-SFT"
+    },
+    "pileval": {
+        "dataset_id": "huangjintao/pile-val-backup",
+        "columns": {"text": "response"},
+        "split": ["validation"],
+        "tags": ["text-generation", "awq"],
+        "hf_dataset_id": "mit-han-lab/pile-val-backup"
+    },
+    "stack-exchange-paired": {
+        "dataset_id": "AI-ModelScope/stack-exchange-paired",
+        "columns": {
+            "question": "query",
+            "response_j": "response",
+            "response_k": "rejected_response"
+        },
+        "tags": ["hfrl", "dpo", "pairwise"]
+    },
+    "ms-agent": {
+        "dataset_id": "iic/ms_agent",
+        "conversations": {
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "agent", "multi-round", "🔥"]
+    },
+    "codefuse-python-en": {
+        "dataset_id": "codefuse-ai/CodeExercise-Python-27k",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "bot",
+            "conversations_key": "chat_rounds",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "coding", "🔥"]
+    },
+    "sharegpt-gpt4": {
+        "dataset_id": "AI-ModelScope/sharegpt_gpt4",
+        "subsets": ["default", "V3_format", "zh_38K_format"],
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "multilingual", "general", "multi-round", "gpt4", "🔥"],
+        "help": "`default` uses gpt4 for data cleaning."
+    },
+    "disc-med-sft-zh": {
+        "dataset_id": "AI-ModelScope/DISC-Med-SFT",
+        "conversations": {
+            "conversations_key": "conversation",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "medical", "🔥"],
+        "hf_dataset_id": "Flmc/DISC-Med-SFT"
+    },
+    "medical-en": {
+        "dataset_id": "huangjintao/medical_zh",
+        "subsets": ["en"],
+        "split": ["train", "val", "test"],
+        "columns": {
+            "input": "query",
+            "output": "response"
+        },
+        "tags": ["chat", "medical"]
+    },
+    "medical-zh": {
+        "dataset_id": "huangjintao/medical_zh",
+        "subsets": ["zh"],
+        "split": ["train", "val", "test"],
+        "columns": {
+            "instruction": "query",
+            "output": "response"
+        },
+        "tags": ["chat", "medical"]
+    },
+    "self-cognition": {
+        "dataset_path": "self_cognition.jsonl",
+        "remove_useless_columns": false,
+        "tags": ["chat", "self_cognition", "🔥"]
+    }
+}

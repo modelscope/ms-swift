@@ -67,8 +67,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
                     if ';' in rest:
                         # Handle platform specific dependencies
                         # http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-platform-specific-dependencies
-                        version, platform_deps = map(str.strip,
-                                                     rest.split(';'))
+                        version, platform_deps = map(str.strip, rest.split(';'))
                         info['platform_deps'] = platform_deps
                     else:
                         version = rest  # NOQA
@@ -82,8 +81,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
                 if line.startswith('http'):
                     print('skip http requirements %s' % line)
                     continue
-                if line and not line.startswith('#') and not line.startswith(
-                        '--'):
+                if line and not line.startswith('#') and not line.startswith('--'):
                     for info in parse_line(line):
                         yield info
                 elif line and line.startswith('--find-links'):
@@ -133,8 +131,7 @@ if __name__ == '__main__':
     setup(
         name='ms-swift',
         version=get_version(),
-        description=
-        'Swift: Scalable lightWeight Infrastructure for Fine-Tuning',
+        description='Swift: Scalable lightWeight Infrastructure for Fine-Tuning',
         long_description=readme(),
         long_description_content_type='text/markdown',
         author='DAMO ModelScope teams',
