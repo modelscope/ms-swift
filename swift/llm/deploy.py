@@ -5,7 +5,7 @@ import time
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
-
+from peft import PeftModel
 import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -320,7 +320,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 break
         assert adapter_names is not None
         adapter_kwargs['adapter_names'] = [adapter_names]
-    else:
+    elif isinstance(model, PeftModel):
         adapter_kwargs['adapter_names'] = ['-']
 
     async def _generate_full():
