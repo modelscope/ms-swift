@@ -1,10 +1,10 @@
 # Experimental environment: 2 * 3090
 # 2 * 22GB GPU memory
-nproc_per_node=2
+nproc_per_node=4
 
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model_id_or_path LLM-Research/Meta-Llama-3-8B-Instruct \
     --model_revision master \
@@ -35,5 +35,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --save_only_model true \
-    --sequence_parallel_size 2 \
+    --sequence_parallel_size 4 \
     --pack_to_max_length false \

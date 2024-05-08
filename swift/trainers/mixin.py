@@ -601,12 +601,12 @@ class SwiftMixin:
     def get_max_cuda_memory(self,
                             device: Optional[Union[torch.device,
                                                    int]] = None) -> float:
+        torch.cuda.empty_cache()
         mem = torch.cuda.max_memory_reserved(device=device)
         mem = float(mem) / 1024 / 1024 / 1024
         if self.max_memory < mem:
             self.max_memory = mem
         torch.cuda.reset_peak_memory_stats()
-        torch.cuda.empty_cache()
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
