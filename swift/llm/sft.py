@@ -1,21 +1,21 @@
-import json
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
 from typing import Any, Dict, Union
 
+import json
 import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from transformers import IntervalStrategy
+from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import is_torch_npu_available
+
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
-from transformers import IntervalStrategy
-from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_npu_available
-
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
@@ -170,14 +170,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
         if train_dataset is None:
-            logger.error(
-                "Error accessing train_dataset properties. "
-                "Please ensure that the dataset is properly initialized,"
-                "and every sample of the train_dataset not empty.")
-            raise AttributeError(
-                "Failed to access dataset attributes,train_dataset is None. This might be because:\n"
-                "(1) The dataset contains None for input or labels;\n"
-                "(2) The 'max_length' setting is too short causing data truncation.")
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
         td0, tkwargs0 = train_dataset.data[0]
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
