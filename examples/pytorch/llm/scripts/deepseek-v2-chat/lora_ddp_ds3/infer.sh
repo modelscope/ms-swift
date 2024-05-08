@@ -4,7 +4,7 @@
 PYTHONPATH=../../.. \
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-swift infer \
+python llm_infer.py \
     --ckpt_dir output/deepseek-v2-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
     --use_flash_attn true \

@@ -237,7 +237,8 @@ def llm_infer(args: InferArguments) -> None:
         device_map = None
         if args.device_map_config_path is not None:
             cwd = os.getcwd()
-            config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(cwd, args.device_map_config_path)
+            config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
+                cwd, args.device_map_config_path)
             with open(config_path, 'r') as json_file:
                 device_map = json.load(json_file)
         model, template = prepare_model_template(args, device_map=device_map)
