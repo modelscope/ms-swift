@@ -229,11 +229,16 @@ def llm_infer(args: InferArguments) -> None:
     seed_everything(args.seed)
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
+
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
-        model, template = prepare_model_template(args)
+        device_map = None
+        if args.device_map_path is not None:
+            with open(args.device_map_path, 'r') as json_file:
+                device_map = json.load(json_file)
+        model, template = prepare_model_template(args, device_map=device_map)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)

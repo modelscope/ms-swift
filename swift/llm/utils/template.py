@@ -677,8 +677,7 @@ register_template(
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 register_template(
     TemplateType.deepseek2,
-    Template([[100000]], ['User: {{QUERY}}\n\nAssistant:'],
-             [[100001]], [[100001]], None, [[100000], '{{SYSTEM}}\n\n']))
+    Template([[100000]], ['User: {{QUERY}}\n\nAssistant:'], [[100001]], [[100001]], None, [[100000], '{{SYSTEM}}\n\n']))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (

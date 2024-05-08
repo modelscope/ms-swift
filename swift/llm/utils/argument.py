@@ -910,6 +910,8 @@ class InferArguments(ArgumentsBase):
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
 
+    infer_device_map: Optional[str] = None
+
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 

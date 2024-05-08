@@ -405,6 +405,7 @@ class LoRATM(NamedTuple):
         'o_proj',
     ]
 
+
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 
 
@@ -2424,6 +2425,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
+
 @register_model(
     ModelType.deepseek_v2_chat,
     'deepseek-ai/DeepSeek-V2-Chat',
@@ -2443,72 +2445,9 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config._attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
     # model_kwargs['max_memory'] = {i: "70GB" for i in range(8)}
-    device_map = {
-        'model.embed_tokens': 'cuda:0',
-        'model.layers.0': 'cuda:0',
-        'model.layers.1': 'cuda:0',
-        'model.layers.2': 'cuda:0',
-        'model.layers.3': 'cuda:0',
-        'model.layers.4': 'cuda:0',
-        'model.layers.5': 'cuda:0',
-        'model.layers.6': 'cuda:0',
-        'model.layers.7': 'cuda:1',
-        'model.layers.8': 'cuda:1',
-        'model.layers.9': 'cuda:1',
-        'model.layers.10': 'cuda:1',
-        'model.layers.11': 'cuda:1',
-        'model.layers.12': 'cuda:1',
-        'model.layers.13': 'cuda:1',
-        'model.layers.14': 'cuda:2',
-        'model.layers.15': 'cuda:2',
-        'model.layers.16': 'cuda:2',
-        'model.layers.17': 'cuda:2',
-        'model.layers.18': 'cuda:2',
-        'model.layers.19': 'cuda:2',
-        'model.layers.20': 'cuda:2',
-        'model.layers.21': 'cuda:3',
-        'model.layers.22': 'cuda:3',
-        'model.layers.23': 'cuda:3',
-        'model.layers.24': 'cuda:3',
-        'model.layers.25': 'cuda:3',
-        'model.layers.26': 'cuda:3',
-        'model.layers.27': 'cuda:3',
-        'model.layers.28': 'cuda:4',
-        'model.layers.29': 'cuda:4',
-        'model.layers.30': 'cuda:4',
-        'model.layers.31': 'cuda:4',
-        'model.layers.32': 'cuda:4',
-        'model.layers.33': 'cuda:4',
-        'model.layers.34': 'cuda:4',
-        'model.layers.35': 'cuda:4',
-        'model.layers.36': 'cuda:5',
-        'model.layers.37': 'cuda:5',
-        'model.layers.38': 'cuda:5',
-        'model.layers.39': 'cuda:5',
-        'model.layers.40': 'cuda:5',
-        'model.layers.41': 'cuda:5',
-        'model.layers.42': 'cuda:5',
-        'model.layers.43': 'cuda:5',
-        'model.layers.44': 'cuda:6',
-        'model.layers.45': 'cuda:6',
-        'model.layers.46': 'cuda:6',
-        'model.layers.47': 'cuda:6',
-        'model.layers.48': 'cuda:6',
-        'model.layers.49': 'cuda:6',
-        'model.layers.50': 'cuda:6',
-        'model.layers.51': 'cuda:6',
-        'model.layers.52': 'cuda:7',
-        'model.layers.53': 'cuda:7',
-        'model.layers.54': 'cuda:7',
-        'model.layers.55': 'cuda:7',
-        'model.layers.56': 'cuda:7',
-        'model.layers.57': 'cuda:7',
-        'model.layers.58': 'cuda:7',
-        'model.layers.59': 'cuda:7',
-        'model.norm': 'cuda:7',
-        'lm_head': 'cuda:7'
-    }
-    model_kwargs['device_map'] = device_map
+    # device_map = kwargs.get('device_map', None)
+    # if device_map is not None:
+    #     model_kwargs['device_map'] = device_map
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     model.generation_config.pad_token_id = model.generation_config.eos_token_id
@@ -2572,8 +2511,8 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.vision_config.use_flash_attn = use_flash_attn  
-    model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'    
+    model_config.vision_config.use_flash_attn = use_flash_attn
+    model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,

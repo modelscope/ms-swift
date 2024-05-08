@@ -1,3 +1,5 @@
+# Experimental environment: 8*A100
+# 8*80GB GPU memory
 NPROC_PER_NODE=8 \
 swift sft \
     --model_type deepseek-v2-chat \

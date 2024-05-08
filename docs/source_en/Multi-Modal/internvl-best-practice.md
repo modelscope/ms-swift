@@ -116,7 +116,7 @@ model, tokenizer = get_model_tokenizer(model_type, torch.float16,
 # for GPUs that do not support flash attention
 # model, tokenizer = get_model_tokenizer(model_type, torch.float16,
 #                                        model_kwargs={'device_map': 'auto'},
-#                                        use_flash_attn = False) 
+#                                        use_flash_attn = False)
 
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
