@@ -203,6 +203,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--load_args_from_ckpt_dir`: Whether to read model configuration info from `sft_args.json` file in `ckpt_dir`. Default is `True`.
 - `--load_dataset_config`: This parameter only takes effect when `--load_args_from_ckpt_dir true`. I.e. whether to read dataset related configuration from `sft_args.json` file in `ckpt_dir`. Default is `False`.
 - `--eval_human`: Whether to evaluate using validation set portion of dataset or manual evaluation. Default is `None`, for intelligent selection, if no datasets (including custom datasets) are passed, manual evaluation will be used. If datasets are passed, dataset evaluation will be used.
+- `device_map_config_path`: Manually configure the model's device map from a local file, defaults to None.
 - `--seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
 - `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.

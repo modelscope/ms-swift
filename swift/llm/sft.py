@@ -169,6 +169,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
+        if train_dataset is None:
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
         td0, tkwargs0 = train_dataset.data[0]
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
