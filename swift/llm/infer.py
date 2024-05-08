@@ -235,8 +235,8 @@ def llm_infer(args: InferArguments) -> None:
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
         device_map = None
-        if args.device_map_path is not None:
-            with open(args.device_map_path, 'r') as json_file:
+        if args.device_map_config_path is not None:
+            with open(args.device_map_config_path, 'r') as json_file:
                 device_map = json.load(json_file)
         model, template = prepare_model_template(args, device_map=device_map)
         if args.overwrite_generation_config:
