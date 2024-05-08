@@ -225,7 +225,7 @@ class ConstantLengthDataset(IterableDataset):
                     break
                 try:
                     example = next(iterator)
-                    lens = sum([len(value) for value in example.values()])
+                    lens = sum([len(value) if value else 0 for value in example.values()])
                     buffer.append(next(iterator))
                     buffer_len += lens
                 except StopIteration:

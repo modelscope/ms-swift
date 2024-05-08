@@ -41,6 +41,31 @@
         }
       },
       {
+        "name": "lora+packing",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "packing": true,
+          "eval_steps": 200,
+          "save_steps": 200
+        }
+      },
+      {
+        "name": "lora+packing+lazytokenize",
+        "args": {
+          "sft_type": "lora",
+          "lora_target_modules": "ALL",
+          "lora_rank": 8,
+          "lora_alpha": 32,
+          "packing": true,
+          "lazy_tokenize": true,
+          "eval_steps": 200,
+          "save_steps": 200
+        }
+      },
+      {
         "name": "lora+",
         "args": {
           "sft_type": "lora",
