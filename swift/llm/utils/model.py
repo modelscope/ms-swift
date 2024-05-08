@@ -2442,7 +2442,9 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config._attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    model_kwargs['max_memory'] = {i: "70GB" for i in range(8)}
+    # model_kwargs['max_memory'] = {i: "70GB" for i in range(8)}
+    device_map = {'model.embed_tokens': 0, 'model.layers.0': 0, 'model.layers.1': 0, 'model.layers.2': 0, 'model.layers.3': 0, 'model.layers.4': 0, 'model.layers.5': 0, 'model.layers.6': 0, 'model.layers.7': 1, 'model.layers.8': 1, 'model.layers.9': 1, 'model.layers.10': 1, 'model.layers.11': 1, 'model.layers.12': 1, 'model.layers.13': 1, 'model.layers.14': 2, 'model.layers.15': 2, 'model.layers.16': 2, 'model.layers.17': 2, 'model.layers.18': 2, 'model.layers.19': 2, 'model.layers.20': 2, 'model.layers.21': 3, 'model.layers.22': 3, 'model.layers.23': 3, 'model.layers.24': 3, 'model.layers.25': 3, 'model.layers.26': 3, 'model.layers.27': 3, 'model.layers.28': 4, 'model.layers.29': 4, 'model.layers.30': 4, 'model.layers.31': 4, 'model.layers.32': 4, 'model.layers.33': 4, 'model.layers.34': 4, 'model.layers.35': 4, 'model.layers.36': 5, 'model.layers.37': 5, 'model.layers.38': 5, 'model.layers.39': 5, 'model.layers.40': 5, 'model.layers.41': 5, 'model.layers.42': 5, 'model.layers.43': 5, 'model.layers.44': 6, 'model.layers.45': 6, 'model.layers.46': 6, 'model.layers.47': 6, 'model.layers.48': 6, 'model.layers.49': 6, 'model.layers.50': 6, 'model.layers.51': 6, 'model.layers.52': 7, 'model.layers.53': 7, 'model.layers.54': 7, 'model.layers.55': 7, 'model.layers.56': 7, 'model.layers.57': 7, 'model.layers.58': '7', 'model.layers.59': '7', 'model.norm': '7', 'lm_head': '7'}
+    model_kwargs['device_map'] = device_map
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     model.generation_config.pad_token_id = model.generation_config.eos_token_id
