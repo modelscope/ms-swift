@@ -135,6 +135,7 @@ class LLMInfer(BaseUI):
                             cls.element('system'),
                             cls.element('max_new_tokens'),
                             cls.element('temperature'),
+                            cls.element('do_sample'),
                             cls.element('top_k'),
                             cls.element('top_p'),
                             cls.element('repetition_penalty')
@@ -382,7 +383,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def generate_chat(cls, model_and_template, template_type, prompt: str, history, system, max_new_tokens, temperature,
-                      top_k, top_p, repetition_penalty):
+                      do_sample, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
@@ -399,6 +400,7 @@ class LLMInfer(BaseUI):
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            do_sample=do_sample,
             max_new_tokens=int(max_new_tokens),
             repetition_penalty=repetition_penalty)
         gen = inference_stream(

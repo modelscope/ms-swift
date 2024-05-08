@@ -16,7 +16,10 @@ from swift.llm import SftArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
+from swift.ui.llm_train.galore import Galore
 from swift.ui.llm_train.hyper import Hyper
+from swift.ui.llm_train.lisa import Lisa
+from swift.ui.llm_train.llamapro import LlamaPro
 from swift.ui.llm_train.lora import LoRA
 from swift.ui.llm_train.model import Model
 from swift.ui.llm_train.quantization import Quantization
@@ -162,34 +165,12 @@ class LLMTrain(BaseUI):
                 'en': 'Use neftune to improve performance, normally the value should be 5 or 10'
             }
         },
-        'use_galore': {
+        'tuner_backend': {
             'label': {
-                'zh': '使用GaLore',
-                'en': 'Use GaLore'
-            },
-            'info': {
-                'zh': '使用Galore来减少全参数训练的显存消耗',
-                'en': 'Use Galore to reduce GPU memory usage in full parameter training'
-            }
-        },
-        'galore_rank': {
-            'label': {
-                'zh': 'Galore的秩',
-                'en': 'The rank of Galore'
+                'zh': 'Tuner backend',
+                'en': 'Tuner backend'
             },
         },
-        'galore_update_proj_gap': {
-            'label': {
-                'zh': 'Galore project matrix更新频率',
-                'en': 'The updating gap of the project matrix'
-            },
-        },
-        'galore_optim_per_parameter': {
-            'label': {
-                'zh': '为每个Galore Parameter创建单独的optimizer',
-                'en': 'Create unique optimizer for per Galore parameter'
-            },
-        }
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(SftArguments)
@@ -210,16 +191,12 @@ class LLMTrain(BaseUI):
                 Runtime.build_ui(base_tab)
                 with gr.Row():
                     gr.Dropdown(elem_id='sft_type', scale=4)
+                    gr.Dropdown(elem_id='tuner_backend', scale=4)
                     gr.Textbox(elem_id='seed', scale=4)
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                     gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=4)
-                with gr.Row():
-                    gr.Checkbox(elem_id='use_galore', scale=4)
-                    gr.Slider(elem_id='galore_rank', minimum=8, maximum=256, step=8, scale=4)
-                    gr.Slider(elem_id='galore_update_proj_gap', minimum=10, maximum=1000, step=50, scale=4)
-                    gr.Checkbox(elem_id='galore_optim_per_parameter', scale=4)
                 with gr.Row():
                     gr.Dropdown(
                         elem_id='gpu_id',
@@ -234,6 +211,9 @@ class LLMTrain(BaseUI):
                 Save.build_ui(base_tab)
                 LoRA.build_ui(base_tab)
                 Hyper.build_ui(base_tab)
+                Galore.build_ui(base_tab)
+                Lisa.build_ui(base_tab)
+                LlamaPro.build_ui(base_tab)
                 Quantization.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
@@ -281,6 +261,7 @@ class LLMTrain(BaseUI):
         more_params = {}
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         model_type = None
+        use_unsloth = False
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
