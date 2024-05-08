@@ -204,6 +204,7 @@ class ModelType:
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
     # internvl
     internvl_chat_v1_5 = 'internvl-chat-v1_5'
+    internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -2453,6 +2454,15 @@ def fix_internvl_inplace_bug(model) -> None:
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
+@register_model(
+    ModelType.internvl_chat_v1_5_int8,
+    'AI-ModelScope/InternVL-Chat-V1-5-int8',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='OpenGVLab/InternVL-Chat-V1-5-int8')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -2461,8 +2471,8 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-
+    model_config.vision_config.use_flash_attn = use_flash_attn  
+    model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'    
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
