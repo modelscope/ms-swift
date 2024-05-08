@@ -419,6 +419,7 @@ class SftArguments(ArgumentsBase):
     resume_from_checkpoint: Optional[str] = None
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
+    packing: bool = False
 
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})

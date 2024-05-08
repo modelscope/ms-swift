@@ -10,6 +10,7 @@ import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
+from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
@@ -320,7 +321,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 break
         assert adapter_names is not None
         adapter_kwargs['adapter_names'] = [adapter_names]
-    else:
+    elif isinstance(model, PeftModel):
         adapter_kwargs['adapter_names'] = ['-']
 
     async def _generate_full():
