@@ -713,8 +713,7 @@ class SftArguments(ArgumentsBase):
                     self.save_only_model = False
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
-            if self.tuner_backend != 'unsloth':
-                assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
+            assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
                                           'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.')
             if isinstance(self.additional_trainable_parameters, str):

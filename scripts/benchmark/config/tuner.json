@@ -288,12 +288,11 @@
         }
       },
       {
-        "name": "unsloth+q4",
-        "info": "unsloth full quantization bit 4",
+        "name": "unsloth+full",
+        "info": "unsloth full",
         "args": {
           "sft_type": "full",
           "tuner_backend": "unsloth",
-          "quantization_bit": 4,
           "model_type": "llama3-8b-instruct"
         }
       }
