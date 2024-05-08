@@ -160,6 +160,7 @@ class LLMDataset(Dataset):
         return len(self.data)
 
 
+# Code borrowed from trl
 class ConstantLengthDataset(IterableDataset):
 
     def __init__(
