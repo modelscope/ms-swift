@@ -2407,7 +2407,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config._attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    model_kwargs['max_memory'] = {i: "80GB" for i in range(8)}
+    model_kwargs['max_memory'] = {i: "70GB" for i in range(8)}
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     model.generation_config.pad_token_id = model.generation_config.eos_token_id
