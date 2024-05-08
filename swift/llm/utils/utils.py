@@ -189,16 +189,20 @@ class ConstantLengthDataset(IterableDataset):
             num_of_sequences=1024,
             chars_per_token=3.6,
             append_concat_token=True,
-            add_special_tokens=True):
+            add_special_tokens=True,
+            lazy_tokenize=False):
         constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length,
                                                          num_of_sequences, chars_per_token, append_concat_token,
                                                          add_special_tokens)
+        
+        if lazy_tokenize:
+            return constant_length_iterator
 
         def data_generator(constant_length_iterator):
             yield from constant_length_iterator
 
         try:
-            packed_dataset = Dataset.from_generator(
+            packed_dataset = HfDataset.from_generator(
                 data_generator, gen_kwargs={"constant_length_iterator": constant_length_iterator}
             )
         except (DatasetGenerationError, SchemaInferenceError) as exc:
@@ -221,7 +225,7 @@ class ConstantLengthDataset(IterableDataset):
                     break
                 try:
                     example = next(iterator)
-                    lens = sum([len(value) for value in example.values()])
+                    lens = sum([len(value) if value else 0 for value in example.values()])
                     buffer.append(next(iterator))
                     buffer_len += lens
                 except StopIteration:
@@ -230,7 +234,7 @@ class ConstantLengthDataset(IterableDataset):
 
             packed_sequences = {}
             for example in buffer:
-                input = self.template.encode(example)
+                input, _ = self.template.encode(example)
                 for key in input.keys():
                     if key not in packed_sequences:
                         packed_sequences[key] = []
