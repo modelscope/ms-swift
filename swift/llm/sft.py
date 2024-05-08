@@ -150,7 +150,19 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    if not args.lazy_tokenize:
+    if args.packing:
+        from swift.llm.utils.utils import ConstantLengthDataset
+        train_dataset = ConstantLengthDataset.get_packed_dataset(
+            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        if val_dataset is not None:
+            val_dataset = ConstantLengthDataset.get_packed_dataset(
+                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        dataset_info = {}
+        if not args.lazy_tokenize:
+            dataset_info['train_dataset'] = stat_dataset(train_dataset)
+            if val_dataset is not None:
+                dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    elif not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
@@ -159,6 +171,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
+        if train_dataset is None:
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
         td0, tkwargs0 = train_dataset.data[0]
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
