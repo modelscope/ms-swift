@@ -261,7 +261,6 @@ class LLMTrain(BaseUI):
         more_params = {}
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         model_type = None
-        use_unsloth = False
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value

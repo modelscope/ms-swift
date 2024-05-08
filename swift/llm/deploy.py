@@ -5,11 +5,12 @@ import time
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
-from peft import PeftModel
+
 import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
+from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template

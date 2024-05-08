@@ -182,19 +182,17 @@ class ConstantLengthDataset(IterableDataset):
         self.add_special_tokens = add_special_tokens
 
     @staticmethod
-    def get_packed_dataset(
-            template: 'Template',
-            dataset,
-            seq_length=1024,
-            num_of_sequences=1024,
-            chars_per_token=3.6,
-            append_concat_token=True,
-            add_special_tokens=True,
-            lazy_tokenize=False):
-        constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length,
-                                                         num_of_sequences, chars_per_token, append_concat_token,
-                                                         add_special_tokens)
-        
+    def get_packed_dataset(template: 'Template',
+                           dataset,
+                           seq_length=1024,
+                           num_of_sequences=1024,
+                           chars_per_token=3.6,
+                           append_concat_token=True,
+                           add_special_tokens=True,
+                           lazy_tokenize=False):
+        constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length, num_of_sequences,
+                                                         chars_per_token, append_concat_token, add_special_tokens)
+
         if lazy_tokenize:
             return constant_length_iterator
 
@@ -203,13 +201,11 @@ class ConstantLengthDataset(IterableDataset):
 
         try:
             packed_dataset = HfDataset.from_generator(
-                data_generator, gen_kwargs={"constant_length_iterator": constant_length_iterator}
-            )
+                data_generator, gen_kwargs={'constant_length_iterator': constant_length_iterator})
         except (DatasetGenerationError, SchemaInferenceError) as exc:
             raise ValueError(
-                "Error occurred while packing the dataset. "
-                "Make sure that your dataset has enough samples to at least yield one packed sequence."
-            ) from exc
+                'Error occurred while packing the dataset. '
+                'Make sure that your dataset has enough samples to at least yield one packed sequence.') from exc
         return packed_dataset
 
     def __len__(self):
@@ -242,7 +238,7 @@ class ConstantLengthDataset(IterableDataset):
 
             lens = len(packed_sequences[list(packed_sequences.keys())[0]])
             for i in range(0, lens, self.seq_length):
-                example = {key: value[i: i + self.seq_length] for key, value in packed_sequences.items()}
+                example = {key: value[i:i + self.seq_length] for key, value in packed_sequences.items()}
                 yield example
 
 
