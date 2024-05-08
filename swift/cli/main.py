@@ -61,7 +61,9 @@ def cli_main() -> None:
     else:
         args = ['torchrun', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)
-    subprocess.run(args)
+    result = subprocess.run(args)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
 
 
 if __name__ == '__main__':
