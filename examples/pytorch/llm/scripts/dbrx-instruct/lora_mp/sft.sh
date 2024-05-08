@@ -6,7 +6,7 @@ swift sft \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type qwen \
+    --template_type AUTO \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \

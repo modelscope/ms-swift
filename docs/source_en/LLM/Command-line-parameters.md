@@ -93,6 +93,7 @@
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
 - `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'no'.
 - `--save_safetensors`: Default is `True`.
+- `--include_num_input_tokens_seen`: Default is `False`. Tracks the number of input tokens seen throughout training.
 - `--max_new_tokens`: Default is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--do_sample`: Default is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--temperature`: Default is `0.3`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.

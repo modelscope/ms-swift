@@ -322,6 +322,8 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type)
+            if args.truncation_strategy:
+                infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if args.infer_backend == 'vllm':
                 request_list = [{
                     'query': query,
@@ -438,6 +440,8 @@ def llm_infer(args: InferArguments) -> None:
                     kwargs['system'] = system
                 if images is not None:
                     kwargs['images'] = images
+                if args.truncation_strategy:
+                    kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':
                     assert args.stream is True
                     if args.verbose:
@@ -461,6 +465,8 @@ def llm_infer(args: InferArguments) -> None:
                         verbose=args.verbose,
                         **kwargs)
                 label = data.pop('response')
+                if 'truncation_strategy' in kwargs:
+                    kwargs.pop('truncation_strategy')
                 if label is not None:
                     kwargs['label'] = label
                 obj = {'response': response, **kwargs}
