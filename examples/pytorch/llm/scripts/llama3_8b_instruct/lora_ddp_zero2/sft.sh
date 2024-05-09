@@ -6,18 +6,17 @@ NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
-    --model_id_or_path LLM-Research/Meta-Llama-3-8B-Instruct \
+    --model_type chatglm3-6b-32k \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type llama3 \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
-    --dataset ms-agent \
+    --dataset long-alpaca-12k \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
-    --max_length 4096 \
+    --max_length 16000 \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
