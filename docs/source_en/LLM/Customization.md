@@ -100,12 +100,12 @@ aaaaa,bbbbb,ccccc
 AAAAA,BBBBB,CCCCC
 ```
 
-**Reinforcement Learning (DPO)**
+**Reinforcement Learning (DPO/ORPO)**
 
 ```jsonl
-{"query": "11111", "response": "22222", "rejected_response": "33333"}
-{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc"}
-{"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC"}
+{"query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
 ### Adding dataset_info.json
