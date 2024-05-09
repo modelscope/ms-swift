@@ -96,7 +96,8 @@
 - `--report_to`: Default is `['tensorboard']`.
 - `--acc_strategy`: Default is `'token'`, options include: 'token', 'sentence'.
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
-- `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'no'.
+- `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'epoch', no'.
+- `--evaluation_strategy`: Strategy for evaluation, default is `'steps'`, options include: 'steps', 'epoch', no'.
 - `--save_safetensors`: Default is `True`.
 - `--include_num_input_tokens_seen`: Default is `False`. Tracks the number of input tokens seen throughout training.
 - `--max_new_tokens`: Default is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
