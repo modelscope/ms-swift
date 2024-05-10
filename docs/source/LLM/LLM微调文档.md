@@ -81,7 +81,7 @@ app_ui_main(infer_args)
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 
 # 使用自己的数据集
@@ -97,7 +97,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 
 # 多机多卡
@@ -109,7 +109,7 @@ MASTER_ADDR=127.0.0.1 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 # node1
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -119,7 +119,7 @@ MASTER_ADDR=xxx.xxx.xxx.xxx \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 ```
 
@@ -193,7 +193,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 使用**数据集**评估:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset AI-ModelScope/blossom-math-v2
 ```
 ### 微调后模型
 **单样本推理**:

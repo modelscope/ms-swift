@@ -77,7 +77,7 @@ app_ui_main(infer_args)
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 
 # Using your own dataset
@@ -93,7 +93,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 
 # Multi-machine multi-card
@@ -105,7 +105,7 @@ MASTER_ADDR=127.0.0.1 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 # node1
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -115,7 +115,7 @@ MASTER_ADDR=xxx.xxx.xxx.xxx \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 ```
 
@@ -188,7 +188,7 @@ If you want to use VLLM for accelerated inference, you can check [VLLM Inference
 
 Using **Dataset** for evaluation:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset AI-ModelScope/blossom-math-v2
 ```
 ### Fine-tuned Model
 **Single sample inference**:

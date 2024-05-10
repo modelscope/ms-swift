@@ -259,11 +259,12 @@ def prepare_model(model, args: SftArguments):
                     for param in layers[idx].parameters():
                         param.requires_grad = True
 
-        callbacks.append(
-            DynamicLayerActivationCallback(
-                n_layers=args.lisa_activated_layers,  # Number of layers to activate
-                step_interval=args.lisa_step_interval,  # Step interval to update active layers
-                model=model))
+        lisa_callback = DynamicLayerActivationCallback(
+            n_layers=args.lisa_activated_layers,  # Number of layers to activate
+            step_interval=args.lisa_step_interval,  # Step interval to update active layers
+            model=model)
+        lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
+        callbacks.append(lisa_callback)
 
     class TrainerAdapterCallback(TrainerCallback):
 

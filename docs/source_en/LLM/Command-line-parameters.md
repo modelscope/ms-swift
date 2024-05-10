@@ -14,6 +14,7 @@
 - `--model_id_or_path`: Represents the `model_id` in the ModelScope/HuggingFace Hub or a local path for the model, default is `None`. If the provided `model_id_or_path` has already been registered, the `model_type` will be inferred based on the `model_id_or_path`. If it has not been registered, both `model_type` and `model_id_or_path` must be specified, e.g. `--model_type <model_type> --model_id_or_path <model_id_or_path>`.
 - `--model_revision`: The version number corresponding to `model_id` on ModelScope Hub, default is `None`. If `model_revision` is `None`, use the revision registered in `MODEL_MAPPING`. Otherwise, force use of the `model_revision` passed from command line.
 - `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'qalora'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
+- `--packing`: pack the dataset length to `max-length`, default `False`.
 - `--freeze_parameters`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
 - `--additional_trainable_parameters`: In addition to freeze_parameters, only allowed when sft_type is 'full', default is `[]`. For example, if you want to train embedding layer in addition to 50% of parameters, you can set `--freeze_parameters 0.5 --additional_trainable_parameters transformer.wte`, all parameters starting with `transformer.wte` will be activated.
 - `--tuner_backend`: Backend support for lora, qlora, default is `'peft'`. Options include: 'swift', 'peft', 'unsloth'.
@@ -96,7 +97,8 @@
 - `--report_to`: Default is `['tensorboard']`.
 - `--acc_strategy`: Default is `'token'`, options include: 'token', 'sentence'.
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
-- `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'no'.
+- `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'epoch', no'.
+- `--evaluation_strategy`: Strategy for evaluation, default is `'steps'`, options include: 'steps', 'epoch', no'.
 - `--save_safetensors`: Default is `True`.
 - `--include_num_input_tokens_seen`: Default is `False`. Tracks the number of input tokens seen throughout training.
 - `--max_new_tokens`: Default is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.

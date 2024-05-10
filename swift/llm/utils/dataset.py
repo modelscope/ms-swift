@@ -1158,9 +1158,9 @@ def _preprocess_self_cognition_dataset(
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
     assert model_author[0] is not None
-    if model_name[1] is None:
+    if len(model_name) == 1 or model_name[1] is None:
         model_name = (model_name[0], model_name[0])
-    if model_author[1] is None:
+    if len(model_author) == 1 or model_author[1] is None:
         model_author = (model_author[0], model_author[0])
     res_d_list = []
     for dataset in dataset_list:

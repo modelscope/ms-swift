@@ -550,8 +550,8 @@ class SftArguments(ArgumentsBase):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
-    evaluation_strategy: Literal['steps', 'no'] = 'steps'
-    save_strategy: Literal['steps', 'no'] = 'steps'
+    evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
+    save_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
