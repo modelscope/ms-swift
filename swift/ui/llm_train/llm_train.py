@@ -171,6 +171,12 @@ class LLMTrain(BaseUI):
                 'en': 'Tuner backend'
             },
         },
+        'sequence_parallel_size': {
+            'label': {
+                'zh': '序列并行分段',
+                'en': 'Sequence parallel size'
+            },
+        },
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(SftArguments)
@@ -192,6 +198,7 @@ class LLMTrain(BaseUI):
                 with gr.Row():
                     gr.Dropdown(elem_id='sft_type', scale=4)
                     gr.Dropdown(elem_id='tuner_backend', scale=4)
+                    gr.Textbox(elem_id='sequence_parallel_size', scale=4)
                     gr.Textbox(elem_id='seed', scale=4)
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)

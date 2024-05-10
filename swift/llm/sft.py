@@ -185,9 +185,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
-        if args.pack_to_max_length:
-            from swift.trainers.xtuner import pack_dataset_xtuner
-            train_dataset = pack_dataset_xtuner(train_dataset, args)
     else:
         dataset_info = None
         td0, tkwargs0 = template.encode(train_dataset[0])
