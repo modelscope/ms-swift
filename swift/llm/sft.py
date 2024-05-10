@@ -52,7 +52,17 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
 
-    if args.load_in_8bit or args.load_in_4bit:
+    if args.quant_method == 'hqq':
+        from transformers import HqqConfig
+        quantization_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
+        logger.info(f'quantization_config: {quantization_config.__dict__}')
+        model_kwargs['quantization_config'] = quantization_config
+    elif args.quant_method == 'eetq':
+        from transformers import EetqConfig
+        quantization_config = EetqConfig('int8')
+        logger.info(f'quantization_config: {quantization_config.__dict__}')
+        model_kwargs['quantization_config'] = quantization_config
+    elif args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
             args.load_in_4bit,

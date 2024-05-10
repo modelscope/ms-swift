@@ -2495,6 +2495,7 @@ def fix_internvl_inplace_bug(model) -> None:
     'AI-ModelScope/InternVL-Chat-V1-5-int8',
     LoRATM.internlm2,
     TemplateType.internvl,
+    torch_dtype=torch.bfloat16,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_gradient_checkpointing=False,

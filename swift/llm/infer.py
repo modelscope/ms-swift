@@ -136,7 +136,9 @@ def prepare_model_template(args: InferArguments,
     model_kwargs['device_map'] = device_map
 
     # Loading Model and Tokenizer
-    if args.load_in_8bit or args.load_in_4bit:
+    if hasattr(args, 'quant_config'):
+        model_kwargs['quantization_config'] = args.quant_config
+    elif args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
             args.load_in_4bit,
@@ -241,6 +243,12 @@ def llm_infer(args: InferArguments) -> None:
                 cwd, args.device_map_config_path)
             with open(config_path, 'r') as json_file:
                 device_map = json.load(json_file)
+        if args.quant_method == 'hqq':
+            from transformers import HqqConfig
+            args.quant_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
+        elif args.quant_method == 'eetq':
+            from transformers import EetqConfig
+            args.quant_config = EetqConfig('int8')
         model, template = prepare_model_template(args, device_map=device_map)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'

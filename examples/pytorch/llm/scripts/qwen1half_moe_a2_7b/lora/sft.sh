@@ -1,5 +1,3 @@
-# you will have to install transformers from source
-# pip install git+https://github.com/huggingface/transformers
 # Experimental environment: A100
 # 42GB GPU memory
 PYTHONPATH=../../.. \
