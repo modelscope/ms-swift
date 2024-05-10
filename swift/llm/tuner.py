@@ -187,6 +187,9 @@ def prepare_model(model, args: SftArguments):
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
+    if args.sequence_parallel_size > 1:
+        from swift.trainers.xtuner import dispatch_module_xtuner
+        dispatch_module_xtuner(model)
     if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {None, 0.}:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_noise_alpha)
         model = Swift.prepare_model(model, {'neftune': neftune_config})

@@ -825,6 +825,10 @@ def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
 
 
+def is_xtuner_available():
+    return importlib.util.find_spec('xtuner') is not None
+
+
 def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
     time_info = None
     try:

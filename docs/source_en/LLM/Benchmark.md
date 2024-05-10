@@ -11,6 +11,7 @@
 - [Export](#Export)
 - [AWQ](#AWQ)
 - [AQLM](#AQLM)
+- [Sequence Parallel](#Sequence-Parallel)
 
 ## Parameter Settings
 Experimental environment:
@@ -756,3 +757,49 @@ swift sft \
 | exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
 | -------- | ---------- | ------- | -------------------| ----- | ------------ | ------------------- | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |
 |llama2-7b-aqlm-2bit-1x16|llama2-7b-aqlm-2bit-1x16|dureader-robust-zh|0.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|19.9885(1.6510%)|True|True|lr=5e-05/epoch=2|4.04GiB|0.17(14994 samples/86140.71 seconds)||**0.48**|**0.74**||||
+
+## Sequence Parallel
+
+<table>
+
+<tr>
+<td>Model</td>
+<td>Dataset</td>
+<td>Hyper params</td>
+<td>Total steps</td>
+<td>Train speed</td>
+<td>Gpu memory</td>
+</tr>
+
+<tr>
+<td rowspan="4">chatglm3-6b-32k</td>
+<td rowspan="4">long-alpaca-12k(8055 tokens * 12000 rows)</td>
+<td>gpu=2/sequence_parallel_size=1(2 GPU DDP baseline)</td>
+<td>5940</td>
+<td>0.30iter/s(5h13min total)</td>
+<td>27G*2</td>
+</tr>
+
+
+<tr>
+<td>gpu=2/sequence_parallel_size=2(2 GPU with sequence parallel 2)</td>
+<td>11880</td>
+<td>0.5iter/s(6h total)</td>
+<td>20G*2</td>
+</tr>
+
+<tr>
+<td>gpu=4/sequence_parallel_size=4(4 GPU with sequence parallel 4)</td>
+<td>11880</td>
+<td>1iter/s(3h20min total)</td>
+<td>18G*4</td>
+</tr>
+
+<tr>
+<td>gpu=4/sequence_parallel_size=2(4 GPU sequence parallel 2)</td>
+<td>5940</td>
+<td>0.45iter/s(3h total)</td>
+<td>21G*4</td>
+</tr>
+
+</table>

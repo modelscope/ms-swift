@@ -7,7 +7,6 @@ import torch
 from peft import PeftModel
 from torch import Tensor, nn
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
@@ -33,6 +32,7 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
+        self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
         super().__init__(*args, **kwargs)
         # performance
         self.perf: Dict[str, Any] = {
@@ -42,11 +42,13 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
         self._acc = torch.tensor(0.).to(self.args.device)
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import init_sequence_parallel_xtuner
+            init_sequence_parallel_xtuner(self.sequence_parallel_size)
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
-        for i in range(torch.cuda.device_count()):
-            self.perf['memory'][f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
+        self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
         return res
 
     def prediction_step(
@@ -208,6 +210,13 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']
+
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
+            loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
+
+        preds = outputs.logits.argmax(dim=2)[..., :-1]
+
         labels = labels[..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
@@ -228,11 +237,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def get_train_dataloader(self):
-
-        if not use_torchacc():
-            return super().get_train_dataloader()
-
-        else:
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import get_xtuner_train_dataloader
+            return get_xtuner_train_dataloader(self)
+        elif use_torchacc():
             if trainer.is_datasets_available():
                 import datasets
 
@@ -249,12 +257,13 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
             return ta_train_dataloader(train_dataset, data_collator, self._get_train_sampler(), self.args,
                                        self._train_batch_size)
+        else:
+            return super().get_train_dataloader()
 
     def get_eval_dataloader(self, eval_dataset):
         if not use_torchacc():
             return super().get_eval_dataloader(eval_dataset)
         else:
-            import torchacc as ta
             if trainer.is_datasets_available():
                 import datasets
 
@@ -274,7 +283,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if not use_torchacc():
             return super().get_test_dataloader(test_dataset)
         else:
-            import torchacc as ta
             if trainer.is_datasets_available():
                 import datasets
 

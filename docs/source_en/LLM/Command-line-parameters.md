@@ -122,6 +122,10 @@
 
 - `--fsdp_config`: Default value `None`, the FSDP config file path.
 
+### Sequence Parallel Parameters
+
+- `--sequence_parallel_size`: Default value `1`, a positive value can be used to split a sequence to multiple GPU to reduce memory usage. The value should divide the GPU count.
+
 ### LoRA+ Fine-tuning Parameters
 
 - `--lora_lr_ratio`: Default `None`, recommended value `10~16`, specify this parameter when using lora to enable lora+.
