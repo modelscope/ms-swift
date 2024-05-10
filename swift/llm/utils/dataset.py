@@ -15,12 +15,9 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import (get_logger, get_seed, is_dist, is_local_master,
-                         read_from_jsonl, transform_jsonl_to_df)
-from .preprocess import (AlpacaPreprocessor, ClsPreprocessor,
-                         ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor, TextGenerationPreprocessor)
+from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
+                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
 
@@ -28,17 +25,13 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {
-                'query', 'response', 'rejected_response', 'system', 'history',
-                'images'
-        }:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
 
 
-GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset,
-                                                         Optional[HfDataset]]]]
+GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset, Optional[HfDataset]]]]
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -178,25 +171,21 @@ class DatasetName:
         return res
 
 
-def register_dataset(
-        dataset_name: str,
-        dataset_id_or_path: str,
-        train_subset_split_list: Optional[List[SubsetSplit]] = None,
-        val_subset_split_list: Optional[List[SubsetSplit]] = None,
-        preprocess_func: Optional[PreprocessFunc] = None,
-        get_function: Optional[GetDatasetFunction] = None,
-        *,
-        hf_dataset_id: Optional[str] = None,
-        function_kwargs: Optional[Dict[str, Any]] = None,
-        exists_ok: bool = False,
-        **kwargs
-) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
+def register_dataset(dataset_name: str,
+                     dataset_id_or_path: str,
+                     train_subset_split_list: Optional[List[SubsetSplit]] = None,
+                     val_subset_split_list: Optional[List[SubsetSplit]] = None,
+                     preprocess_func: Optional[PreprocessFunc] = None,
+                     get_function: Optional[GetDatasetFunction] = None,
+                     *,
+                     hf_dataset_id: Optional[str] = None,
+                     function_kwargs: Optional[Dict[str, Any]] = None,
+                     exists_ok: bool = False,
+                     **kwargs) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
     if preprocess_func is None:
         preprocess_func = SmartPreprocessor()
     if not exists_ok and dataset_name in DATASET_MAPPING:
-        raise ValueError(
-            f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.'
-        )
+        raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
     if train_subset_split_list is None:
         train_subset_split_list = []
     if val_subset_split_list is None:
@@ -219,8 +208,7 @@ def register_dataset(
         DATASET_MAPPING[dataset_name] = dataset_info
         return
 
-    def _register_dataset(
-            get_function: GetDatasetFunction) -> GetDatasetFunction:
+    def _register_dataset(get_function: GetDatasetFunction) -> GetDatasetFunction:
         _old_get_function = get_function
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
@@ -231,9 +219,7 @@ def register_dataset(
     return _register_dataset
 
 
-def load_ms_dataset(
-        dataset_id: str,
-        subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
+def load_ms_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
     from modelscope import MsDataset
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
@@ -246,23 +232,16 @@ def load_ms_dataset(
         if is_dist() and not is_local_master():
             force_redownload = False
         else:
-            force_redownload = strtobool(
-                os.environ.get('FORCE_REDOWNLOAD', 'False'))
+            force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
         download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
-        dataset = MsDataset.load(
-            dataset_id,
-            subset_name=subset_name,
-            split=split,
-            download_mode=download_mode)
+        dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
         if hasattr(dataset, 'to_hf_dataset'):
             dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
     return concatenate_datasets(dataset_list)
 
 
-def load_hf_dataset(
-        dataset_id: str,
-        subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
+def load_hf_dataset(dataset_id: str, subset_split_list: Optional[List[SubsetSplit]]) -> Optional[HfDataset]:
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
     dataset_list = []
@@ -286,22 +265,11 @@ def load_hf_dataset(
     'AI-ModelScope/school_math_0.25M', ['train'],
     tags=['chat', 'math'],
     hf_dataset_id='BelleGroup/school_math_0.25M')
-@register_dataset(
-    DatasetName.gpt4all_en,
-    'wyj123456/GPT4all', ['train'],
-    tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.cot_zh, 'YorickHe/CoT_zh', ['train'], tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.cot_en, 'YorickHe/CoT', ['train'], tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.instinwild_en,
-    'wyj123456/instinwild', [('subset', 'train')],
-    tags=['chat', 'general'])
-@register_dataset(
-    DatasetName.instinwild_zh,
-    'wyj123456/instinwild', ['train'],
-    tags=['chat', 'general'])
+@register_dataset(DatasetName.gpt4all_en, 'wyj123456/GPT4all', ['train'], tags=['chat', 'general'])
+@register_dataset(DatasetName.cot_zh, 'YorickHe/CoT_zh', ['train'], tags=['chat', 'general'])
+@register_dataset(DatasetName.cot_en, 'YorickHe/CoT', ['train'], tags=['chat', 'general'])
+@register_dataset(DatasetName.instinwild_en, 'wyj123456/instinwild', [('subset', 'train')], tags=['chat', 'general'])
+@register_dataset(DatasetName.instinwild_zh, 'wyj123456/instinwild', ['train'], tags=['chat', 'general'])
 @register_dataset(
     DatasetName.code_alpaca_en,
     'wyj123456/code_alpaca_en', ['train'],
@@ -322,53 +290,24 @@ def load_hf_dataset(
     'AI-ModelScope/COIG-CQIA', [('chinese_traditional', 'train')],
     tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_coig_pc,
-    'AI-ModelScope/COIG-CQIA', [('coig_pc', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_coig_pc, 'AI-ModelScope/COIG-CQIA', [('coig_pc', 'train')], tags=['general', '🔥'])
+@register_dataset(DatasetName.coig_cqia_exam, 'AI-ModelScope/COIG-CQIA', [('exam', 'train')], tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_exam,
-    'AI-ModelScope/COIG-CQIA', [('exam', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_finance, 'AI-ModelScope/COIG-CQIA', [('finance', 'train')], tags=['general', '🔥'])
+@register_dataset(DatasetName.coig_cqia_douban, 'AI-ModelScope/COIG-CQIA', [('douban', 'train')], tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_finance,
-    'AI-ModelScope/COIG-CQIA', [('finance', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_human_value, 'AI-ModelScope/COIG-CQIA', [('human_value', 'train')], tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_douban,
-    'AI-ModelScope/COIG-CQIA', [('douban', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_logi_qa, 'AI-ModelScope/COIG-CQIA', [('logi_qa', 'train')], tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_human_value,
-    'AI-ModelScope/COIG-CQIA', [('human_value', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_ruozhiba, 'AI-ModelScope/COIG-CQIA', [('ruozhiba', 'train')], tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_logi_qa,
-    'AI-ModelScope/COIG-CQIA', [('logi_qa', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_segmentfault, 'AI-ModelScope/COIG-CQIA', [('segmentfault', 'train')], tags=['general', '🔥'])
+@register_dataset(DatasetName.coig_cqia_wiki, 'AI-ModelScope/COIG-CQIA', [('wiki', 'train')], tags=['general', '🔥'])
 @register_dataset(
-    DatasetName.coig_cqia_ruozhiba,
-    'AI-ModelScope/COIG-CQIA', [('ruozhiba', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_segmentfault,
-    'AI-ModelScope/COIG-CQIA', [('segmentfault', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_wiki,
-    'AI-ModelScope/COIG-CQIA', [('wiki', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_wikihow,
-    'AI-ModelScope/COIG-CQIA', [('wikihow', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_xhs,
-    'AI-ModelScope/COIG-CQIA', [('xhs', 'train')],
-    tags=['general', '🔥'])
-@register_dataset(
-    DatasetName.coig_cqia_zhihu,
-    'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')],
-    tags=['general', '🔥'])
+    DatasetName.coig_cqia_wikihow, 'AI-ModelScope/COIG-CQIA', [('wikihow', 'train')], tags=['general', '🔥'])
+@register_dataset(DatasetName.coig_cqia_xhs, 'AI-ModelScope/COIG-CQIA', [('xhs', 'train')], tags=['general', '🔥'])
+@register_dataset(DatasetName.coig_cqia_zhihu, 'AI-ModelScope/COIG-CQIA', [('zhihu', 'train')], tags=['general', '🔥'])
 @register_dataset(
     DatasetName.ms_agent_for_agentfabric_default,
     'AI-ModelScope/ms_agent_for_agentfabric', [('default', 'train')],
@@ -377,18 +316,16 @@ def load_hf_dataset(
     DatasetName.ms_agent_for_agentfabric_addition,
     'AI-ModelScope/ms_agent_for_agentfabric', [('addition', 'train')],
     tags=['chat', 'agent', 'multi-round'])
-def get_dataset_from_repo(
-        dataset_id: str,
-        train_subset_split_list: List[SubsetSplit],
-        val_subset_split_list: Optional[List[SubsetSplit]],
-        preprocess_func: PreprocessFunc,
-        remove_useless_columns: bool = True,
-        train_dataset_sample: int = -1,
-        val_dataset_sample: int = -1,
-        use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+def get_dataset_from_repo(dataset_id: str,
+                          train_subset_split_list: List[SubsetSplit],
+                          val_subset_split_list: Optional[List[SubsetSplit]],
+                          preprocess_func: PreprocessFunc,
+                          remove_useless_columns: bool = True,
+                          train_dataset_sample: int = -1,
+                          val_dataset_sample: int = -1,
+                          use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     dataset_list = []
-    _iter = zip([train_subset_split_list, val_subset_split_list],
-                [train_dataset_sample, val_dataset_sample])
+    _iter = zip([train_subset_split_list, val_subset_split_list], [train_dataset_sample, val_dataset_sample])
     for subset_split_list, dataset_sample in _iter:
         if use_hf:
             dataset = load_hf_dataset(dataset_id, subset_split_list)
@@ -406,14 +343,11 @@ def get_dataset_from_repo(
     return tuple(dataset_list)
 
 
-_multi_alpaca_subset_list = [
-    'ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi'
-]
+_multi_alpaca_subset_list = ['ar', 'de', 'es', 'fr', 'id', 'ja', 'ko', 'pt', 'ru', 'th', 'vi']
 
 register_dataset(
     DatasetName.multi_alpaca_all,
-    'damo/nlp_polylm_multialpaca_sft',
-    [(subset, 'train') for subset in _multi_alpaca_subset_list],
+    'damo/nlp_polylm_multialpaca_sft', [(subset, 'train') for subset in _multi_alpaca_subset_list],
     None,
     None,
     get_dataset_from_repo,
@@ -470,16 +404,14 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.coco_en,
-    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
-    [('coco_2014_caption', 'validation')],
+    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')], [('coco_2014_caption', 'validation')],
     _preprocess_vision_dataset,
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
     DatasetName.coco_mini_en,
-    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
-    [('coco_2014_caption', 'validation')],
+    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')], [('coco_2014_caption', 'validation')],
     _preprocess_vision_dataset,
     get_dataset_from_repo,
     function_kwargs={
@@ -502,17 +434,12 @@ def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
         if '&&' in d[response_key]:
             d[response_key] = d[response_key].split('&&')[0]
         response.append(d[response_key])
-    return HfDataset.from_dict({
-        'query': [query] * len(response),
-        'response': response,
-        'images': images
-    })
+    return HfDataset.from_dict({'query': [query] * len(response), 'response': response, 'images': images})
 
 
 register_dataset(
     DatasetName.coco_mini_en_2,
-    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')],
-    [('coco_2014_caption', 'validation')],
+    'modelscope/coco_2014_caption', [('coco_2014_caption', 'train')], [('coco_2014_caption', 'validation')],
     _preprocess_vision_dataset2,
     get_dataset_from_repo,
     function_kwargs={
@@ -538,8 +465,7 @@ def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.aishell1_zh,
-    'speech_asr/speech_asr_aishell1_trainsets', ['train', 'validation'],
-    ['test'],
+    'speech_asr/speech_asr_aishell1_trainsets', ['train', 'validation'], ['test'],
     _preprocess_aishell1_dataset,
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'audio'])
@@ -553,8 +479,7 @@ register_dataset(
     tags=['chat', 'multi-modal', 'audio', '🔥'])
 
 
-def _repair_agent_conversations(conversations: str,
-                                use_mini: bool) -> List[Dict[str, str]]:
+def _repair_agent_conversations(conversations: str, use_mini: bool) -> List[Dict[str, str]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
     else:
@@ -578,8 +503,7 @@ def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
     if isinstance(conversations, str):
         conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
-    if conversations[0]['from'] == 'system' and conversations[0][
-            'value'] == default_system:
+    if conversations[0]['from'] == 'system' and conversations[0]['value'] == default_system:
         conversations.pop(0)
     # skip MOSS
     for c in conversations:
@@ -651,16 +575,14 @@ register_dataset(
 register_dataset(
     DatasetName.ms_bench,
     'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(
-        repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round', '🔥'])
 
 register_dataset(
     DatasetName.ms_bench_mini,
     'iic/ms_bench', ['train'], [],
-    ConversationsPreprocessor(
-        repair_conversations=_repair_ms_bench, error_strategy='delete'),
+    ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
     get_dataset_from_repo,
     function_kwargs={'train_dataset_sample': 20000},
     tags=['chat', 'general', 'multi-round', '🔥'])
@@ -676,19 +598,14 @@ register_dataset(
     DatasetName.damo_agent_mini_zh,
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
-        repair_conversations=partial(
-            _repair_agent_conversations, use_mini=True),
-        error_strategy='delete'),
+        repair_conversations=partial(_repair_agent_conversations, use_mini=True), error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 register_dataset(
     DatasetName.damo_agent_zh,
     'damo/MSAgent-Bench', ['train'], ['validation'],
     ConversationsPreprocessor(
-        repair_conversations=partial(
-            _repair_agent_conversations,
-            use_mini=False,
-            error_strategy='delete')),
+        repair_conversations=partial(_repair_agent_conversations, use_mini=False, error_strategy='delete')),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 
@@ -720,16 +637,14 @@ register_dataset(
     hf_dataset_id='shibing624/AdvertiseGen')
 
 _firefly_kind_list = [
-    'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection',
-    'ClassicalChinese', 'BELLE', 'StoryGeneration', 'Couplet', 'Cot',
-    'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA',
-    'AncientPoem', 'TextMatching', 'NLI', 'Summary', 'KeywordRecognition',
-    'ProductDesc', 'LyricGeneration', 'Composition', 'MusicComment', 'NER'
+    'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection', 'ClassicalChinese', 'BELLE', 'StoryGeneration',
+    'Couplet', 'Cot', 'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA', 'AncientPoem',
+    'TextMatching', 'NLI', 'Summary', 'KeywordRecognition', 'ProductDesc', 'LyricGeneration', 'Composition',
+    'MusicComment', 'NER'
 ]
 
 
-def _preprocess_firefly(dataset: List[Dict[str, str]],
-                        kind_list: List[str]) -> HfDataset:
+def _preprocess_firefly(dataset: List[Dict[str, str]], kind_list: List[str]) -> HfDataset:
     kind_set = set(kind_list)
     query: List[str] = []
     response: List[str] = []
@@ -751,8 +666,7 @@ def _preprocess_firefly(dataset: List[Dict[str, str]],
     preprocess_func=_preprocess_firefly,
     tags=['chat', 'general'],
     function_kwargs={'kind_list': _firefly_kind_list})
-def get_firefly_zh_dataset(dataset_id: str, preprocess_func,
-                           kind_list: List[str], **kwargs) -> HfDataset:
+def get_firefly_zh_dataset(dataset_id: str, preprocess_func, kind_list: List[str], **kwargs) -> HfDataset:
     file = 'firefly-train-1.1M.jsonl'
     dataset_dir = download_dataset(dataset_id, [file])
     fpath = os.path.join(dataset_dir, file)
@@ -785,8 +699,7 @@ register_dataset(
 register_dataset(
     DatasetName.cmnli_zh,
     'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
-    ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
-                    'Natural Language Inference', True),
+    ClsPreprocessor(['neutral', 'entailment', 'contradiction'], 'Natural Language Inference', True),
     get_dataset_from_repo,
     tags=['text-generation', 'classification'],
     hf_dataset_id='clue')
@@ -794,8 +707,7 @@ register_dataset(
 register_dataset(
     DatasetName.cmnli_mini_zh,
     'clue', [('cmnli', 'train')], [('cmnli', 'validation')],
-    ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
-                    'Natural Language Inference', True),
+    ClsPreprocessor(['neutral', 'entailment', 'contradiction'], 'Natural Language Inference', True),
     get_dataset_from_repo,
     function_kwargs={
         'train_dataset_sample': 20000,
@@ -807,8 +719,7 @@ register_dataset(
 register_dataset(
     DatasetName.jd_sentiment_zh,
     'DAMO_NLP/jd', ['train'], ['validation'],
-    ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification',
-                    False),
+    ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification', False),
     get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'])
 
@@ -837,8 +748,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.medical_en,
-    'huangjintao/medical_zh', [('en', 'train'), ('en', 'val')],
-    [('en', 'test')],
+    'huangjintao/medical_zh', [('en', 'train'), ('en', 'val')], [('en', 'test')],
     RenameColumnsPreprocessor({
         'input': 'query',
         'output': 'response'
@@ -880,14 +790,8 @@ def process_hh_rlhf(dataset):
         import re
         chosen = row['chosen'].strip()
         rejected = row['rejected'].strip()
-        parts_chosen = [
-            s.strip()
-            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)
-        ]
-        parts_rejected = [
-            s.strip()
-            for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)
-        ]
+        parts_chosen = [s.strip() for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', chosen)]
+        parts_rejected = [s.strip() for s in re.split('\n\nHuman:|\n\nAssistant:|\n\nHum:', rejected)]
         if parts_chosen[0].startswith('Human:'):
             assert parts_rejected[0].startswith('Human:')
             parts_chosen[0] = parts_chosen[0][6:].strip()
@@ -921,46 +825,40 @@ def process_hh_rlhf(dataset):
             'history': history,
         }
 
-    return dataset.map(reorganize_row).filter(
-        lambda row: row['query'] is not None)
+    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
     DatasetName.hh_rlhf_harmless_base,
-    'AI-ModelScope/hh-rlhf', [('harmless-base', 'train')],
-    [('harmless-base', 'test')],
+    'AI-ModelScope/hh-rlhf', [('harmless-base', 'train')], [('harmless-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_helpful_base,
-    'AI-ModelScope/hh-rlhf', [('helpful-base', 'train')],
-    [('helpful-base', 'test')],
+    'AI-ModelScope/hh-rlhf', [('helpful-base', 'train')], [('helpful-base', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_helpful_online,
-    'AI-ModelScope/hh-rlhf', [('helpful-online', 'train')],
-    [('helpful-online', 'test')],
+    'AI-ModelScope/hh-rlhf', [('helpful-online', 'train')], [('helpful-online', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_helpful_rejection_sampled,
-    'AI-ModelScope/hh-rlhf', [('helpful-rejection-sampled', 'train')],
-    [('helpful-rejection-sampled', 'test')],
+    'AI-ModelScope/hh-rlhf', [('helpful-rejection-sampled', 'train')], [('helpful-rejection-sampled', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_red_team_attempts,
-    'AI-ModelScope/hh-rlhf', [('red-team-attempts', 'train')],
-    [('red-team-attempts', 'test')],
+    'AI-ModelScope/hh-rlhf', [('red-team-attempts', 'train')], [('red-team-attempts', 'test')],
     process_hh_rlhf,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
@@ -1018,8 +916,7 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(
-        lambda row: row['query'])
+    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1031,40 +928,35 @@ register_dataset(
 
 register_dataset(
     DatasetName.hh_rlhf_cn_harmless_base_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')],
-    [('harmless_base_cn', 'test')],
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_cn', 'train')], [('harmless_base_cn', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_cn_harmless_base_en,
-    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_en', 'train')],
-    [('harmless_base_en', 'test')],
+    'AI-ModelScope/hh_rlhf_cn', [('harmless_base_en', 'train')], [('harmless_base_en', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_cn_helpful_base_cn,
-    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_cn', 'train')],
-    [('helpful_base_cn', 'test')],
+    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_cn', 'train')], [('helpful_base_cn', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.hh_rlhf_cn_helpful_base_en,
-    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')],
-    [('helpful_base_en', 'test')],
+    'AI-ModelScope/hh_rlhf_cn', [('helpful_base_en', 'train')], [('helpful_base_en', 'test')],
     process_hh_rlhf_cn,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 register_dataset(
     DatasetName.medical_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')],
-    [('zh', 'test')],
+    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')], [('zh', 'test')],
     RenameColumnsPreprocessor({
         'instruction': 'query',
         'output': 'response'
@@ -1074,8 +966,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.medical_mini_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')],
-    [('zh', 'test')],
+    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')], [('zh', 'test')],
     RenameColumnsPreprocessor({
         'instruction': 'query',
         'output': 'response'
@@ -1098,11 +989,7 @@ def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
         for c in conversation[:-1]:
             h.append([c['human'], c['assistant']])
         history.append(h)
-    return HfDataset.from_dict({
-        'query': query,
-        'response': response,
-        'history': history
-    })
+    return HfDataset.from_dict({'query': query, 'response': response, 'history': history})
 
 
 _sharegpt_zh_subset_list = ['common-zh', 'computer-zh', 'unknow-zh']
@@ -1111,8 +998,7 @@ _sharegpt_en_subset_list = ['common-en', 'computer-en']
 
 register_dataset(
     DatasetName.sharegpt_zh,
-    'huangjintao/sharegpt',
-    [(subset, 'train') for subset in _sharegpt_zh_subset_list],
+    'huangjintao/sharegpt', [(subset, 'train') for subset in _sharegpt_zh_subset_list],
     None,
     _preprocess_sharegpt,
     get_dataset_from_repo,
@@ -1120,8 +1006,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.sharegpt_en,
-    'huangjintao/sharegpt',
-    [(subset, 'train') for subset in _sharegpt_en_subset_list],
+    'huangjintao/sharegpt', [(subset, 'train') for subset in _sharegpt_en_subset_list],
     None,
     _preprocess_sharegpt,
     get_dataset_from_repo,
@@ -1138,11 +1023,7 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     for d in tqdm(dataset):
         images.append(d[image_key])
         response.append(d[response_key])
-    dataset = HfDataset.from_dict({
-        'query': [query] * len(response),
-        'response': response,
-        'images': images
-    })
+    dataset = HfDataset.from_dict({'query': [query] * len(response), 'response': response, 'images': images})
     dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
@@ -1157,8 +1038,7 @@ def _repair_planner(conversations: list) -> list:
 
 register_dataset(
     DatasetName.capcha_images,
-    'AI-ModelScope/captcha-images', [('default', 'train')],
-    [('default', 'validation')],
+    'AI-ModelScope/captcha-images', [('default', 'train')], [('default', 'validation')],
     _preprocess_capcha_images,
     get_dataset_from_repo,
     tags=['chat', 'multi-modal', 'vision'])
@@ -1189,12 +1069,7 @@ register_dataset(
     DatasetName.codefuse_python_en,
     'codefuse-ai/CodeExercise-Python-27k', ['train'],
     None,
-    ConversationsPreprocessor(
-        'human',
-        'bot',
-        conversations_key='chat_rounds',
-        from_key='role',
-        value_key='content'),
+    ConversationsPreprocessor('human', 'bot', conversations_key='chat_rounds', from_key='role', value_key='content'),
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
 
@@ -1218,8 +1093,7 @@ register_dataset(
     DatasetName.toolbench_for_alpha_umi_planner,
     'shenweizhou/alpha-umi-toolbench-processed-v2', [('planner', 'train')],
     None,
-    ConversationsPreprocessor(
-        repair_conversations=_repair_planner, error_strategy='delete'),
+    ConversationsPreprocessor(repair_conversations=_repair_planner, error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'agent'])
 
@@ -1237,10 +1111,7 @@ def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
     for d in tqdm(dataset):
         output, answer = d['output'], d['answer']
         response.append(f'{output}\n\nAnswer: {answer}')
-    return HfDataset.from_dict({
-        'query': dataset['input'],
-        'response': response
-    })
+    return HfDataset.from_dict({'query': dataset['input'], 'response': response})
 
 
 register_dataset(
@@ -1336,9 +1207,7 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
 
-_agent_instruct_subset_list = [
-    'alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'
-]
+_agent_instruct_subset_list = ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop']
 
 
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
@@ -1350,13 +1219,9 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 
 register_dataset(
     DatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy',
-    [(subset, 'train') for subset in _agent_instruct_subset_list],
+    'huangjintao/AgentInstruct_copy', [(subset, 'train') for subset in _agent_instruct_subset_list],
     None,
-    ConversationsPreprocessor(
-        'human',
-        'gpt',
-        repair_conversations=_repair_conversations_agent_instruct),
+    ConversationsPreprocessor('human', 'gpt', repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
 
@@ -1377,8 +1242,7 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
         system += history_prompt
         response.append(conv[-1]['value'])
         for i in range(1, len(conv) - 1):
-            system += conv_prompt.format(
-                name=conv[i]['from'], content=conv[i]['value'])
+            system += conv_prompt.format(name=conv[i]['from'], content=conv[i]['value'])
         query.append(system)
     return HfDataset.from_dict({'query': query, 'response': response})
 
@@ -1402,10 +1266,7 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'coding', '🔥'])
 
-hc3_chinese_subset = [
-    'baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law',
-    'psychology'
-]
+hc3_chinese_subset = ['baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law', 'psychology']
 
 
 def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
@@ -1429,8 +1290,7 @@ Output:"""
 
 register_dataset(
     DatasetName.hc3_zh,
-    'simpleai/HC3-Chinese',
-    [[subset, 'train'] for subset in hc3_chinese_subset], [],
+    'simpleai/HC3-Chinese', [[subset, 'train'] for subset in hc3_chinese_subset], [],
     _preprocess_hc3,
     get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'],
@@ -1438,8 +1298,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.hc3_en,
-    'simpleai/HC3', [[subset, 'train'] for subset in ['finance', 'medicine']],
-    [],
+    'simpleai/HC3', [[subset, 'train'] for subset in ['finance', 'medicine']], [],
     _preprocess_hc3,
     get_dataset_from_repo,
     tags=['text-generation', 'classification', '🔥'],
@@ -1506,9 +1365,7 @@ register_dataset(
     tags=['chat', 'multilingual', 'general', 'multi-round', 'gpt4', '🔥'])
 register_dataset(
     DatasetName.sharegpt_gpt4,
-    'AI-ModelScope/sharegpt_gpt4',
-    [[subset, 'train']
-     for subset in ['default', 'V3_format', 'zh_38K_format']],
+    'AI-ModelScope/sharegpt_gpt4', [[subset, 'train'] for subset in ['default', 'V3_format', 'zh_38K_format']],
     None,
     ConversationsPreprocessor('human', 'gpt', error_strategy='delete'),
     get_dataset_from_repo,
@@ -1519,10 +1376,7 @@ register_dataset(
     'AI-ModelScope/DISC-Med-SFT', ['train'],
     None,
     ConversationsPreprocessor(
-        conversations_key='conversation',
-        from_key='role',
-        value_key='content',
-        error_strategy='delete'),
+        conversations_key='conversation', from_key='role', value_key='content', error_strategy='delete'),
     get_dataset_from_repo,
     tags=['chat', 'medical', '🔥'],
     hf_dataset_id='Flmc/DISC-Med-SFT')
@@ -1551,19 +1405,15 @@ register_dataset(
     hf_dataset_id='mit-han-lab/pile-val-backup')
 
 
-def add_self_cognition_dataset(
-        train_dataset: HfDataset, dataset_sample: int,
-        model_name: Tuple[str, Optional[str]],
-        model_author: Tuple[str, Optional[str]]) -> HfDataset:
+def add_self_cognition_dataset(train_dataset: HfDataset, dataset_sample: int, model_name: Tuple[str, Optional[str]],
+                               model_author: Tuple[str, Optional[str]]) -> HfDataset:
     assert model_name[0] is not None
     assert model_author[0] is not None
     if model_name[1] is None:
         model_name = (model_name[0], model_name[0])
     if model_author[1] is None:
         model_author = (model_author[0], model_author[0])
-    dataset_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), 'data',
-        'self_cognition.jsonl')
+    dataset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'self_cognition.jsonl')
     assert os.path.exists(dataset_path)
     dataset = load_dataset_from_local([dataset_path], SmartPreprocessor())
     response = []
@@ -1573,11 +1423,9 @@ def add_self_cognition_dataset(
         else:
             model_n, model_a = model_name[1], model_author[1]
 
-        r = d['response'].replace('{{NAME}}',
-                                  model_n).replace('{{AUTHOR}}', model_a)
+        r = d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
         response.append(r)
-    dataset = dataset.remove_columns('response').add_column(
-        'response', response).remove_columns('tag')
+    dataset = dataset.remove_columns('response').add_column('response', response).remove_columns('tag')
 
     random_state = RandomState(42)
     idx = random_state.permutation(len(dataset))[:dataset_sample]
@@ -1595,10 +1443,8 @@ def add_self_cognition_dataset(
 NoneType = type(None)
 
 
-def _check_dataset(
-    dataset: Optional[None],
-    check_dataset_strategy: Literal['none', 'discard', 'error', 'warning']
-) -> HfDataset:
+def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['none', 'discard', 'error',
+                                                                            'warning']) -> HfDataset:
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
@@ -1654,8 +1500,7 @@ def get_dataset(
     dataset_name_list: Union[List[str], str],
     dataset_test_ratio: float = 0.,
     dataset_seed: Union[RandomState, int] = 42,
-    check_dataset_strategy: Literal['none', 'discard', 'error',
-                                    'warning'] = 'none',
+    check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none',
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
@@ -1671,16 +1516,13 @@ def get_dataset(
         dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
         if use_hf:
             dataset_id_or_path = dataset_info['hf_dataset_id']
-            dataset_str = dataset_str_f.format(
-                hub='HuggingFace', dataset_id=dataset_id_or_path)
+            dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
         else:
             dataset_id_or_path = dataset_info['dataset_id_or_path']
-            dataset_str = dataset_str_f.format(
-                hub='ModelScope', dataset_id=dataset_id_or_path)
+            dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id_or_path)
         logger.info(dataset_str)
-        assert dataset_id_or_path is not None, (
-            f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
-            f'dataset_id_or_path: {dataset_id_or_path}.')
+        assert dataset_id_or_path is not None, (f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
+                                                f'dataset_id_or_path: {dataset_id_or_path}.')
         get_function: GetDatasetFunction = dataset_info['get_function']
         dataset = get_function(
             dataset_id_or_path,
@@ -1695,8 +1537,7 @@ def get_dataset(
             train_d, val_d = dataset, None
         assert train_d is not None or val_d is not None
         if val_d is None and dataset_test_ratio > 0:
-            dataset_dict = train_d.train_test_split(
-                dataset_test_ratio, seed=get_seed(random_state))
+            dataset_dict = train_d.train_test_split(dataset_test_ratio, seed=get_seed(random_state))
             train_d, val_d = dataset_dict['train'], dataset_dict['test']
         if train_d is not None:
             train_dataset_list.append(train_d)
@@ -1717,9 +1558,8 @@ def get_dataset(
     return train_dataset, val_dataset
 
 
-def load_dataset_from_local(
-        dataset_path_list: Optional[Union[str, List[str]]],
-        preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
+def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
+                            preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
     if isinstance(dataset_path_list, str):
         dataset_path_list = [dataset_path_list]
     if dataset_path_list is None or len(dataset_path_list) == 0:
@@ -1739,21 +1579,17 @@ def load_dataset_from_local(
                 obj_list = json.load(f)
             df = transform_jsonl_to_df(obj_list)
         else:
-            raise ValueError(
-                'The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
-                '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
-                'for more information.')
+            raise ValueError('The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
+                             '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
+                             'for more information.')
         dataset = HfDataset.from_dict(df.to_dict(orient='list'))
         dataset_list.append(preprocess_func(dataset))
     return concatenate_datasets(dataset_list)
 
 
 def get_custom_dataset(_: str, train_subset_split_list: Union[str, List[str]],
-                       val_subset_split_list: Optional[Union[str, List[str]]],
-                       preprocess_func: PreprocessFunc,
+                       val_subset_split_list: Optional[Union[str, List[str]]], preprocess_func: PreprocessFunc,
                        **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    train_dataset = load_dataset_from_local(train_subset_split_list,
-                                            preprocess_func)
-    val_dataset = load_dataset_from_local(val_subset_split_list,
-                                          preprocess_func)
+    train_dataset = load_dataset_from_local(train_subset_split_list, preprocess_func)
+    val_dataset = load_dataset_from_local(val_subset_split_list, preprocess_func)
     return train_dataset, val_dataset

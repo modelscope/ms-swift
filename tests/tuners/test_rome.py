@@ -22,15 +22,10 @@ class TestRome(unittest.TestCase):
         shutil.rmtree(self.tmp_dir)
         super().tearDown()
 
-    @unittest.skip(
-        'Rome test is skipped because the test image do not have flash-attn2')
+    @unittest.skip('Rome test is skipped because the test image do not have flash-attn2')
     def test_rome(self):
-        model = Model.from_pretrained(
-            'modelscope/Llama-2-7b-ms',
-            device_map='auto',
-            trust_remote_code=True)
-        tokenizer = AutoTokenizer.from_pretrained(
-            'modelscope/Llama-2-7b-ms', trust_remote_code=True)
+        model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto', trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained('modelscope/Llama-2-7b-ms', trust_remote_code=True)
         request = [{
             'prompt': '{} was the founder of',
             'subject': 'Steve Jobs',
@@ -44,17 +39,11 @@ class TestRome(unittest.TestCase):
 
         model = Swift.prepare_model(model, config)
         prompt = 'Steve Jobs was the founder of'
-        inp_tok = tokenizer(
-            prompt, return_token_type_ids=False, return_tensors='pt')
+        inp_tok = tokenizer(prompt, return_token_type_ids=False, return_tensors='pt')
         for key, value in inp_tok.items():
             inp_tok[key] = value.to('cuda')
         with torch.no_grad():
-            generated_ids = model.generate(
-                **inp_tok,
-                temperature=0.1,
-                top_k=50,
-                max_length=128,
-                do_sample=True)
+            generated_ids = model.generate(**inp_tok, temperature=0.1, top_k=50, max_length=128, do_sample=True)
 
         responses = tokenizer.batch_decode(
             generated_ids[:, inp_tok['input_ids'].size(1):],

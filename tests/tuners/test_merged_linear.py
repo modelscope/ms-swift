@@ -23,15 +23,11 @@ class TestMergedLinear(unittest.TestCase):
 
         MergedLinear.reset_parameters = reset_parameters
 
-        model = Model.from_pretrained(
-            'damo/nlp_structbert_sentence-similarity_chinese-base')
-        preprocessor = Preprocessor.from_pretrained(
-            'damo/nlp_structbert_sentence-similarity_chinese-base')
+        model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
+        preprocessor = Preprocessor.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
         inputs = preprocessor('how are you')
         lora_config = LoRAConfig(
-            target_modules=['query', 'key', 'value'],
-            use_merged_linear=True,
-            enable_lora=[True, True, True])
+            target_modules=['query', 'key', 'value'], use_merged_linear=True, enable_lora=[True, True, True])
         outputs = model(**inputs)
         model = Swift.prepare_model(model, config=lora_config)
         model.eval()
@@ -42,12 +38,7 @@ class TestMergedLinear(unittest.TestCase):
         outputs_reactivate = model(**inputs)
         Swift.merge_and_unload(model)
         outputs_merged = model(**inputs)
-        self.assertTrue(
-            torch.allclose(outputs.logits, outputs_deactivate.logits))
-        self.assertTrue(
-            not torch.allclose(outputs.logits, outputs_lora.logits))
-        self.assertTrue(
-            torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
-        self.assertTrue(
-            torch.allclose(
-                outputs_lora.logits, outputs_merged.logits, atol=1e-4))
+        self.assertTrue(torch.allclose(outputs.logits, outputs_deactivate.logits))
+        self.assertTrue(not torch.allclose(outputs.logits, outputs_lora.logits))
+        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
+        self.assertTrue(torch.allclose(outputs_lora.logits, outputs_merged.logits, atol=1e-4))

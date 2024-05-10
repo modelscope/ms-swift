@@ -13,8 +13,7 @@ def assert_xtuner_runtime_condition():
     assert is_xtuner_available(), \
         ('Please install XTuner first to pack dataset to `max_length`.'
          '`pip install -U \'xtuner[deepspeed]\'`')
-    assert dist.is_initialized(
-    ), 'pack_to_max_length is only available with distributed training.'
+    assert dist.is_initialized(), 'pack_to_max_length is only available with distributed training.'
 
 
 def pack_dataset_xtuner(dataset: Dataset, args: Any) -> Any:
@@ -24,11 +23,7 @@ def pack_dataset_xtuner(dataset: Dataset, args: Any) -> Any:
         train_dataset = Dataset.from_list(ds)
         from xtuner.dataset.huggingface import pack_dataset
         train_dataset = pack_dataset(
-            train_dataset,
-            max_length=args.max_length,
-            use_varlen_attn=False,
-            shuffle_before_pack=True,
-            map_num_proc=16)
+            train_dataset, max_length=args.max_length, use_varlen_attn=False, shuffle_before_pack=True, map_num_proc=16)
         objects = [train_dataset]
         train_dataset.save_to_disk('alpaca_pack')
     else:
@@ -50,34 +45,23 @@ def dispatch_module_xtuner(module):
     dispatch_modules(module)
 
 
-def pad_and_split_for_sequence_parallel(tokenizer, input_ids, labels,
-                                        position_ids, attention_mask,
-                                        loss_scale):
+def pad_and_split_for_sequence_parallel(tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale):
     assert_xtuner_runtime_condition()
-    from xtuner.parallel.sequence import (pad_for_sequence_parallel,
-                                          split_for_sequence_parallel,
+    from xtuner.parallel.sequence import (pad_for_sequence_parallel, split_for_sequence_parallel,
                                           get_sequence_parallel_group)
-    input_ids = pad_for_sequence_parallel(
-        input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
+    input_ids = pad_for_sequence_parallel(input_ids, padding_value=tokenizer.pad_token_id, dim=-1)
     labels = pad_for_sequence_parallel(labels, padding_value=-100, dim=-1)
-    position_ids = pad_for_sequence_parallel(
-        position_ids, padding_value=0, dim=-1)
-    attention_mask = pad_for_sequence_parallel(
-        attention_mask, padding_value=0, dim=-1)
+    position_ids = pad_for_sequence_parallel(position_ids, padding_value=0, dim=-1)
+    attention_mask = pad_for_sequence_parallel(attention_mask, padding_value=0, dim=-1)
 
     sp_group = get_sequence_parallel_group()
-    input_ids = split_for_sequence_parallel(
-        input_ids, dim=1, sp_group=sp_group)
+    input_ids = split_for_sequence_parallel(input_ids, dim=1, sp_group=sp_group)
     labels = split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
-    position_ids = split_for_sequence_parallel(
-        position_ids, dim=1, sp_group=sp_group)
-    attention_mask = split_for_sequence_parallel(
-        attention_mask, dim=-1, sp_group=sp_group)
+    position_ids = split_for_sequence_parallel(position_ids, dim=1, sp_group=sp_group)
+    attention_mask = split_for_sequence_parallel(attention_mask, dim=-1, sp_group=sp_group)
     if loss_scale is not None:
-        loss_scale = pad_for_sequence_parallel(
-            loss_scale, padding_value=0., dim=-1)
-        loss_scale = split_for_sequence_parallel(
-            loss_scale, dim=1, sp_group=sp_group)
+        loss_scale = pad_for_sequence_parallel(loss_scale, padding_value=0., dim=-1)
+        loss_scale = split_for_sequence_parallel(loss_scale, dim=1, sp_group=sp_group)
 
     return input_ids, labels, position_ids, attention_mask, loss_scale
 
@@ -89,12 +73,10 @@ def get_xtuner_sequence_parallel_world_size():
 
 
 def reduce_xtuner_sequence_parallel_loss(loss, labels):
-    from xtuner.parallel.sequence import (reduce_sequence_parallel_loss,
-                                          get_sequence_parallel_group)
+    from xtuner.parallel.sequence import (reduce_sequence_parallel_loss, get_sequence_parallel_group)
     # reduce loss for logging correctly
     num_tokens = (labels != -100).sum()
-    return reduce_sequence_parallel_loss(loss, num_tokens,
-                                         get_sequence_parallel_group())
+    return reduce_sequence_parallel_loss(loss, num_tokens, get_sequence_parallel_group())
 
 
 def get_xtuner_train_dataloader(trainer):
@@ -107,11 +89,9 @@ def get_xtuner_train_dataloader(trainer):
     train_dataset = trainer.train_dataset
     data_collator = trainer.data_collator
     if isinstance(train_dataset, datasets.Dataset):
-        train_dataset = trainer._remove_unused_columns(
-            train_dataset, description='training')
+        train_dataset = trainer._remove_unused_columns(train_dataset, description='training')
     else:
-        data_collator = trainer._get_collator_with_removed_columns(
-            data_collator, description='training')
+        data_collator = trainer._get_collator_with_removed_columns(data_collator, description='training')
 
     dataloader_params = {
         'batch_size': trainer._train_batch_size,
@@ -123,8 +103,7 @@ def get_xtuner_train_dataloader(trainer):
 
     if not isinstance(train_dataset, torch.utils.data.IterableDataset):
         from xtuner.parallel import SequenceParallelSampler
-        dataloader_params['sampler'] = SequenceParallelSampler(
-            train_dataset, seed=1024)
+        dataloader_params['sampler'] = SequenceParallelSampler(train_dataset, seed=1024)
         dataloader_params['drop_last'] = trainer.args.dataloader_drop_last
         dataloader_params['worker_init_fn'] = seed_worker
 

@@ -93,14 +93,11 @@ class AdamW8bit(Optimizer2State):
 
                 # GaLore Projection Back
                 if 'rank' in group:
-                    p.data = p.saved_data.add_(state['projector'].project_back(
-                        p.data))
+                    p.data = p.saved_data.add_(state['projector'].project_back(p.data))
 
                     # apply weight decay
                     if 'weight_decay_saved' in group:
-                        p.data.add_(
-                            p.data,
-                            alpha=-group['lr'] * group['weight_decay_saved'])
+                        p.data.add_(p.data, alpha=-group['lr'] * group['weight_decay_saved'])
                         group['weight_decay'] = group['weight_decay_saved']
                         del group['weight_decay_saved']
 

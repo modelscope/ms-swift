@@ -136,8 +136,7 @@ def generate_sft_report(outputs: List[ModelOutput]):
     min_best_metric = 999.
     min_train_loss = 999.
     if outputs:
-        min_best_metric = min(
-            [output.best_metric or 999. for output in outputs])
+        min_best_metric = min([output.best_metric or 999. for output in outputs])
         min_train_loss = min([output.train_loss or 999. for output in outputs])
 
     max_gsm8k = 0.0
@@ -152,16 +151,14 @@ def generate_sft_report(outputs: List[ModelOutput]):
     if ceval_accs:
         max_ceval = max([ceval or 0. for ceval in ceval_accs])
 
-    for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs,
-                                                     arc_accs, ceval_accs):
+    for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs, arc_accs, ceval_accs):
         use_flash_attn = output.args.get('use_flash_attn', '')
         use_gc = output.args.get('gradient_checkpointing', '')
         memory = output.memory
         train_speed = output.train_speed
         infer_speed = output.infer_speed
 
-        is_best_metric = np.isclose(min_best_metric, output.best_metric
-                                    or 999.0)
+        is_best_metric = np.isclose(min_best_metric, output.best_metric or 999.0)
         is_best_loss = np.isclose(min_train_loss, output.train_loss or 999.0)
         is_best_gsm8k = np.isclose(max_gsm8k, gsm8k_acc or 0.0)
         is_best_arc = np.isclose(max_arc, arc_acc or 0.0)
@@ -248,8 +245,7 @@ def generate_export_report(outputs: List[ModelOutput]):
     if ceval_accs:
         max_ceval = max([ceval or 0. for ceval in ceval_accs])
 
-    for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs,
-                                                     arc_accs, ceval_accs):
+    for output, gsm8k_acc, arc_acc, ceval_acc in zip(outputs, gsm8k_accs, arc_accs, ceval_accs):
         infer_speed = output.infer_speed
         is_best_gsm8k = np.isclose(max_gsm8k, gsm8k_acc or 0.0)
         is_best_arc = np.isclose(max_arc, arc_acc or 0.0)
@@ -341,8 +337,7 @@ def parse_output(file):
         if 'train_time' in content:
             train_time = content['train_time']['train_runtime']
             train_samples = content['train_time']['n_train_samples']
-            train_samples_per_second = content['train_time'][
-                'train_samples_per_second']
+            train_samples_per_second = content['train_time']['train_samples_per_second']
         if 'last_model_checkpoint' in content:
             last_model_checkpoint = content['last_model_checkpoint']
         if 'best_model_checkpoint' in content:
@@ -359,8 +354,8 @@ def parse_output(file):
         if 'model_info' in content:
             # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
             str_dict = split_str_parts_by(content['model_info'], [
-                'SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'LMHeadModel:',
-                'M Params (', 'M Trainable [', ']), ', 'M Buffers.'
+                'SwiftModel:', 'CausalLM:', 'Seq2SeqLM:', 'LMHeadModel:', 'M Params (', 'M Trainable [', ']), ',
+                'M Buffers.'
             ])
             str_dict = {c['key']: c['content'] for c in str_dict}
             if 'SwiftModel:' in str_dict:
@@ -425,23 +420,12 @@ def generate_reports():
     all_groups = set([output.group for output in outputs])
     for group in all_groups:
         group_outputs = [output for output in outputs if output.group == group]
-        print(
-            f'=================Printing the sft cmd result of exp {group}==================\n\n'
-        )
-        print(
-            generate_sft_report([
-                output for output in group_outputs
-                if output.cmd in ('sft', 'eval')
-            ]))
+        print(f'=================Printing the sft cmd result of exp {group}==================\n\n')
+        print(generate_sft_report([output for output in group_outputs if output.cmd in ('sft', 'eval')]))
         # print(f'=================Printing the dpo result of exp {group}==================')
         # print(generate_dpo_report([output for output in outputs if output.cmd == 'dpo']))
-        print(
-            f'=================Printing the export cmd result of exp {group}==================\n\n'
-        )
-        print(
-            generate_export_report([
-                output for output in group_outputs if output.cmd == 'export'
-            ]))
+        print(f'=================Printing the export cmd result of exp {group}==================\n\n')
+        print(generate_export_report([output for output in group_outputs if output.cmd == 'export']))
         print('=================Printing done==================\n\n')
 
 

@@ -92,16 +92,14 @@ class ChatMessage:
 class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
-    finish_reason: Literal['stop', 'length',
-                           None]  # None: for infer_backend='pt'
+    finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
 
 
 @dataclass
 class CompletionResponseChoice:
     index: int
     text: str
-    finish_reason: Literal['stop', 'length',
-                           None]  # None: for infer_backend='pt'
+    finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
 
 
 @dataclass

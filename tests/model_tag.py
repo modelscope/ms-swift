@@ -35,11 +35,7 @@ class ModelTag(object):
             self.info = ''
 
         def to_json(self):
-            return {
-                'name': self.name,
-                'result': self.result,
-                'info': self.info
-            }
+            return {'name': self.name, 'result': self.result, 'info': self.info}
 
     def __init__(self):
         self.job_name = ''
@@ -57,12 +53,8 @@ class ModelTag(object):
     # 发送请求
     def _post_request(self, url, param):
         try:
-            logging.info(url + ' query: '
-                         + str(json.dumps(param, ensure_ascii=False)))
-            res = requests.post(
-                url=url,
-                headers=self.HEADER,
-                data=json.dumps(param, ensure_ascii=False).encode('utf8'))
+            logging.info(url + ' query: ' + str(json.dumps(param, ensure_ascii=False)))
+            res = requests.post(url=url, headers=self.HEADER, data=json.dumps(param, ensure_ascii=False).encode('utf8'))
             if res.status_code == 200:
                 logging.info(f'{url} post结果: ' + res.text)
                 res_json = json.loads(res.text)
@@ -109,14 +101,10 @@ class ModelTag(object):
     def batch_refresh_stage(self):
         try:
             param = {
-                'sdkVersion':
-                self.sdk_version,
-                'imageVersion':
-                self.image_version,
-                'source':
-                self.source,
-                'stage':
-                self.stage,
+                'sdkVersion': self.sdk_version,
+                'imageVersion': self.image_version,
+                'source': self.source,
+                'stage': self.stage,
                 'modelList': [{
                     'model': self.model,
                     'domain': self.domain,

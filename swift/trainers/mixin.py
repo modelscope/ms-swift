@@ -21,34 +21,25 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
-from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME,
-                                  ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
-                                  PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME,
-                                  TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
-                                  WEIGHTS_NAME, IntervalStrategy, Trainer,
-                                  TrainerCallback, is_peft_available)
+from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME, PREFIX_CHECKPOINT_DIR,
+                                  SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME, WEIGHTS_NAME,
+                                  IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (save_ta_checkpoint,
-                                  ta_load_optimizer_and_scheduler,
-                                  ta_save_optimizer_and_scheduler)
+from swift.torchacc_utils import save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler
 from swift.tuners import SwiftModel
-from swift.utils import (check_json_format, create_ms_repo, get_logger,
-                         use_torchacc)
+from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
 from swift.utils.constants import Invoke
 from .optimizers.galore import create_optimizer_and_scheduler
-from .utils import (can_return_loss, find_labels, get_function,
-                    is_instance_of_ms_model)
+from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 logger = get_logger()
 
 
-def _push_to_hub(self: Repository,
-                 commit_message: str = 'Commit files to Modelscope Hub',
-                 **kwargs):
+def _push_to_hub(self: Repository, commit_message: str = 'Commit files to Modelscope Hub', **kwargs):
     blocking = kwargs.get('blocking', True)
     self.push(commit_message)
     if not blocking:
@@ -61,10 +52,7 @@ def _push_to_hub(self: Repository,
 class PushToMsHubMixin:
     repo: Repository
 
-    def _add_patterns_to_file(self,
-                              file_name: str,
-                              patterns: List[str],
-                              commit_message: Optional[str] = None) -> None:
+    def _add_patterns_to_file(self, file_name: str, patterns: List[str], commit_message: Optional[str] = None) -> None:
         # Make sure we only do this on the main process
         if not self.is_world_process_zero():
             return
@@ -96,16 +84,10 @@ class PushToMsHubMixin:
                 f.write(content)
         self.repo.push(commit_message)
 
-    def _add_patterns_to_gitignore(
-            self,
-            patterns: List[str],
-            commit_message: Optional[str] = None) -> None:
+    def _add_patterns_to_gitignore(self, patterns: List[str], commit_message: Optional[str] = None) -> None:
         self._add_patterns_to_file('.gitignore', patterns, commit_message)
 
-    def _add_patterns_to_gitattributes(
-            self,
-            patterns: List[str],
-            commit_message: Optional[str] = None) -> None:
+    def _add_patterns_to_gitattributes(self, patterns: List[str], commit_message: Optional[str] = None) -> None:
         new_patterns = []
         suffix = 'filter=lfs diff=lfs merge=lfs -text'
         for pattern in patterns:
@@ -124,14 +106,11 @@ class PushToMsHubMixin:
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
             return
-        if (os.path.exists(self.args.output_dir)
-                and os.listdir(self.args.output_dir)
-                and self.args.overwrite_output_dir and at_init):
+        if (os.path.exists(self.args.output_dir) and os.listdir(self.args.output_dir) and self.args.overwrite_output_dir
+                and at_init):
             # directory not empty.
             shutil.rmtree(self.args.output_dir)
-        self.args.hub_model_id = create_ms_repo(self.args.hub_model_id,
-                                                self.args.hub_token,
-                                                self.args.hub_private_repo)
+        self.args.hub_model_id = create_ms_repo(self.args.hub_model_id, self.args.hub_token, self.args.hub_private_repo)
         self.repo = Repository(self.args.output_dir, self.args.hub_model_id)
         self._add_patterns_to_gitattributes(['*.safetensors', '*.bin', '*.pt'])
         self.repo.push_to_hub = MethodType(_push_to_hub, self.repo)
@@ -139,23 +118,19 @@ class PushToMsHubMixin:
 
         # By default, ignore the checkpoint folders
         if self.args.push_hub_strategy != 'all_checkpoints':
-            self._add_patterns_to_gitignore(
-                ['checkpoint-*/', 'tmp-checkpoint-*/'])
+            self._add_patterns_to_gitignore(['checkpoint-*/', 'tmp-checkpoint-*/'])
 
         # Add 'runs/' to .gitignore, ignore tensorboard files
         self._add_patterns_to_gitignore(['runs/'])
 
         # Add '*.sagemaker' to .gitignore if using SageMaker
         if os.environ.get('SM_TRAINING_ENV'):
-            self._add_patterns_to_gitignore(
-                ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
-                'Add `*.sagemaker` patterns to .gitignore')
+            self._add_patterns_to_gitignore(['*.sagemaker-uploading', '*.sagemaker-uploaded'],
+                                            'Add `*.sagemaker` patterns to .gitignore')
 
         self.push_in_progress = None
 
-    def push_to_hub(self,
-                    commit_message: str = 'End of training',
-                    **kwargs) -> None:
+    def push_to_hub(self, commit_message: str = 'End of training', **kwargs) -> None:
         # user calls manually `push_to_hub` with `self.args.push_to_hub = False`
         create_model_card = kwargs.pop('create_model_card', None)
         if not hasattr(self, 'repo'):
@@ -183,22 +158,16 @@ class PushToMsHubMixin:
     def _push_from_checkpoint(self, checkpoint_folder: str) -> None:
         """Compatible with transformers>=4.32"""
         # Only push from one node.
-        if not self.is_world_process_zero(
-        ) or self.args.push_hub_strategy == 'end':
+        if not self.is_world_process_zero() or self.args.push_hub_strategy == 'end':
             return
         output_dir = self.args.output_dir
         # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
         modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME]
         if is_peft_available():
-            modeling_files.extend([
-                ADAPTER_CONFIG_NAME, ADAPTER_WEIGHTS_NAME,
-                ADAPTER_SAFE_WEIGHTS_NAME
-            ])
+            modeling_files.extend([ADAPTER_CONFIG_NAME, ADAPTER_WEIGHTS_NAME, ADAPTER_SAFE_WEIGHTS_NAME])
         for modeling_file in modeling_files:
             if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
-                shutil.copy(
-                    os.path.join(checkpoint_folder, modeling_file),
-                    os.path.join(output_dir, modeling_file))
+                shutil.copy(os.path.join(checkpoint_folder, modeling_file), os.path.join(output_dir, modeling_file))
         # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
@@ -221,19 +190,12 @@ class PushToMsHubMixin:
                 commit_message = f'Training in progress, epoch {int(self.state.epoch)}'
             if self.args.push_hub_strategy == 'push_best':
                 folder, checkpoint_name = os.path.split(checkpoint_folder)
-                checkpoint_name = checkpoint_name.replace(
-                    'tmp-checkpoint-', 'checkpoint-')
+                checkpoint_name = checkpoint_name.replace('tmp-checkpoint-', 'checkpoint-')
                 last_model_checkpoint = os.path.join(folder, checkpoint_name)
                 if last_model_checkpoint == self.state.best_model_checkpoint:
-                    self.repo.push_to_hub(
-                        commit_message=commit_message,
-                        blocking=False,
-                        auto_lfs_prune=True)
+                    self.repo.push_to_hub(commit_message=commit_message, blocking=False, auto_lfs_prune=True)
             else:
-                self.repo.push_to_hub(
-                    commit_message=commit_message,
-                    blocking=False,
-                    auto_lfs_prune=True)
+                self.repo.push_to_hub(commit_message=commit_message, blocking=False, auto_lfs_prune=True)
         except Exception as e:
             logger.error(f'Error when pushing to hub: {e}')
         finally:
@@ -249,35 +211,27 @@ class SwiftMixin:
                  args: TrainingArguments = None,
                  data_collator: Optional[DataCollator] = None,
                  train_dataset: Optional[HfDataset] = None,
-                 eval_dataset: Optional[Union[HfDataset,
-                                              Dict[str, HfDataset]]] = None,
+                 eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
                  tokenizer: Optional[PreTrainedTokenizerBase] = None,
                  model_init: Optional[Callable[[], PreTrainedModel]] = None,
-                 compute_metrics: Optional[Callable[[EvalPrediction],
-                                                    Dict]] = None,
+                 compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
-                 optimizers: Tuple[torch.optim.Optimizer,
-                                   torch.optim.lr_scheduler.LambdaLR] = (None,
-                                                                         None),
-                 preprocess_logits_for_metrics: Optional[Callable[
-                     [torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+                 optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+                 preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
         check_model = kwargs.pop('check_model', True)
         if check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir,
                 user_agent={
-                    Invoke.KEY:
-                    Invoke.LOCAL_TRAINER,
-                    Invoke.THIRD_PARTY:
-                    kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
+                    Invoke.KEY: Invoke.LOCAL_TRAINER,
+                    Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
                 })
 
         # Compatible with transformers>=4.34
         from swift.tuners import SwiftModel
         is_quantized = getattr(model, 'is_quantized', False)
-        _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded',
-                                         False)
+        _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded', False)
         use_swift = isinstance(model, SwiftModel)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
@@ -298,8 +252,7 @@ class SwiftMixin:
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
 
-        if get_function(model.__class__.forward) is not get_function(
-                model.forward):
+        if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
         self.max_memory = 0.0
@@ -333,14 +286,12 @@ class SwiftMixin:
                 new_cfg = json.load(f)
 
         need_to_save = [
-            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_backend',
-            'template_type', 'dtype', 'system'
+            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_backend', 'template_type', 'dtype', 'system'
         ]
         quantization_bit = sft_args.quantization_bit
         if quantization_bit > 0:
             need_to_save += [
-                'quantization_bit', 'bnb_4bit_comp_dtype',
-                'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+                'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
             ]
         adapter_cfg = {}
         for k in need_to_save:
@@ -355,19 +306,14 @@ class SwiftMixin:
             return
         fpath = os.path.join(output_dir, 'sft_args.json')
         with open(fpath, 'w', encoding='utf-8') as f:
-            json.dump(
-                check_json_format(self.sft_args.__dict__),
-                f,
-                ensure_ascii=False,
-                indent=2)
+            json.dump(check_json_format(self.sft_args.__dict__), f, ensure_ascii=False, indent=2)
         return
 
     def _save_optimizer_and_scheduler(self, output_dir):
         if not use_torchacc():
             return super()._save_optimizer_and_scheduler(output_dir)
 
-        ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
-                                        output_dir)
+        ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         if not use_torchacc():
@@ -376,8 +322,8 @@ class SwiftMixin:
         if checkpoint is None or self.args.save_only_model:
             return
 
-        self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(
-            self.optimizer, self.lr_scheduler, checkpoint, self.args.device)
+        self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
+                                                                            checkpoint, self.args.device)
 
     def _save_tpu(self, output_dir: Optional[str] = None):
         if not use_torchacc():
@@ -416,32 +362,18 @@ class SwiftMixin:
 
             _unwrap_model = unwrap_model(self.model)
             if isinstance(_unwrap_model, supported_classes):
-                _unwrap_model.save_pretrained(
-                    output_dir,
-                    state_dict=state_dict,
-                    safe_serialization=save_safetensors)
+                _unwrap_model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
             else:
-                logger.info(
-                    'Trainer.model is not a `PreTrainedModel`, only saving its state dict.'
-                )
+                logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
                 if save_safetensors:
-                    safetensors.torch.save_file(
-                        state_dict,
-                        os.path.join(output_dir, 'model.safetensors'))
+                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
                 else:
-                    torch.save(state_dict,
-                               os.path.join(output_dir, 'pytorch_model.bin'))
+                    torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
         elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
-                self.model,
-                output_dir,
-                state_dict=state_dict,
-                safe_serialization=save_safetensors)
+                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
-            self.model.save_pretrained(
-                output_dir,
-                state_dict=state_dict,
-                safe_serialization=save_safetensors)
+            self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         # tokenizer
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
@@ -450,8 +382,7 @@ class SwiftMixin:
         # additional files
         sft_args = getattr(self, 'sft_args', None)
         if sft_args is not None and sft_args.sft_type == 'full':
-            additional_files = getattr(self.args, 'additional_saved_files',
-                                       []) + ['preprocessor_config.json']
+            additional_files = getattr(self.args, 'additional_saved_files', []) + ['preprocessor_config.json']
             if model_dir is not None:
                 for file in additional_files:
                     src_path = os.path.join(model_dir, file)
@@ -462,12 +393,9 @@ class SwiftMixin:
                         shutil.copytree(src_path, dst_path)
 
     def _save_checkpoint(self, model, trial, metrics=None):
-        self.state.last_model_checkpoint = os.path.join(
-            self.args.output_dir, f'checkpoint-{self.state.global_step}')
-        logger.info(
-            f'Saving model checkpoint to {self.state.last_model_checkpoint}')
-        if version.parse(transformers.__version__) >= version.parse(
-                '4.36') or not self.args.save_only_model:
+        self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
+        logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
+        if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
             return super()._save_checkpoint(model, trial, metrics)
         else:
             return self._save_only_model(model, trial, metrics)
@@ -491,16 +419,14 @@ class SwiftMixin:
             metric_value = metrics[metric_to_check]
 
             operator = np.greater if self.args.greater_is_better else np.less
-            if (self.state.best_metric is None
-                    or self.state.best_model_checkpoint is None
+            if (self.state.best_metric is None or self.state.best_model_checkpoint is None
                     or operator(metric_value, self.state.best_metric)):
                 self.state.best_metric = metric_value
                 self.state.best_model_checkpoint = output_dir
 
         # Save the Trainer state
         if self.args.should_save:
-            self.state.save_to_json(
-                os.path.join(output_dir, TRAINER_STATE_NAME))
+            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
 
         # push to hub
         if self.args.push_to_hub:
@@ -517,9 +443,7 @@ class SwiftMixin:
         else:
             return self._get_eval_sampler(self.train_dataset)
 
-    def _load_from_checkpoint(self,
-                              resume_from_checkpoint: str,
-                              model=None) -> None:
+    def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None) -> None:
         if model is None:
             model = self.model
         supported_classes = (SwiftModel, PeftModel)
@@ -539,34 +463,24 @@ class SwiftMixin:
                             use_mtime=False) -> List[str]:
         ordering_and_checkpoint_path = []
 
-        glob_checkpoints = [
-            str(x) for x in Path(output_dir).glob(f'{checkpoint_prefix}-*')
-            if os.path.isdir(x)
-        ]
+        glob_checkpoints = [str(x) for x in Path(output_dir).glob(f'{checkpoint_prefix}-*') if os.path.isdir(x)]
 
         for path in glob_checkpoints:
             if use_mtime:
-                ordering_and_checkpoint_path.append(
-                    (os.path.getmtime(path), path))
+                ordering_and_checkpoint_path.append((os.path.getmtime(path), path))
             else:
                 regex_match = re.match(f'.*{checkpoint_prefix}-([0-9]+)', path)
-                if regex_match is not None and regex_match.groups(
-                ) is not None:
-                    ordering_and_checkpoint_path.append(
-                        (int(regex_match.groups()[0]), path))
+                if regex_match is not None and regex_match.groups() is not None:
+                    ordering_and_checkpoint_path.append((int(regex_match.groups()[0]), path))
 
         checkpoints_sorted = sorted(ordering_and_checkpoint_path)
-        checkpoints_sorted = [
-            checkpoint[1] for checkpoint in checkpoints_sorted
-        ]
+        checkpoints_sorted = [checkpoint[1] for checkpoint in checkpoints_sorted]
         # Make sure we don't delete the best model.
-        if (self.state.best_model_checkpoint is not None and str(
-                Path(self.state.best_model_checkpoint)) in checkpoints_sorted):
-            best_model_index = checkpoints_sorted.index(
-                str(Path(self.state.best_model_checkpoint)))
+        if (self.state.best_model_checkpoint is not None
+                and str(Path(self.state.best_model_checkpoint)) in checkpoints_sorted):
+            best_model_index = checkpoints_sorted.index(str(Path(self.state.best_model_checkpoint)))
             for i in range(best_model_index, len(checkpoints_sorted) - 2):
-                checkpoints_sorted[i], checkpoints_sorted[
-                    i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
+                checkpoints_sorted[i], checkpoints_sorted[i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
         return checkpoints_sorted
 
     def _load_best_model(self):
@@ -575,32 +489,22 @@ class SwiftMixin:
             model = self.model
             if isinstance(model, SwiftModel):
                 logger.info(
-                    f'Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).'
-                )
+                    f'Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).')
                 adapters = model.adapters
                 for adapter_name in adapters.keys():
-                    sub_folder = os.path.join(self.state.best_model_checkpoint,
-                                              adapter_name)
-                    state_dict = SwiftModel.load_state_file(
-                        sub_folder, device='cpu')
+                    sub_folder = os.path.join(self.state.best_model_checkpoint, adapter_name)
+                    state_dict = SwiftModel.load_state_file(sub_folder, device='cpu')
                     if state_dict is not None:
-                        self.model.load_state_dict(
-                            state_dict,
-                            strict=False,
-                            adapter_name=adapter_name)
-                state_dict = SwiftModel.load_state_file(
-                    self.state.best_model_checkpoint, device='cpu')
+                        self.model.load_state_dict(state_dict, strict=False, adapter_name=adapter_name)
+                state_dict = SwiftModel.load_state_file(self.state.best_model_checkpoint, device='cpu')
                 if state_dict is not None:
-                    self.model.load_state_dict(
-                        state_dict, strict=False, adapter_name='default')
+                    self.model.load_state_dict(state_dict, strict=False, adapter_name='default')
             else:
                 super()._load_best_model()
         except ValueError as e:
             logger.warning(e)
 
-    def get_max_cuda_memory(self,
-                            device: Optional[Union[torch.device,
-                                                   int]] = None) -> float:
+    def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
         torch.cuda.empty_cache()
         mem = torch.cuda.max_memory_reserved(device=device)
         mem = float(mem) / 1024 / 1024 / 1024
@@ -622,11 +526,8 @@ class SwiftMixin:
                 v_scalar = self._nested_gather(v).mean().item()
                 if k == 'loss':
                     self._total_loss_scalar += v_scalar
-                logs[k] = round(
-                    v_scalar /
-                    (self.state.global_step - self._globalstep_last_logged), 8)
-            if version.parse(
-                    transformers.__version__) >= version.parse('4.38'):
+                logs[k] = round(v_scalar / (self.state.global_step - self._globalstep_last_logged), 8)
+            if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
                 if isinstance(grad_norm, torch.Tensor):
                     grad_norm = grad_norm.item()
@@ -637,8 +538,9 @@ class SwiftMixin:
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
-            logs['total_train_time'] = ((float(self.state.max_steps)/self.state.global_step) * elapse_time)/60.0
-            logs['train_speed'] = self.state.max_steps/((float(self.state.max_steps)/self.state.global_step) * elapse_time)
+            logs['total_train_time'] = ((float(self.state.max_steps) / self.state.global_step) * elapse_time) / 60.0
+            logs['train_speed'] = self.state.max_steps / (
+                (float(self.state.max_steps) / self.state.global_step) * elapse_time)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
@@ -658,52 +560,41 @@ class SwiftMixin:
             self.lr_scheduler = lr_scheduler
         else:
             self.create_optimizer()
-            self.create_scheduler(
-                num_training_steps=num_training_steps,
-                optimizer=self.optimizer)
+            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
 
     def create_optimizer(self):
         opt_model = self.model
 
         if self.optimizer is None:
-            if version.parse(
-                    transformers.__version__) < version.parse('4.34.0'):
-                logger.warning(
-                    f'If you are using lora+, please remember using transformers>=4.34.0, '
-                    f'but now is {transformers.__version__}')
+            if version.parse(transformers.__version__) < version.parse('4.34.0'):
+                logger.warning(f'If you are using lora+, please remember using transformers>=4.34.0, '
+                               f'but now is {transformers.__version__}')
                 return super().create_optimizer()
 
             optimizer_grouped_parameters = None
             if hasattr(self.model, 'create_optimizer_param_groups'):
                 # Lora+ parameter groups
                 optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
-                    lr=self.args.learning_rate,
-                    weight_decay=self.args.weight_decay)
+                    lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
 
             if optimizer_grouped_parameters is None:
                 # Default parameter groups
                 decay_parameters = self.get_decay_parameter_names(opt_model)
                 optimizer_grouped_parameters = [
                     {
-                        'params': [
-                            p for n, p in opt_model.named_parameters()
-                            if (n in decay_parameters and p.requires_grad)
-                        ],
+                        'params':
+                        [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
                         'weight_decay':
                         self.args.weight_decay,
                     },
                     {
-                        'params': [
-                            p for n, p in opt_model.named_parameters()
-                            if (n not in decay_parameters and p.requires_grad)
-                        ],
+                        'params':
+                        [p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)],
                         'weight_decay':
                         0.0,
                     },
                 ]
 
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-                self.args)
-            self.optimizer = optimizer_cls(optimizer_grouped_parameters,
-                                           **optimizer_kwargs)
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
         return self.optimizer

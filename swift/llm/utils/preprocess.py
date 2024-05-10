@@ -25,15 +25,13 @@ class SwiftPreprocessor:
                     h = ast.literal_eval(old_h)
                 history.append(h)
             else:
-                dataset = dataset.remove_columns(['history']).add_column(
-                    'history', history)
+                dataset = dataset.remove_columns(['history']).add_column('history', history)
         return dataset
 
 
 class AlpacaPreprocessor:
 
-    def __init__(self,
-                 concat_inst_inp: Optional[Callable[[str, str], str]] = None):
+    def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None):
         self.concat_inst_inp = concat_inst_inp
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
@@ -87,8 +85,7 @@ class ConversationsPreprocessor:
                  conversations_key: str = 'conversations',
                  from_key: str = 'from',
                  value_key: str = 'value',
-                 repair_conversations: Callable[[str], Optional[Dict[
-                     str, str]]] = _default_repair_conversations,
+                 repair_conversations: Callable[[str], Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise'):
         self.user_role = user_role
         self.assistant_role = assistant_role
@@ -124,8 +121,7 @@ class ConversationsPreprocessor:
                 assert conversations[-2][self.from_key] == self.user_role
                 assert conversations[-1][self.from_key] == self.assistant_role
 
-                for q, r in zip(conversations[lo:-2:2],
-                                conversations[lo + 1:-2:2]):
+                for q, r in zip(conversations[lo:-2:2], conversations[lo + 1:-2:2]):
                     assert q[self.from_key] == self.user_role
                     assert r[self.from_key] == self.assistant_role
                     h.append([q[self.value_key], r[self.value_key]])
@@ -192,19 +188,13 @@ class SmartPreprocessor:
             'chatml': {
                 'required': ['messages'],
                 'preprocessor':
-                ConversationsPreprocessor(
-                    conversations_key='messages',
-                    from_key='role',
-                    value_key='content')
+                ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
             }
         }
 
     def _get_preprocessor(self, dataset: HfDataset) -> PreprocessFunc:
         keys = set(dataset.features.keys())
-        required_keys_mapping = {
-            k: v['required']
-            for k, v in self.preprocessor_mapping.items()
-        }
+        required_keys_mapping = {k: v['required'] for k, v in self.preprocessor_mapping.items()}
         for k, required_keys in required_keys_mapping.items():
             if len(set(required_keys) - keys) == 0:
                 return self.preprocessor_mapping[k]['preprocessor']
@@ -218,10 +208,7 @@ required_keys_mapping: {required_keys_mapping}""")
 
 class TextGenerationPreprocessor:
 
-    def __init__(self,
-                 prompt: str,
-                 query_key: str = 'query',
-                 response_key: str = 'response') -> None:
+    def __init__(self, prompt: str, query_key: str = 'query', response_key: str = 'response') -> None:
         self.prompt = prompt
         self.query_key = query_key
         self.response_key = response_key
@@ -230,16 +217,12 @@ class TextGenerationPreprocessor:
         query = []
         for d in tqdm(dataset):
             query.append(self.prompt.format(query=d[self.query_key]))
-        return HfDataset.from_dict({
-            'query': query,
-            'response': dataset[self.response_key]
-        })
+        return HfDataset.from_dict({'query': query, 'response': dataset[self.response_key]})
 
 
 class ClsPreprocessor:
 
-    def __init__(self, labels: List[str], task_name: str,
-                 is_pair_seq: bool) -> None:
+    def __init__(self, labels: List[str], task_name: str, is_pair_seq: bool) -> None:
         self.labels = labels
         category = ', '.join(labels)
         if is_pair_seq:
@@ -260,8 +243,7 @@ Output:"""
             if d['label'] is None:  # ignore dataset error
                 continue
             if self.is_pair_seq:
-                q = self.prompt.format(
-                    sentence1=d['sentence1'], sentence2=d['sentence2'])
+                q = self.prompt.format(sentence1=d['sentence1'], sentence2=d['sentence2'])
             else:
                 q = self.prompt.format(sentence=d['sentence'])
             query.append(q)

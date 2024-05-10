@@ -28,8 +28,7 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
     )
 
     if not os.path.exists(args.model_id_or_path):
-        pretrained_model_path = snapshot_download(
-            args.model_id_or_path, revision=args.model_revision)
+        pretrained_model_path = snapshot_download(args.model_id_or_path, revision=args.model_revision)
     else:
         pretrained_model_path = args.model_id_or_path
 
@@ -37,10 +36,8 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
     if args.motion_adapter_id_or_path is not None:
         if not os.path.exists(args.motion_adapter_id_or_path):
             args.motion_adapter_id_or_path = snapshot_download(
-                args.motion_adapter_id_or_path,
-                revision=args.motion_adapter_revision)
-        motion_adapter = MotionAdapter.from_pretrained(
-            args.motion_adapter_id_or_path)
+                args.motion_adapter_id_or_path, revision=args.motion_adapter_revision)
+        motion_adapter = MotionAdapter.from_pretrained(args.motion_adapter_id_or_path)
     if args.sft_type == 'full':
         motion_adapter_dir = args.ckpt_dir if args.ckpt_dir is not None else os.path.join(
             pretrained_model_path, 'motion_adapter')
@@ -63,10 +60,9 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
             args.sft_type = 'full'
             args.ckpt_dir = merged_lora_path
             if os.path.exists(args.ckpt_dir) and not args.replace_if_exists:
-                logger.warn(
-                    f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
-                    'skipping the saving process. '
-                    'you can pass `replace_if_exists=True` to overwrite it.')
+                logger.warn(f'The weight directory for the merged LoRA already exists in {args.ckpt_dir}, '
+                            'skipping the saving process. '
+                            'you can pass `replace_if_exists=True` to overwrite it.')
                 return
 
             Swift.merge_and_unload(model)
@@ -89,8 +85,7 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
                 guidance_scale=args.guidance_scale,
             ).frames[0]
             os.makedirs(args.output_path, exist_ok=True)
-            logger.info(
-                f'Output saved to: {f"{args.output_path}/output-{idx}.gif"}')
+            logger.info(f'Output saved to: {f"{args.output_path}/output-{idx}.gif"}')
             export_to_gif(sample, f'{args.output_path}/output-{idx}.gif')
             idx += 1
     else:
@@ -107,8 +102,7 @@ def animatediff_infer(args: AnimateDiffInferArguments) -> None:
                 guidance_scale=args.guidance_scale,
             ).frames[0]
             os.makedirs(args.output_path, exist_ok=True)
-            logger.info(
-                f'Output saved to: {f"{args.output_path}/output-{idx}.gif"}')
+            logger.info(f'Output saved to: {f"{args.output_path}/output-{idx}.gif"}')
             export_to_gif(sample, f'{args.output_path}/output-{idx}.gif')
 
 

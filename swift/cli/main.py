@@ -17,9 +17,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'eval': 'swift.cli.eval'
 }
 
-ROUTE_MAPPING.update(
-    {k.replace('-', '_'): v
-     for k, v in ROUTE_MAPPING.items()})
+ROUTE_MAPPING.update({k.replace('-', '_'): v for k, v in ROUTE_MAPPING.items()})
 
 
 def use_torchrun() -> bool:
@@ -34,10 +32,7 @@ def get_torchrun_args() -> Optional[List[str]]:
     if not use_torchrun():
         return
     torchrun_args = []
-    for env_key in [
-            'NPROC_PER_NODE', 'MASTER_PORT', 'NNODES', 'NODE_RANK',
-            'MASTER_ADDR'
-    ]:
+    for env_key in ['NPROC_PER_NODE', 'MASTER_PORT', 'NNODES', 'NODE_RANK', 'MASTER_ADDR']:
         env_val = os.getenv(env_key)
         if env_val is None:
             continue

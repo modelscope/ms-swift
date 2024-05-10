@@ -69,8 +69,7 @@ class GaloreSchedulerWrapper(LRScheduler):
         self._last_lr = lr_scheduler.get_last_lr()
 
 
-def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
-                                   config: GaLoreConfig, max_steps,
+def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments, config: GaLoreConfig, max_steps,
                                    **defaults):
     galore_params = []
     for module_name, module in model.named_modules():
@@ -95,20 +94,13 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
 
     if config.optim_per_parameter:
         optimizer_dict = {}
-        galore_defaults[
-            'update_proj_gap'] = galore_defaults['update_proj_gap'] * 2
+        galore_defaults['update_proj_gap'] = galore_defaults['update_proj_gap'] * 2
         for p in model.parameters():
             if p.requires_grad:
                 if id(p) in id_galore_params:
-                    optimizer_dict[p] = optim_cls([{
-                        'params': [p],
-                        **galore_defaults
-                    }], **optim_kwargs)
+                    optimizer_dict[p] = optim_cls([{'params': [p], **galore_defaults}], **optim_kwargs)
                 else:
-                    optimizer_dict[p] = optim_cls([{
-                        'params': [p],
-                        **defaults
-                    }], **optim_kwargs)
+                    optimizer_dict[p] = optim_cls([{'params': [p], **defaults}], **optim_kwargs)
 
         # get scheduler dict
         scheduler_dict = {}
@@ -122,8 +114,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
                     scheduler_specific_kwargs=args.lr_scheduler_kwargs,
                 )
 
-        return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(
-            scheduler_dict)
+        return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(scheduler_dict)
     else:
         decay_parameters = Trainer.get_decay_parameter_names(Trainer, model)
         param_groups = [{
@@ -134,8 +125,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
             {
                 'params': [
                     p for n, p in model.named_parameters()
-                    if (n in decay_parameters and id(p) not in id_galore_params
-                        and p.requires_grad)
+                    if (n in decay_parameters and id(p) not in id_galore_params and p.requires_grad)
                 ],
                 'weight_decay':
                 defaults['weight_decay'],
@@ -143,8 +133,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments,
             {
                 'params': [
                     p for n, p in model.named_parameters()
-                    if (n not in decay_parameters
-                        and id(p) not in id_galore_params and p.requires_grad)
+                    if (n not in decay_parameters and id(p) not in id_galore_params and p.requires_grad)
                 ],
                 'weight_decay':
                 0.0,
@@ -178,10 +167,7 @@ def get_optimizer(args: TrainingArguments) -> Tuple[Any, Any]:
     if args.optim == 'adafactor':
         from .adafactor import GaLoreAdafactor
         optimizer_cls = GaLoreAdafactor
-        optimizer_kwargs.update({
-            'scale_parameter': False,
-            'relative_step': False
-        })
+        optimizer_kwargs.update({'scale_parameter': False, 'relative_step': False})
     elif args.optim in ('adamw_hf', 'adamw_torch'):
         from .adamw import GaLoreAdamW
         optimizer_cls = GaLoreAdamW
@@ -191,15 +177,9 @@ def get_optimizer(args: TrainingArguments) -> Tuple[Any, Any]:
             from .adamw8bit import GaLoreAdamW8bit
             optimizer_cls = GaLoreAdamW8bit
             optimizer_kwargs.update(adam_kwargs)
-            optimizer_kwargs.update({
-                'optim_bits': 8,
-                'is_paged': 'paged' in args.optim
-            })
+            optimizer_kwargs.update({'optim_bits': 8, 'is_paged': 'paged' in args.optim})
         except ImportError:
-            raise ValueError(
-                'Trainer tried to instantiate bnb optimizer but bnb is not installed!'
-            )
+            raise ValueError('Trainer tried to instantiate bnb optimizer but bnb is not installed!')
     else:
-        raise ValueError(
-            f'Galore not supported for optimizer type: {args.optim}')
+        raise ValueError(f'Galore not supported for optimizer type: {args.optim}')
     return optimizer_cls, optimizer_kwargs
