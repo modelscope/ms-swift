@@ -517,12 +517,13 @@ def long_alpaca_preprocessor(dataset: HfDataset):
 
     def map_row(row):
         response = row['response']
-    if response and response.startswith('Answer:'):
-        response = response[len('Answer:') + 1:].strip()
-        return {'query': row['query'], 'response': response}
+        if response and response.startswith('Answer:'):
+            response = response[len('Answer:') + 1:].strip()
+            row['response'] = response
+        return response
 
-    return dataset.rename_columns({'instruction': 'query', 'output': 'response'}) \
-        .remove_columns(['input', 'file']).map(map_row).filter(lambda row: row['response'] is not None)
+    dataset = AlpacaPreprocessor()(dataset)
+    return dataset.map(map_row)
 
 
 register_dataset(

@@ -45,8 +45,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(self.sequence_parallel_size)
-        import time
-        self.start_time = time.time()
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)

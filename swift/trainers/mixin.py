@@ -4,6 +4,7 @@ import importlib
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -256,6 +257,7 @@ class SwiftMixin:
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
         self.max_memory = 0.0
+        self.start_time = time.time()
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
@@ -538,8 +540,9 @@ class SwiftMixin:
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
-            logs['total_train_time'] = ((float(self.state.max_steps) / self.state.global_step) * elapse_time) / 60.0
-            logs['train_speed'] = self.state.max_steps / (
+            logs['total_train_time_calculated(min)'] = (
+                (float(self.state.max_steps) / self.state.global_step) * elapse_time) / 60.0
+            logs['total_train_speed(iter/s)'] = self.state.max_steps / (
                 (float(self.state.max_steps) / self.state.global_step) * elapse_time)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
