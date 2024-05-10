@@ -34,5 +34,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 10 \
     --save_only_model true \
-    --sequence_parallel_size 4 \
+    --sequence_parallel_size 2 \
     --pack_to_max_length false \
