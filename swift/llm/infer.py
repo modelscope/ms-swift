@@ -82,7 +82,7 @@ def merge_lora(args: InferArguments,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-    assert args.sft_type == 'lora', "Only supports sft_type == 'lora'"
+    assert args.sft_type in ('lora', 'adalora', 'longlora'), 'Only supports lora series models'
     for s in ['int4', 'int8', 'awq']:
         assert s not in args.model_type, f'{s} model is not supported'
     if args.quantization_bit != 0:
