@@ -591,14 +591,16 @@ def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
 
 def long_alpaca_preprocessor(dataset: HfDataset):
 
-    def map_row(row):
-        response = row['response']
-        if response and response.startswith('Answer:'):
-            response = response[len('Answer:') + 1:].strip()
-        return {'query': row['query'], 'response': response}
+    first_row = dataset[0]
+    response = first_row['output']
+    if response and response.startswith('Answer:'):
+        response = response[len('Answer:') + 1:].strip()
+    ret = {'query': first_row['instruction'], 'response': response}
 
-    return dataset.rename_columns({'instruction': 'query', 'output': 'response'}) \
-        .remove_columns(['input', 'file']).map(map_row).filter(lambda row: row['response'] is not None)
+    def map_row(row):
+        return ret
+
+    return dataset.map(map_row)
 
 
 register_dataset(

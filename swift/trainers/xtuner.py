@@ -71,6 +71,8 @@ def pad_and_split_for_sequence_parallel(tokenizer, input_ids, labels,
     labels = split_for_sequence_parallel(labels, dim=1, sp_group=sp_group)
     position_ids = split_for_sequence_parallel(
         position_ids, dim=1, sp_group=sp_group)
+    attention_mask = split_for_sequence_parallel(
+        attention_mask, dim=-1, sp_group=sp_group)
     if loss_scale is not None:
         loss_scale = pad_for_sequence_parallel(
             loss_scale, padding_value=0., dim=-1)
