@@ -396,7 +396,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat
 ```
 
 ### 微调后模型
-如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](LLM微调文档.md调后模型)
+如果你要使用微调后模型进行推理, 可以查看[LLM微调文档](LLM微调文档.md#微调后模型)
 
 
 ## Web-UI
@@ -446,4 +446,4 @@ app_ui_main(app_ui_args)
 ```
 
 ### 微调后模型
-使用微调后模型的web-ui可以查看[LLM微调文档](LLM微调文档.md调后模型-1)
+使用微调后模型的web-ui可以查看[LLM微调文档](LLM微调文档.md#微调后模型)

@@ -91,7 +91,7 @@ def is_mp() -> bool:
         return False
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
-    assert n_gpu % local_world_size == 0
+    assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
     if n_gpu // local_world_size >= 2:
         return True
     return False

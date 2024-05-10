@@ -1,7 +1,8 @@
-# Experimental environment: 2*A100
-# Memory usage: 2 * 20G
-PYTHONPATH=../../.. \
-python llm_dpo.py \
+# Experimental environment: A100
+# Memory usage: 20G
+
+CUDA_VISIBLE_DEVICES=0 \
+swift dpo \
     --model_type  yi-6b-chat \
     --ref_model_type  yi-6b-chat \
     --model_revision  master \
@@ -9,10 +10,7 @@ python llm_dpo.py \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  hh-rlhf-cn-harmless-base-cn  \
-    --train_dataset_sample  -1  \
-    --truncation_strategy  truncation_left  \
-    --val_dataset_sample  2000  \
+    --dataset  hh-rlhf-cn:harmless_base_cn  \
     --num_train_epochs  3  \
     --max_length  1024  \
     --max_prompt_length  512  \

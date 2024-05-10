@@ -20,8 +20,8 @@ from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_met
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, add_self_cognition_dataset, dataset_map,
-                    get_dataset, get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
+from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
+                    get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 
 logger = get_logger()
@@ -129,30 +129,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             fsdp_flatten_parameters=False)
 
     # Loading Dataset
-    random_state = np.random.RandomState(args.dataset_seed)
     train_dataset, val_dataset = get_dataset(
-        args.dataset, args.dataset_test_ratio, random_state, check_dataset_strategy=args.check_dataset_strategy)
-    val_dataset_sample = args.val_dataset_sample
-    if train_dataset is not None and args.train_dataset_sample >= 0:
-        train_dataset_sample = min(args.train_dataset_sample, train_dataset.shape[0])
-        if train_dataset.shape[0] > train_dataset_sample:
-            logger.info(f'train_dataset_sample: {train_dataset_sample}')
-            train_idxs = random_state.permutation(train_dataset_sample)
-            train_dataset = train_dataset.select(train_idxs)
-        if val_dataset_sample is None:
-            val_dataset_sample = max(int(train_dataset_sample * args.dataset_test_ratio), 1)
-    if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
-        if val_dataset.shape[0] > val_dataset_sample:
-            logger.info(f'val_dataset_sample: {val_dataset_sample}')
-            val_idxs = random_state.permutation(val_dataset_sample)
-            val_dataset = val_dataset.select(val_idxs)
-
-    train_dataset = args.handle_dataset_mixture(train_dataset)
-
-    # add self-cognition dataset
-    if args.self_cognition_sample > 0:
-        train_dataset = add_self_cognition_dataset(train_dataset, args.self_cognition_sample, args.model_name,
-                                                   args.model_author)
+        args.dataset,
+        args.dataset_test_ratio,
+        args.dataset_seed,
+        check_dataset_strategy=args.check_dataset_strategy,
+        model_name=args.model_name,
+        model_author=args.model_author)
+    train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
@@ -168,7 +152,19 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    if not args.lazy_tokenize:
+    if args.packing:
+        from swift.llm.utils.utils import ConstantLengthDataset
+        train_dataset = ConstantLengthDataset.get_packed_dataset(
+            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        if val_dataset is not None:
+            val_dataset = ConstantLengthDataset.get_packed_dataset(
+                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        dataset_info = {}
+        if not args.lazy_tokenize:
+            dataset_info['train_dataset'] = stat_dataset(train_dataset)
+            if val_dataset is not None:
+                dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    elif not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
@@ -177,6 +173,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
+        if train_dataset is None:
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
         td0, tkwargs0 = train_dataset.data[0]
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)

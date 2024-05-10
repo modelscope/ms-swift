@@ -21,7 +21,7 @@ torchrun \
     --lora_rank 8 \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
-    --lora_dtype bf16 \
+    --lora_dtype AUTO \
     --lora_target_modules DEFAULT \
     --gradient_checkpointing true \
     --batch_size 2 \
@@ -34,5 +34,4 @@ torchrun \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 10 \
-    --deepspeed_config_path scripts/grok-1/lora_ddp_ds/zero3.json \
-    --save_only_model true \
+    --deepspeed zero3-offload \

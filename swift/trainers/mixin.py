@@ -448,14 +448,13 @@ class SwiftMixin:
     def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None) -> None:
         if model is None:
             model = self.model
-        supported_classes = (SwiftModel, PeftModel)
         if use_torchacc():
             # Loading checkpoint of TorchAcc has been done in tuner.py when
             # sft_type if 'full'.
             model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return
-        if not isinstance(model, supported_classes):
+        elif not isinstance(model, SwiftModel):
             # Avoid throwing exceptions
             return super()._load_from_checkpoint(resume_from_checkpoint, model)
 

@@ -20,12 +20,14 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
+from datasets.arrow_writer import SchemaInferenceError
+from datasets.exceptions import DatasetGenerationError
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
@@ -63,6 +65,7 @@ def download_files(url: str, local_path: str, cookies) -> None:
 
 
 def download_dataset(model_id: str, files: List[str], force_download: bool = False) -> str:
+    assert isinstance(files, list)
     url = f'http://www.modelscope.cn/api/v1/datasets/{model_id}/repo?Revision=master&FilePath={{fpath}}'
     cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', model_id, 'master')
     local_dir = os.path.join(cache_dir, 'raw')
@@ -155,6 +158,89 @@ class LLMDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.data)
+
+
+# Code borrowed from trl
+class ConstantLengthDataset(IterableDataset):
+
+    def __init__(
+        self,
+        template: 'Template',
+        dataset,
+        seq_length=1024,
+        num_of_sequences=1024,
+        chars_per_token=3.6,
+        append_concat_token=True,
+        add_special_tokens=True,
+    ):
+        self.template = template
+
+        self.concat_token_id = self.template.tokenizer.eos_token_id
+        self.dataset = dataset
+        self.seq_length = seq_length
+        self.max_buffer_size = seq_length * chars_per_token * num_of_sequences
+        self.append_concat_token = append_concat_token
+        self.add_special_tokens = add_special_tokens
+
+    @staticmethod
+    def get_packed_dataset(template: 'Template',
+                           dataset,
+                           seq_length=1024,
+                           num_of_sequences=1024,
+                           chars_per_token=3.6,
+                           append_concat_token=True,
+                           add_special_tokens=True,
+                           lazy_tokenize=False):
+        constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length, num_of_sequences,
+                                                         chars_per_token, append_concat_token, add_special_tokens)
+
+        if lazy_tokenize:
+            return constant_length_iterator
+
+        def data_generator(constant_length_iterator):
+            yield from constant_length_iterator
+
+        try:
+            packed_dataset = HfDataset.from_generator(
+                data_generator, gen_kwargs={'constant_length_iterator': constant_length_iterator})
+        except (DatasetGenerationError, SchemaInferenceError) as exc:
+            raise ValueError(
+                'Error occurred while packing the dataset. '
+                'Make sure that your dataset has enough samples to at least yield one packed sequence.') from exc
+        return packed_dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        more_examples = True
+        while more_examples:
+            buffer, buffer_len = [], 0
+            while True:
+                if buffer_len >= self.max_buffer_size:
+                    break
+                try:
+                    example = next(iterator)
+                    lens = sum([len(value) if value else 0 for value in example.values()])
+                    buffer.append(next(iterator))
+                    buffer_len += lens
+                except StopIteration:
+                    more_examples = False
+                    break
+
+            packed_sequences = {}
+            for example in buffer:
+                input, _ = self.template.encode(example)
+                for key in input.keys():
+                    if key not in packed_sequences:
+                        packed_sequences[key] = []
+                    packed_sequences[key].extend(input[key])
+
+            lens = len(packed_sequences[list(packed_sequences.keys())[0]])
+            for i in range(0, lens, self.seq_length):
+                example = {key: value[i:i + self.seq_length] for key, value in packed_sequences.items()}
+                yield example
 
 
 class LazyLLMDataset(Dataset):
@@ -336,13 +422,14 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str) -> L
     else:
         linear_cls = [Linear]
     if 'int4' in model_type or 'int8' in model_type:
-        from bitsandbytes.nn import Linear4bit
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(gptq_quantization_config)
-        linear_cls = [Linear4bit]
-        if AutoGPTQQuantLinear is not None:
-            linear_cls.append(AutoGPTQQuantLinear)
+        if AutoGPTQQuantLinear is None:
+            from bitsandbytes.nn import Linear4bit
+            linear_cls = [Linear4bit]
+        else:
+            linear_cls = [AutoGPTQQuantLinear]
     if 'awq' in model_type:
         from awq.modules.linear import WQLinear_GEMM
         linear_cls.append(WQLinear_GEMM)
@@ -431,6 +518,7 @@ def inference_stream(model: PreTrainedModel,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
                      generation_info: Optional[Dict[str, int]] = None,
+                     adapter_names: Optional[List[str]] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -471,7 +559,7 @@ def inference_stream(model: PreTrainedModel,
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
 
-    inputs['attention_mask'] = torch.ones(token_len)[None]
+    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
@@ -504,6 +592,8 @@ def inference_stream(model: PreTrainedModel,
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
     streamer = TokenListIteratorStreamer()
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generation_kwargs = {
         'streamer': streamer,
         'generation_config': generation_config,
@@ -563,6 +653,7 @@ def inference(model: PreTrainedModel,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
               generation_info: Optional[Dict[str, int]] = None,
+              adapter_names: Optional[List[str]] = None,
               **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -644,6 +735,8 @@ def inference(model: PreTrainedModel,
         generation_info['num_prompt_tokens'] = token_len
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generate_ids = model.generate(
         streamer=streamer, generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)

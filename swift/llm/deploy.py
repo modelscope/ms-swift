@@ -10,6 +10,7 @@ import json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
+from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
@@ -38,8 +39,8 @@ def create_error_response(status_code: Union[int, str, HTTPStatus], message: str
 async def get_available_models():
     global _args
     model_list = [_args.model_type]
-    if _args.vllm_lora_request_list is not None:
-        model_list += [lora_request.lora_name for lora_request in _args.vllm_lora_request_list]
+    if _args.lora_request_list is not None:
+        model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [Model(id=model_id) for model_id in model_list]
     return ModelList(data=data)
 
@@ -147,12 +148,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     generate_kwargs = {}
     if _args.vllm_enable_lora and request.model != _args.model_type:
         lora_request = None
-        for lora_req in _args.vllm_lora_request_list:
+        for lora_req in _args.lora_request_list:
             if lora_req.lora_name == request.model:
                 lora_request = lora_req
                 break
-        assert lora_request is not None, (f"request.model: '{request.model}', "
-                                          f'available_models: {await get_available_models()}')
+        assert lora_request is not None
         generate_kwargs['lora_request'] = lora_request
     result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
 
@@ -312,6 +312,17 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     logger.info(request_info)
 
     created_time = int(time.time())
+    adapter_kwargs = {}
+    if request.model != _args.model_type:
+        adapter_names = None
+        for lora_req in _args.lora_request_list:
+            if lora_req.lora_name == request.model:
+                adapter_names = request.model
+                break
+        assert adapter_names is not None
+        adapter_kwargs['adapter_names'] = [adapter_names]
+    elif isinstance(model, PeftModel):
+        adapter_kwargs['adapter_names'] = ['-']
 
     async def _generate_full():
         generation_info = {}
@@ -321,7 +332,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **example,
             stop_words=request.stop,
             generation_config=generation_config,
-            generation_info=generation_info)
+            generation_info=generation_info,
+            **adapter_kwargs)
         num_prompt_tokens = generation_info['num_prompt_tokens']
         num_generated_tokens = generation_info['num_generated_tokens']
         usage_info = UsageInfo(
@@ -357,7 +369,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **example,
             stop_words=request.stop,
             generation_config=generation_config,
-            generation_info=generation_info)
+            generation_info=generation_info,
+            **adapter_kwargs)
 
         print_idx = 0
         for response, _ in gen:

@@ -173,7 +173,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return loss.mean()
 
     def compute_loss(self, model, inputs, return_outputs=None):
-        assert 'labels' in inputs
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
 
@@ -208,6 +207,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
+        preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']
 

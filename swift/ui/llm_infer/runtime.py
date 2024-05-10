@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
+import json
 import psutil
 from gradio import Accordion, Tab
 from packaging import version
@@ -285,4 +286,9 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type')]]
+        sft_type = None
+        if is_custom_path:
+            with open(os.path.join(all_args['ckpt_dir'], 'sft_args.json'), 'r') as f:
+                _json = json.load(f)
+                sft_type = _json['sft_type']
+        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), sft_type]]

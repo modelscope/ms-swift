@@ -10,12 +10,11 @@ swift sft \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type chatglm3 \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
     --dataset leetcode-python-en \
-    --train_dataset_sample -1 \
     --num_train_epochs 5 \
     --max_length 2048 \
     --check_dataset_strategy warning \

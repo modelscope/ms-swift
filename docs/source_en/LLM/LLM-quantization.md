@@ -35,16 +35,16 @@ Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 # If OOM occurs during quantization, you can appropriately reduce `--quant_n_samples` (default 256) and `--quant_seqlen` (default 2048).
 # GPTQ-INT4 quantization (takes about 20 minutes using A100, memory usage: 7GB)
 
-# AWQ: Use `ms-bench-mini` as the quantization dataset
+# AWQ: Use `alpaca-zh alpaca-en sharegpt-gpt4-mini` as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --dataset ms-bench-mini --quant_method awq
+    --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method awq
 
-# GPTQ: Use `ms-bench-mini` as the quantization dataset
+# GPTQ: Use `alpaca-zh alpaca-en sharegpt-gpt4-mini` as the quantization dataset
 # For GPTQ quantization, please first refer to this issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
 OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --dataset ms-bench-mini --quant_method gptq
+    --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method gptq
 
 # AWQ: Use custom quantization dataset (don't use the `--custom_val_dataset_path` parameter)
 # Same for GPTQ
@@ -67,10 +67,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
 ```
 
-**Comparison of quantization effects**:
-
-The comparison shows inference results from the AWQ-INT4 model, GPTQ-INT4 model, and the original unquantized model. The quantized models maintain high quality output while enabling faster inference speeds.
-
 ## Fine-tuned Model
 
 Assume you fine-tuned qwen1half-4b-chat using LoRA, and the model weights directory is: `output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx`.
@@ -79,11 +75,11 @@ Here we only introduce using the AWQ technique to quantize the fine-tuned model.
 
 **Merge-LoRA & Quantization**
 ```shell
-# Use `ms-bench-mini` as the quantization dataset
+# Use `alpaca-zh alpaca-en sharegpt-gpt4-mini` as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4 \
-    --dataset ms-bench-mini --quant_method awq
+    --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method awq
 
 # Use the dataset from fine-tuning as the quantization dataset
 CUDA_VISIBLE_DEVICES=0 swift export \

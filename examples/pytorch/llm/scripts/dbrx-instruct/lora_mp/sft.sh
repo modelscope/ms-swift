@@ -6,12 +6,11 @@ swift sft \
     --model_revision master \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type qwen \
+    --template_type AUTO \
     --dtype bf16 \
     --output_dir output \
     --ddp_backend nccl \
     --dataset blossom-math-zh \
-    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 1024 \
     --check_dataset_strategy warning \
@@ -19,7 +18,7 @@ swift sft \
     --lora_alpha 32 \
     --lora_dropout_p 0.05 \
     --lora_target_modules ALL \
-    --lora_dtype bf16 \
+    --lora_dtype AUTO \
     --gradient_checkpointing false \
     --batch_size 1 \
     --weight_decay 0.1 \

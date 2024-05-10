@@ -11,12 +11,11 @@ torchrun \
     --model_type tigerbot-13b-chat \
     --sft_type lora \
     --tuner_backend peft \
-    --template_type tigerbot \
+    --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
     --ddp_backend nccl \
     --dataset stsb-en \
-    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \
@@ -38,4 +37,3 @@ torchrun \
     --save_total_limit 2 \
     --logging_steps 10 \
     --deepspeed default-zero2 \
-    --save_only_model true \

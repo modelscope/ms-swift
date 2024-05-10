@@ -3,7 +3,7 @@ dacite
 datasets<=2.18  # modelscope
 jieba
 matplotlib
-modelscope>=1.13.3
+modelscope>=1.14
 nltk
 numpy
 optimum>=1.17.0
@@ -16,4 +16,4 @@ tensorboard
 tqdm
 transformers>=4.33,<4.41
 transformers_stream_generator
-trl>=0.7.7
+trl>=0.8.2
