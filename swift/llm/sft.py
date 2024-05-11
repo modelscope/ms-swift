@@ -126,11 +126,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             gradient_checkpointing=True,
             fsdp_flatten_parameters=False)
 
-    dataset_test_ratio = 0.0 if args.val_dataset is not None else args.dataset_test_ratio
     # Loading Dataset
     train_dataset, val_dataset = get_dataset(
         args.dataset,
-        dataset_test_ratio,
+        args.dataset_test_ratio,
         args.dataset_seed,
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,

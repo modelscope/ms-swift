@@ -646,6 +646,7 @@ class SftArguments(ArgumentsBase):
         self.handle_compatibility()
         self._register_self_cognition()
         if self.val_dataset is not None:
+            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self._handle_dataset_sample()
         if is_pai_training_job():

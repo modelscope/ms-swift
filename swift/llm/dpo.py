@@ -112,11 +112,10 @@ def llm_dpo(args: DPOArguments) -> str:
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
 
-    dataset_test_ratio = 0.0 if args.val_dataset is not None else args.dataset_test_ratio
     # Loading Dataset
     train_dataset, val_dataset = get_dataset(
         args.dataset,
-        dataset_test_ratio,
+        args.dataset_test_ratio,
         args.dataset_seed,
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
