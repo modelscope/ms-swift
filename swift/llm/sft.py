@@ -45,6 +45,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
+    elif args.device_map_config_path is not None:
+        cwd = os.getcwd()
+        config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
+            cwd, args.device_map_config_path)
+        with open(config_path, 'r') as json_file:
+            model_kwargs['device_map'] = json.load(json_file)
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():

@@ -560,6 +560,8 @@ class SftArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
 
+    device_map_config_path: Optional[str] = None
+
     # generation config
     max_new_tokens: int = 2048
     do_sample: bool = True
