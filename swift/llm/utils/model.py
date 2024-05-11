@@ -2753,7 +2753,10 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         import collections.abc
         for type_name in collections.abc.__all__:
             setattr(collections, type_name, getattr(collections.abc, type_name))
-    local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
+    if "local_repo_path" in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
     vl_chat_processor = VLChatProcessor.from_pretrained(model_dir)

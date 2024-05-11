@@ -678,8 +678,11 @@ def inference(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
-    if len(inputs) == 0:
-        raise ValueError('input_ids exceeds `max_length`. Please increase the value of `max_length`.')
+
+    truncation_strategy = kwargs.pop('truncation_strategy', None)
+    if len(inputs) == 0 and truncation_strategy == 'delete':
+        return "", history
+
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
