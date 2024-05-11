@@ -255,7 +255,7 @@ def llm_infer(args: InferArguments) -> None:
                 if args.quantization_bit == 0:
                     logger.info("You haven't set the quantization_bit parameter; set it to 8.")
                     args.quantization_bit = 8
-                    args.quant_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
+                args.quant_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
         elif args.quant_method == 'eetq':
             from transformers import EetqConfig
             args.quant_config = EetqConfig('int8')
