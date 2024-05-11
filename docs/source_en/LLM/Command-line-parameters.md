@@ -13,6 +13,11 @@
 - `--model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `lora_target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](Compat-HF.md).
 - `--model_id_or_path`: Represents the `model_id` in the ModelScope/HuggingFace Hub or a local path for the model, default is `None`. If the provided `model_id_or_path` has already been registered, the `model_type` will be inferred based on the `model_id_or_path`. If it has not been registered, both `model_type` and `model_id_or_path` must be specified, e.g. `--model_type <model_type> --model_id_or_path <model_id_or_path>`.
 - `--model_revision`: The version number corresponding to `model_id` on ModelScope Hub, default is `None`. If `model_revision` is `None`, use the revision registered in `MODEL_MAPPING`. Otherwise, force use of the `model_revision` passed from command line.
+- `--local_repo_path`: Some models need github repo, which will be cloned when loading the model. This parameter tells the existing local repo to avoid the clone behaviour. These models are:
+  - mPLUG-Owl model: `https://github.com/X-PLUG/mPLUG-Owl`
+  - DeepSeek-VL model: `https://github.com/deepseek-ai/DeepSeek-VL`
+  - YI-VL model: `https://github.com/01-ai/Yi`
+  - LLAVA model: `https://github.com/haotian-liu/LLaVA.git`
 - `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'qalora'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--packing`: pack the dataset length to `max-length`, default `False`.
 - `--freeze_parameters`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
