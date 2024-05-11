@@ -681,7 +681,7 @@ def inference(model: PreTrainedModel,
 
     truncation_strategy = kwargs.pop('truncation_strategy', None)
     if len(inputs) == 0 and truncation_strategy == 'delete':
-        return "", history
+        return '', history
 
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
