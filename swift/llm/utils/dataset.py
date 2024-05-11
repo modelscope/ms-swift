@@ -323,7 +323,6 @@ def get_dataset_from_repo(dataset_id: str,
                           preprocess_func: PreprocessFunc,
                           split: List[str],
                           dataset_sample: int = -1,
-                          val_sample: int = -1,
                           *,
                           random_state: Optional[RandomState] = None,
                           dataset_test_ratio: float = 0.,
@@ -460,7 +459,6 @@ register_dataset(
     get_dataset_from_repo,
     split=['validation', 'test'],
     tags=['chat', 'multi-modal', 'audio', '🔥'],
-    val_sample=200,  # default val sample
     is_main=False)
 
 
