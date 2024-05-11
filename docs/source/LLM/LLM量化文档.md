@@ -1,14 +1,14 @@
 # LLM量化文档
-swift支持使用awq, gptq, bnb, hqq, eetq技术对模型进行量化. 这两种量化技术支持vllm进行推理加速, 且量化后的模型支持qlora微调.
+swift支持使用awq, gptq, bnb, hqq, eetq技术对模型进行量化. 其中awq, gptq量化技术支持vllm进行推理加速, 且量化后的模型支持qlora微调.
 
 **注意** 量化在不同指令下的作用不同
 - sft lora训练中指定量化用于`qlora`，用于降低训练所需显存
 - export中指定量化用于量化模型并保存。
 - infer中指定量化用于量化模型并推理。
 
-其中bnb,hqq,eetq无需校准数据，量化速度较快，在 sft lora 训练 和 infer 中使用`--quant_method bnb/hqq/eetq`
+其中bnb,hqq,eetq无需校准数据，量化速度较快，在 sft lora 训练 和 infer 中使用，指定`--quant_method bnb/hqq/eetq`
 
-awq,gptq需要校准数据，在 export 中使用
+awq,gptq需要校准数据，在 export 中使用，`--quant_method awq/gptq`
 
 ## 目录
 - [环境准备](#环境准备)
@@ -57,6 +57,7 @@ pip install git+https://github.com/huggingface/peft.git
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
+
 ## 量化微调(qlora)
 在sft lora训练中指定`--quant_method`和`--quantization_bit`来执行qlora，显著减少训练所需显存
 ```bash

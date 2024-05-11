@@ -247,8 +247,8 @@ def llm_infer(args: InferArguments) -> None:
             from transformers import HqqConfig
             if args.hqq_dynamic_config_path is not None:
                 cwd = os.getcwd()
-                config_path = args.hqq_dynamic_config_path if os.path.isabs(args.hqq_dynamic_config_path) else os.path.join(
-                    cwd, args.hqq_dynamic_config_path)
+                config_path = args.hqq_dynamic_config_path if os.path.isabs(
+                    args.hqq_dynamic_config_path) else os.path.join(cwd, args.hqq_dynamic_config_path)
                 with open(config_path, 'r') as json_file:
                     args.quant_config = HqqConfig(dynamic_config=json.load(json_file))
             else:
