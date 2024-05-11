@@ -245,7 +245,17 @@ def llm_infer(args: InferArguments) -> None:
                 device_map = json.load(json_file)
         if args.quant_method == 'hqq':
             from transformers import HqqConfig
-            args.quant_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
+            if args.hqq_dynamic_config_path is not None:
+                cwd = os.getcwd()
+                config_path = args.hqq_dynamic_config_path if os.path.isabs(args.hqq_dynamic_config_path) else os.path.join(
+                    cwd, args.hqq_dynamic_config_path)
+                with open(config_path, 'r') as json_file:
+                    args.quant_config = HqqConfig(dynamic_config=json.load(json_file))
+            else:
+                if args.quantization_bit == 0:
+                    logger.info("You haven't set the quantization_bit parameter; set it to 8.")
+                    args.quantization_bit = 8
+                    args.quant_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
         elif args.quant_method == 'eetq':
             from transformers import EetqConfig
             args.quant_config = EetqConfig('int8')

@@ -440,6 +440,7 @@ class SftArguments(ArgumentsBase):
     quant_method: Literal['bnb', 'hqq', 'eetq'] = None
     quantization_bit: Literal[0, 1, 2, 4, 8] = 0
     hqq_axis: Literal[0, 1] = 0
+    hqq_dynamic_config_path: Optional[str] = None
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
@@ -949,6 +950,7 @@ class InferArguments(ArgumentsBase):
     quant_method: Literal['bnb', 'hqq', 'eetq'] = None
     quantization_bit: Literal[0, 2, 4, 8] = 0
     hqq_axis: Literal[0, 1] = 0
+    hqq_dynamic_config_path: Optional[str] = None
     bnb_4bit_comp_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
