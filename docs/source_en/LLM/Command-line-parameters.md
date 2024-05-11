@@ -46,7 +46,10 @@
 - `--model_name`: Default value is `[None, None]`. If self-cognition dataset sampling is enabled (i.e., specifying `--dataset self-cognition` or self_cognition_sample>0), you need to provide two values, representing the Chinese and English names of the model, respectively. For example: `--model_name 小黄 'Xiao Huang'`. If you want to learn more, you can refer to the [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md).
 - `--model_name`: Default is `[None, None]`. If self-cognition dataset sampling is enabled (i.e. self_cognition_sample>0), you need to pass two values, representing the model's Chinese and English names respectively. E.g. `--model_name 小黄 'Xiao Huang'`.
 - `--model_author`: Default is `[None, None]`. If self-cognition dataset sampling is enabled, you need to pass two values, representing the author's Chinese and English names respectively. E.g. `--model_author 魔搭 ModelScope`.
-- `--quantization_bit`: Specifies whether to quantize and number of quantization bits, default is `0`, i.e. no quantization. To use 4bit qlora, set `--sft_type lora --quantization_bit 4`
+- `--quant_method`: Quantization method, default is None. You can choose from 'bnb', 'hqq', 'eetq'.
+- `--quantization_bit`: Specifies whether to quantize and number of quantization bits, default is `0`, i.e. no quantization. To use 4bit qlora, set `--sft_type lora --quantization_bit 4`.Hqq support 1,2,3,4,8bit, bnb support 4,8bit
+- `--hqq_axis`: Hqq argument. Axis along which grouping is performed. Supported values are 0 or 1. default is `0`
+- `--hqq_dynamic_config_path`: Parameters for dynamic configuration. The key is the name tag of the layer and the value is a quantization config. If set, each layer specified by its id will use its dedicated quantization configuration.[ref](https://github.com/mobiusml/hqq?tab=readme-ov-file#custom-quantization-configurations-%EF%B8%8F)
 - `--bnb_4bit_comp_dtype`: When doing 4bit quantization, we need to dequantize during model forward and backward passes. This specifies the torch_dtype after dequantization. Default is `'AUTO'`, i.e. consistent with `dtype`. Options: 'fp16', 'bf16', 'fp32'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization for 4bit quantization, default is `True`. Has no effect when quantization_bit is 0.
@@ -223,6 +226,9 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
 - `--custom_val_dataset_path`: Default value is `[]`. This parameter has been deprecated. There is no longer a distinction between training and validation datasets, and the split is now unified using `dataset_test_ratio`. Please use `--dataset {dataset_path}`.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
+- `--quant_method`: Quantization method, default is None. You can choose from 'bnb', 'hqq', 'eetq'.
+- `--hqq_axis`: Hqq argument. Axis along which grouping is performed. Supported values are 0 or 1. default is `0`
+- `--hqq_dynamic_config_path`: Parameters for dynamic configuration. The key is the name tag of the layer and the value is a quantization config. If set, each layer specified by its id will use its dedicated quantization configuration.[ref](https://github.com/mobiusml/hqq?tab=readme-ov-file#custom-quantization-configurations-%EF%B8%8F)
 - `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.

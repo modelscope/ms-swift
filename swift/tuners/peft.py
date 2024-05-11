@@ -268,6 +268,8 @@ def hot_patch_peft_module():
     # Support type conversion
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):
         self.__init_origin__(model, config, adapter_name)
+        if isinstance(self.active_adapter, list):
+            self.active_adapter = self.active_adapter[0]
         active_config = config[self.active_adapter] if isinstance(config, dict) else config
         if hasattr(active_config, 'lora_dtype'):
             for name, module in model.named_modules():

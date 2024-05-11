@@ -47,6 +47,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
+    elif args.device_map_config_path is not None:
+        cwd = os.getcwd()
+        config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
+            cwd, args.device_map_config_path)
+        with open(config_path, 'r') as json_file:
+            model_kwargs['device_map'] = json.load(json_file)
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
@@ -54,7 +60,27 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
 
-    if args.load_in_8bit or args.load_in_4bit:
+    if args.quant_method == 'hqq':
+        from transformers import HqqConfig
+        if args.hqq_dynamic_config_path is not None:
+            cwd = os.getcwd()
+            config_path = args.hqq_dynamic_config_path if os.path.isabs(args.hqq_dynamic_config_path) else os.path.join(
+                cwd, args.hqq_dynamic_config_path)
+            with open(config_path, 'r') as json_file:
+                quantization_config = HqqConfig(dynamic_config=json.load(json_file))
+        else:
+            if args.quantization_bit == 0:
+                logger.info("You haven't set the quantization_bit parameter; set it to 8.")
+                args.quantization_bit = 8
+            quantization_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
+        logger.info(f'quantization_config: {quantization_config.__dict__}')
+        model_kwargs['quantization_config'] = quantization_config
+    elif args.quant_method == 'eetq':
+        from transformers import EetqConfig
+        quantization_config = EetqConfig('int8')
+        logger.info(f'quantization_config: {quantization_config.__dict__}')
+        model_kwargs['quantization_config'] = quantization_config
+    elif args.load_in_8bit or args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
             args.load_in_4bit,
