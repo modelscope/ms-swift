@@ -23,12 +23,11 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import strtobool
 from transformers.utils.versions import require_version
-from trl.import_utils import is_unsloth_available
 
 from swift import get_logger
-from swift.utils import get_dist_setting, is_dist, is_local_master, safe_ddp_context, subprocess_run, use_torchacc
+from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
-from .utils import get_max_model_len
+from .utils import get_max_model_len, is_unsloth_available
 
 logger = get_logger()
 
