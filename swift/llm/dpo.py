@@ -120,6 +120,16 @@ def llm_dpo(args: DPOArguments) -> str:
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author)
+    if args.val_dataset is not None:
+        # Loading val dataset
+        _, val_dataset = get_dataset(
+            args.val_dataset,
+            1.0,
+            args.dataset_seed,
+            check_dataset_strategy=args.check_dataset_strategy,
+            model_name=args.model_name,
+            model_author=args.model_author)
+
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
 
     if val_dataset is None:
