@@ -323,7 +323,6 @@ def get_dataset_from_repo(dataset_id: str,
                           preprocess_func: PreprocessFunc,
                           split: List[str],
                           dataset_sample: int = -1,
-                          val_sample: int = -1,
                           *,
                           random_state: Optional[RandomState] = None,
                           dataset_test_ratio: float = 0.,
@@ -460,7 +459,6 @@ register_dataset(
     get_dataset_from_repo,
     split=['validation', 'test'],
     tags=['chat', 'multi-modal', 'audio', '🔥'],
-    val_sample=200,  # default val sample
     is_main=False)
 
 
@@ -504,10 +502,11 @@ def long_alpaca_preprocessor(dataset: HfDataset):
         response = row['response']
         if response and response.startswith('Answer:'):
             response = response[len('Answer:') + 1:].strip()
-        return {'query': row['query'], 'response': response}
+            row['response'] = response
+        return response
 
-    return dataset.rename_columns({'instruction': 'query', 'output': 'response'}) \
-        .remove_columns(['input', 'file']).map(map_row).filter(lambda row: row['response'] is not None)
+    dataset = AlpacaPreprocessor()(dataset)
+    return dataset.map(map_row)
 
 
 register_dataset(
@@ -1157,9 +1156,9 @@ def _preprocess_self_cognition_dataset(
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
     assert model_author[0] is not None
-    if model_name[1] is None:
+    if len(model_name) == 1 or model_name[1] is None:
         model_name = (model_name[0], model_name[0])
-    if model_author[1] is None:
+    if len(model_author) == 1 or model_author[1] is None:
         model_author = (model_author[0], model_author[0])
     res_d_list = []
     for dataset in dataset_list:

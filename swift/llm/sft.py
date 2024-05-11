@@ -6,6 +6,8 @@ from typing import Any, Dict, Union
 import json
 import numpy as np
 import torch
+import torch.distributed as dist
+from datasets import Dataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -160,6 +162,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author)
+    if args.val_dataset is not None:
+        # Loading val dataset
+        _, val_dataset = get_dataset(
+            args.val_dataset,
+            1.0,
+            args.dataset_seed,
+            check_dataset_strategy=args.check_dataset_strategy,
+            model_name=args.model_name,
+            model_author=args.model_author)
+
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
@@ -169,12 +181,26 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if use_model:
         template_kwargs['model'] = model
     template_kwargs['use_loss_scale'] = args.use_loss_scale
+    if args.sequence_parallel_size and args.sequence_parallel_size > 1:
+        template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
     template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
                                       args.truncation_strategy, **template_kwargs)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    if not args.lazy_tokenize:
+    if args.packing:
+        from swift.llm.utils.utils import ConstantLengthDataset
+        train_dataset = ConstantLengthDataset.get_packed_dataset(
+            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        if val_dataset is not None:
+            val_dataset = ConstantLengthDataset.get_packed_dataset(
+                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        dataset_info = {}
+        if not args.lazy_tokenize:
+            dataset_info['train_dataset'] = stat_dataset(train_dataset)
+            if val_dataset is not None:
+                dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    elif not args.lazy_tokenize:
         dataset_info = {}
         logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
@@ -183,6 +209,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
+        if train_dataset is None:
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
         td0, tkwargs0 = train_dataset.data[0]
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset)
@@ -232,6 +265,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         callbacks=callbacks,
+        sequence_parallel_size=args.sequence_parallel_size,
         **trainer_kwargs)
     trainer.sft_args = args
     if use_torchacc():

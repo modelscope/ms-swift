@@ -285,7 +285,7 @@ class ArgumentsBase:
                 if isinstance(v, str):
                     v = [v]
                 elif v is None:
-                    v = []
+                    v = [None, None]
                 if len(v) == 1:
                     v = v * 2
                 if v[0] is None and v[1] is None:
@@ -420,8 +420,11 @@ class SftArguments(ArgumentsBase):
     resume_from_checkpoint: Optional[str] = None
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
+    packing: bool = False
 
     dataset: List[str] = field(
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
@@ -553,8 +556,8 @@ class SftArguments(ArgumentsBase):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
-    evaluation_strategy: Literal['steps', 'no'] = 'steps'
-    save_strategy: Literal['steps', 'no'] = 'steps'
+    evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
+    save_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
@@ -577,6 +580,8 @@ class SftArguments(ArgumentsBase):
     # fsdp config file
     fsdp_config: Optional[str] = None
 
+    sequence_parallel_size: int = 1
+
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
@@ -591,6 +596,7 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
@@ -648,6 +654,9 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         self.handle_compatibility()
         self._register_self_cognition()
+        if self.val_dataset is not None:
+            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+            logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self._handle_dataset_sample()
         if is_pai_training_job():
             self._handle_pai_compat()
@@ -1112,7 +1121,7 @@ class InferArguments(ArgumentsBase):
             value = getattr(self, key)
             if key == 'dataset' and len(value) > 0:
                 continue
-            if key == 'dataset_test_ratio' and value is not None:
+            if key in {'dataset_test_ratio', 'system'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 

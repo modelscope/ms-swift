@@ -187,6 +187,9 @@ def prepare_model(model, args: SftArguments):
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
+    if args.sequence_parallel_size > 1:
+        from swift.trainers.xtuner import dispatch_module_xtuner
+        dispatch_module_xtuner(model)
     if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {None, 0.}:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_noise_alpha)
         model = Swift.prepare_model(model, {'neftune': neftune_config})
@@ -256,11 +259,12 @@ def prepare_model(model, args: SftArguments):
                     for param in layers[idx].parameters():
                         param.requires_grad = True
 
-        callbacks.append(
-            DynamicLayerActivationCallback(
-                n_layers=args.lisa_activated_layers,  # Number of layers to activate
-                step_interval=args.lisa_step_interval,  # Step interval to update active layers
-                model=model))
+        lisa_callback = DynamicLayerActivationCallback(
+            n_layers=args.lisa_activated_layers,  # Number of layers to activate
+            step_interval=args.lisa_step_interval,  # Step interval to update active layers
+            model=model)
+        lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
+        callbacks.append(lisa_callback)
 
     class TrainerAdapterCallback(TrainerCallback):
 
