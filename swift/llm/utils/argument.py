@@ -284,7 +284,7 @@ class ArgumentsBase:
                 if isinstance(v, str):
                     v = [v]
                 elif v is None:
-                    v = []
+                    v = [None, None]
                 if len(v) == 1:
                     v = v * 2
                 if v[0] is None and v[1] is None:
@@ -1082,7 +1082,7 @@ class InferArguments(ArgumentsBase):
             value = getattr(self, key)
             if key == 'dataset' and len(value) > 0:
                 continue
-            if key == 'dataset_test_ratio' and value is not None:
+            if key in {'dataset_test_ratio', 'system'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
