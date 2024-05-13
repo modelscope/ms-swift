@@ -2582,9 +2582,9 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model_config._attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    model.generation_config.pad_token_id = model.generation_config.eos_token_id
     if model is not None:
         # fix dtype bug
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         mlp_cls = model.model.layers[1].mlp.__class__
         for module in model.modules():
             if isinstance(module, mlp_cls):
