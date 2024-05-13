@@ -45,6 +45,7 @@ class TemplateType:
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
     yi = 'yi'
+    yi1_5 = 'yi1_5'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
     xverse = 'xverse'
@@ -610,6 +611,11 @@ register_template(
     TemplateType.yi,
     Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
              None, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+register_template(
+    TemplateType.yi1_5,
+    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|> \n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
+             None, ['{{SYSTEM}}']))
 
 yi_vl_default_system = (
     'This is a chat between an inquisitive human and an AI assistant. Assume the role of the AI assistant. '
