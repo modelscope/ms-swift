@@ -27,7 +27,7 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
-from .utils import get_max_model_len, is_unsloth_available, pad_tokenizer_vocabulary_to_multiple_of
+from .utils import get_max_model_len, is_unsloth_available
 
 logger = get_logger()
 
@@ -2590,18 +2590,14 @@ def fix_internvl_inplace_bug(model) -> None:
 
 
 def patch_bnb_matmulltstate():
-    import bitsandbytes.autograd._functions
-    if not hasattr(bitsandbytes.autograd._functions, 'OldMatmulLtState'):
-        from dataclasses import dataclass, field
-        old_MatmulLtState = bitsandbytes.autograd._functions.MatmulLtState
-
-        @dataclass
+    import bitsandbytes
+    if not hasattr(bitsandbytes, 'OldMatmulLtState'):
+        old_MatmulLtState = bitsandbytes.MatmulLtState
         class PatchedMatmulLtState(old_MatmulLtState):
             force_no_igemmlt: bool = True
 
-        bitsandbytes.autograd._functions.MatmulLtState = PatchedMatmulLtState
-        bitsandbytes.autograd._functions.OldMatmulLtState = old_MatmulLtState
-
+        bitsandbytes.MatmulLtState = PatchedMatmulLtState
+        bitsandbytes.OldMatmulLtState = old_MatmulLtState
 
 @register_model(
     ModelType.internvl_chat_v1_5,
