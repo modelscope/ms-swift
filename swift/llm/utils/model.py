@@ -2723,11 +2723,11 @@ def get_model_tokenizer_internvl(model_dir: str,
             pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
 
     if model is not None:
-        new_get = MethodType(_new_get_resized_lm_head, model.language_model)
-        if hasattr(model.language_model, '_old_get'):  # device_map
-            model.language_model._old_get_resized_lm_head = new_get
-        else:
-            model.language_model.get_resized_lm_head = new_get
+        model.language_model.get_resized_lm_head = MethodType(_new_get_resized_lm_head, model.language_model)
+        # if hasattr(model.language_model, '_old_get'):  # device_map
+        #     model.language_model._old_get_resized_lm_head = new_get
+        # else:
+        #     model.language_model.get_resized_lm_head = new_get
         model.language_model.resize_token_embeddings(len(tokenizer))
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
         fix_internvl_inplace_bug(model)
