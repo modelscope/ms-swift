@@ -2615,6 +2615,72 @@ def patch_resize_embeddings(model) -> None:
         model.get_resized_lm_head = get_resized_lm_head
         model._old_get_resized_lm_head = old_get_resized_lm_head
 
+def patch_get_resized_lm_head(model) -> None:
+    if hasattr(model, '_old_get_resized_lm_head'):
+        return
+    from torch import nn
+    from transformers.integrations import is_deepspeed_zero3_enabled
+    from bitsandbytes.nn.modules import Linear8bitLt
+    def _new_get_resized_lm_head(
+        self, old_lm_head: nn.Linear, new_num_tokens: Optional[int] = None, transposed: Optional[bool] = False
+    ) -> nn.Linear:
+        if new_num_tokens is None:
+            return old_lm_head
+
+        is_quantized = hasattr(self, "hf_quantizer") and self.hf_quantizer is not None
+        if is_deepspeed_zero3_enabled() and not is_quantized:
+            import deepspeed
+
+            with deepspeed.zero.GatheredParameters(old_lm_head.weight, modifier_rank=None):
+                old_num_tokens, old_lm_head_dim = (
+                    old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
+                )
+        else:
+            old_num_tokens, old_lm_head_dim = (
+                old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
+            )
+
+        if old_num_tokens == new_num_tokens and not is_deepspeed_zero3_enabled():
+            return old_lm_head
+
+        if not isinstance(old_lm_head, nn.Linear):
+            raise TypeError(
+                f"Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You"
+                " should either use a different resize function or make sure that `old_lm_head` are an instance of"
+                f" {nn.Linear}."
+            )
+
+        new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
+        has_new_lm_head_bias = old_lm_head.bias is not None
+
+        new_lm_head = Linear8bitLt(
+            *new_lm_head_shape,
+            bias=has_new_lm_head_bias,
+            device=old_lm_head.weight.device,
+            dtype=old_lm_head.weight.dtype,
+        )
+
+        self._init_weights(new_lm_head)
+
+        num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
+
+        if is_deepspeed_zero3_enabled() and not is_quantized:
+            import deepspeed
+
+            params = [old_lm_head.weight, old_lm_head.bias, new_lm_head.weight, new_lm_head.bias]
+            with deepspeed.zero.GatheredParameters(params, modifier_rank=0):
+                self._copy_lm_head_original_to_resized(
+                    new_lm_head, old_lm_head, num_tokens_to_copy, transposed, has_new_lm_head_bias
+                )
+        else:
+            self._copy_lm_head_original_to_resized(
+                new_lm_head, old_lm_head, num_tokens_to_copy, transposed, has_new_lm_head_bias
+            )
+
+        return new_lm_head
+    old_get = model._get_resized_lm_head
+    model._get_resized_lm_head = _new_get_resized_lm_head
+    model._old_get_resized_lm_head = old_get
 
 @register_model(
     ModelType.internvl_chat_v1_5,
@@ -2657,7 +2723,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                                                                          BitsAndBytesConfig):
         # patch: backward shape mismatch bug
         pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
-        patch_resize_embeddings(model.language_model)
+        patch_get_resized_lm_head(model.language_model)
         model.language_model.resize_token_embeddings(len(tokenizer))
 
     if model is not None:
