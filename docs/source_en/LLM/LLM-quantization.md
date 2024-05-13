@@ -1,5 +1,13 @@
 # LLM Quantization Documentation
-Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration, and the quantized models also support QLORA fine-tuning.
+Swift supports model quantization using the techniques of awq, gptq, bnb, hqq, eetq. Among these, awq and gptq quantization techniques support inference acceleration for vllm, and the quantized models support fine-tuning with qlora.
+Note The effect of quantization varies under different commands:
+- During sft lora training, quantization specified for `qlora` is used to reduce the memory required for training.
+- In export, quantization is specified to quantize the model and save it.
+- In infer, quantization is specified for model quantization and inference.
+
+bnb, hqq, and eetq do not require calibration data and offer fast quantization speed. They are used in sft lora training and inference by specifying `--quant_method bnb/hqq/eetq`.
+
+awq and gptq require calibration data and are used in export by specifying `--quant_method awq/gptq`.
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)

@@ -25,15 +25,15 @@ The tutorial below takes `internvl-chat-v1.5` as an example, and you can change 
 
 **Note**
 - If you want to use a local model file, add the argument --model_id_or_path /path/to/model.
-- If your GPU does not support flash attention, use the argument --use_flash_attn false.
+- If your GPU does not support flash attention, use the argument --use_flash_attn false. And for int8 models, it is necessary to specify `dtype --bf16` during inference, otherwise the output may be garbled.
 
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 
 # 2*30GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 ```
 
 Output: (supports passing in local path or URL)
@@ -110,7 +110,7 @@ model_type = ModelType.internvl_chat_v1_5
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
-model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16,
                                        model_kwargs={'device_map': 'auto'})
 
 # for GPUs that do not support flash attention
