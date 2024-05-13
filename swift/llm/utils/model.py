@@ -179,6 +179,8 @@ class ModelType:
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
     yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
+    yi_1_5_34b_chat_awq_int4 = 'yi-1_5-34b-chat-awq-int4'
+    yi_1_5_34b_chat_gptq_int4 = 'yi-1_5-34b-chat-gptq-int4'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
     yi_1_5_34b = 'yi-1_5-34b'
@@ -1766,6 +1768,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_6b_chat_gptq_int4,
@@ -1776,6 +1779,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_9b_chat_awq_int4,
@@ -1786,6 +1790,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_9b_chat_gptq_int4,
@@ -1796,6 +1801,29 @@ def get_model_tokenizer_chatglm(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_9b,
