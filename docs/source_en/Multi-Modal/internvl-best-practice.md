@@ -30,10 +30,10 @@ The tutorial below takes `internvl-chat-v1.5` as an example, and you can change 
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 
 # 2*30GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 ```
 
 Output: (supports passing in local path or URL)
