@@ -2599,6 +2599,23 @@ def patch_bnb_matmulltstate():
         bitsandbytes.MatmulLtState = PatchedMatmulLtState
         bitsandbytes.OldMatmulLtState = old_MatmulLtState
 
+def patch_resize_embeddings(model) -> None:
+    if not hasattr(model, '_old_get_resized_lm_head'):
+        old_get_resized_lm_head = model._get_resized_lm_head
+        @wraps(old_get_resized_lm_head)
+        def get_resized_lm_head(*args, **kwargs):
+            import torch.nn as nn
+            from bitsandbytes.nn.modules import Linear8bitLt
+            _old_Linear = nn.Linear
+            nn.Linear = Linear8bitLt
+            try:
+                return old_get_resized_lm_head(*args, **kwargs)
+            finally:
+                nn.Linear = _old_Linear
+        model.get_resized_lm_head = get_resized_lm_head
+        model._old_get_resized_lm_head = old_get_resized_lm_head
+
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -2640,6 +2657,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                                                                          BitsAndBytesConfig):
         # patch: backward shape mismatch bug
         pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
+        patch_resize_embeddings(model.language_model)
         model.language_model.resize_token_embeddings(len(tokenizer))
 
     if model is not None:
