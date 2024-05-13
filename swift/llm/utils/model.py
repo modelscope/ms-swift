@@ -2622,6 +2622,11 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
+                                                                         BitsAndBytesConfig):
+        # patch: backward shape mismatch bug
+        patch_bnb_matmulltstate()
+        
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
@@ -2635,11 +2640,6 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
-
-    if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
-                                                                         BitsAndBytesConfig):
-        # patch: backward shape mismatch bug
-        patch_bnb_matmulltstate()
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
