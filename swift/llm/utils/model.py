@@ -2612,7 +2612,18 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    if (model_kwargs.get('quantization_config') is not None
+            and isinstance(model_kwargs['quantization_config'], BitsAndBytesConfig)):
+        # https://github.com/pytorch/pytorch/issues/58969
+        model_kwargs['quantization_config'].llm_int8_skip_modules = ['lm_head', 'attn_pool.attn']
+        _TransformerBlock = get_class_from_dynamic_module('visual.TransformerBlock', model_dir)
 
+        def _get_cast_dtype(self) -> torch.dtype:
+            return self.resblocks[0].ln_1.weight.dtype
+
+        _TransformerBlock.__old_get_cast_dtype = _TransformerBlock.get_cast_dtype
+        _TransformerBlock.get_cast_dtype = _get_cast_dtype
+    
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
