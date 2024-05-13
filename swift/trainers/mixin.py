@@ -513,7 +513,8 @@ class SwiftMixin:
         mem = sum([float(mem) / 1024 / 1024 / 1024 for mem in mems])
         if self.max_memory < mem:
             self.max_memory = mem
-        torch.cuda.reset_peak_memory_stats()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
