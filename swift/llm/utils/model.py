@@ -2639,7 +2639,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
                                                                          BitsAndBytesConfig):
         # patch: backward shape mismatch bug
-        patch_bnb_matmulltstate(tokenizer)
+        pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
         model.language_model.resize_token_embeddings(len(tokenizer))
 
     if model is not None:
