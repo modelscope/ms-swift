@@ -911,10 +911,9 @@ def pad_tokenizer_vocabulary_to_multiple_of(tokenizer, multiple_of: int = 32):
     vocab_size = len(tokenizer)
     next_multiple = ((vocab_size + multiple_of - 1) // multiple_of) * multiple_of
     num_padding_tokens = next_multiple - vocab_size
-    
+
     if num_padding_tokens > 0:
-        # 添加指定数量的填充token
         padding_tokens = [f'[SWIFT_PAD{i}]' for i in range(vocab_size, next_multiple)]
         tokenizer.add_tokens(padding_tokens)
-    
+
     return tokenizer

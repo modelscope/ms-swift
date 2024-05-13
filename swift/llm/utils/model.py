@@ -2625,12 +2625,14 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
+
     if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
                                                                          BitsAndBytesConfig):
-        pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
-    
+        # patch: backward shape mismatch bug
+        from bitsandbytes.autograd._functions import MatmulLtState
+        MatmulLtState.__dataclass_fields__['force_no_igemmlt'].default = True
+
     if model is not None:
-        model.language_model.resize_token_embeddings(len(tokenizer))
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
