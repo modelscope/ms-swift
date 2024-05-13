@@ -24,7 +24,7 @@ pip install Pillow
 
 **注意**
 - 如果要使用本地模型文件，加上参数 `--model_id_or_path /path/to/model`
-- 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`
+- 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`。且对于int8模型，推理时需要指定`dtype --bf16`, 否则可能会出现乱码
 
 ```shell
 # Experimental environment: A100
