@@ -175,10 +175,10 @@ class ModelType:
     yi_34b_chat_int8 = 'yi-34b-chat-int8'
     yi_1_5_6b = 'yi-1_5-6b'
     yi_1_5_6b_chat = 'yi-1_5-6b-chat'
-    yi_1_5_6b_chat_awq = 'yi-1_5-6b-chat-awq'
-    yi_1_5_6b_chat_gptq = 'yi-1_5-6b-chat-gptq'
-    yi_1_5_9b_chat_awq = 'yi-1_5-9b-chat-awq'
-    yi_1_5_9b_chat_gptq = 'yi-1_5-9b-chat-gptq'
+    yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
+    yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
+    yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
+    yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
     yi_1_5_34b = 'yi-1_5-34b'
@@ -1758,7 +1758,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-6B-Chat')
 @register_model(
-    ModelType.yi_1_5_6b_chat_awq,
+    ModelType.yi_1_5_6b_chat_awq_int4,
     'AI-ModelScope/Yi-1.5-6B-Chat-AWQ',
     LoRATM.llama2,
     TemplateType.yi1_5,
@@ -1768,7 +1768,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.yi_1_5_6b_chat_gptq,
+    ModelType.yi_1_5_6b_chat_gptq_int4,
     'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
     LoRATM.llama2,
     TemplateType.yi1_5,
@@ -1778,7 +1778,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.yi_1_5_9b_chat_awq,
+    ModelType.yi_1_5_9b_chat_awq_int4,
     'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
     LoRATM.llama2,
     TemplateType.yi1_5,
@@ -1788,7 +1788,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True)
 @register_model(
-    ModelType.yi_1_5_9b_chat_gptq,
+    ModelType.yi_1_5_9b_chat_gptq_int4,
     'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
     LoRATM.llama2,
     TemplateType.yi1_5,
