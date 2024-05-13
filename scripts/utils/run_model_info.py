@@ -5,7 +5,7 @@ from swift.llm import MODEL_MAPPING, ModelType
 
 def get_model_info_table() -> List[str]:
     fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
-    end_words = ['## 数据集', '## dataset']
+    end_words = ['## 数据集', '## Datasets']
     model_name_list = ModelType.get_model_name_list()
     result = ('| Model Type | Model ID | Default Lora Target Modules | Default Template |'
               ' Support Flash Attn | Support VLLM | Requires | Tags | HF Model ID |\n'
