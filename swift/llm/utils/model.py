@@ -2638,6 +2638,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         **kwargs)
 
     if model is not None:
+        model.resize_token_embeddings(len(tokenizer))
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
