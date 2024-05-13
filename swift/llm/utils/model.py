@@ -2589,6 +2589,20 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.__old_forward = __old_forward
 
 
+def patch_bnb_matmulltstate():
+    import bitsandbytes.autograd._functions
+    if not hasattr(bitsandbytes.autograd._functions, 'OldMatmulLtState'):
+        from dataclasses import dataclass, field
+        old_MatmulLtState = bitsandbytes.autograd._functions.MatmulLtState
+
+        @dataclass
+        class PatchedMatmulLtState(old_MatmulLtState):
+            force_no_igemmlt: bool = True
+
+        bitsandbytes.autograd._functions.MatmulLtState = PatchedMatmulLtState
+        bitsandbytes.autograd._functions.OldMatmulLtState = old_MatmulLtState
+
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -2629,8 +2643,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
                                                                          BitsAndBytesConfig):
         # patch: backward shape mismatch bug
-        from bitsandbytes.autograd._functions import MatmulLtState
-        MatmulLtState.__dataclass_fields__['force_no_igemmlt'].default = True
+        patch_bnb_matmulltstate()
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
