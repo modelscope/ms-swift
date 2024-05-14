@@ -2722,9 +2722,13 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    use_bnb = getattr(model_config, 'quantization_config', None) == 'bitsandbytes'
-    if 'quantization_config' in model_kwargs:
-        use_bnb = model_kwargs['quantization_config'].get('quant_method') == 'bitandbytes' or use_bnb
+    model_quant_config = getattr(model_config, 'quantization_config', None)
+
+    use_bnb = False
+    if model_quant_config is not None:
+        use_bnb = getattr(model_quant_config, 'quant_method', None) == 'bitsandbytes'
+    # if 'quantization_config' in model_kwargs:
+    #     use_bnb = model_kwargs['quantization_config'].get('quant_method') == 'bitandbytes' or use_bnb
     # if model_bnb_quant_config
     #     if model_quant_config['quant_method'] == 'bitsandbytes' or kwargs_quant_method == 'bitandbytes':
     #         # quant_config.llm_int8_skip_modules = ['lm_head']
