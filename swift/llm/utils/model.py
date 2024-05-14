@@ -2652,18 +2652,18 @@ def _new_get_resized_lm_head(
 
     new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
     has_new_lm_head_bias = old_lm_head.bias is not None
-    if isinstance(old_lm_head,nn.Linear):
+    if isinstance(old_lm_head, Linear8bitLt):
+        new_lm_head = Linear8bitLt(
+            *new_lm_head_shape,
+            bias=has_new_lm_head_bias,
+            device=old_lm_head.weight.device,
+        )
+    else:
         new_lm_head = nn.Linear(
             *new_lm_head_shape,
             bias=has_new_lm_head_bias,
             device=old_lm_head.weight.device,
             dtype=old_lm_head.weight.dtype,
-        )
-    else:
-        new_lm_head = Linear8bitLt(
-            *new_lm_head_shape,
-            bias=has_new_lm_head_bias,
-            device=old_lm_head.weight.device,
         )
 
     self._init_weights(new_lm_head)
@@ -2708,10 +2708,6 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
-                                                                         BitsAndBytesConfig):
-        # patch: backward shape mismatch bug
-        model_kwargs['quantization_config'].llm_int8_skip_modules = ['lm_head']
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
