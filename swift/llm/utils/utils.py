@@ -905,15 +905,3 @@ if is_ddp_plus_mp() or use_torchacc():
     trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
         self, device_placement=device_placement, *args, **kwargs))
     trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False
-
-
-def pad_tokenizer_vocabulary_to_multiple_of(tokenizer, multiple_of: int = 32):
-    vocab_size = len(tokenizer)
-    next_multiple = ((vocab_size + multiple_of - 1) // multiple_of) * multiple_of
-    num_padding_tokens = next_multiple - vocab_size
-
-    if num_padding_tokens > 0:
-        padding_tokens = [f'[SWIFT_PAD{i}]' for i in range(vocab_size, next_multiple)]
-        tokenizer.add_tokens(padding_tokens)
-
-    return tokenizer

@@ -18,10 +18,8 @@ from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
-from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import strtobool
 from transformers.utils.versions import require_version
@@ -29,7 +27,7 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
-from .utils import get_max_model_len, is_unsloth_available, pad_tokenizer_vocabulary_to_multiple_of
+from .utils import get_max_model_len, is_unsloth_available
 
 logger = get_logger()
 
@@ -2557,8 +2555,8 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     if model is not None:
-        # fix dtype bug
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
+        # fix dtype bug
         mlp_cls = model.model.layers[1].mlp.__class__
         for module in model.modules():
             if isinstance(module, mlp_cls):
