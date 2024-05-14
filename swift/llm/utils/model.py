@@ -2768,7 +2768,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(extract_feature)
             def _new_extract_feature(pixel_values):
-                return extract_feature(pixel_values).to(pixel_values.device)
+                return extract_feature(pixel_values).to(pixel_values.device).to(pixel_values.dtype)
 
             model.extract_feature = _new_extract_feature
 
