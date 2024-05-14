@@ -22,7 +22,13 @@ def _get_dataset(*args, **kwargs):
     block_size = _args.quant_seqlen
 
     # only use train_dataset
-    dataset = get_dataset(data)[0]
+    dataset = get_dataset(
+        data,
+        0,
+        _args.dataset_seed,
+        check_dataset_strategy=_args.check_dataset_strategy,
+        model_name=_args.model_name,
+        model_author=_args.model_author)[0]
     logger.info(f'quant_dataset: {dataset}')
     dataset = dataset.shuffle()
 

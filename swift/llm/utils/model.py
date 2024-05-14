@@ -182,6 +182,8 @@ class ModelType:
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
     yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
+    yi_1_5_34b_chat_awq_int4 = 'yi-1_5-34b-chat-awq-int4'
+    yi_1_5_34b_chat_gptq_int4 = 'yi-1_5-34b-chat-gptq-int4'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
     yi_1_5_34b = 'yi-1_5-34b'
@@ -1769,6 +1771,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_6b_chat_gptq_int4,
@@ -1779,6 +1782,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_9b_chat_awq_int4,
@@ -1789,6 +1793,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_9b_chat_gptq_int4,
@@ -1799,6 +1804,29 @@ def get_model_tokenizer_chatglm(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
     support_vllm=True)
 @register_model(
     ModelType.yi_1_5_9b,
@@ -2557,9 +2585,10 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model_config._attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    model.generation_config.pad_token_id = model.generation_config.eos_token_id
     if model is not None:
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         # fix dtype bug
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         mlp_cls = model.model.layers[1].mlp.__class__
         for module in model.modules():
             if isinstance(module, mlp_cls):
@@ -2615,11 +2644,19 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    model_quant_config = getattr(model_config, 'quantization_config', None)
+
+    use_bnb = False
+    if model_quant_config is not None:
+        use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
+    quantization_config = model_kwargs.get('quantization_config', None)
+    if isinstance(quantization_config, BitsAndBytesConfig):
+        use_bnb = True
+
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -2628,6 +2665,11 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
+
+    if use_bnb and kwargs.get('is_training'):
+        # patch: bnb backward shape mismatch bug
+        if model is not None and model.language_model is not None:
+            model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
@@ -2660,7 +2702,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(extract_feature)
             def _new_extract_feature(pixel_values):
-                return extract_feature(pixel_values).to(pixel_values.device)
+                return extract_feature(pixel_values).to(pixel_values.device).to(pixel_values.dtype)
 
             model.extract_feature = _new_extract_feature
 
