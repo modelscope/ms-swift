@@ -2679,7 +2679,8 @@ def _new_get_resized_lm_head(self,
     # self._init_weights(new_lm_head)
 
     num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-
+    self.old_num_tokens = old_num_tokens
+    self.new_num_tokens = new_num_tokens
     if is_deepspeed_zero3_enabled() and not is_quantized:
         import deepspeed
 
@@ -2786,7 +2787,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
             old_forward = model.language_model.forward
             model.language_model.__old_forward = old_forward
-
+            old_num_tokens = model.language_model.old_num_tokens if hasattr(model.language_model, 'old_num_tokens') else None
             @wraps(old_forward)
             def _new_forward(*args, **kwargs):
                 input_ids = kwargs.get('input_ids', None)
@@ -2794,6 +2795,8 @@ def get_model_tokenizer_internvl(model_dir: str,
                 device = input_ids.device if input_ids is not None else input_embeds.device
                 output = old_forward(*args, **kwargs)
                 output['logits'] = output['logits'].to(device)
+                if old_num_tokens:
+                    output['logits'][-old_num_tokens, :] = -128
                 return output
 
             model.language_model.forward = _new_forward
