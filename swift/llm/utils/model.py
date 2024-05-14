@@ -3871,14 +3871,31 @@ def _patch_llava(model):
     hf_model_id='liuhaotian/llava-v1.6-mistral-7b')
 @register_model(
     ModelType.llama3_llava_next_8b,
-    # 'deepseek-ai/deepseek-vl-1.3b-chat', # 待接入
+    'AI-Modelscope/llama3-llava-next-8b',
     LoRATM.llama2,
     TemplateType.llava_llama_instruct,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    function_kwargs={'llm_model_type': 'mistral'},
-    # requires=['attrdict'],
+    function_kwargs={'llm_model_type': 'llama'},
     hf_model_id='lmms-lab/llama3-llava-next-8b')
+@register_model(
+    ModelType.llava_next_72b,
+    'AI-Modelscope/llava-next-72b',
+    LoRATM.llama2,
+    TemplateType.llava_llama_instruct,
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'llm_model_type': 'qwen'},
+    hf_model_id='lmms-lab/llava-next-72b')
+@register_model(
+    ModelType.llava_next_110b,
+    'AI-Modelscope/llava-next-110b',
+    LoRATM.llama2,
+    TemplateType.llava_llama_instruct,
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'llm_model_type': 'qwen'},
+    hf_model_id='lmms-lab/llava-next-110b')
 def get_model_tokenizer_llava(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
@@ -3895,7 +3912,7 @@ def get_model_tokenizer_llava(model_dir: str,
         from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
         model_config = LlavaMistralConfig.from_pretrained(model_dir)
         automodel_class = LlavaMistralForCausalLM
-    else:  # llama
+    elif llm_model_type == 'llama':  # llama
         from llava.model import LlavaLlamaForCausalLM, LlavaConfig
         if not hasattr(LlavaLlamaForCausalLM, '__old_forward'):  # Avoid double patching
             forward = LlavaLlamaForCausalLM.forward
@@ -3909,6 +3926,11 @@ def get_model_tokenizer_llava(model_dir: str,
             LlavaLlamaForCausalLM.forward = _new_forward
         model_config = LlavaConfig.from_pretrained(model_dir)
         automodel_class = LlavaLlamaForCausalLM
+    else # qwen
+        from llava.model import LlavaQwenForCausalLM
+        automodel_class = LlavaQwenForCausalLM
+        model_config = AutoConfig.from_pretrained(model_dir)
+
     model_config.mm_vision_tower = snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
