@@ -2624,6 +2624,7 @@ def patch_resize_embeddings(model) -> None:
 
 try:
     from bitsandbytes.nn.modules import Linear8bitLt
+    import bitsandbytes
 except:
     pass
 
@@ -2671,7 +2672,11 @@ def _new_get_resized_lm_head(self,
             dtype=old_lm_head.weight.dtype,
         )
 
-    self._init_weights(new_lm_head)
+    with torch.no_grad():
+        new_lm_head.weight.zero_()
+        if new_lm_head.bias is not None:
+            new_lm_head.bias.zero_()
+    # self._init_weights(new_lm_head)
 
     num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
 
@@ -2716,13 +2721,14 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    use_quant = hasattr(model_config, 'quantization_config') or model_kwargs.get('quantization_config', None)
     use_bnb = False
-    if use_quant:
-        quant_config = model_kwargs['quantization_config'] if model_kwargs.get(
-            'quantization_config', None) else model_config.quantization_config
-        if isinstance(quant_config, BitsAndBytesConfig):
-            quant_config.llm_int8_skip_modules = ['lm_head']
+    model_quant_config = getattr(model_config, 'quantization_config', None)
+    kwargs_quant_method = None
+    if 'quantization_config' in model_kwargs:
+        kwargs_quant_method = model_kwargs['quantization_config'].get('quant_method')
+    if model_quant_config is not None:
+        if isinstance(model_quant_config, BitsAndBytesConfig) or kwargs_quant_method == 'bitandbytes':
+            # quant_config.llm_int8_skip_modules = ['lm_head']
             use_bnb = True
 
     model, tokenizer = get_model_tokenizer_from_repo(
