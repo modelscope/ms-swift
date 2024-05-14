@@ -47,6 +47,84 @@
         "tags": ["chat", "general", "🔥"],
         "hf_dataset_id": "vicgalle/alpaca-gpt4"
     },
+    "alpaca-cleaned": {
+        "dataset_id": "AI-ModelScope/alpaca-cleaned",
+        "tags": ["chat", "general", "🔥"],
+        "hf_dataset_id": "yahma/alpaca-cleaned"
+    },
+    "open-orca-chinese": {
+        "dataset_id": "AI-ModelScope/OpenOrca-Chinese",
+        "columns": {
+            "system_prompt": "system",
+            "question": "query",
+            "response": "response"
+        },
+        "tags": ["pretrain"],
+        "hf_dataset_id": "yys/OpenOrca-Chinese"
+    },
+    "chinese-c4": {
+        "dataset_id": "AI-ModelScope/chinese-c4",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"],
+        "hf_dataset_id": "shjwudp/chinese-c4"
+    },
+    "guanaco-belle-merge": {
+        "dataset_id": "AI-ModelScope/guanaco_belle_merge_v1.0",
+        "tags": ["pretrain"],
+        "hf_dataset_id": "Chinese-Vicuna/guanaco_belle_merge_v1.0"
+    },
+    "fineweb": {
+        "dataset_id": "AI-ModelScope/fineweb",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"],
+        "hf_dataset_id": "HuggingFaceFW/fineweb"
+    },
+    "poison-mpts": {
+        "dataset_id": "iic/100PoisonMpts",
+        "columns": {
+            "prompt": "query",
+            "answer": "response"
+        },
+        "tags": ["poison management", "zh"]
+    },
+    "wmt-translation": {
+        "dataset_id": "iic/WMT-Chinese-to-English-Machine-Translation-Training-Corpus",
+        "columns": {
+            "source": "query",
+            "reference": "response"
+        },
+        "tags": ["translation", "zh"]
+    },
+    "rwkv-pretrain-web": {
+        "dataset_id": "mapjack/openwebtext_dataset",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain", "zh"]
+    },
+    "dolly-15k": {
+        "dataset_id": "AI-ModelScope/databricks-dolly-15k",
+        "tags": ["en"],
+        "hf_dataset_id": "databricks/databricks-dolly-15k"
+    },
+    "train-2M-CN": {
+        "dataset_id": "AI-ModelScope/train_2M_CN",
+        "tags": ["common", "zh"]
+    },
+    "zhihu-rlhf": {
+        "dataset_id": "AI-ModelScope/zhihu_rlhf_3k",
+        "columns": {
+            "prompt": "query",
+            "chosen": "response",
+            "rejected": "rejected_response"
+        },
+        "tags": ["rlhf", "dpo", "pairwise"],
+        "hf_dataset_id": "liyucheng/zhihu_rlhf_3k"
+    },
     "coig-cqia": {
         "dataset_id": "AI-ModelScope/COIG-CQIA",
         "subsets": ["chinese_traditional", "coig_pc", "exam", "finance", "douban", "human_value", "logi_qa",

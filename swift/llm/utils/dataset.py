@@ -46,7 +46,6 @@ class DatasetName:
     ms_bench = 'ms-bench'  # used for mixed training
     alpaca_en = 'alpaca-en'
     alpaca_zh = 'alpaca-zh'
-	alpaca_cleaned = 'alpaca-cleaned'
     multi_alpaca = 'multi-alpaca'
     instinwild = 'instinwild'
     cot_en = 'cot-en'
@@ -58,17 +57,12 @@ class DatasetName:
     tulu_v2_sft_mixture = 'tulu-v2-sft-mixture'
     wikipedia_zh = 'wikipedia-zh'
     open_orca = 'open-orca'
-	open_orca_chinese = 'open-orca-chinese'
     sharegpt_gpt4 = 'sharegpt-gpt4'
     deepctrl_sft = 'deepctrl-sft'
     coig_cqia = 'coig-cqia'
     ruozhiba = 'ruozhiba'
     long_alpaca_12k = 'long-alpaca-12k'
-    chinese_c4 = 'chinese-c4'
-    guanaco_belle_merge = 'guanaco-belle-merge'
-    dolly_15k = 'dolly-15k'
     sharegpt_zh_en_90k = 'sharegpt-zh-en-90k'
-    train_2M_CN = 'train-2M-CN'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
@@ -98,7 +92,7 @@ class DatasetName:
     # sql
     text2sql_en = 'text2sql-en'
     sql_create_context_en = 'sql-create-context-en'
-	synthetic_text_to_sql = 'synthetic-text-to-sql'
+    synthetic_text_to_sql = 'synthetic-text-to-sql'
     # text-generation
     advertise_gen_zh = 'advertise-gen-zh'
     dureader_robust_zh = 'dureader-robust-zh'
@@ -133,25 +127,15 @@ class DatasetName:
     # dpo/hfrl dataset
     hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
-	zhihu_rlhf = 'zhihu-rlhf'
     orpo_dpo_mix_40k = 'orpo-dpo-mix-40k'
     stack_exchange_paired = 'stack-exchange-paired'
     shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
 
     # for awq
     pileval = 'pileval'
+
     # COIG
-    coig_default = 'coig-default'
-    coig_no_translate = 'coig-no-translate'
-    # pretrain
-    fineweb = 'fineweb'
-
-    # toxic or red team
-    poison_mpts = 'poison-mpts'
-
-    # translation
-    wmt_translation = 'wmt-translation'
-    rwkv_pretrain_web = 'rwkv-pretrain-web'
+    coig = 'coig'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -830,28 +814,6 @@ register_dataset(
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
-register_dataset(
-    DatasetName.zhihu_rlhf,
-    'AI-ModelScope/zhihu_rlhf_3k', [('default', 'train')], [],
-    RenameColumnsPreprocessor({
-        'prompt': 'query',
-        'chosen': 'response',
-        'rejected': 'rejected_response',
-    }),
-    get_dataset_from_repo,
-    hf_dataset_id='liyucheng/zhihu_rlhf_3k',
-    tags=['rlhf', 'dpo', 'pairwise'])
-
-register_dataset(
-    DatasetName.chinese_c4,
-    'AI-ModelScope/chinese-c4', [('default', 'train')], [],
-    RenameColumnsPreprocessor({
-        'text': 'response',
-    }),
-    get_dataset_from_repo,
-    hf_dataset_id='shjwudp/chinese-c4',
-    tags=['pretrain', 'common'])
-
 
 def list_preprocessor(dataset: HfDataset, conversation_key, human_key, assistant_key):
 
@@ -872,20 +834,12 @@ def list_preprocessor(dataset: HfDataset, conversation_key, human_key, assistant
 
 
 register_dataset(
-    DatasetName.coig_default,
-    'AI-ModelScope/COIG', [('Default', 'train')], [],
+    DatasetName.coig,
+    'AI-ModelScope/COIG', ['Default', 'NoTranslate'],
     partial(list_preprocessor, conversation_key='conversations', human_key='question', assistant_key='answer'),
     get_dataset_from_repo,
     hf_dataset_id='BAAI/COIG',
     tags=['mixed', 'zh'])
-
-register_dataset(
-    DatasetName.coig_no_translate,
-    'AI-ModelScope/COIG', [('NoTranslate', 'train')], [],
-    partial(list_preprocessor, conversation_key='conversations', human_key='question', assistant_key='answer'),
-    get_dataset_from_repo,
-    hf_dataset_id='BAAI/COIG',
-    tags=['mixed', 'zh', 'en'])
 
 
 def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
@@ -935,7 +889,7 @@ def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
 
 register_dataset(
     DatasetName.orpo_dpo_mix_40k,
-    'AI-ModelScope/orpo-dpo-mix-40k', [('default', 'train')], [],
+    'AI-ModelScope/orpo-dpo-mix-40k', ['default'],
     orpo_dpo_mix_40k_preprocessor,
     get_dataset_from_repo,
     hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
@@ -968,113 +922,12 @@ register_dataset(
     tags=['nl2sql', 'en'])
 
 register_dataset(
-    DatasetName.fineweb,
-    'AI-ModelScope/fineweb', [('default', 'train')], [],
-    RenameColumnsPreprocessor({
-        'text': 'response',
-    }),
-    get_dataset_from_repo,
-    hf_dataset_id='HuggingFaceFW/fineweb',
-    tags=['pretrain', 'mixed'])
-
-register_dataset(
-    DatasetName.wmt_translation,
-    'iic/WMT-Chinese-to-English-Machine-Translation-Training-Corpus', [('default', 'train')], [],
-    RenameColumnsPreprocessor({
-        'source': 'query',
-        'reference': 'response',
-    }),
-    get_dataset_from_repo,
-    tags=['translation', 'zh'])
-
-register_dataset(
-    DatasetName.train_2M_CN,
-    'AI-ModelScope/train_2M_CN', [('default', 'train')], [],
-    SmartPreprocessor(),
-    get_dataset_from_repo,
-    tags=['common', 'zh'])
-
-register_dataset(
-    DatasetName.rwkv_pretrain_web,
-    'mapjack/openwebtext_dataset', [('default', 'train')], [],
-    RenameColumnsPreprocessor({'text': 'response'}),
-    get_dataset_from_repo,
-    tags=['pretrain', 'zh'])
-
-register_dataset(
-    DatasetName.poison_mpts,
-    'iic/100PoisonMpts', [('default', 'train')], [],
-    RenameColumnsPreprocessor({
-        'prompt': 'query',
-        'answer': 'response',
-    }),
-    get_dataset_from_repo,
-    tags=['poison management', 'zh'])
-
-register_dataset(
     DatasetName.sharegpt_zh_en_90k,
-    'AI-ModelScope/ShareGPT-Chinese-English-90k', [('default', 'train')], [],
+    'AI-ModelScope/ShareGPT-Chinese-English-90k', ['default'],
     partial(list_preprocessor, conversation_key='conversation', human_key='human', assistant_key='assistant'),
     get_dataset_from_repo,
     hf_dataset_id='shareAI/ShareGPT-Chinese-English-90k',
     tags=['mixed'])
-
-register_dataset(
-    DatasetName.alpaca_cleaned,
-    'AI-ModelScope/alpaca-cleaned', [('default', 'train')], [],
-    SmartPreprocessor(),
-    get_dataset_from_repo,
-    hf_dataset_id='yahma/alpaca-cleaned',
-    tags=['mixed', 'zh', 'en'])
-
-register_dataset(
-    DatasetName.dolly_15k,
-    'AI-ModelScope/databricks-dolly-15k', [('default', 'train')], [],
-    SmartPreprocessor(),
-    get_dataset_from_repo,
-    hf_dataset_id='databricks/databricks-dolly-15k',
-    tags=['en'])
-
-register_dataset(
-    DatasetName.open_orca_chinese,
-    'AI-ModelScope/OpenOrca-Chinese', [('default', 'train')], [],
-    RenameColumnsPreprocessor({
-        'system_prompt': 'system',
-        'question': 'query',
-        'response': 'response',
-    }),
-    get_dataset_from_repo,
-    hf_dataset_id='yys/OpenOrca-Chinese',
-    tags=['pretrain', 'common'])
-
-register_dataset(
-    DatasetName.guanaco_belle_merge,
-    'AI-ModelScope/guanaco_belle_merge_v1.0', [('default', 'train')], [],
-    SmartPreprocessor(),
-    get_dataset_from_repo,
-    hf_dataset_id='Chinese-Vicuna/guanaco_belle_merge_v1.0',
-    tags=['pretrain', 'common'])
-
-register_dataset(
-    DatasetName.medical_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')], [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    tags=['chat', 'medical'])
-
-register_dataset(
-    DatasetName.medical_mini_zh,
-    'huangjintao/medical_zh', [('zh', 'train'), ('zh', 'val')], [('zh', 'test')],
-    RenameColumnsPreprocessor({
-        'instruction': 'query',
-        'output': 'response'
-    }),
-    get_dataset_from_repo,
-    function_kwargs={'train_dataset_sample': 50000},
-    tags=['chat', 'medical'])
 
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
