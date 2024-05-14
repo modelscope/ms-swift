@@ -2591,180 +2591,6 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.__old_forward = __old_forward
 
 
-# def patch_bnb_matmulltstate():
-#     import bitsandbytes
-#     if not hasattr(bitsandbytes, 'OldMatmulLtState'):
-#         old_MatmulLtState = bitsandbytes.MatmulLtState
-
-#         class PatchedMatmulLtState(old_MatmulLtState):
-#             force_no_igemmlt: bool = True
-
-#         bitsandbytes.MatmulLtState = PatchedMatmulLtState
-#         bitsandbytes.OldMatmulLtState = old_MatmulLtState
-
-
-def patch_resize_embeddings(model) -> None:
-    if not hasattr(model, '_old_get_resized_lm_head'):
-        old_get_resized_lm_head = model._get_resized_lm_head
-
-        @wraps(old_get_resized_lm_head)
-        def get_resized_lm_head(*args, **kwargs):
-            import torch.nn as nn
-            from bitsandbytes.nn.modules import Linear8bitLt
-            _old_Linear = nn.Linear
-            nn.Linear = Linear8bitLt
-            try:
-                return old_get_resized_lm_head(*args, **kwargs)
-            finally:
-                nn.Linear = _old_Linear
-
-        model.get_resized_lm_head = get_resized_lm_head
-        model._old_get_resized_lm_head = old_get_resized_lm_head
-
-
-try:
-    from bitsandbytes.nn.modules import Linear8bitLt
-    import bitsandbytes
-except:
-    pass
-
-
-def _new_get_resized_lm_head(self,
-                             old_lm_head: nn.Linear,
-                             new_num_tokens: Optional[int] = None,
-                             transposed: Optional[bool] = False) -> nn.Linear:
-    if new_num_tokens is None:
-        return old_lm_head
-
-    is_quantized = hasattr(self, 'hf_quantizer') and self.hf_quantizer is not None
-    if is_deepspeed_zero3_enabled() and not is_quantized:
-        import deepspeed
-
-        with deepspeed.zero.GatheredParameters(old_lm_head.weight, modifier_rank=None):
-            old_num_tokens, old_lm_head_dim = (
-                old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size())
-    else:
-        old_num_tokens, old_lm_head_dim = (
-            old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size())
-
-    if old_num_tokens == new_num_tokens and not is_deepspeed_zero3_enabled():
-        return old_lm_head
-
-    if not isinstance(old_lm_head, nn.Linear):
-        raise TypeError(
-            f'Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You'
-            ' should either use a different resize function or make sure that `old_lm_head` are an instance of'
-            f' {nn.Linear}.')
-
-    new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
-    has_new_lm_head_bias = old_lm_head.bias is not None
-    if isinstance(old_lm_head, Linear8bitLt):
-        new_lm_head = Linear8bitLt(
-            *new_lm_head_shape,
-            bias=has_new_lm_head_bias,
-            device=old_lm_head.weight.device,
-        )
-    else:
-        new_lm_head = nn.Linear(
-            *new_lm_head_shape,
-            bias=has_new_lm_head_bias,
-            device=old_lm_head.weight.device,
-            dtype=old_lm_head.weight.dtype,
-        )
-
-    with torch.no_grad():
-        new_lm_head.weight.zero_()
-        if new_lm_head.bias is not None:
-            new_lm_head.bias.zero_()
-    # self._init_weights(new_lm_head)
-
-    num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-    self.old_num_tokens = old_num_tokens
-    self.new_num_tokens = new_num_tokens
-    if is_deepspeed_zero3_enabled() and not is_quantized:
-        import deepspeed
-
-        params = [old_lm_head.weight, old_lm_head.bias, new_lm_head.weight, new_lm_head.bias]
-        with deepspeed.zero.GatheredParameters(params, modifier_rank=0):
-            self._copy_lm_head_original_to_resized(new_lm_head, old_lm_head, num_tokens_to_copy, transposed,
-                                                   has_new_lm_head_bias)
-    else:
-        self._copy_lm_head_original_to_resized(new_lm_head, old_lm_head, num_tokens_to_copy, transposed,
-                                               has_new_lm_head_bias)
-
-    return new_lm_head
-
-
-# def _new_get_resized_lm_head(self,
-#                              old_lm_head: nn.Linear,
-#                              new_num_tokens: Optional[int] = None,
-#                              transposed: Optional[bool] = False) -> nn.Linear:
-#     if new_num_tokens is None:
-#         return old_lm_head
-
-#     is_quantized = hasattr(self, 'hf_quantizer') and self.hf_quantizer is not None
-#     if is_deepspeed_zero3_enabled() and not is_quantized:
-#         import deepspeed
-
-#         with deepspeed.zero.GatheredParameters(old_lm_head.weight, modifier_rank=None):
-#             old_num_tokens, old_lm_head_dim = (
-#                 old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size())
-#     else:
-#         old_num_tokens, old_lm_head_dim = (
-#             old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size())
-
-#     if old_num_tokens == new_num_tokens and not is_deepspeed_zero3_enabled():
-#         return old_lm_head
-
-#     if not isinstance(old_lm_head, nn.Linear):
-#         raise TypeError(
-#             f'Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You'
-#             ' should either use a different resize function or make sure that `old_lm_head` are an instance of'
-#             f' {nn.Linear}.')
-
-#     new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
-#     has_new_lm_head_bias = old_lm_head.bias is not None
-#     if isinstance(old_lm_head, Linear8bitLt):
-#         data = torch.concat((old_lm_head.weight.data.to('cpu'), torch.tensor([[-127]* 6144]*23)), dim=0)
-#         old_lm_head.weight = Int8Params(data, has_fp16_weights=False, requires_grad=False)
-#         old_lm_head.out_features = 92576
-#         old_lm_head.weight.to(0)
-#         # new_lm_head = Linear8bitLt(
-#         #     *new_lm_head_shape,
-#         #     bias=has_new_lm_head_bias,
-#         #     device=old_lm_head.weight.device,
-#         # )
-#         # new_lm_head.weight.data = torch.concat((old_lm_head.weight.data, torch.tensor([[-127]* 6144]*23).to(0)), dim=0)
-#     else:
-#         new_lm_head = nn.Linear(
-#             *new_lm_head_shape,
-#             bias=has_new_lm_head_bias,
-#             device=old_lm_head.weight.device,
-#             dtype=old_lm_head.weight.dtype,
-#         )
-
-#     # with torch.no_grad():
-#     #     new_lm_head.weight.zero_()
-#     #     if new_lm_head.bias is not None:
-#     #         new_lm_head.bias.zero_()
-#     # self._init_weights(new_lm_head)
-
-#     num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-#     self.old_num_tokens = old_num_tokens
-#     self.new_num_tokens = new_num_tokens
-#     # if is_deepspeed_zero3_enabled() and not is_quantized:
-#     #     import deepspeed
-
-#     #     params = [old_lm_head.weight, old_lm_head.bias, new_lm_head.weight, new_lm_head.bias]
-#     #     with deepspeed.zero.GatheredParameters(params, modifier_rank=0):
-#     #         self._copy_lm_head_original_to_resized(new_lm_head, old_lm_head, num_tokens_to_copy, transposed,
-#     #                                                has_new_lm_head_bias)
-#     # else:
-#     #     self._copy_lm_head_original_to_resized(new_lm_head, old_lm_head, num_tokens_to_copy, transposed,
-#     #                                            has_new_lm_head_bias)
-
-#     return old_lm_head
-
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -2815,11 +2641,8 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     if use_bnb:
         # patch: bnb backward shape mismatch bug
-        if tokenizer is not None:
-            pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
-        if model is not None:
-            model.language_model._get_resized_lm_head = MethodType(_new_get_resized_lm_head, model.language_model)
-            model.language_model.resize_token_embeddings(len(tokenizer))
+        if model is not None and model.language_model is not None:
+            model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
@@ -2859,7 +2682,6 @@ def get_model_tokenizer_internvl(model_dir: str,
         if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
             old_forward = model.language_model.forward
             model.language_model.__old_forward = old_forward
-            old_num_tokens = model.language_model.old_num_tokens if hasattr(model.language_model, 'old_num_tokens') else None
             @wraps(old_forward)
             def _new_forward(*args, **kwargs):
                 input_ids = kwargs.get('input_ids', None)
@@ -2867,8 +2689,6 @@ def get_model_tokenizer_internvl(model_dir: str,
                 device = input_ids.device if input_ids is not None else input_embeds.device
                 output = old_forward(*args, **kwargs)
                 output['logits'] = output['logits'].to(device)
-                if old_num_tokens:
-                    output['logits'][..., old_num_tokens:] = -1e7 # prob=0
                 return output
 
             model.language_model.forward = _new_forward
