@@ -1,6 +1,6 @@
 
 # Llava 最佳实践
-
+支持[llava1d6-mistral-7b-instruct](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary), [llava1d6-yi-34b-instruct](https://www.modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary), [llama3-llava-next-8b](), [llava-next-72b](), [llava-next-110b]()模型，以下文档以`llava1d6-mistral-7b-instruct`为例，你也可以指定`--model_type=llava1d6-yi-34b-instruct/llama3-llava-next-8b/llava-next-72b/llava-next-110b`来使用其他模型
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
