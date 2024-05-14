@@ -2652,13 +2652,19 @@ def _new_get_resized_lm_head(
 
     new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
     has_new_lm_head_bias = old_lm_head.bias is not None
-
-    new_lm_head = Linear8bitLt(
-        *new_lm_head_shape,
-        bias=has_new_lm_head_bias,
-        device=old_lm_head.weight.device,
-        dtype=old_lm_head.weight.dtype,
-    )
+    if isinstance(old_lm_head,nn.Linear):
+        new_lm_head = nn.Linear(
+            *new_lm_head_shape,
+            bias=has_new_lm_head_bias,
+            device=old_lm_head.weight.device,
+            dtype=old_lm_head.weight.dtype,
+        )
+    else:
+        new_lm_head = Linear8bitLt(
+            *new_lm_head_shape,
+            bias=has_new_lm_head_bias,
+            device=old_lm_head.weight.device,
+        )
 
     self._init_weights(new_lm_head)
 
@@ -2710,6 +2716,13 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    use_quant = hasattr(model_config,'quantization_config') or model_kwargs.get('quantization_config', None)
+    use_bnb = False
+    if use_quant:
+        quant_config = model_kwargs['quantization_config'] if model_kwargs.get('quantization_config', None) else model_config.quantization_config                                                 
+        if isinstance(quant_config, BitsAndBytesConfig):
+            quant_config.llm_int8_skip_modules = ['lm_head']
+        use_bnb = True
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -2720,15 +2733,14 @@ def get_model_tokenizer_internvl(model_dir: str,
         automodel_class=AutoModel,
         **kwargs)
 
-    if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
-                                                                         BitsAndBytesConfig):
+    if use_bnb:
         # patch: backward shape mismatch bug
         if tokenizer is not None:
             pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
         if model is not None:
             model.language_model._get_resized_lm_head = MethodType(_new_get_resized_lm_head, model.language_model)
             model.language_model.resize_token_embeddings(len(tokenizer))
-            
+
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
         fix_internvl_inplace_bug(model)
