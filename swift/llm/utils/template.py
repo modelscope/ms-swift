@@ -38,6 +38,7 @@ class TemplateType:
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
     llava_llama_instruct = 'llava-llama-instruct'
+    llava_qwen_instruct = 'llava-qwen-instruct'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -1058,6 +1059,19 @@ register_template(
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
+
+
+class LLavaQwenTemplate(LLavaTemplate):
+    llavayi_query_template = 'You are a helpful assistant'
+
+    def __init__(self):
+        Template.__init__([], [[-200], '<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+                          ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
+                          ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+
+
+register_template(
+    TemplateType.llava_yi_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:

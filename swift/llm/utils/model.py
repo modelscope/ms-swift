@@ -3882,7 +3882,7 @@ def _patch_llava(model):
     ModelType.llava_next_72b,
     'AI-Modelscope/llava-next-72b',
     LoRATM.llama2,
-    TemplateType.llava_llama_instruct,
+    TemplateType.llava_qwen_instruct,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'qwen'},
@@ -3891,7 +3891,7 @@ def _patch_llava(model):
     ModelType.llava_next_110b,
     'AI-Modelscope/llava-next-110b',
     LoRATM.llama2,
-    TemplateType.llava_llama_instruct,
+    TemplateType.llava_qwen_instruct,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'qwen'},
@@ -3926,7 +3926,7 @@ def get_model_tokenizer_llava(model_dir: str,
             LlavaLlamaForCausalLM.forward = _new_forward
         model_config = LlavaConfig.from_pretrained(model_dir)
         automodel_class = LlavaLlamaForCausalLM
-    else # qwen
+    else:  # qwen
         from llava.model import LlavaQwenForCausalLM
         automodel_class = LlavaQwenForCausalLM
         model_config = AutoConfig.from_pretrained(model_dir)
