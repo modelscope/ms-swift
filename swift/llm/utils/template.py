@@ -1071,7 +1071,7 @@ class LLavaQwenTemplate(LLavaTemplate):
 
 
 register_template(
-    TemplateType.llava_yi_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:
