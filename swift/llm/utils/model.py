@@ -2623,12 +2623,9 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_bnb = False
     if model_quant_config is not None:
         use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
-    # if 'quantization_config' in model_kwargs:
-    #     use_bnb = model_kwargs['quantization_config'].get('quant_method') == 'bitandbytes' or use_bnb
-    # if model_bnb_quant_config
-    #     if model_quant_config['quant_method'] == 'bitsandbytes' or kwargs_quant_method == 'bitandbytes':
-    #         # quant_config.llm_int8_skip_modules = ['lm_head']
-    #         use_bnb = True
+    quantization_config = model_kwargs.get('quantization_config', None)
+    if isinstance(quantization_config, BitsAndBytesConfig):
+        use_bnb = True
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -2639,7 +2636,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         automodel_class=AutoModel,
         **kwargs)
 
-    if use_bnb:
+    if use_bnb and kwargs.get('is_training'):
         # patch: bnb backward shape mismatch bug
         if model is not None and model.language_model is not None:
             model.language_model.output.state.force_no_igemmlt = True
@@ -2682,6 +2679,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
             old_forward = model.language_model.forward
             model.language_model.__old_forward = old_forward
+
             @wraps(old_forward)
             def _new_forward(*args, **kwargs):
                 input_ids = kwargs.get('input_ids', None)
