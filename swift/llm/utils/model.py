@@ -18,8 +18,10 @@ from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
+from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import strtobool
 from transformers.utils.versions import require_version
@@ -2593,15 +2595,18 @@ def patch_bnb_matmulltstate():
     import bitsandbytes
     if not hasattr(bitsandbytes, 'OldMatmulLtState'):
         old_MatmulLtState = bitsandbytes.MatmulLtState
+
         class PatchedMatmulLtState(old_MatmulLtState):
             force_no_igemmlt: bool = True
 
         bitsandbytes.MatmulLtState = PatchedMatmulLtState
         bitsandbytes.OldMatmulLtState = old_MatmulLtState
 
+
 def patch_resize_embeddings(model) -> None:
     if not hasattr(model, '_old_get_resized_lm_head'):
         old_get_resized_lm_head = model._get_resized_lm_head
+
         @wraps(old_get_resized_lm_head)
         def get_resized_lm_head(*args, **kwargs):
             import torch.nn as nn
@@ -2612,43 +2617,43 @@ def patch_resize_embeddings(model) -> None:
                 return old_get_resized_lm_head(*args, **kwargs)
             finally:
                 nn.Linear = _old_Linear
+
         model.get_resized_lm_head = get_resized_lm_head
         model._old_get_resized_lm_head = old_get_resized_lm_head
 
-from torch import nn
-from transformers.integrations import is_deepspeed_zero3_enabled
+
 try:
     from bitsandbytes.nn.modules import Linear8bitLt
 except:
     pass
-def _new_get_resized_lm_head(
-    self, old_lm_head: nn.Linear, new_num_tokens: Optional[int] = None, transposed: Optional[bool] = False
-) -> nn.Linear:    
+
+
+def _new_get_resized_lm_head(self,
+                             old_lm_head: nn.Linear,
+                             new_num_tokens: Optional[int] = None,
+                             transposed: Optional[bool] = False) -> nn.Linear:
     if new_num_tokens is None:
         return old_lm_head
 
-    is_quantized = hasattr(self, "hf_quantizer") and self.hf_quantizer is not None
+    is_quantized = hasattr(self, 'hf_quantizer') and self.hf_quantizer is not None
     if is_deepspeed_zero3_enabled() and not is_quantized:
         import deepspeed
 
         with deepspeed.zero.GatheredParameters(old_lm_head.weight, modifier_rank=None):
             old_num_tokens, old_lm_head_dim = (
-                old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
-            )
+                old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size())
     else:
         old_num_tokens, old_lm_head_dim = (
-            old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
-        )
+            old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size())
 
     if old_num_tokens == new_num_tokens and not is_deepspeed_zero3_enabled():
         return old_lm_head
 
     if not isinstance(old_lm_head, nn.Linear):
         raise TypeError(
-            f"Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You"
-            " should either use a different resize function or make sure that `old_lm_head` are an instance of"
-            f" {nn.Linear}."
-        )
+            f'Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You'
+            ' should either use a different resize function or make sure that `old_lm_head` are an instance of'
+            f' {nn.Linear}.')
 
     new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
     has_new_lm_head_bias = old_lm_head.bias is not None
@@ -2675,15 +2680,14 @@ def _new_get_resized_lm_head(
 
         params = [old_lm_head.weight, old_lm_head.bias, new_lm_head.weight, new_lm_head.bias]
         with deepspeed.zero.GatheredParameters(params, modifier_rank=0):
-            self._copy_lm_head_original_to_resized(
-                new_lm_head, old_lm_head, num_tokens_to_copy, transposed, has_new_lm_head_bias
-            )
+            self._copy_lm_head_original_to_resized(new_lm_head, old_lm_head, num_tokens_to_copy, transposed,
+                                                   has_new_lm_head_bias)
     else:
-        self._copy_lm_head_original_to_resized(
-            new_lm_head, old_lm_head, num_tokens_to_copy, transposed, has_new_lm_head_bias
-        )
+        self._copy_lm_head_original_to_resized(new_lm_head, old_lm_head, num_tokens_to_copy, transposed,
+                                               has_new_lm_head_bias)
 
     return new_lm_head
+
 
 @register_model(
     ModelType.internvl_chat_v1_5,
@@ -2712,13 +2716,14 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    use_quant = hasattr(model_config,'quantization_config') or model_kwargs.get('quantization_config', None)
+    use_quant = hasattr(model_config, 'quantization_config') or model_kwargs.get('quantization_config', None)
     use_bnb = False
     if use_quant:
-        quant_config = model_kwargs['quantization_config'] if model_kwargs.get('quantization_config', None) else model_config.quantization_config                                                 
+        quant_config = model_kwargs['quantization_config'] if model_kwargs.get(
+            'quantization_config', None) else model_config.quantization_config
         if isinstance(quant_config, BitsAndBytesConfig):
             quant_config.llm_int8_skip_modules = ['lm_head']
-        use_bnb = True
+            use_bnb = True
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -2730,7 +2735,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         **kwargs)
 
     if use_bnb:
-        # patch: backward shape mismatch bug
+        # patch: bnb backward shape mismatch bug
         if tokenizer is not None:
             pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
         if model is not None:
