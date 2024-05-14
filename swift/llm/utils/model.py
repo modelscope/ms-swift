@@ -2702,6 +2702,10 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
+                                                                         BitsAndBytesConfig):
+        # patch: backward shape mismatch bug
+        model_kwargs['quantization_config'].llm_int8_skip_modules = ['lm_head']
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
@@ -2721,14 +2725,11 @@ def get_model_tokenizer_internvl(model_dir: str,
         # patch: backward shape mismatch bug
         if tokenizer is not None:
             pad_tokenizer_vocabulary_to_multiple_of(tokenizer)
-
+        if model is not None:
+            model.language_model._get_resized_lm_head = MethodType(_new_get_resized_lm_head, model.language_model)
+            model.language_model.resize_token_embeddings(len(tokenizer))
+            
     if model is not None:
-        model.language_model.get_resized_lm_head = MethodType(_new_get_resized_lm_head, model.language_model)
-        # if hasattr(model.language_model, '_old_get'):  # device_map
-        #     model.language_model._old_get_resized_lm_head = new_get
-        # else:
-        #     model.language_model.get_resized_lm_head = new_get
-        model.language_model.resize_token_embeddings(len(tokenizer))
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
