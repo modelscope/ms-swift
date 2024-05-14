@@ -160,6 +160,9 @@ class ModelType:
     # llava
     llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
     llava1d6_yi_34b_instruct = 'llava1d6-yi-34b-instruct'
+    llama3_llava_next_8b = 'llama3-llava-next-8b'
+    llava_next_72b = 'llava-next-72b'
+    llava_next_110b = 'llava-next-110b'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -3866,6 +3869,16 @@ def _patch_llava(model):
     function_kwargs={'llm_model_type': 'mistral'},
     tags=['multi-modal', 'vision'],
     hf_model_id='liuhaotian/llava-v1.6-mistral-7b')
+@register_model(
+    ModelType.llama3_llava_next_8b,
+    # 'deepseek-ai/deepseek-vl-1.3b-chat', # 待接入
+    LoRATM.llama2,
+    TemplateType.llava_llama_instruct,
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'llm_model_type': 'mistral'},
+    # requires=['attrdict'],
+    hf_model_id='lmms-lab/llama3-llava-next-8b')
 def get_model_tokenizer_llava(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
