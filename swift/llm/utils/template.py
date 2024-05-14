@@ -37,6 +37,7 @@ class TemplateType:
     llama3 = 'llama3'
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
+    llava_llama_instruct = 'llava-llama-instruct'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -44,6 +45,7 @@ class TemplateType:
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
     yi = 'yi'
+    yi1_5 = 'yi1_5'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
     xverse = 'xverse'
@@ -55,6 +57,7 @@ class TemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
     deepseek_vl = 'deepseek-vl'
+    deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
     cogvlm_instruct = 'cogvlm-instruct'
@@ -202,6 +205,8 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
+        self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
+
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
@@ -420,6 +425,17 @@ class Template:
                                                                                 labels, loss_scale, self.max_length,
                                                                                 self.tokenizer, rank, world_size)
 
+        bs, seq_len = input_ids.shape
+        position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+            if get_xtuner_sequence_parallel_world_size() > 1:
+                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
+                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                    pad_and_split_for_sequence_parallel(
+                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+
         res = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
@@ -506,8 +522,8 @@ class Template:
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
-def register_template(template_type: str, template: Template, *, exists_ok: bool = False, **kwargs) -> None:
-    if not exists_ok and template_type in TEMPLATE_MAPPING:
+def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
+    if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     template_info = {'template': template, **kwargs}
     TEMPLATE_MAPPING[template_type] = template_info
@@ -596,6 +612,11 @@ register_template(
     Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
              None, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
+register_template(
+    TemplateType.yi1_5,
+    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|> \n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
+             None, ['{{SYSTEM}}']))
+
 yi_vl_default_system = (
     'This is a chat between an inquisitive human and an AI assistant. Assume the role of the AI assistant. '
     "Read all the images carefully, and respond to the human's questions with informative, "
@@ -673,6 +694,9 @@ register_template(
     TemplateType.deepseek,
     Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'], [['eos_token_id']], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
+register_template(
+    TemplateType.deepseek2,
+    Template([[100000]], ['User: {{QUERY}}\n\nAssistant:'], [[100001]], [[100001]], None, [[100000], '{{SYSTEM}}\n\n']))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
@@ -1004,6 +1028,36 @@ class LLavaYiTemplate(LLavaTemplate):
 
 register_template(
     TemplateType.llava_yi_instruct, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+
+class LLavaLlamaTemplate(Template):
+
+    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
+                                '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+
+    def __init__(self):
+        Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        image_path = example['images']
+        raw_image = _read_from_path(image_path[0])
+        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.llava_llama_instruct,
+    LLavaLlamaTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:

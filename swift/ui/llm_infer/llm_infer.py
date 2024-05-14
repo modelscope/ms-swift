@@ -135,6 +135,7 @@ class LLMInfer(BaseUI):
                             cls.element('system'),
                             cls.element('max_new_tokens'),
                             cls.element('temperature'),
+                            cls.element('do_sample'),
                             cls.element('top_k'),
                             cls.element('top_p'),
                             cls.element('repetition_penalty')
@@ -224,7 +225,9 @@ class LLMInfer(BaseUI):
 
         if 'ckpt_dir' in kwargs:
             with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'), 'r') as f:
-                kwargs['model_type'] = json.load(f)['model_type']
+                _json = json.load(f)
+                kwargs['model_type'] = _json['model_type']
+                kwargs['sft_type'] = _json['sft_type']
         deploy_args = DeployArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
@@ -271,7 +274,7 @@ class LLMInfer(BaseUI):
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         return gr.update(open=True), Runtime.refresh_tasks(log_file), [
-            deploy_args.model_type, deploy_args.template_type
+            deploy_args.model_type, deploy_args.template_type, deploy_args.sft_type
         ]
 
     @classmethod
@@ -350,7 +353,7 @@ class LLMInfer(BaseUI):
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
         _, args = Runtime.parse_info_from_cmdline(running_task)
-        model_type, template = model_and_template
+        model_type, template, sft_type = model_and_template
         old_history, history = history or [], []
         request_config = XRequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
@@ -359,7 +362,13 @@ class LLMInfer(BaseUI):
         stream_resp_with_history = ''
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
-                model_type, prompt, old_history, system=system, port=args['port'], request_config=request_config)
+                model_type,
+                prompt,
+                old_history,
+                system=system,
+                port=args['port'],
+                adapter_name='default-lora' if sft_type in ('lora', 'longlora') else None,
+                request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
                 qr_pair = [prompt, stream_resp_with_history]
@@ -367,7 +376,12 @@ class LLMInfer(BaseUI):
                 yield '', total_history
         else:
             request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(model_type, prompt, port=args['port'], request_config=request_config)
+            stream_resp = inference_client(
+                model_type,
+                prompt,
+                port=args['port'],
+                adapter_name='default-lora' if sft_type in ('lora', 'longlora') else None,
+                request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].text
                 qr_pair = [prompt, stream_resp_with_history]
@@ -376,7 +390,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def generate_chat(cls, model_and_template, template_type, prompt: str, history, system, max_new_tokens, temperature,
-                      top_k, top_p, repetition_penalty):
+                      do_sample, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None
@@ -393,6 +407,7 @@ class LLMInfer(BaseUI):
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            do_sample=do_sample,
             max_new_tokens=int(max_new_tokens),
             repetition_penalty=repetition_penalty)
         gen = inference_stream(

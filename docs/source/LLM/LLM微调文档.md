@@ -3,6 +3,7 @@
 - [环境准备](#环境准备)
 - [微调](#微调)
 - [DPO](#dpo)
+- [ORPO](#orpo)
 - [Merge LoRA](#merge-lora)
 - [量化](#量化)
 - [推理](#推理)
@@ -80,7 +81,7 @@ app_ui_main(infer_args)
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 
 # 使用自己的数据集
@@ -96,7 +97,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 
 # 多机多卡
@@ -108,7 +109,7 @@ MASTER_ADDR=127.0.0.1 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 # node1
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -118,7 +119,7 @@ MASTER_ADDR=xxx.xxx.xxx.xxx \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
-    --dataset blossom-math-zh \
+    --dataset AI-ModelScope/blossom-math-v2 \
     --output_dir output \
 ```
 
@@ -167,7 +168,10 @@ cd examples/pytorch/llm
 
 
 ## DPO
-如果你要使用DPO进行人类对齐, 你可以查看[人类对齐微调文档](LLM人类对齐训练文档.md).
+如果你要使用DPO进行人类对齐, 你可以查看[DPO训练文档](DPO训练文档.md).
+
+## ORPO
+如果你要使用ORPO进行人类对齐, 你可以查看[ORPO最佳实践](ORPO算法最佳实践.md).
 
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
@@ -189,7 +193,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 使用**数据集**评估:
 ```bash
-CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset blossom-math-zh
+CUDA_VISIBLE_DEVICES=0 swift infer --model_id_or_path qwen/Qwen-7B-Chat --dataset AI-ModelScope/blossom-math-v2
 ```
 ### 微调后模型
 **单样本推理**:

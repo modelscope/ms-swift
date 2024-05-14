@@ -31,12 +31,10 @@ Run the following command:
 # Memory usage: 4 * 20G, dual-card device_map * 2ddp
 nproc_per_node=2
 
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-torchrun \
-    --nproc_per_node=$nproc_per_node \
-    --master_port 29500 \
-    llm_dpo.py \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
+swift dpo \
     --model_type  yi-6b-chat \
     --ref_model_type  yi-6b-chat \
     --model_revision  master \
@@ -44,10 +42,7 @@ torchrun \
     --tuner_backend  swift \
     --dtype  AUTO  \
     --output_dir  output  \
-    --dataset  hh-rlhf-cn-harmless-base-cn  \
-    --train_dataset_sample  -1  \
-    --truncation_strategy  truncation_left  \
-    --val_dataset_sample  2000  \
+    --dataset  hh-rlhf-cn:harmless_base_cn  \
     --num_train_epochs  3  \
     --max_length  1024  \
     --max_prompt_length  512  \
@@ -58,7 +53,7 @@ torchrun \
     --lora_target_modules  ALL  \
     --gradient_checkpointing  true  \
     --batch_size  1  \
-    --weight_decay  0.01  \
+    --weight_decay  0.1  \
     --learning_rate  5e-5  \
     --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
     --max_grad_norm  1.0  \

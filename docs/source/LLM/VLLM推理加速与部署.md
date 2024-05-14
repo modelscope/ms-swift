@@ -484,8 +484,39 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 
 客户端示例代码同原始模型.
 
+### 多LoRA部署
+
+目前pt方式部署模型已经支持`peft>=0.10.0`进行多LoRA部署，具体方法为：
+
+- 确保部署时`merge_lora`为`False`
+- 使用`--lora_modules`参数,  可以查看[命令行文档](命令行参数.md)
+- 推理时指定lora tuner的名字到模型字段
+
+举例：
+
+```shell
+# 假设从llama3-8b-instruct训练了一个名字叫卡卡罗特的LoRA模型
+# 服务端
+swift deploy --ckpt_dir /mnt/ckpt-1000 --infer_backend pt --lora_modules my_tuner=/mnt/my-tuner
+# 会加载起来两个tuner，一个是`/mnt/ckpt-1000`的`default-lora`，一个是`/mnt/my-tuner`的`my_tuner`
+
+# 客户端
+curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d '{
+"model": "my-tuner",
+"messages": [{"role": "user", "content": "who are you?"}],
+"max_tokens": 256,
+"temperature": 0
+}'
+# resp: 我是卡卡罗特...
+# 如果指定mode='llama3-8b-instruct'，则返回I'm llama3...，即原模型的返回值
+```
+
+> [!NOTE]
+>
+> `--ckpt_dir`参数如果是个lora路径，则原来的default会被加载到default-lora的tuner上，其他的tuner需要通过`lora_modules`自行加载
 
 ## VLLM & LoRA
+
 VLLM & LoRA支持的模型可以查看: https://docs.vllm.ai/en/latest/models/supported_models.html
 
 ### 准备LoRA

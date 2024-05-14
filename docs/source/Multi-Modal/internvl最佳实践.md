@@ -18,15 +18,21 @@ pip install Pillow
 
 ## 推理
 
-推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
-(如果要使用本地模型文件，加上参数`--model_id_or_path /path/to/model`)
+推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)和[internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
+
+下面教程以`internvl-chat-v1.5`为例，你可以修改`--model_type internvl-chat-v1_5-int8`来选择int8版本的模型
+
+**注意**
+- 如果要使用本地模型文件，加上参数 `--model_id_or_path /path/to/model`
+- 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`。且对于int8模型，推理时需要指定`dtype --bf16`, 否则可能会出现乱码
+
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 
 # 2*30GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 ```
 
 输出: (支持传入本地路径或URL)
@@ -103,9 +109,14 @@ import torch
 model_type = ModelType.internvl_chat_v1_5
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
-
-model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16,
                                        model_kwargs={'device_map': 'auto'})
+
+# for GPUs that do not support flash attention
+# model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+#                                        model_kwargs={'device_map': 'auto'},
+#                                        use_flash_attn = False)
+
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
@@ -154,7 +165,10 @@ road:
 
 LoRA微调:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`.)
+**注意**
+- 默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`.
+- 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`
+
 ```shell
 # Experimental environment: A100
 # 80GB GPU memory

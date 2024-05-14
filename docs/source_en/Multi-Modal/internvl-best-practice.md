@@ -18,13 +18,22 @@ pip install Pillow
 
 Inference for [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
 (To use a local model file, add the argument `--model_id_or_path /path/to/model`)
+
+Inference with [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary) and [internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary).
+
+The tutorial below takes `internvl-chat-v1.5` as an example, and you can change to `--model_type internvl-chat-v1_5-int8` to select the INT8 version of the model.
+
+**Note**
+- If you want to use a local model file, add the argument --model_id_or_path /path/to/model.
+- If your GPU does not support flash attention, use the argument --use_flash_attn false. And for int8 models, it is necessary to specify `dtype --bf16` during inference, otherwise the output may be garbled.
+
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 
 # 2*30GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf16
 ```
 
 Output: (supports passing in local path or URL)
@@ -101,8 +110,14 @@ model_type = ModelType.internvl_chat_v1_5
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
-model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16,
                                        model_kwargs={'device_map': 'auto'})
+
+# for GPUs that do not support flash attention
+# model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+#                                        model_kwargs={'device_map': 'auto'},
+#                                        use_flash_attn = False)
+
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
@@ -153,7 +168,10 @@ Multimodal large model fine-tuning usually uses **custom datasets** for fine-tun
 
 LoRA fine-tuning:
 
-(By default, only the qkv of the LLM part is fine-tuned using LoRA. If you want to fine-tune all linear layers including the vision model part, you can specify `--lora_target_modules ALL`.)
+**note**
+- If your GPU does not support flash attention, use the argument --use_flash_attn false.
+- By default, only the qkv of the LLM part is fine-tuned using LoRA. If you want to fine-tune all linear layers including the vision model part, you can specify `--lora_target_modules ALL`.
+
 ```shell
 # Experimental environment: A100
 # 80GB GPU memory

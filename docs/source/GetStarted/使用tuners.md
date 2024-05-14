@@ -5,16 +5,17 @@ tuner是指附加在模型上的额外结构部分，用于减少训练参数量
 1. LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)
 2. LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)
 3. LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf)
-4. SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
-5. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
-6. QA-LoRA:[Quantization-Aware Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2309.14717).
-7. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
-8. ROME: [Rank-One Editing of Encoder-Decoder Models](https://arxiv.org/abs/2211.13317)
-9. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
-10. Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
-11. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
-12. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
-13. [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等
+4. GaLore: [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507)
+5. LISA: [LISA: Layerwise Importance Sampling for Memory-Efficient Large Language Model Fine-Tuning](https://arxiv.org/abs/2403.17919)
+6. UnSloth: https://github.com/unslothai/unsloth
+7. SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  |  [Project Page](https://scedit.github.io/) >
+8. NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)
+9. LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)
+10. Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)
+11. Vision Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
+12. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
+13. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](docs/source/GetStarted/ResTuning.md) >
+14. [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等
 
 ## 在训练中使用
 
@@ -22,10 +23,10 @@ tuner是指附加在模型上的额外结构部分，用于减少训练参数量
 
 ```python
 from modelscope import Model
-from swift import Swift, LoRAConfig
+from swift import Swift, LoraConfig
 import torch
 model = Model.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16, device_map='auto')
-lora_config = LoRAConfig(
+lora_config = LoraConfig(
                 r=16,
                 target_modules=['query_key_value'],
                 lora_alpha=32,
@@ -37,10 +38,10 @@ model = Swift.prepare_model(model, lora_config)
 
 ```python
 from modelscope import Model
-from swift import Swift, LoRAConfig, AdapterConfig
+from swift import Swift, LoraConfig, AdapterConfig
 import torch
 model = Model.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16, device_map='auto')
-lora_config = LoRAConfig(
+lora_config = LoraConfig(
                 r=16,
                 target_modules=['query_key_value'],
                 lora_alpha=32,
@@ -105,13 +106,13 @@ model.save_pretrained(save_directory='./output')
 from swift import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from modelscope import MsDataset, AutoTokenizer
 from modelscope import AutoModelForCausalLM
-from swift import Swift, LoRAConfig
+from swift import Swift, LoraConfig
 from swift.llm import get_template, TemplateType
 import torch
 
 # 拉起模型
 model = AutoModelForCausalLM.from_pretrained('ZhipuAI/chatglm3-6b', torch_dtype=torch.bfloat16, device_map='auto', trust_remote_code=True)
-lora_config = LoRAConfig(
+lora_config = LoraConfig(
                 r=16,
                 target_modules=['query_key_value'],
                 lora_alpha=32,
@@ -132,7 +133,7 @@ def encode(example):
     example, kwargs = template.encode({'query': q, 'response': output})
     return example
 
-dataset = dataset.to_hf_dataset().map(encode).filter(lambda e: e.get('input_ids'))
+dataset = dataset.map(encode).filter(lambda e: e.get('input_ids'))
 dataset = dataset.train_test_split(test_size=0.001)
 
 train_dataset, val_dataset = dataset['train'], dataset['test']

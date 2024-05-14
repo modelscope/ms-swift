@@ -1,9 +1,6 @@
 import asyncio
 import sys
 from asyncio.subprocess import PIPE, STDOUT
-from dataclasses import fields
-
-from swift.llm import SftArguments
 
 
 async def run_and_get_log(*args, timeout=None):

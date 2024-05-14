@@ -570,10 +570,8 @@ def get_train_dataset(args, accelerator):
             args.dataset_name,
             args.dataset_config_name,
         )
-        if isinstance(dataset, dict):
-            dataset = {key: value.to_hf_dataset() for key, value in dataset.items()}
-        else:
-            dataset = {'train': dataset.to_hf_dataset()}
+        if not isinstance(dataset, dict):
+            dataset = {'train': dataset}
     else:
         if args.train_data_dir is not None:
             dataset = load_dataset(
