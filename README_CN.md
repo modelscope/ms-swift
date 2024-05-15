@@ -39,6 +39,8 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
+SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM).
+
 ## 🎉 新闻
 - 🔥2024.05.13: 支持Yi-1.5系列模型，使用`--model_type yi-1_5-9b-chat`等开始体验
 - 2024.05.11: 支持使用[hqq](https://github.com/mobiusml/hqq)和[eetq](https://github.com/NetEase-FuXi/EETQ)进行qlora训练和量化推理，可以查看[LLM量化文档](https://github.com/modelscope/swift/tree/main/docs/source/LLM/LLM量化文档.md)
@@ -379,6 +381,21 @@ swift sft \
     --output_dir output \
     --deepspeed default-zero3 \
 ```
+
+##### 阿里云-DLC多机训练
+DLC环境变量中，WORLD_SIZE指代node数量，RANK指代node序号，这一点和torchrun定义不同，需要注意。
+```shell
+NNODES=$WORLD_SIZE \
+NODE_RANK=$RANK \
+swift sft \
+    --model_id_or_path qwen1half-32b-chat \
+    --sft_type full \
+    --dataset blossom-math-zh \
+    --output_dir output \
+    --deepspeed default-zero3
+```
+
+
 
 
 ### 推理
