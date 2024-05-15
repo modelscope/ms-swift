@@ -23,12 +23,11 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import strtobool
 from transformers.utils.versions import require_version
-from trl.import_utils import is_unsloth_available
 
 from swift import get_logger
-from swift.utils import get_dist_setting, is_dist, is_local_master, safe_ddp_context, subprocess_run, use_torchacc
+from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
-from .utils import get_max_model_len
+from .utils import get_max_model_len, is_unsloth_available
 
 logger = get_logger()
 
@@ -339,6 +338,7 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_mini_128k_instruct = 'phi3-mini-128k-instruct'
     # cogagent
     cogvlm_17b_instruct = 'cogvlm-17b-instruct'
     cogagent_18b_chat = 'cogagent-18b-chat'
@@ -1310,6 +1310,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
 @register_model(
+    ModelType.phi3_mini_128k_instruct,
+    'LLM-Research/Phi-3-mini-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=False,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-mini-128k-instruct')
+@register_model(
     ModelType.phi3_4b_4k_instruct,
     'LLM-Research/Phi-3-mini-4k-instruct',
     LoRATM.phi3,
@@ -1733,6 +1743,120 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-6B')
+@register_model(
+    ModelType.yi_1_5_6b,
+    '01ai/Yi-1.5-6B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-6B')
+@register_model(
+    ModelType.yi_1_5_6b_chat,
+    '01ai/Yi-1.5-6B-Chat',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-6B-Chat')
+@register_model(
+    ModelType.yi_1_5_6b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-6B-Chat-AWQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_6b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b,
+    '01ai/Yi-1.5-9B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B')
+@register_model(
+    ModelType.yi_1_5_9b_chat,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b,
+    '01ai/Yi-1.5-34B',
+    LoRATM.llama2,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B')
+@register_model(
+    ModelType.yi_1_5_34b_chat,
+    '01ai/Yi-1.5-34B-Chat',
+    LoRATM.llama2,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat')
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
@@ -2461,6 +2585,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     if model is not None:
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
         # fix dtype bug
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         mlp_cls = model.model.layers[1].mlp.__class__
         for module in model.modules():
             if isinstance(module, mlp_cls):
@@ -2494,7 +2619,6 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.__old_forward = old_forward
         embedding.forward = _new_forward
 
-
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -2522,6 +2646,14 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    model_quant_config = getattr(model_config, 'quantization_config', None)
+
+    use_bnb = False
+    if model_quant_config is not None:
+        use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
+    quantization_config = model_kwargs.get('quantization_config', None)
+    if isinstance(quantization_config, BitsAndBytesConfig):
+        use_bnb = True
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -2531,6 +2663,11 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
+
+    if use_bnb and kwargs.get('is_training'):
+        # patch: bnb backward shape mismatch bug
+        if model is not None and model.language_model is not None:
+            model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
@@ -2755,7 +2892,10 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         import collections.abc
         for type_name in collections.abc.__all__:
             setattr(collections, type_name, getattr(collections.abc, type_name))
-    local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
     vl_chat_processor = VLChatProcessor.from_pretrained(model_dir)
@@ -3672,7 +3812,10 @@ def get_model_tokenizer_yi_vl(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
@@ -3771,7 +3914,10 @@ def get_model_tokenizer_llava(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    local_repo_path = _git_clone_github('https://github.com/haotian-liu/LLaVA.git')
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = _git_clone_github('https://github.com/haotian-liu/LLaVA.git')
     sys.path.append(os.path.join(local_repo_path))
 
     llm_model_type = kwargs.pop('llm_model_type')
@@ -3843,7 +3989,10 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
-    local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
     sys.path.append(os.path.join(local_repo_path))
 
