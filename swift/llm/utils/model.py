@@ -3915,7 +3915,7 @@ def _patch_llava(model):
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
     LoRATM.llama2,
-    TemplateType.llava_llama_instruct,
+    TemplateType.llama_llava_next,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'llama'},
