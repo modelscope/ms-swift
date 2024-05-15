@@ -1371,7 +1371,7 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
         system = conv[0]['value'] if conv[0]['from'] != 'user' else ''
         if conv[0]['from'] == 'user':
             query = conv[0]['value']
-        elif not 'next_speakers:' in system:
+        elif 'next_speakers:' not in system:
             if '【注意事项】' not in system and system:
                 system += res_prompt
             system += history_prompt
