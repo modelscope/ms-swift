@@ -3918,7 +3918,7 @@ def _patch_llava(model):
     TemplateType.llama_llava_next,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    function_kwargs={'llm_model_type': 'llama'},
+    function_kwargs={'llm_model_type': 'next_llama'},
     hf_model_id='lmms-lab/llama3-llava-next-8b')
 @register_model(
     ModelType.llava_next_72b,
@@ -3927,7 +3927,7 @@ def _patch_llava(model):
     TemplateType.llava_qwen_instruct,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    function_kwargs={'llm_model_type': 'qwen'},
+    function_kwargs={'llm_model_type': 'next_qwen'},
     hf_model_id='lmms-lab/llava-next-72b')
 @register_model(
     ModelType.llava_next_110b,
@@ -3936,20 +3936,23 @@ def _patch_llava(model):
     TemplateType.llava_qwen_instruct,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    function_kwargs={'llm_model_type': 'qwen'},
+    function_kwargs={'llm_model_type': 'next_qwen'},
     hf_model_id='lmms-lab/llava-next-110b')
 def get_model_tokenizer_llava(model_dir: str,
                               torch_dtype: Dtype,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
+    llm_model_type = kwargs.pop('llm_model_type')
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
+    elif 'next' in llm_model_type:
+        local_repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT.git'
     else:
-        local_repo_path = _git_clone_github('https://github.com/haotian-liu/LLaVA.git')
+        local_repo_path = 'https://github.com/haotian-liu/LLaVA.git'
+    _git_clone_github('https://github.com/haotian-liu/LLaVA.git')
     sys.path.append(os.path.join(local_repo_path))
 
-    llm_model_type = kwargs.pop('llm_model_type')
     if llm_model_type == 'mistral':
         from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
         model_config = LlavaMistralConfig.from_pretrained(model_dir)

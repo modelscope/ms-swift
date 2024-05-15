@@ -1069,8 +1069,14 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
     def __init__(self):
         Template.__init__(self, [], [[-200], self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
 
+
 register_template(
-    TemplateType.llama_llava_next, LlamaLlavaNextTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llama_llava_next,
+    LlamaLlavaNextTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
 
 class LLavaQwenTemplate(LLavaTemplate):
     llavayi_query_template = 'You are a helpful assistant'
