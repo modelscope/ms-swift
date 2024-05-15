@@ -2614,7 +2614,7 @@ def fix_internvl_inplace_bug(model) -> None:
         @wraps(old_forward)
         def _new_forward(*args, **kwargs):
             device = args[0].device
-            return old_forward(*args, **kwargs).clone().to(device)
+            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
 
         embedding.__old_forward = old_forward
         embedding.forward = _new_forward
