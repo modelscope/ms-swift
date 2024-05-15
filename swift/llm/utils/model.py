@@ -2580,13 +2580,13 @@ def fix_internvl_inplace_bug(model) -> None:
 
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-        if hasattr(embedding, '_old_forward'):  # device_map
-            __old_forward = embedding._old_forward
-            embedding._old_forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).requires_grad_(True).clone()
-        else:
-            __old_forward = embedding.forward
-            embedding.forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).requires_grad_(True).clone()
-        embedding.__old_forward = __old_forward
+        old_forward = embedding.forward
+        @wraps(old_forward)
+        def _new_forward(*args, **kwargs):
+            device = args[0].device
+            return old_forward(*args, **kwargs).clone().to(device)
+        embedding.__old_forward = old_forward
+        embedding.forward = _new_forward
 
 
 @register_model(
