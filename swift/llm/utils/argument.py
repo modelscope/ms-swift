@@ -1190,6 +1190,10 @@ class EvalArguments(InferArguments):
 
     eval_use_cache: Optional[bool] = False
 
+    def select_dtype(self):
+        if self.eval_url is None:
+            return super().select_dtype()
+
     def set_model_type(self) -> None:
         if self.eval_url is None:
             super().set_model_type()
