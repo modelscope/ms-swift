@@ -459,7 +459,6 @@ register_dataset(
     get_dataset_from_repo,
     split=['validation', 'test'],
     tags=['chat', 'multi-modal', 'audio', '🔥'],
-    val_sample=200,  # default val sample
     is_main=False)
 
 
