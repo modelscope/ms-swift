@@ -11,7 +11,6 @@ python llm_sft.py \
     --dtype AUTO \
     --output_dir output \
     --dataset blossom-math-zh \
-    --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \
     --check_dataset_strategy warning \

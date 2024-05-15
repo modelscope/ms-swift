@@ -50,8 +50,7 @@ def get_model_info(model: Module, name: Optional[str] = None) -> str:
     return s
 
 
-def find_sub_module(module: torch.nn.Module,
-                    module_name: str) -> List[torch.nn.Module]:
+def find_sub_module(module: torch.nn.Module, module_name: str) -> List[torch.nn.Module]:
     _modules = list()
     for name, sub_module in module.named_modules():
         if not name:
@@ -92,7 +91,7 @@ def is_mp() -> bool:
         return False
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
-    assert n_gpu % local_world_size == 0
+    assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
     if n_gpu // local_world_size >= 2:
         return True
     return False
@@ -113,14 +112,11 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         if max_lines is not None and i >= max_lines:
             logger.info('...')
             break
-        logger.info(
-            f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}'
-        )
+        logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
 def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
-    n_parameters = np.array([p.numel() for p in model.parameters()],
-                            dtype=np.int64)
+    n_parameters = np.array([p.numel() for p in model.parameters()], dtype=np.int64)
     n_freeze_parameters = int(np.sum(n_parameters) * freeze_parameters)
     n_parameters_cs = np.cumsum(n_parameters)
     idx = bisect_right(n_parameters_cs, n_freeze_parameters)
@@ -128,8 +124,7 @@ def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
         p.requires_grad = False
 
 
-def activate_model_parameters(
-        model: Module, additional_trainable_parameters: List[int]) -> None:
+def activate_model_parameters(model: Module, additional_trainable_parameters: List[int]) -> None:
     if len(additional_trainable_parameters) == 0:
         return
     has_activate = False
@@ -139,10 +134,8 @@ def activate_model_parameters(
                 p.requires_grad = True
                 has_activate = True
     if not has_activate:
-        logger.warning(
-            'len(additional_trainable_parameters) > 0 but no parameters are activated. '
-            f'additional_trainable_parameters: {additional_trainable_parameters}'
-        )
+        logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '
+                       f'additional_trainable_parameters: {additional_trainable_parameters}')
 
 
 def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
@@ -153,15 +146,12 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     """
     assert dist.is_initialized()
     rank, local_rank, _, _ = get_dist_setting()
-    device = f'npu:{local_rank}' if is_torch_npu_available(
-    ) else f'cuda:{local_rank}'
+    device = f'npu:{local_rank}' if is_torch_npu_available() else f'cuda:{local_rank}'
     assert rank >= 0
     if rank == 0:
         assert string is not None
         tensor = torch.tensor(
-            [ord(c) for c in string] + [0] * (buffer_size - len(string)),
-            dtype=torch.int64,
-            device=device)
+            [ord(c) for c in string] + [0] * (buffer_size - len(string)), dtype=torch.int64, device=device)
     else:
         tensor = torch.zeros(buffer_size, dtype=torch.int64, device=device)
     dist.broadcast(tensor, 0)

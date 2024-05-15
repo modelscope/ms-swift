@@ -8,8 +8,7 @@ from modelscope import AutoTokenizer
 
 from swift.utils.logger import get_logger
 from .nethook import TraceDict, set_requires_grad
-from .repr_tools import (get_reprs_at_idxs, get_reprs_at_word_tokens,
-                         get_words_idxs_in_templates)
+from .repr_tools import get_reprs_at_idxs, get_reprs_at_word_tokens, get_words_idxs_in_templates
 from .rome_hparams import ROMEHyperParams
 
 logger = get_logger()
@@ -32,8 +31,7 @@ def compute_v(model: torch.nn.Module,
 
     # Compile list of rewriting and KL x/y pairs
     rewriting_prompts, kl_prompts = [
-        context.format(request['prompt']) + request['target']
-        for context in context_templates
+        context.format(request['prompt']) + request['target'] for context in context_templates
     ], ['{} is a', '{}是一个']
     all_prompts = rewriting_prompts + kl_prompts
 
@@ -46,25 +44,18 @@ def compute_v(model: torch.nn.Module,
 
     # Compute rewriting targets
     rewriting_targets = torch.tensor(
-        -100, device=model.device).repeat(
-            len(rewriting_prompts), *input_tok['input_ids'].shape[1:])
+        -100, device=model.device).repeat(len(rewriting_prompts), *input_tok['input_ids'].shape[1:])
 
     prompt = context_templates[0].format(request['prompt'])
     prompt_full = prompt + request['target']
-    target_len = len(tokenizer.tokenize(prompt_full)) - len(
-        tokenizer.tokenize(prompt))
+    target_len = len(tokenizer.tokenize(prompt_full)) - len(tokenizer.tokenize(prompt))
     for i in range(len(rewriting_prompts)):
-        rewriting_targets[i, -target_len - 1:-1] = input_tok['input_ids'][
-            i, -target_len:].clone()
+        rewriting_targets[i, -target_len - 1:-1] = input_tok['input_ids'][i, -target_len:].clone()
 
     # Compute indices of the tokens where the fact is looked up
     lookup_idxs = [
-        find_fact_lookup_idx(
-            prompt,
-            request['subject'],
-            tokenizer,
-            hparams.fact_token,
-            verbose=(i == 0)) for i, prompt in enumerate(all_prompts)
+        find_fact_lookup_idx(prompt, request['subject'], tokenizer, hparams.fact_token, verbose=(i == 0))
+        for i, prompt in enumerate(all_prompts)
     ]
 
     # Finalize rewrite and loss layers
@@ -73,11 +64,8 @@ def compute_v(model: torch.nn.Module,
     # Set up an optimization over a latent vector that, when output at the
     # rewrite layer, i.e. hypothesized fact lookup location, will induce the
     # target token to be predicted at the final layer.
-    hidden_size = model.config.n_embd if hasattr(
-        model.config, 'n_embed') else model.config.hidden_size
-    delta = torch.zeros((hidden_size, ),
-                        requires_grad=True,
-                        device=model.device)
+    hidden_size = model.config.n_embd if hasattr(model.config, 'n_embed') else model.config.hidden_size
+    delta = torch.zeros((hidden_size, ), requires_grad=True, device=model.device)
     target_init, kl_distr_init = None, None
 
     # Inserts new "delta" variable at the appropriate part of the computation
@@ -120,10 +108,7 @@ def compute_v(model: torch.nn.Module,
 
             # Compute distribution for KL divergence
             kl_logits = torch.stack(
-                [
-                    logits[i - len(kl_prompts), idx, :]
-                    for i, idx in enumerate(lookup_idxs[-len(kl_prompts):])
-                ],
+                [logits[i - len(kl_prompts), idx, :] for i, idx in enumerate(lookup_idxs[-len(kl_prompts):])],
                 dim=0,
             )
             kl_log_probs = torch.nn.functional.log_softmax(kl_logits, dim=1)
@@ -136,8 +121,7 @@ def compute_v(model: torch.nn.Module,
         loss = torch.gather(
             log_probs,
             2,
-            torch.where(rewriting_targets != -100, rewriting_targets,
-                        0).unsqueeze(2),
+            torch.where(rewriting_targets != -100, rewriting_targets, 0).unsqueeze(2),
         ).squeeze(2)
         mask = (rewriting_targets != -100).float()
 
@@ -145,19 +129,14 @@ def compute_v(model: torch.nn.Module,
         nll_loss_each = -(loss * mask).sum(1) / target_len
         nll_loss = nll_loss_each.mean()
         kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
-            kl_distr_init,
-            kl_log_probs,
-            log_target=True,
-            reduction='batchmean')
-        weight_decay = hparams.v_weight_decay * (
-            torch.norm(delta) / torch.norm(target_init)**2)
+            kl_distr_init, kl_log_probs, log_target=True, reduction='batchmean')
+        weight_decay = hparams.v_weight_decay * (torch.norm(delta) / torch.norm(target_init)**2)
         # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
         loss = nll_loss + kl_loss + weight_decay
-        logger.info(
-            f'loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + '
-            f'{np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} '
-            f"avg prob of [{request['target']}] "
-            f'{torch.exp(-nll_loss_each).mean().item()}')
+        logger.info(f'loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + '
+                    f'{np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} '
+                    f"avg prob of [{request['target']}] "
+                    f'{torch.exp(-nll_loss_each).mean().item()}')
         if loss < 5e-2:
             break
 
@@ -191,37 +170,30 @@ def compute_v(model: torch.nn.Module,
     # Solving the linear system to compute the right vector
     right_vector = (target - cur_output) / torch.dot(cur_input, left_vector)
     logger.info(f'Delta norm: {(target - cur_output).norm().item()}')
-    logger.info(
-        f'Change in target norm: {target_init.norm().item()} to {target.norm().item()} => '
-        f'{(target.norm() - target_init.norm()).item()}')
+    logger.info(f'Change in target norm: {target_init.norm().item()} to {target.norm().item()} => '
+                f'{(target.norm() - target_init.norm()).item()}')
     logger.info(f'Division Factor: {torch.dot(cur_input, left_vector).item()}')
     logger.info(f'Right vector norm: {right_vector.norm()}')
 
     return right_vector
 
 
-def get_module_input_output_at_word(
-        model: torch.nn.Module,
-        tok: Any,
-        layer: int,
-        context_template: str,
-        word: str,
-        module_template: str,
-        fact_token_strategy: str,
-        batch_first: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_module_input_output_at_word(model: torch.nn.Module,
+                                    tok: Any,
+                                    layer: int,
+                                    context_template: str,
+                                    word: str,
+                                    module_template: str,
+                                    fact_token_strategy: str,
+                                    batch_first: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Retrieves detached representations for a word at the input and
     output of a particular layer module.
     """
 
     word_repr_args = dict(
-        model=model,
-        tokenizer=tok,
-        layer=layer,
-        module_template=module_template,
-        batch_first=batch_first)
-    if 'subject_' in fact_token_strategy and fact_token_strategy.index(
-            'subject_') == 0:
+        model=model, tokenizer=tok, layer=layer, module_template=module_template, batch_first=batch_first)
+    if 'subject_' in fact_token_strategy and fact_token_strategy.index('subject_') == 0:
         subtoken = fact_token_strategy[len('subject_'):]
         l_input, l_output = get_reprs_at_word_tokens(
             track='both',
@@ -257,8 +229,7 @@ def find_fact_lookup_idx(
 
     if fact_token_strategy == 'last':
         ret = -1
-    elif ('subject_' in fact_token_strategy
-          and fact_token_strategy.index('subject_') == 0):
+    elif ('subject_' in fact_token_strategy and fact_token_strategy.index('subject_') == 0):
         ret = get_words_idxs_in_templates(
             tok,
             context_templates=[prompt],

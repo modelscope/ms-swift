@@ -9,15 +9,12 @@ from packaging import version
 
 from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
-from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config,
-                          LongLoRAModelType, LoraConfig, LoRAConfig,
+from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config, LongLoRAModelType, LoraConfig, LoRAConfig,
                           NEFTuneConfig, Swift)
 from swift.tuners.llamapro import LLaMAProConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
-from swift.utils import (activate_model_parameters, freeze_model_parameters,
-                         get_logger, use_torchacc)
-from .utils import (SftArguments, find_all_linears, find_embedding, find_ln,
-                    is_adapter)
+from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
+from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
 
 logger = get_logger()
 
@@ -25,16 +22,14 @@ logger = get_logger()
 def handle_target_modules(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         target_modules = args.ia3_target_modules
-        assert len(args.ia3_feedforward_modules) > 0, (
-            'Setting ia3_target_modules to `ALL` '
-            'need to pass MLP linear names to `ia3_feedforward_modules`')
+        assert len(args.ia3_feedforward_modules) > 0, ('Setting ia3_target_modules to `ALL` '
+                                                       'need to pass MLP linear names to `ia3_feedforward_modules`')
     else:
         target_modules = args.lora_target_modules
     if args.lora_use_embedding:
         target_modules += find_embedding(model)
     if args.lora_use_all:
-        target_modules += find_all_linears(model, args.quantization_bit,
-                                           args.model_type)
+        target_modules += find_all_linears(model, args.quantization_bit, args.model_type)
     if args.sft_type == 'ia3':
         args.ia3_target_modules = target_modules
         logger.info(f'ia3_target_modules: {args.ia3_target_modules}')
@@ -82,15 +77,11 @@ def prepare_model(model, args: SftArguments):
                 if args.lora_dtype == 'AUTO':
                     args.lora_dtype = None
                 if args.tuner_backend == 'swift':
-                    lora_config = LoRAConfig(
-                        lora_dtype=args.lora_dtype, **lora_kwargs)
+                    lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
                     model = Swift.prepare_model(model, lora_config)
                     logger.info(f'lora_config: {lora_config}')
                 elif args.tuner_backend == 'peft':
-                    lora_config = LoraConfig(
-                        task_type='CAUSAL_LM',
-                        lora_dtype=args.lora_dtype,
-                        **lora_kwargs)
+                    lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
                     model = Swift.prepare_model(model, lora_config)
                     logger.info(f'lora_config: {lora_config}')
                 elif args.tuner_backend == 'unsloth':
@@ -106,8 +97,7 @@ def prepare_model(model, args: SftArguments):
                     logger.info(f'unsloth_config: {lora_kwargs}')
                 if args.sft_type == 'longlora':
                     assert LongLoRAModelType.LLAMA in args.model_type
-                    assert version.parse(
-                        transformers.__version__) >= version.parse('4.39.3')
+                    assert version.parse(transformers.__version__) >= version.parse('4.39.3')
                     from swift.tuners.longlora.llama import replace_llama_attn
                     replace_llama_attn(model)
                     model.config.group_size_ratio = 0.25
@@ -170,10 +160,8 @@ def prepare_model(model, args: SftArguments):
                 logger.info(f'adapter_config: {adapter_config}')
         else:
             if use_torchacc():
-                consolidate_checkpoint(args.resume_from_checkpoint,
-                                       'adapter_model')
-            model = Swift.from_pretrained(
-                model, args.resume_from_checkpoint, is_trainable=True)
+                consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')
+            model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True)
         # fix bug: Attempting to unscale FP16 gradients.
         #   peft: https://github.com/huggingface/peft/issues/1249
         #   modules_to_save + fp16
@@ -181,20 +169,17 @@ def prepare_model(model, args: SftArguments):
         for p in model.parameters():
             if p.requires_grad and p.dtype == torch.float16:
                 if not is_logging:
-                    logger.info(
-                        'Convert trainable parameters from fp16 to fp32.')
+                    logger.info('Convert trainable parameters from fp16 to fp32.')
                     is_logging = True
                 p.data = p.data.to(dtype=torch.float32)
     elif args.sft_type == 'full':
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)
         if len(args.additional_trainable_parameters) > 0:
-            activate_model_parameters(model,
-                                      args.additional_trainable_parameters)
+            activate_model_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint is not None:
             consolidate_checkpoint(args.resume_from_checkpoint, 'model')
-            weights_file = os.path.join(args.resume_from_checkpoint,
-                                        'model.bin')
+            weights_file = os.path.join(args.resume_from_checkpoint, 'model.bin')
             state_dict = torch.load(weights_file, map_location='cpu')
             model.load_state_dict(state_dict, False)
             # release memory
@@ -202,9 +187,10 @@ def prepare_model(model, args: SftArguments):
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
-    if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {
-            None, 0.
-    }:
+    if args.sequence_parallel_size > 1:
+        from swift.trainers.xtuner import dispatch_module_xtuner
+        dispatch_module_xtuner(model)
+    if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {None, 0.}:
         neftune_config = NEFTuneConfig(noise_alpha=args.neftune_noise_alpha)
         model = Swift.prepare_model(model, {'neftune': neftune_config})
         logger.info(f'neftune_config: {neftune_config}')
@@ -212,8 +198,7 @@ def prepare_model(model, args: SftArguments):
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
         if args.galore_target_modules is None:
-            args.galore_target_modules = find_all_linears(
-                model, 0, args.model_type)
+            args.galore_target_modules = find_all_linears(model, 0, args.model_type)
         if args.galore_with_embedding:
             args.galore_target_modules += find_embedding(model)
         args.training_args.galore_config = GaLoreConfig(
@@ -231,8 +216,7 @@ def prepare_model(model, args: SftArguments):
 
         class DynamicLayerActivationCallback(TrainerCallback):
 
-            def __init__(self, n_layers: int, step_interval: int,
-                         model: torch.nn.Module):
+            def __init__(self, n_layers: int, step_interval: int, model: torch.nn.Module):
                 super().__init__()
                 self.n_layers = n_layers
                 self.step_interval = step_interval
@@ -269,20 +253,18 @@ def prepare_model(model, args: SftArguments):
 
                 # Randomly select n_layers to activate
                 layers = self.model.get_submodule(self.layers_attribute)
-                self.active_layers_indices = np.random.choice(
-                    range(self.total_layers), self.n_layers, replace=False)
+                self.active_layers_indices = np.random.choice(range(self.total_layers), self.n_layers, replace=False)
                 # Enable gradients only for the selected layers
                 for idx in self.active_layers_indices:
                     for param in layers[idx].parameters():
                         param.requires_grad = True
 
-        callbacks.append(
-            DynamicLayerActivationCallback(
-                n_layers=args.
-                lisa_activated_layers,  # Number of layers to activate
-                step_interval=args.
-                lisa_step_interval,  # Step interval to update active layers
-                model=model))
+        lisa_callback = DynamicLayerActivationCallback(
+            n_layers=args.lisa_activated_layers,  # Number of layers to activate
+            step_interval=args.lisa_step_interval,  # Step interval to update active layers
+            model=model)
+        lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
+        callbacks.append(lisa_callback)
 
     class TrainerAdapterCallback(TrainerCallback):
 

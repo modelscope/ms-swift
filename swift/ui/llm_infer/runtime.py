@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
+import json
 import psutil
 from gradio import Accordion, Tab
 from packaging import version
@@ -59,8 +60,7 @@ class Runtime(BaseUI):
             },
             'info': {
                 'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en':
-                'Please press "Show log" if the log content is not updating'
+                'en': 'Please press "Show log" if the log content is not updating'
             }
         },
         'running_tasks': {
@@ -93,8 +93,7 @@ class Runtime(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Dropdown(elem_id='running_tasks', scale=10)
-                    gr.Button(
-                        elem_id='refresh_tasks', scale=1, variant='primary')
+                    gr.Button(elem_id='refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='show_log', scale=1, variant='primary')
                     gr.Button(elem_id='stop_show_log', scale=1)
                     gr.Button(elem_id='kill_task', scale=1)
@@ -104,13 +103,10 @@ class Runtime(BaseUI):
                 concurrency_limit = {}
                 if version.parse(gr.__version__) >= version.parse('4.0.0'):
                     concurrency_limit = {'concurrency_limit': 5}
-                cls.log_event = base_tab.element('show_log').click(
-                    Runtime.update_log, [], [cls.element('log')]).then(
-                        Runtime.wait, [base_tab.element('running_tasks')],
-                        [cls.element('log')], **concurrency_limit)
+                cls.log_event = base_tab.element('show_log').click(Runtime.update_log, [], [cls.element('log')]).then(
+                    Runtime.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
 
-                base_tab.element('stop_show_log').click(
-                    lambda: None, cancels=cls.log_event)
+                base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 
                 base_tab.element('refresh_tasks').click(
                     Runtime.refresh_tasks,
@@ -130,8 +126,7 @@ class Runtime(BaseUI):
         log_file = args['log_file']
         offset = 0
         latest_data = ''
-        lines = collections.deque(
-            maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         try:
             with open(log_file, 'r') as input:
                 input.seek(offset)
@@ -168,18 +163,13 @@ class Runtime(BaseUI):
         for proc in psutil.process_iter():
             try:
                 cmdlines = proc.cmdline()
-            except (psutil.ZombieProcess, psutil.AccessDenied,
-                    psutil.NoSuchProcess):
+            except (psutil.ZombieProcess, psutil.AccessDenied, psutil.NoSuchProcess):
                 cmdlines = []
-            if any([process_name in cmdline
-                    for cmdline in cmdlines]) and any(  # noqa
-                        [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
+            if any([process_name in cmdline for cmdline in cmdlines]) and any(  # noqa
+                [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 try:
                     ports.add(
-                        int(
-                            Runtime.parse_info_from_cmdline(
-                                Runtime.construct_running_task(proc))[1].get(
-                                    'port', 8000)))
+                        int(Runtime.parse_info_from_cmdline(Runtime.construct_running_task(proc))[1].get('port', 8000)))
                 except IndexError:
                     pass
         return ports
@@ -195,15 +185,12 @@ class Runtime(BaseUI):
         for proc in psutil.process_iter():
             try:
                 cmdlines = proc.cmdline()
-            except (psutil.ZombieProcess, psutil.AccessDenied,
-                    psutil.NoSuchProcess):
+            except (psutil.ZombieProcess, psutil.AccessDenied, psutil.NoSuchProcess):
                 cmdlines = []
-            if any([
-                    process_name in cmdline for cmdline in cmdlines
-            ]) and not any([negative_name in cmdline
-                            for cmdline in cmdlines]) and any(  # noqa
-                                [cmd_name == cmdline
-                                 for cmdline in cmdlines]):  # noqa
+            if any([process_name in cmdline
+                    for cmdline in cmdlines]) and not any([negative_name in cmdline
+                                                           for cmdline in cmdlines]) and any(  # noqa
+                                                               [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if log_file is not None and any(  # noqa
                     [log_file == cmdline for cmdline in cmdlines]):  # noqa
@@ -220,8 +207,7 @@ class Runtime(BaseUI):
         pid = proc.pid
         ts = time.time()
         create_time = proc.create_time()
-        create_time_formatted = datetime.fromtimestamp(create_time).strftime(
-            '%Y-%m-%d, %H:%M')
+        create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
 
         def format_time(seconds):
             days = int(seconds // (24 * 3600))
@@ -277,10 +263,7 @@ class Runtime(BaseUI):
             _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [
-            value for value in base_tab.elements().values()
-            if not isinstance(value, (Tab, Accordion))
-        ]
+        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
         ret = []
         is_custom_path = 'ckpt_dir' in all_args
         for e in elements:
@@ -290,8 +273,7 @@ class Runtime(BaseUI):
                 else:
                     if e.elem_id == 'model_type':
                         if is_custom_path:
-                            arg = base_tab.locale('checkpoint',
-                                                  base_tab.lang)['value']
+                            arg = base_tab.locale('checkpoint', base_tab.lang)['value']
                         else:
                             arg = all_args[e.elem_id]
                     elif e.elem_id == 'model_id_or_path':
@@ -304,8 +286,9 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        return ret + [
-            gr.update(value=None),
-            [all_args.get('model_type'),
-             all_args.get('template_type')]
-        ]
+        sft_type = None
+        if is_custom_path:
+            with open(os.path.join(all_args['ckpt_dir'], 'sft_args.json'), 'r') as f:
+                _json = json.load(f)
+                sft_type = _json['sft_type']
+        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), sft_type]]

@@ -32,8 +32,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
-from diffusers import (AutoencoderKL, DDPMScheduler, DiffusionPipeline,
-                       UNet2DConditionModel)
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
@@ -60,8 +59,7 @@ def text_encoder_lora_state_dict(text_encoder):
 
         attn_modules = []
 
-        if isinstance(text_encoder,
-                      (CLIPTextModel, CLIPTextModelWithProjection)):
+        if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
             for i, layer in enumerate(text_encoder.text_model.encoder.layers):
                 name = f'text_model.encoder.layers.{i}.self_attn'
                 mod = layer.self_attn
@@ -85,11 +83,7 @@ def text_encoder_lora_state_dict(text_encoder):
     return state_dict
 
 
-def save_model_card(repo_id: str,
-                    images=None,
-                    base_model=str,
-                    dataset_name=str,
-                    repo_folder=None):
+def save_model_card(repo_id: str, images=None, base_model=str, dataset_name=str, repo_folder=None):
     img_str = ''
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f'image_{i}.png'))
@@ -119,133 +113,105 @@ You can find some example images in the following. \n
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Simple example of a training script.')
+    parser = argparse.ArgumentParser(description='Simple example of a training script.')
     parser.add_argument(
         '--pretrained_model_name_or_path',
         type=str,
         default=None,
         required=True,
-        help=
-        'Path to pretrained model or model identifier from huggingface.co/models or modelscope.cn/models.',
+        help='Path to pretrained model or model identifier from huggingface.co/models or modelscope.cn/models.',
     )
     parser.add_argument(
         '--revision',
         type=str,
         default=None,
         required=False,
-        help=
-        'Revision of pretrained model identifier from huggingface.co/models or modelscope.cn/models.',
+        help='Revision of pretrained model identifier from huggingface.co/models or modelscope.cn/models.',
     )
     parser.add_argument(
         '--variant',
         type=str,
         default=None,
-        help=
-        "Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         '--dataset_name',
         type=str,
         default=None,
-        help=
-        ('The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,'
-         ' dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,'
-         ' or to a folder containing files that 🤗 Datasets can understand.'),
+        help=('The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,'
+              ' dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,'
+              ' or to a folder containing files that 🤗 Datasets can understand.'),
     )
     parser.add_argument(
         '--dataset_config_name',
         type=str,
         default=None,
-        help=
-        "The config of the Dataset, leave as None if there's only one config.",
+        help="The config of the Dataset, leave as None if there's only one config.",
     )
     parser.add_argument(
         '--train_data_dir',
         type=str,
         default=None,
-        help=
-        ('A folder containing the training data. Folder contents must follow the structure described in'
-         ' https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file'
-         ' must exist to provide the captions for the images. Ignored if `dataset_name` is specified.'
-         ),
+        help=('A folder containing the training data. Folder contents must follow the structure described in'
+              ' https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file'
+              ' must exist to provide the captions for the images. Ignored if `dataset_name` is specified.'),
     )
     parser.add_argument(
-        '--image_column',
-        type=str,
-        default='image:FILE',
-        help='The column of the dataset containing an image.')
+        '--image_column', type=str, default='image:FILE', help='The column of the dataset containing an image.')
     parser.add_argument(
         '--caption_column',
         type=str,
         default='text',
-        help=
-        'The column of the dataset containing a caption or a list of captions.',
+        help='The column of the dataset containing a caption or a list of captions.',
     )
     parser.add_argument(
-        '--validation_prompt',
-        type=str,
-        default=None,
-        help='A prompt that is sampled during training for inference.')
+        '--validation_prompt', type=str, default=None, help='A prompt that is sampled during training for inference.')
     parser.add_argument(
         '--num_validation_images',
         type=int,
         default=4,
-        help=
-        'Number of images that should be generated during validation with `validation_prompt`.',
+        help='Number of images that should be generated during validation with `validation_prompt`.',
     )
     parser.add_argument(
         '--validation_epochs',
         type=int,
         default=1,
-        help=
-        ('Run fine-tuning validation every X epochs. The validation process consists of running the prompt'
-         ' `args.validation_prompt` multiple times: `args.num_validation_images`.'
-         ),
+        help=('Run fine-tuning validation every X epochs. The validation process consists of running the prompt'
+              ' `args.validation_prompt` multiple times: `args.num_validation_images`.'),
     )
     parser.add_argument(
         '--max_train_samples',
         type=int,
         default=None,
-        help=
-        ('For debugging purposes or quicker training, truncate the number of training examples to this '
-         'value if set.'),
+        help=('For debugging purposes or quicker training, truncate the number of training examples to this '
+              'value if set.'),
     )
     parser.add_argument(
         '--output_dir',
         type=str,
         default='sd-model-finetuned-lora',
-        help=
-        'The output directory where the model predictions and checkpoints will be written.',
+        help='The output directory where the model predictions and checkpoints will be written.',
     )
     parser.add_argument(
         '--cache_dir',
         type=str,
         default=None,
-        help=
-        'The directory where the downloaded models and datasets will be stored.',
+        help='The directory where the downloaded models and datasets will be stored.',
     )
-    parser.add_argument(
-        '--seed',
-        type=int,
-        default=None,
-        help='A seed for reproducible training.')
+    parser.add_argument('--seed', type=int, default=None, help='A seed for reproducible training.')
     parser.add_argument(
         '--resolution',
         type=int,
         default=512,
-        help=
-        ('The resolution for input images, all the images in the train/validation dataset will be resized to this'
-         ' resolution'),
+        help=('The resolution for input images, all the images in the train/validation dataset will be resized to this'
+              ' resolution'),
     )
     parser.add_argument(
         '--center_crop',
         default=False,
         action='store_true',
-        help=
-        ('Whether to center crop the input images to the resolution. If not set, the images will be randomly'
-         ' cropped. The images will be resized to the resolution first before cropping.'
-         ),
+        help=('Whether to center crop the input images to the resolution. If not set, the images will be randomly'
+              ' cropped. The images will be resized to the resolution first before cropping.'),
     )
     parser.add_argument(
         '--random_flip',
@@ -253,123 +219,81 @@ def parse_args():
         help='whether to randomly flip images horizontally',
     )
     parser.add_argument(
-        '--train_batch_size',
-        type=int,
-        default=16,
-        help='Batch size (per device) for the training dataloader.')
+        '--train_batch_size', type=int, default=16, help='Batch size (per device) for the training dataloader.')
     parser.add_argument('--num_train_epochs', type=int, default=100)
     parser.add_argument(
         '--max_train_steps',
         type=int,
         default=None,
-        help=
-        'Total number of training steps to perform.  If provided, overrides num_train_epochs.',
+        help='Total number of training steps to perform.  If provided, overrides num_train_epochs.',
     )
     parser.add_argument(
         '--gradient_accumulation_steps',
         type=int,
         default=1,
-        help=
-        'Number of updates steps to accumulate before performing a backward/update pass.',
+        help='Number of updates steps to accumulate before performing a backward/update pass.',
     )
     parser.add_argument(
         '--gradient_checkpointing',
         action='store_true',
-        help=
-        'Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.',
+        help='Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.',
     )
     parser.add_argument(
         '--learning_rate',
         type=float,
         default=1e-4,
-        help=
-        'Initial learning rate (after the potential warmup period) to use.',
+        help='Initial learning rate (after the potential warmup period) to use.',
     )
     parser.add_argument(
         '--scale_lr',
         action='store_true',
         default=False,
-        help=
-        'Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.',
+        help='Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.',
     )
     parser.add_argument(
         '--lr_scheduler',
         type=str,
         default='constant',
-        help=
-        ('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
-         ' "constant", "constant_with_warmup"]'),
+        help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
+              ' "constant", "constant_with_warmup"]'),
     )
     parser.add_argument(
-        '--lr_warmup_steps',
-        type=int,
-        default=500,
-        help='Number of steps for the warmup in the lr scheduler.')
+        '--lr_warmup_steps', type=int, default=500, help='Number of steps for the warmup in the lr scheduler.')
     parser.add_argument(
         '--snr_gamma',
         type=float,
         default=None,
-        help=
-        'SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. '
+        help='SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. '
         'More details here: https://arxiv.org/abs/2303.09556.',
     )
     parser.add_argument(
-        '--use_8bit_adam',
-        action='store_true',
-        help='Whether or not to use 8-bit Adam from bitsandbytes.')
+        '--use_8bit_adam', action='store_true', help='Whether or not to use 8-bit Adam from bitsandbytes.')
     parser.add_argument(
         '--allow_tf32',
         action='store_true',
-        help=
-        ('Whether or not to allow TF32 on Ampere GPUs. Can be used to speed up training. For more information, see'
-         ' https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices'
-         ),
+        help=('Whether or not to allow TF32 on Ampere GPUs. Can be used to speed up training. For more information, see'
+              ' https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices'),
     )
     parser.add_argument(
         '--dataloader_num_workers',
         type=int,
         default=0,
-        help=
-        ('Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process.'
-         ),
+        help=(
+            'Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process.'
+        ),
     )
-    parser.add_argument(
-        '--adam_beta1',
-        type=float,
-        default=0.9,
-        help='The beta1 parameter for the Adam optimizer.')
-    parser.add_argument(
-        '--adam_beta2',
-        type=float,
-        default=0.999,
-        help='The beta2 parameter for the Adam optimizer.')
-    parser.add_argument(
-        '--adam_weight_decay',
-        type=float,
-        default=1e-2,
-        help='Weight decay to use.')
-    parser.add_argument(
-        '--adam_epsilon',
-        type=float,
-        default=1e-08,
-        help='Epsilon value for the Adam optimizer')
-    parser.add_argument(
-        '--max_grad_norm', default=1.0, type=float, help='Max gradient norm.')
-    parser.add_argument(
-        '--push_to_hub',
-        action='store_true',
-        help='Whether or not to push the model to the Hub.')
-    parser.add_argument(
-        '--hub_token',
-        type=str,
-        default=None,
-        help='The token to use to push to the Model Hub.')
+    parser.add_argument('--adam_beta1', type=float, default=0.9, help='The beta1 parameter for the Adam optimizer.')
+    parser.add_argument('--adam_beta2', type=float, default=0.999, help='The beta2 parameter for the Adam optimizer.')
+    parser.add_argument('--adam_weight_decay', type=float, default=1e-2, help='Weight decay to use.')
+    parser.add_argument('--adam_epsilon', type=float, default=1e-08, help='Epsilon value for the Adam optimizer')
+    parser.add_argument('--max_grad_norm', default=1.0, type=float, help='Max gradient norm.')
+    parser.add_argument('--push_to_hub', action='store_true', help='Whether or not to push the model to the Hub.')
+    parser.add_argument('--hub_token', type=str, default=None, help='The token to use to push to the Model Hub.')
     parser.add_argument(
         '--prediction_type',
         type=str,
         default=None,
-        help=
-        "The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or \
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or \
         leave `None`. If left to `None` the default prediction type of the scheduler: \
         `noise_scheduler.config.prediciton_type` is chosen.",
     )
@@ -377,49 +301,40 @@ def parse_args():
         '--hub_model_id',
         type=str,
         default=None,
-        help=
-        'The name of the repository to keep in sync with the local `output_dir`.',
+        help='The name of the repository to keep in sync with the local `output_dir`.',
     )
     parser.add_argument(
         '--logging_dir',
         type=str,
         default='logs',
-        help=
-        ('[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to'
-         ' *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***.'),
+        help=('[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to'
+              ' *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***.'),
     )
     parser.add_argument(
         '--mixed_precision',
         type=str,
         default=None,
         choices=['no', 'fp16', 'bf16'],
-        help=
-        ('Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >='
-         ' 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the'
-         ' flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config.'
-         ),
+        help=(
+            'Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >='
+            ' 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the'
+            ' flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config.'),
     )
     parser.add_argument(
         '--report_to',
         type=str,
         default='tensorboard',
-        help=
-        ('The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
-         ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
-         ),
+        help=('The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
+              ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'),
     )
-    parser.add_argument(
-        '--local_rank',
-        type=int,
-        default=-1,
-        help='For distributed training: local_rank')
+    parser.add_argument('--local_rank', type=int, default=-1, help='For distributed training: local_rank')
     parser.add_argument(
         '--checkpointing_steps',
         type=int,
         default=500,
-        help=
-        ('Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming'
-         ' training using `--resume_from_checkpoint`.'),
+        help=(
+            'Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming'
+            ' training using `--resume_from_checkpoint`.'),
     )
     parser.add_argument(
         '--checkpoints_total_limit',
@@ -431,20 +346,12 @@ def parse_args():
         '--resume_from_checkpoint',
         type=str,
         default=None,
-        help=
-        ('Whether training should be resumed from a previous checkpoint. Use a path saved by'
-         ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
-         ),
+        help=('Whether training should be resumed from a previous checkpoint. Use a path saved by'
+              ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'),
     )
     parser.add_argument(
-        '--enable_xformers_memory_efficient_attention',
-        action='store_true',
-        help='Whether or not to use xformers.')
-    parser.add_argument(
-        '--noise_offset',
-        type=float,
-        default=0,
-        help='The scale of noise offset.')
+        '--enable_xformers_memory_efficient_attention', action='store_true', help='Whether or not to use xformers.')
+    parser.add_argument('--noise_offset', type=float, default=0, help='The scale of noise offset.')
     parser.add_argument(
         '--rank',
         type=int,
@@ -477,8 +384,7 @@ def main():
     args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(
-        project_dir=args.output_dir, logging_dir=logging_dir)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -488,9 +394,7 @@ def main():
     )
     if args.report_to == 'wandb':
         if not is_wandb_available():
-            raise ImportError(
-                'Make sure to install wandb if you want to use it for logging during training.'
-            )
+            raise ImportError('Make sure to install wandb if you want to use it for logging during training.')
         import wandb
 
     # Make one log on every process with the configuration for debugging.
@@ -519,26 +423,15 @@ def main():
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Load scheduler, tokenizer and models.
-    noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder='scheduler')
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder='scheduler')
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder='tokenizer',
-        revision=args.revision)
+        args.pretrained_model_name_or_path, subfolder='tokenizer', revision=args.revision)
     text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder='text_encoder',
-        revision=args.revision)
+        args.pretrained_model_name_or_path, subfolder='text_encoder', revision=args.revision)
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder='vae',
-        revision=args.revision,
-        variant=args.variant)
+        args.pretrained_model_name_or_path, subfolder='vae', revision=args.revision, variant=args.variant)
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder='unet',
-        revision=args.revision,
-        variant=args.variant)
+        args.pretrained_model_name_or_path, subfolder='unet', revision=args.revision, variant=args.variant)
     # freeze parameters of models to save more memory
     unet.requires_grad_(False)
     vae.requires_grad_(False)
@@ -558,9 +451,7 @@ def main():
         param.requires_grad_(False)
 
     unet_lora_config = LoRAConfig(
-        r=args.rank,
-        init_lora_weights='gaussian',
-        target_modules=['to_k', 'to_q', 'to_v', 'to_out.0'])
+        r=args.rank, init_lora_weights='gaussian', target_modules=['to_k', 'to_q', 'to_v', 'to_out.0'])
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
@@ -580,16 +471,12 @@ def main():
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse('0.0.16'):
-                logger.warn(
-                    'xFormers 0.0.16 cannot be used for training in some GPUs. \
+                logger.warn('xFormers 0.0.16 cannot be used for training in some GPUs. \
                     If you observe problems during training, please update xFormers to at least 0.0.17. \
-                    See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details.'
-                )
+                    See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details.')
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError(
-                'xformers is not available. Make sure it is installed correctly'
-            )
+            raise ValueError('xformers is not available. Make sure it is installed correctly')
 
     lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 
@@ -600,8 +487,7 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps
-            * args.train_batch_size * accelerator.num_processes)
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes)
 
     # Initialize the optimizer
     if args.use_8bit_adam:
@@ -609,8 +495,7 @@ def main():
             import bitsandbytes as bnb
         except ImportError:
             raise ImportError(
-                'Please install bitsandbytes to use 8-bit Adam. You can do so by running `pip install bitsandbytes`'
-            )
+                'Please install bitsandbytes to use 8-bit Adam. You can do so by running `pip install bitsandbytes`')
 
         optimizer_cls = bnb.optim.AdamW8bit
     else:
@@ -640,13 +525,8 @@ def main():
             args.dataset_config_name,
             data_dir=args.train_data_dir,
         )
-        if isinstance(dataset, dict):
-            dataset = {
-                key: value.to_hf_dataset()
-                for key, value in dataset.items()
-            }
-        else:
-            dataset = {'train': dataset.to_hf_dataset()}
+        if not isinstance(dataset, dict):
+            dataset = {'train': dataset}
     else:
         data_files = {}
         if args.train_data_dir is not None:
@@ -666,23 +546,19 @@ def main():
     # 6. Get the column names for input/target.
     dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
     if args.image_column is None:
-        image_column = dataset_columns[
-            1] if dataset_columns is not None else column_names[1]
+        image_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
     else:
         image_column = args.image_column
         if image_column not in column_names:
             raise ValueError(
-                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
-            )
+                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}")
     if args.caption_column is None:
-        caption_column = dataset_columns[
-            0] if dataset_columns is not None else column_names[0]
+        caption_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
     else:
         caption_column = args.caption_column
         if caption_column not in column_names:
             raise ValueError(
-                f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
-            )
+                f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}")
     if image_column.endswith(':FILE'):
         dataset['train'] = dataset['train'].map(path_to_img)
         image_column = 'image'
@@ -696,53 +572,38 @@ def main():
                 captions.append(caption)
             elif isinstance(caption, (list, np.ndarray)):
                 # take a random caption if there are multiple
-                captions.append(
-                    random.choice(caption) if is_train else caption[0])
+                captions.append(random.choice(caption) if is_train else caption[0])
             else:
                 raise ValueError(
-                    f'Caption column `{caption_column}` should contain either strings or lists of strings.'
-                )
+                    f'Caption column `{caption_column}` should contain either strings or lists of strings.')
         inputs = tokenizer(
-            captions,
-            max_length=tokenizer.model_max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors='pt')
+            captions, max_length=tokenizer.model_max_length, padding='max_length', truncation=True, return_tensors='pt')
         return inputs.input_ids
 
     # Preprocessing the datasets.
     train_transforms = transforms.Compose([
-        transforms.Resize(
-            args.resolution,
-            interpolation=transforms.InterpolationMode.BILINEAR),
-        transforms.CenterCrop(args.resolution)
-        if args.center_crop else transforms.RandomCrop(args.resolution),
-        transforms.RandomHorizontalFlip()
-        if args.random_flip else transforms.Lambda(lambda x: x),
+        transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+        transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+        transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5]),
     ])
 
     def preprocess_train(examples):
         images = [image.convert('RGB') for image in examples[image_column]]
-        examples['pixel_values'] = [
-            train_transforms(image) for image in images
-        ]
+        examples['pixel_values'] = [train_transforms(image) for image in images]
         examples['input_ids'] = tokenize_captions(examples)
         return examples
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset['train'] = dataset['train'].shuffle(seed=args.seed).select(
-                range(args.max_train_samples))
+            dataset['train'] = dataset['train'].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
         train_dataset = dataset['train'].with_transform(preprocess_train)
 
     def collate_fn(examples):
-        pixel_values = torch.stack(
-            [example['pixel_values'] for example in examples])
-        pixel_values = pixel_values.to(
-            memory_format=torch.contiguous_format).float()
+        pixel_values = torch.stack([example['pixel_values'] for example in examples])
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example['input_ids'] for example in examples])
         return {'pixel_values': pixel_values, 'input_ids': input_ids}
 
@@ -757,8 +618,7 @@ def main():
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -771,17 +631,15 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler)
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(unet, optimizer, train_dataloader,
+                                                                          lr_scheduler)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps
-                                      / num_update_steps_per_epoch)
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -794,13 +652,9 @@ def main():
     logger.info('***** Running training *****')
     logger.info(f'  Num examples = {len(train_dataset)}')
     logger.info(f'  Num Epochs = {args.num_train_epochs}')
-    logger.info(
-        f'  Instantaneous batch size per device = {args.train_batch_size}')
-    logger.info(
-        f'  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}'
-    )
-    logger.info(
-        f'  Gradient Accumulation steps = {args.gradient_accumulation_steps}')
+    logger.info(f'  Instantaneous batch size per device = {args.train_batch_size}')
+    logger.info(f'  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}')
+    logger.info(f'  Gradient Accumulation steps = {args.gradient_accumulation_steps}')
     logger.info(f'  Total optimization steps = {args.max_train_steps}')
     global_step = 0
     first_epoch = 0
@@ -818,8 +672,7 @@ def main():
 
         if path is None:
             accelerator.print(
-                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
-            )
+                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run.")
             args.resume_from_checkpoint = None
             initial_global_step = 0
         else:
@@ -846,8 +699,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = vae.encode(batch['pixel_values'].to(
-                    dtype=weight_dtype)).latent_dist.sample()
+                latents = vae.encode(batch['pixel_values'].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -855,21 +707,16 @@ def main():
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
                     noise += args.noise_offset * torch.randn(
-                        (latents.shape[0], latents.shape[1], 1, 1),
-                        device=latents.device)
+                        (latents.shape[0], latents.shape[1], 1, 1), device=latents.device)
 
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0,
-                    noise_scheduler.config.num_train_timesteps, (bsz, ),
-                    device=latents.device)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz, ), device=latents.device)
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(
-                    latents, noise, timesteps)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch['input_ids'])[0]
@@ -877,26 +724,20 @@ def main():
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
                     # set prediction_type of scheduler if defined
-                    noise_scheduler.register_to_config(
-                        prediction_type=args.prediction_type)
+                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
 
                 if noise_scheduler.config.prediction_type == 'epsilon':
                     target = noise
                 elif noise_scheduler.config.prediction_type == 'v_prediction':
-                    target = noise_scheduler.get_velocity(
-                        latents, noise, timesteps)
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
-                    raise ValueError(
-                        f'Unknown prediction type {noise_scheduler.config.prediction_type}'
-                    )
+                    raise ValueError(f'Unknown prediction type {noise_scheduler.config.prediction_type}')
 
                 # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps,
-                                  encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 if args.snr_gamma is None:
-                    loss = F.mse_loss(
-                        model_pred.float(), target.float(), reduction='mean')
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction='mean')
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
@@ -906,28 +747,21 @@ def main():
                         # Velocity objective requires that we add one to SNR values before we divide by them.
                         snr = snr + 1
                     mse_loss_weights = (
-                        torch.stack(
-                            [snr, args.snr_gamma * torch.ones_like(timesteps)],
-                            dim=1).min(dim=1)[0] / snr)
+                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr)
 
-                    loss = F.mse_loss(
-                        model_pred.float(), target.float(), reduction='none')
-                    loss = loss.mean(
-                        dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction='none')
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
-                avg_loss = accelerator.gather(
-                    loss.repeat(args.train_batch_size)).mean()
-                train_loss += avg_loss.item(
-                ) / args.gradient_accumulation_steps
+                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = lora_layers
-                    accelerator.clip_grad_norm_(params_to_clip,
-                                                args.max_grad_norm)
+                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -944,48 +778,30 @@ def main():
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [
-                                d for d in checkpoints
-                                if d.startswith('checkpoint')
-                            ]
-                            checkpoints = sorted(
-                                checkpoints,
-                                key=lambda x: int(x.split('-')[1]))
+                            checkpoints = [d for d in checkpoints if d.startswith('checkpoint')]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))
 
                             # before we save the new checkpoint, we need to have at _most_ \
                             # `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints
-                                   ) >= args.checkpoints_total_limit:
-                                num_to_remove = len(
-                                    checkpoints
-                                ) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[
-                                    0:num_to_remove]
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
 
-                                logger.info(
-                                    f'{len(checkpoints)} checkpoints already exist, '
-                                    f'removing {len(removing_checkpoints)} checkpoints'
-                                )
-                                logger.info(
-                                    f"removing checkpoints: {', '.join(removing_checkpoints)}"
-                                )
+                                logger.info(f'{len(checkpoints)} checkpoints already exist, '
+                                            f'removing {len(removing_checkpoints)} checkpoints')
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(
-                                        args.output_dir, removing_checkpoint)
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir,
-                                                 f'checkpoint-{global_step}')
+                        save_path = os.path.join(args.output_dir, f'checkpoint-{global_step}')
                         accelerator.save_state(save_path)
 
                         unet.save_pretrained(save_path)
                         logger.info(f'Saved state to {save_path}')
 
-            logs = {
-                'step_loss': loss.detach().item(),
-                'lr': lr_scheduler.get_last_lr()[0]
-            }
+            logs = {'step_loss': loss.detach().item(), 'lr': lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
@@ -993,9 +809,8 @@ def main():
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                logger.info(
-                    f'Running validation... \n Generating {args.num_validation_images} images with prompt:'
-                    f' {args.validation_prompt}.')
+                logger.info(f'Running validation... \n Generating {args.num_validation_images} images with prompt:'
+                            f' {args.validation_prompt}.')
                 # create pipeline
                 pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
@@ -1014,23 +829,16 @@ def main():
                 images = []
                 for _ in range(args.num_validation_images):
                     images.append(
-                        pipeline(
-                            args.validation_prompt,
-                            num_inference_steps=30,
-                            generator=generator).images[0])
+                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
                 for tracker in accelerator.trackers:
                     if tracker.name == 'tensorboard':
-                        np_images = np.stack(
-                            [np.asarray(img) for img in images])
-                        tracker.writer.add_images(
-                            'validation', np_images, epoch, dataformats='NHWC')
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images('validation', np_images, epoch, dataformats='NHWC')
                     if tracker.name == 'wandb':
                         tracker.log({
                             'validation': [
-                                wandb.Image(
-                                    image,
-                                    caption=f'{i}: {args.validation_prompt}')
+                                wandb.Image(image, caption=f'{i}: {args.validation_prompt}')
                                 for i, image in enumerate(images)
                             ]
                         })
@@ -1058,10 +866,7 @@ def main():
     # Final inference
     # Load previous pipeline
     pipeline = DiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        revision=args.revision,
-        variant=args.variant,
-        torch_dtype=weight_dtype)
+        args.pretrained_model_name_or_path, revision=args.revision, variant=args.variant, torch_dtype=weight_dtype)
     pipeline = pipeline.to(accelerator.device)
 
     # load attention processors
@@ -1073,25 +878,18 @@ def main():
         generator = generator.manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
-        images.append(
-            pipeline(
-                args.validation_prompt,
-                num_inference_steps=30,
-                generator=generator).images[0])
+        images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
     if accelerator.is_main_process:
         for tracker in accelerator.trackers:
             if len(images) != 0:
                 if tracker.name == 'tensorboard':
                     np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images(
-                        'test', np_images, epoch, dataformats='NHWC')
+                    tracker.writer.add_images('test', np_images, epoch, dataformats='NHWC')
                 if tracker.name == 'wandb':
                     tracker.log({
                         'test': [
-                            wandb.Image(
-                                image,
-                                caption=f'{i}: {args.validation_prompt}')
+                            wandb.Image(image, caption=f'{i}: {args.validation_prompt}')
                             for i, image in enumerate(images)
                         ]
                     })

@@ -23,7 +23,7 @@ accelerate launch --config_file "./scripts/llama2_70b_chat/qlora_fsdp/fsdp_offlo
     --bnb_4bit_quant_storage bfloat16 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dtype bf16 \
+    --lora_dtype AUTO \
     --lora_dropout_p 0.05 \
     --lora_target_modules DEFAULT \
     --gradient_checkpointing true \

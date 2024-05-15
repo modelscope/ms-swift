@@ -23,8 +23,7 @@ from peft.tuners.lora import LoraLayer
 from peft.tuners.lora import LoraModel as _LoraModel
 from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
-from peft.utils import (_get_submodules, get_auto_gptq_quant_linear,
-                        get_quantization_config)
+from peft.utils import _get_submodules, get_auto_gptq_quant_linear, get_quantization_config
 from peft.utils.other import transpose
 from transformers import Conv1D
 
@@ -36,15 +35,12 @@ dispatchers = []
 
 
 def is_auto_awq_available():
-    return importlib.util.find_spec(
-        'awq') is not None and importlib.util.find_spec(
-            'peft.tuners.lora.awq') is not None
+    return importlib.util.find_spec('awq') is not None and importlib.util.find_spec('peft.tuners.lora.awq') is not None
 
 
 def is_aqlm_available():
-    return importlib.util.find_spec(
-        'aqlm') is not None and importlib.util.find_spec(
-            'peft.tuners.lora.aqlm') is not None
+    return importlib.util.find_spec('aqlm') is not None and importlib.util.find_spec(
+        'peft.tuners.lora.aqlm') is not None
 
 
 def is_auto_gptq_available():
@@ -84,8 +80,7 @@ class LoRAActivationMixin(ActivationMixin):
                 else:
                     self.set_activation(key, False)
                     layer.requires_grad_(False)
-                    SwiftAdapter.save_memory(
-                        layer, key, self.module_key, False, offload=offload)
+                    SwiftAdapter.save_memory(layer, key, self.module_key, False, offload=offload)
 
     def save_memory(self, adapter_name, activate, offload=None):
         for layer_name in self.adapter_layer_names:
@@ -93,22 +88,14 @@ class LoRAActivationMixin(ActivationMixin):
             for key, layer in module_dict.items():
                 if key == adapter_name:
                     if activate:
-                        SwiftAdapter.save_memory(layer, layer_name + '.' + key,
-                                                 self.module_key, True)
+                        SwiftAdapter.save_memory(layer, layer_name + '.' + key, self.module_key, True)
                     else:
-                        SwiftAdapter.save_memory(
-                            layer,
-                            layer_name + '.' + key,
-                            self.module_key,
-                            False,
-                            offload=offload)
+                        SwiftAdapter.save_memory(layer, layer_name + '.' + key, self.module_key, False, offload=offload)
 
     def merge(self, *args, **kwargs):
         if not self.unique_thread:
-            raise AssertionError(
-                'Merge is unsupported in multiple thread, '
-                'please set `USE_UNIQUE_THREAD=1` in env variable to merge LoRA.'
-            )
+            raise AssertionError('Merge is unsupported in multiple thread, '
+                                 'please set `USE_UNIQUE_THREAD=1` in env variable to merge LoRA.')
         return super().merge(*args, **kwargs)
 
 
@@ -128,8 +115,7 @@ if is_bnb_available():
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
-    def dispatch_bnb_8bit(target: torch.nn.Module, adapter_name: str,
-                          module_key: str, **kwargs):
+    def dispatch_bnb_8bit(target: torch.nn.Module, adapter_name: str, module_key: str, **kwargs):
         new_module = None
 
         if isinstance(target, BaseTunerLayer):
@@ -138,18 +124,15 @@ if is_bnb_available():
             target_base_layer = target
 
         loaded_in_8bit = kwargs.get('loaded_in_8bit', False)
-        if loaded_in_8bit and isinstance(target_base_layer,
-                                         bnb.nn.Linear8bitLt):
+        if loaded_in_8bit and isinstance(target_base_layer, bnb.nn.Linear8bitLt):
             eightbit_kwargs = kwargs.copy()
             eightbit_kwargs.update({
                 'has_fp16_weights': target.state.has_fp16_weights,
-                'memory_efficient_backward':
-                target.state.memory_efficient_backward,
+                'memory_efficient_backward': target.state.memory_efficient_backward,
                 'threshold': target.state.threshold,
                 'index': target.index,
             })
-            new_module = Linear8bitLt(
-                target, adapter_name, module_key=module_key, **eightbit_kwargs)
+            new_module = Linear8bitLt(target, adapter_name, module_key=module_key, **eightbit_kwargs)
 
         return new_module
 
@@ -170,8 +153,7 @@ if is_bnb_4bit_available():
             self.set_activation(args[1], True)
             super(ActivationMixin, self).__init__(*args, **kwargs)
 
-    def dispatch_bnb_4bit(target: torch.nn.Module, adapter_name: str,
-                          module_key: str, **kwargs):
+    def dispatch_bnb_4bit(target: torch.nn.Module, adapter_name: str, module_key: str, **kwargs):
         new_module = None
 
         if isinstance(target, BaseTunerLayer):
@@ -180,19 +162,14 @@ if is_bnb_4bit_available():
             target_base_layer = target
 
         loaded_in_4bit = kwargs.get('loaded_in_4bit', False)
-        if loaded_in_4bit and is_bnb_4bit_available() and isinstance(
-                target_base_layer, bnb.nn.Linear4bit):
+        if loaded_in_4bit and is_bnb_4bit_available() and isinstance(target_base_layer, bnb.nn.Linear4bit):
             fourbit_kwargs = kwargs.copy()
             fourbit_kwargs.update({
-                'compute_dtype':
-                target_base_layer.compute_dtype,
-                'compress_statistics':
-                target_base_layer.weight.compress_statistics,
-                'quant_type':
-                target_base_layer.weight.quant_type,
+                'compute_dtype': target_base_layer.compute_dtype,
+                'compress_statistics': target_base_layer.weight.compress_statistics,
+                'quant_type': target_base_layer.weight.quant_type,
             })
-            new_module = Linear4bit(
-                target, adapter_name, module_key=module_key, **fourbit_kwargs)
+            new_module = Linear4bit(target, adapter_name, module_key=module_key, **fourbit_kwargs)
 
         return new_module
 
@@ -226,8 +203,7 @@ if is_aqlm_available():
         else:
             target_base_layer = target
 
-        if is_aqlm_available() and isinstance(target_base_layer,
-                                              QuantizedLinear):
+        if is_aqlm_available() and isinstance(target_base_layer, QuantizedLinear):
             new_module = AqlmLoraLinear(target, adapter_name, **kwargs)
             target.qweight = target_base_layer.codes
 
@@ -267,17 +243,13 @@ if is_auto_awq_available():
         if isinstance(target_base_layer, WQLinear_GEMM):
             # Raise the error only at the dispatch level
             AUTOAWQ_MINIMUM_VERSION = packaging.version.parse('0.2.0')
-            version_autoawq = packaging.version.parse(
-                importlib_metadata.version('autoawq'))
+            version_autoawq = packaging.version.parse(importlib_metadata.version('autoawq'))
 
             if AUTOAWQ_MINIMUM_VERSION > version_autoawq:
-                raise ImportError(
-                    f'Found an incompatible version of auto-awq. Found version {version_autoawq}, '
-                    f'but only versions above {AUTOAWQ_MINIMUM_VERSION} are supported for PEFT.'
-                )
+                raise ImportError(f'Found an incompatible version of auto-awq. Found version {version_autoawq}, '
+                                  f'but only versions above {AUTOAWQ_MINIMUM_VERSION} are supported for PEFT.')
 
-            new_module = AwqLoraLinear(
-                target, adapter_name, module_key=module_key, **kwargs)
+            new_module = AwqLoraLinear(target, adapter_name, module_key=module_key, **kwargs)
             target.qweight = target_base_layer.qweight
 
         return new_module
@@ -311,15 +283,11 @@ if is_auto_gptq_available():
             self.use_qa_lora = use_qa_lora
             if self.use_qa_lora:
                 assert self.group_size is not None, 'To use qa_lora you need to pass in the `group_size` param.'
-                self.qa_pool = torch.nn.AvgPool1d(
-                    self.group_size
-                )  # using pooling layer to conduct sum operation
+                self.qa_pool = torch.nn.AvgPool1d(self.group_size)  # using pooling layer to conduct sum operation
 
             LoraLayer.__init__(self, base_layer)
             if use_dora:
-                raise ValueError(
-                    f'{_QuantLinear.__name__} does not support DoRA yet, please set it to False'
-                )
+                raise ValueError(f'{_QuantLinear.__name__} does not support DoRA yet, please set it to False')
             if self.use_qa_lora:
                 self.in_features = self.in_features // self.group_size
             # self.base_layer and self.quant_linear_module are the same;
@@ -380,13 +348,10 @@ if is_auto_gptq_available():
             target_base_layer = target
 
         gptq_quantization_config = kwargs.get('gptq_quantization_config', None)
-        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(
-            gptq_quantization_config)
+        AutoGPTQQuantLinear = get_auto_gptq_quant_linear(gptq_quantization_config)
 
-        if AutoGPTQQuantLinear is not None and isinstance(
-                target_base_layer, AutoGPTQQuantLinear):
-            new_module = QuantLinear(
-                target, adapter_name, module_key=module_key, **kwargs)
+        if AutoGPTQQuantLinear is not None and isinstance(target_base_layer, AutoGPTQQuantLinear):
+            new_module = QuantLinear(target, adapter_name, module_key=module_key, **kwargs)
             target.qweight = target_base_layer.qweight
 
         return new_module
@@ -410,8 +375,7 @@ def dispatch_megatron(
 
     if lora_config.megatron_config:
         megatron_core = importlib.import_module(lora_config.megatron_core)
-        linears = (megatron_core.tensor_parallel.ColumnParallelLinear,
-                   megatron_core.tensor_parallel.RowParallelLinear)
+        linears = (megatron_core.tensor_parallel.ColumnParallelLinear, megatron_core.tensor_parallel.RowParallelLinear)
     else:
         megatron_core = None
         linears = None
@@ -421,16 +385,13 @@ def dispatch_megatron(
         megatron_config = lora_config.megatron_config
         if isinstance(megatron_config, dict):
             transformer_config_class = megatron_core.transformer.transformer_config.TransformerConfig
-            megatron_config = transformer_config_class(
-                **lora_config.megatron_config)
+            megatron_config = transformer_config_class(**lora_config.megatron_config)
         megatron_kwargs['megatron_config'] = megatron_config
         if megatron_kwargs['fan_in_fan_out']:
-            warnings.warn(
-                'fan_in_fan_out is set to True but the target module is `ColumnParallelLinear` '
-                'or `RowParallelLinear`. '
-                'Setting fan_in_fan_out to False.')
-            megatron_kwargs[
-                'fan_in_fan_out'] = lora_config.fan_in_fan_out = False
+            warnings.warn('fan_in_fan_out is set to True but the target module is `ColumnParallelLinear` '
+                          'or `RowParallelLinear`. '
+                          'Setting fan_in_fan_out to False.')
+            megatron_kwargs['fan_in_fan_out'] = lora_config.fan_in_fan_out = False
         new_module = LoraParallelLinear(
             base_layer=target,
             adapter_name=adapter_name,
@@ -459,37 +420,27 @@ def dispatch_default(
         embedding_kwargs = kwargs.copy()
         embedding_kwargs.pop('fan_in_fan_out', None)
         embedding_kwargs.update(lora_config.loftq_config)
-        new_module = Embedding(
-            target, adapter_name, module_key=module_key, **embedding_kwargs)
+        new_module = Embedding(target, adapter_name, module_key=module_key, **embedding_kwargs)
     elif isinstance(target_base_layer, torch.nn.Conv2d):
         kwargs.update(lora_config.loftq_config)
-        new_module = Conv2d(
-            target, adapter_name, module_key=module_key, **kwargs)
+        new_module = Conv2d(target, adapter_name, module_key=module_key, **kwargs)
     elif isinstance(target_base_layer, torch.nn.Linear):
         if target_base_layer.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
             # Fix issue: https://github.com/modelscope/swift/issues/342
             return None
         if kwargs['fan_in_fan_out']:
-            warnings.warn(
-                'fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. '
-                'Setting fan_in_fan_out to False.')
+            warnings.warn('fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. '
+                          'Setting fan_in_fan_out to False.')
             kwargs['fan_in_fan_out'] = lora_config.fan_in_fan_out = False
         kwargs.update(lora_config.loftq_config)
-        new_module = Linear(
-            target, adapter_name, module_key=module_key, **kwargs)
+        new_module = Linear(target, adapter_name, module_key=module_key, **kwargs)
     elif isinstance(target_base_layer, Conv1D):
         if not kwargs['fan_in_fan_out']:
-            warnings.warn(
-                'fan_in_fan_out is set to False but the target module is `Conv1D`. '
-                'Setting fan_in_fan_out to True.')
+            warnings.warn('fan_in_fan_out is set to False but the target module is `Conv1D`. '
+                          'Setting fan_in_fan_out to True.')
             kwargs['fan_in_fan_out'] = lora_config.fan_in_fan_out = True
         kwargs.update(lora_config.loftq_config)
-        new_module = Linear(
-            target,
-            adapter_name,
-            is_target_conv_1d_layer=True,
-            module_key=module_key,
-            **kwargs)
+        new_module = Linear(target, adapter_name, is_target_conv_1d_layer=True, module_key=module_key, **kwargs)
 
     return new_module
 
@@ -536,9 +487,7 @@ class Linear(LoRAActivationMixin, _Linear):
                      use_dora: bool = False):
         # This code works for linear layers, override for other layer types
         if r <= 0:
-            raise ValueError(
-                f'`r` should be a positive integer value but the value passed is {r}'
-            )
+            raise ValueError(f'`r` should be a positive integer value but the value passed is {r}')
 
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
@@ -547,8 +496,7 @@ class Linear(LoRAActivationMixin, _Linear):
         else:
             lora_dropout_layer = nn.Identity()
 
-        self.lora_dropout.update(
-            nn.ModuleDict({adapter_name: lora_dropout_layer}))
+        self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
         self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
         self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=False)
@@ -625,12 +573,10 @@ class LoraModel(_LoraModel):
                         p.requires_grad = True
             elif bias == 'lora_only':
                 for m in model.modules():
-                    if isinstance(m, LoraLayer) and hasattr(
-                            m, 'bias') and m.bias is not None:
+                    if isinstance(m, LoraLayer) and hasattr(m, 'bias') and m.bias is not None:
                         m.bias.requires_grad = True
             else:
-                raise NotImplementedError(
-                    f'Requested bias: {bias}, is not implemented.')
+                raise NotImplementedError(f'Requested bias: {bias}, is not implemented.')
 
     def inject_adapter(self, model: nn.Module, adapter_name: str):
         r"""
@@ -646,8 +592,7 @@ class LoraModel(_LoraModel):
         is_target_modules_in_base_model = False
         key_list = [key for key, _ in model.named_modules()]
 
-        _check_for_modules_to_save = getattr(peft_config, 'modules_to_save',
-                                             None) is not None
+        _check_for_modules_to_save = getattr(peft_config, 'modules_to_save', None) is not None
         _has_modules_to_save = False
 
         model_config = getattr(model, 'config', {'model_type': 'custom'})
@@ -666,14 +611,12 @@ class LoraModel(_LoraModel):
         for key in key_list:
             # Check for modules_to_save in case
             if _check_for_modules_to_save and any(
-                    key.endswith(f'{module_to_save}')
-                    for module_to_save in peft_config.modules_to_save):
+                    key.endswith(f'{module_to_save}') for module_to_save in peft_config.modules_to_save):
                 # Optionally set the modules to save
                 parent, target, target_name = _get_submodules(model, key)
 
                 if not isinstance(target, ModulesToSaveWrapper):
-                    new_module = ModulesToSaveWrapper(
-                        target, adapter_name=adapter_name, module_key=key)
+                    new_module = ModulesToSaveWrapper(target, adapter_name=adapter_name, module_key=key)
                     setattr(parent, target_name, new_module)
                 else:
                     target.update(adapter_name)
@@ -687,18 +630,11 @@ class LoraModel(_LoraModel):
             self.targeted_module_names.append(key)
             is_target_modules_in_base_model = True
             parent, target, target_name = _get_submodules(model, key)
-            self._create_and_replace(
-                peft_config,
-                adapter_name,
-                target,
-                target_name,
-                parent,
-                current_key=key)
+            self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
         if not is_target_modules_in_base_model:
-            raise ValueError(
-                f'Target modules {peft_config.target_modules} not found in the base model. '
-                f'Please check the target modules and try again.')
+            raise ValueError(f'Target modules {peft_config.target_modules} not found in the base model. '
+                             f'Please check the target modules and try again.')
 
         self._mark_only_adapters_as_trainable(self.model)
 
@@ -754,15 +690,10 @@ class LoraModel(_LoraModel):
             raise ValueError("Current Key shouldn't be `None`")
 
         # Regexp matching - Find key which matches current target_name in patterns provided
-        pattern_keys = list(
-            chain(lora_config.rank_pattern.keys(),
-                  lora_config.alpha_pattern.keys()))
-        target_name_key = next(
-            filter(lambda key: re.match(rf'.*\.{key}$', current_key),
-                   pattern_keys), current_key)
+        pattern_keys = list(chain(lora_config.rank_pattern.keys(), lora_config.alpha_pattern.keys()))
+        target_name_key = next(filter(lambda key: re.match(rf'.*\.{key}$', current_key), pattern_keys), current_key)
         r = lora_config.rank_pattern.get(target_name_key, lora_config.r)
-        alpha = lora_config.alpha_pattern.get(target_name_key,
-                                              lora_config.lora_alpha)
+        alpha = lora_config.alpha_pattern.get(target_name_key, lora_config.lora_alpha)
 
         kwargs = {
             'r': r,
@@ -778,17 +709,14 @@ class LoraModel(_LoraModel):
 
         quant_methods = ['gptq', 'aqlm', 'awq']
         for quant_method in quant_methods:
-            quantization_config = get_quantization_config(
-                self.model, method=quant_method)
+            quantization_config = get_quantization_config(self.model, method=quant_method)
             if quantization_config is not None:
-                kwargs[
-                    f'{quant_method}_quantization_config'] = quantization_config
+                kwargs[f'{quant_method}_quantization_config'] = quantization_config
 
         # note: AdaLoraLayer is a subclass of LoraLayer, we need to exclude it
         from peft.tuners.adalora import AdaLoraLayer
 
-        if isinstance(target,
-                      LoraLayer) and not isinstance(target, AdaLoraLayer):
+        if isinstance(target, LoraLayer) and not isinstance(target, AdaLoraLayer):
             if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
                 # Fix issue: https://github.com/modelscope/swift/issues/342
                 return
@@ -803,12 +731,7 @@ class LoraModel(_LoraModel):
             )
             self._convert_dtype(target, lora_config.lora_dtype)
         else:
-            new_module = self._create_new_module(
-                lora_config,
-                adapter_name,
-                target,
-                current_key=current_key,
-                **kwargs)
+            new_module = self._create_new_module(lora_config, adapter_name, target, current_key=current_key, **kwargs)
             if new_module is not None:
                 if adapter_name != self.active_adapter:
                     # adding an additional adapter: it is not automatically trainable
@@ -840,8 +763,7 @@ class LoraModel(_LoraModel):
         # dispatch to correct device
         for name, module in new_module.named_modules():
             if (self.prefix in name) or ('ranknum' in name):
-                weight = child.qweight if hasattr(child,
-                                                  'qweight') else child.weight
+                weight = child.qweight if hasattr(child, 'qweight') else child.weight
                 if weight.device != torch.device('meta'):
                     module.to(weight.device)
 
@@ -865,20 +787,10 @@ class LoraModel(_LoraModel):
         if lora_config.use_merged_linear:
             bias = kwargs.pop('bias', False)
             new_module = MergedLinear(
-                adapter_name,
-                current_key,
-                target,
-                bias=bias,
-                enable_lora=lora_config.enable_lora,
-                **kwargs)
+                adapter_name, current_key, target, bias=bias, enable_lora=lora_config.enable_lora, **kwargs)
         else:
             for dispatcher in dispatchers:
-                new_module = dispatcher(
-                    target,
-                    adapter_name,
-                    lora_config=lora_config,
-                    module_key=current_key,
-                    **kwargs)
+                new_module = dispatcher(target, adapter_name, lora_config=lora_config, module_key=current_key, **kwargs)
                 if new_module is not None:  # first match wins
                     break
 
@@ -886,8 +798,7 @@ class LoraModel(_LoraModel):
             # no module could be matched
             logger.debug(
                 f'Target module {target} is not supported. Currently, only the following modules are supported: '
-                '`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv2d`, `transformers.pytorch_utils.Conv1D`.'
-            )
+                '`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv2d`, `transformers.pytorch_utils.Conv1D`.')
             new_module = None
 
         return new_module
@@ -936,13 +847,7 @@ class MergedLinear(nn.Linear, LoRALayer):
                  device=None,
                  dtype=None,
                  **kwargs):
-        nn.Linear.__init__(
-            self,
-            base_layer.in_features,
-            base_layer.out_features,
-            bias=bias,
-            device=device,
-            dtype=dtype)
+        nn.Linear.__init__(self, base_layer.in_features, base_layer.out_features, bias=bias, device=device, dtype=dtype)
         LoRALayer.__init__(
             self,
             adapter_name,
@@ -958,21 +863,16 @@ class MergedLinear(nn.Linear, LoRALayer):
         self.base_layer = base_layer
         # Actual trainable parameters
         if r > 0 and any(enable_lora):
-            self.lora_A = nn.Parameter(
-                self.weight.new_zeros(
-                    (r * sum(enable_lora), base_layer.in_features)))
+            self.lora_A = nn.Parameter(self.weight.new_zeros((r * sum(enable_lora), base_layer.in_features)))
             self.lora_B = nn.Parameter(
-                self.weight.new_zeros(
-                    (base_layer.out_features // len(enable_lora)
-                     * sum(enable_lora),
-                     r)))  # weights for Conv1D with groups=sum(enable_lora)
+                self.weight.new_zeros((base_layer.out_features // len(enable_lora) * sum(enable_lora),
+                                       r)))  # weights for Conv1D with groups=sum(enable_lora)
             self.scaling = self.lora_alpha / self.r
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
             # Compute the indices
-            self.lora_ind = self.weight.new_zeros(
-                (base_layer.out_features, ),
-                dtype=torch.bool).view(len(enable_lora), -1)
+            self.lora_ind = self.weight.new_zeros((base_layer.out_features, ),
+                                                  dtype=torch.bool).view(len(enable_lora), -1)
             self.lora_ind[enable_lora, :] = True
             self.lora_ind = self.lora_ind.view(-1)
         self.reset_parameters()
@@ -999,10 +899,7 @@ class MergedLinear(nn.Linear, LoRALayer):
         def T(w):
             return w.transpose(0, 1) if self.fan_in_fan_out else w
 
-        delta_w = F.conv1d(
-            self.lora_A.unsqueeze(0),
-            self.lora_B.unsqueeze(-1),
-            groups=sum(self.enable_lora)).squeeze(0)
+        delta_w = F.conv1d(self.lora_A.unsqueeze(0), self.lora_B.unsqueeze(-1), groups=sum(self.enable_lora)).squeeze(0)
         return T(self.zero_pad(delta_w))
 
     def merge(self, **kwargs):
@@ -1030,15 +927,12 @@ class MergedLinear(nn.Linear, LoRALayer):
             if self.r > 0:
                 x_dtype = x.dtype
                 x = x.to(self.lora_A.dtype)
-                result += self.lora_dropout(x) @ T(
-                    self.merge_AB().T) * self.scaling
+                result += self.lora_dropout(x) @ T(self.merge_AB().T) * self.scaling
                 result = result.to(x_dtype)
             return result
 
 
-def mark_lora_as_trainable(model: nn.Module,
-                           adapter_name: str,
-                           bias: str = 'none') -> None:
+def mark_lora_as_trainable(model: nn.Module, adapter_name: str, bias: str = 'none') -> None:
     if bias == 'none':
         return
     elif bias == 'all':
@@ -1055,16 +949,11 @@ def mark_lora_as_trainable(model: nn.Module,
         raise NotImplementedError
 
 
-def lora_state_dict(state_dict,
-                    adapter_name: str,
-                    bias: str = 'none') -> Dict[str, torch.Tensor]:
+def lora_state_dict(state_dict, adapter_name: str, bias: str = 'none') -> Dict[str, torch.Tensor]:
     if bias == 'none':
         to_return = {k: state_dict[k] for k in state_dict if 'lora_' in k}
     elif bias == 'all':
-        to_return = {
-            k: state_dict[k]
-            for k in state_dict if 'lora_' in k or 'bias' in k
-        }
+        to_return = {k: state_dict[k] for k in state_dict if 'lora_' in k or 'bias' in k}
     elif bias == 'lora_only':
         to_return = {}
         for k in state_dict:
@@ -1075,8 +964,4 @@ def lora_state_dict(state_dict,
                     to_return[bias_name] = state_dict[bias_name]
     else:
         raise NotImplementedError
-    return {
-        k: v
-        for k, v in to_return.items()
-        if (('lora_' in k and f'.{adapter_name}' in k) or ('bias' in k))
-    }
+    return {k: v for k, v in to_return.items() if (('lora_' in k and f'.{adapter_name}' in k) or ('bias' in k))}

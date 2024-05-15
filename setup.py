@@ -67,8 +67,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
                     if ';' in rest:
                         # Handle platform specific dependencies
                         # http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-platform-specific-dependencies
-                        version, platform_deps = map(str.strip,
-                                                     rest.split(';'))
+                        version, platform_deps = map(str.strip, rest.split(';'))
                         info['platform_deps'] = platform_deps
                     else:
                         version = rest  # NOQA
@@ -82,8 +81,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
                 if line.startswith('http'):
                     print('skip http requirements %s' % line)
                     continue
-                if line and not line.startswith('#') and not line.startswith(
-                        '--'):
+                if line and not line.startswith('#') and not line.startswith('--'):
                     for info in parse_line(line):
                         yield info
                 elif line and line.startswith('--find-links'):
@@ -124,17 +122,19 @@ if __name__ == '__main__':
     extra_requires['llm'], _ = parse_requirements('requirements/llm.txt')
     extra_requires['aigc'], _ = parse_requirements('requirements/aigc.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
+    extra_requires['seq_parallel'], _ = parse_requirements('requirements/seq_parallel.txt')
     all_requires.extend(install_requires)
     all_requires.extend(extra_requires['llm'])
     all_requires.extend(extra_requires['aigc'])
     all_requires.extend(extra_requires['eval'])
+    all_requires.extend(extra_requires['seq_parallel'])
+    extra_requires['seq_parallel'].extend(extra_requires['llm'])
     extra_requires['all'] = all_requires
 
     setup(
         name='ms-swift',
         version=get_version(),
-        description=
-        'Swift: Scalable lightWeight Infrastructure for Fine-Tuning',
+        description='Swift: Scalable lightWeight Infrastructure for Fine-Tuning',
         long_description=readme(),
         long_description_content_type='text/markdown',
         author='DAMO ModelScope teams',

@@ -36,22 +36,13 @@ def check_local_model_is_latest(
             model_id = model_cache.get_model_id()
 
         # make headers
-        headers = {
-            'user-agent':
-            ModelScopeConfig.get_user_agent(user_agent=user_agent, )
-        }
+        headers = {'user-agent': ModelScopeConfig.get_user_agent(user_agent=user_agent, )}
         cookies = ModelScopeConfig.get_cookies()
 
-        snapshot_header = headers if 'CI_TEST' in os.environ else {
-            **headers,
-            **{
-                'Snapshot': 'True'
-            }
-        }
+        snapshot_header = headers if 'CI_TEST' in os.environ else {**headers, **{'Snapshot': 'True'}}
         _api = HubApi()
         try:
-            _, revisions = _api.get_model_branches_and_tags(
-                model_id=model_id, use_cookies=cookies)
+            _, revisions = _api.get_model_branches_and_tags(model_id=model_id, use_cookies=cookies)
             if len(revisions) > 0:
                 latest_revision = revisions[0]
             else:
@@ -76,20 +67,17 @@ def check_local_model_is_latest(
                 else:
                     logger.info(
                         f'Model file {model_file["Name"]} is different from the latest version `{latest_revision}`,'
-                        f'This is because you are using an older version or the file is updated manually.'
-                    )
+                        f'This is because you are using an older version or the file is updated manually.')
                     break
             else:
                 if FILE_HASH in model_file:
-                    local_file_hash = compute_hash(
-                        os.path.join(model_root_path, model_file['Path']))
+                    local_file_hash = compute_hash(os.path.join(model_root_path, model_file['Path']))
                     if local_file_hash == model_file[FILE_HASH]:
                         continue
                     else:
                         logger.info(
                             f'Model file {model_file["Name"]} is different from the latest version `{latest_revision}`,'
-                            f'This is because you are using an older version or the file is updated manually.'
-                        )
+                            f'This is because you are using an older version or the file is updated manually.')
                         break
     except:  # noqa: E722
         pass  # ignore

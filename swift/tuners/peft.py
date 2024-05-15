@@ -9,14 +9,10 @@ import json
 import peft
 import torch
 import torch.nn
-from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig,
-                  LoKrConfig, LoraModel, OFTConfig, PeftConfig, PeftModel,
-                  PeftModelForCausalLM, PeftModelForSeq2SeqLM,
-                  PeftModelForSequenceClassification,
-                  PeftModelForTokenClassification, PrefixTuningConfig,
-                  PromptEncoderConfig, PromptLearningConfig,
-                  PromptTuningConfig, get_peft_config, get_peft_model,
-                  get_peft_model_state_dict)
+from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig, PeftConfig,
+                  PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
+                  PeftModelForTokenClassification, PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig,
+                  PromptTuningConfig, get_peft_config, get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Embedding
 from transformers import Trainer
@@ -31,17 +27,11 @@ dispatchers = []
 @dataclass
 class LoraConfig(peft.LoraConfig):
     lora_dtype: str = field(
-        default=None,
-        metadata={
-            'help':
-            'The lora dtype, default None means following the original layer\'s dtype'
-        })
+        default=None, metadata={'help': 'The lora dtype, default None means following the original layer\'s dtype'})
 
-    lorap_lr_ratio: float = field(
-        default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
+    lorap_lr_ratio: float = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
 
-    lorap_emb_lr: float = field(
-        default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
+    lorap_emb_lr: float = field(default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
     def to_peft_config(self) -> peft.LoraConfig:
         _dict = asdict(self)
@@ -57,32 +47,21 @@ class LoraConfig(peft.LoraConfig):
             'lorap_lr_ratio': self.lorap_lr_ratio,
             'lorap_emb_lr': self.lorap_emb_lr,
         }
-        with open(os.path.join(save_directory, 'additional_config.json'),
-                  'w') as f:
+        with open(os.path.join(save_directory, 'additional_config.json'), 'w') as f:
             json.dump(additional_args, f)
 
     @classmethod
-    def from_pretrained(cls,
-                        pretrained_model_name_or_path: str,
-                        subfolder: Optional[str] = None,
-                        **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: str, subfolder: Optional[str] = None, **kwargs):
         if hasattr(PeftConfigMixin, 'from_pretrained_origin'):
-            self = PeftConfigMixin.from_pretrained_origin(
-                pretrained_model_name_or_path, subfolder, **kwargs)
+            self = PeftConfigMixin.from_pretrained_origin(pretrained_model_name_or_path, subfolder, **kwargs)
         else:
-            self = super(LoraConfig,
-                         cls).from_pretrained(pretrained_model_name_or_path,
-                                              subfolder, **kwargs)
+            self = super(LoraConfig, cls).from_pretrained(pretrained_model_name_or_path, subfolder, **kwargs)
 
         if type(self) == peft.LoraConfig:
             self = LoraConfig(**self.to_dict())
 
-        if os.path.isfile(
-                os.path.join(pretrained_model_name_or_path,
-                             'additional_config.json')):
-            with open(
-                    os.path.join(pretrained_model_name_or_path,
-                                 'additional_config.json'), 'r') as f:
+        if os.path.isfile(os.path.join(pretrained_model_name_or_path, 'additional_config.json')):
+            with open(os.path.join(pretrained_model_name_or_path, 'additional_config.json'), 'r') as f:
                 _json = json.load(f)
                 for key, value in _json.items():
                     setattr(self, key, value)
@@ -106,8 +85,7 @@ def _create_and_replace_hook(self, *args, **kwargs):
     return self._create_and_replace_origin(*args, **kwargs)
 
 
-def _convert_dtype(target: torch.nn.Module, adapter_name: str,
-                   lora_dtype: str):
+def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
     if lora_dtype == 'fp32':
         torch_dtype = torch.float32
     elif lora_dtype == 'fp16':
@@ -121,16 +99,14 @@ def _convert_dtype(target: torch.nn.Module, adapter_name: str,
         if hasattr(target, 'lora_A') and adapter_name in target.lora_A:
             target.lora_A[adapter_name].to(torch_dtype)
             target.lora_B[adapter_name].to(torch_dtype)
-        if hasattr(target, 'lora_embedding_A'
-                   ) and adapter_name in target.lora_embedding_A:
+        if hasattr(target, 'lora_embedding_A') and adapter_name in target.lora_embedding_A:
             target.lora_embedding_A[adapter_name].to(torch_dtype)
             target.lora_embedding_B[adapter_name].to(torch_dtype)
 
 
 def create_optimizer_param_groups(self: PeftModel, **defaults):
     if not isinstance(self.peft_config[self.active_adapter],
-                      LoraConfig) or self.peft_config[
-                          self.active_adapter].lorap_lr_ratio is None:
+                      LoraConfig) or self.peft_config[self.active_adapter].lorap_lr_ratio is None:
         return None
 
     def get_module(name):
@@ -194,11 +170,9 @@ def adalora_forward(self, *args, **kwargs):
     from peft.utils.integrations import gather_params_ctx
     outputs = self.model.forward(*args, **kwargs)
 
-    if (getattr(outputs, 'loss', None) is not None) and isinstance(
-            outputs.loss, torch.Tensor):
+    if (getattr(outputs, 'loss', None) is not None) and isinstance(outputs.loss, torch.Tensor):
         # Calculate the orthogonal regularization
-        orth_reg_weight = self.peft_config[
-            self.trainable_adapter_name].orth_reg_weight
+        orth_reg_weight = self.peft_config[self.trainable_adapter_name].orth_reg_weight
 
         if orth_reg_weight <= 0:
             raise ValueError('orth_reg_weight should be greater than 0. ')
@@ -206,16 +180,13 @@ def adalora_forward(self, *args, **kwargs):
         regu_loss = 0
         num_param = 0
         for n, p in self.model.named_parameters():
-            if ('lora_A' in n
-                    or 'lora_B' in n) and self.trainable_adapter_name in n:
+            if ('lora_A' in n or 'lora_B' in n) and self.trainable_adapter_name in n:
                 if p.shape == torch.Size([0]):
                     with gather_params_ctx(p, fwd_module=self):
                         para_cov = p @ p.T if 'lora_A' in n else p.T @ p
                 else:
                     para_cov = p @ p.T if 'lora_A' in n else p.T @ p
-                I = torch.eye(
-                    *para_cov.size(),
-                    out=torch.empty_like(para_cov))  # noqa: E741
+                I = torch.eye(*para_cov.size(), out=torch.empty_like(para_cov))  # noqa: E741
                 I.requires_grad = False
                 num_param += 1
                 if isinstance(regu_loss, torch.Tensor):
@@ -225,8 +196,7 @@ def adalora_forward(self, *args, **kwargs):
             regu_loss = regu_loss / num_param
         else:
             regu_loss = 0
-        if isinstance(regu_loss, torch.Tensor) and isinstance(
-                outputs.loss, torch.Tensor):
+        if isinstance(regu_loss, torch.Tensor) and isinstance(outputs.loss, torch.Tensor):
             regu_loss = regu_loss.to(outputs.loss.device)
         outputs.loss += orth_reg_weight * regu_loss
     return outputs
@@ -284,8 +254,7 @@ def adalora_mask_to_budget(self, model, budget):
         for n, p in model.named_parameters():
             if f'lora_E.{self.adapter_name}' in n:
                 p.masked_fill_(triplet_ipt[n] <= mask_threshold, 0.0)
-                rank_pattern[n] = (
-                    ~(triplet_ipt[n] <= mask_threshold)).view(-1).tolist()
+                rank_pattern[n] = (~(triplet_ipt[n] <= mask_threshold)).view(-1).tolist()
     return rank_pattern
 
 
@@ -297,16 +266,15 @@ def hot_patch_peft_module():
     LoraModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
-    def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig],
-             adapter_name):
+    def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):
         self.__init_origin__(model, config, adapter_name)
-        active_config = config[self.active_adapter] if isinstance(
-            config, dict) else config
+        if isinstance(self.active_adapter, list):
+            self.active_adapter = self.active_adapter[0]
+        active_config = config[self.active_adapter] if isinstance(config, dict) else config
         if hasattr(active_config, 'lora_dtype'):
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
-                    _convert_dtype(module, self.active_adapter,
-                                   active_config.lora_dtype)
+                    _convert_dtype(module, self.active_adapter, active_config.lora_dtype)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init
@@ -319,15 +287,11 @@ def hot_patch_peft_module():
 
     # Compatible with SwiftModel
     def dummy_function(*args, **kwargs):
-        logger.warn(
-            f'The function {kwargs["func"]} has no effects, consider using other functions.'
-        )
+        logger.warn(f'The function {kwargs["func"]} has no effects, consider using other functions.')
 
     PeftModel.activate_adapter = PeftModel.set_adapter
-    PeftModel.deactivate_adapter = partial(
-        dummy_function, func='deactivate_adapter')
-    PeftModel.set_active_adapters = partial(
-        dummy_function, func='set_active_adapters')
+    PeftModel.deactivate_adapter = partial(dummy_function, func='deactivate_adapter')
+    PeftModel.set_active_adapters = partial(dummy_function, func='set_active_adapters')
 
     # Fix adalora does not support device_map
     from peft.tuners.adalora import AdaLoraModel, RankAllocator
@@ -348,16 +312,10 @@ def get_wrapped_class(module_class):
     class PeftWrapper(module_class):
 
         @classmethod
-        def from_pretrained(cls,
-                            model,
-                            model_id,
-                            *args,
-                            revision: Optional[str] = None,
-                            **kwargs):
+        def from_pretrained(cls, model, model_id, *args, revision: Optional[str] = None, **kwargs):
             if not os.path.exists(model_id):
                 model_id = snapshot_download(model_id, revision=revision)
-            return module_class.from_pretrained(model, model_id, *args,
-                                                **kwargs)
+            return module_class.from_pretrained(model, model_id, *args, **kwargs)
 
     PeftWrapper.__name__ = module_class.__name__
     return PeftWrapper
@@ -374,8 +332,7 @@ hot_patch_peft_module()
 PeftModel = wrap_module(PeftModel)
 PeftConfig = wrap_module(PeftConfig)
 PeftModelForSeq2SeqLM = wrap_module(PeftModelForSeq2SeqLM)
-PeftModelForSequenceClassification = wrap_module(
-    PeftModelForSequenceClassification)
+PeftModelForSequenceClassification = wrap_module(PeftModelForSequenceClassification)
 PeftModelForTokenClassification = wrap_module(PeftModelForTokenClassification)
 PeftModelForCausalLM = wrap_module(PeftModelForCausalLM)
 PromptEncoderConfig = wrap_module(PromptEncoderConfig)
