@@ -2581,10 +2581,12 @@ def fix_internvl_inplace_bug(model) -> None:
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
         old_forward = embedding.forward
+
         @wraps(old_forward)
         def _new_forward(*args, **kwargs):
             device = args[0].device
             return old_forward(*args, **kwargs).clone().to(device)
+
         embedding.__old_forward = old_forward
         embedding.forward = _new_forward
 
@@ -2616,14 +2618,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    model_quant_config = getattr(model_config, 'quantization_config', None)
-
-    use_bnb = False
-    if model_quant_config is not None:
-        use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
-    quantization_config = model_kwargs.get('quantization_config', None)
-    if isinstance(quantization_config, BitsAndBytesConfig):
-        use_bnb = True
 
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
@@ -2633,11 +2627,6 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
-
-    if use_bnb and kwargs.get('is_training'):
-        # patch: bnb backward shape mismatch bug
-        if model is not None and model.language_model is not None:
-            model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
