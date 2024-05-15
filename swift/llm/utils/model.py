@@ -2619,6 +2619,7 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.__old_forward = old_forward
         embedding.forward = _new_forward
 
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
