@@ -1193,6 +1193,7 @@ class EvalArguments(InferArguments):
     def select_dtype(self):
         if self.eval_url is None:
             return super().select_dtype()
+        return None, None, None
 
     def set_model_type(self) -> None:
         if self.eval_url is None:
