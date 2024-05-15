@@ -1065,7 +1065,7 @@ class LLavaQwenTemplate(LLavaTemplate):
     llavayi_query_template = 'You are a helpful assistant'
 
     def __init__(self):
-        Template.__init__([], [[-200], '<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        Template.__init__(self, [], [[-200], '<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
                           ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
