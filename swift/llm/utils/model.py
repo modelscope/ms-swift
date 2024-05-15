@@ -179,6 +179,8 @@ class ModelType:
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
     yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
+    yi_1_5_34b_chat_awq_int4 = 'yi-1_5-34b-chat-awq-int4'
+    yi_1_5_34b_chat_gptq_int4 = 'yi-1_5-34b-chat-gptq-int4'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
     yi_1_5_34b = 'yi-1_5-34b'
