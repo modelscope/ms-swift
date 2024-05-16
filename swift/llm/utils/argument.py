@@ -1019,6 +1019,7 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+        self.handle_compatibility()
         self._handle_dataset_sample()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
@@ -1189,6 +1190,11 @@ class EvalArguments(InferArguments):
     custom_eval_config: Optional[str] = None
 
     eval_use_cache: Optional[bool] = False
+
+    def select_dtype(self):
+        if self.eval_url is None:
+            return super().select_dtype()
+        return None, None, None
 
     def set_model_type(self) -> None:
         if self.eval_url is None:

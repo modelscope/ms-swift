@@ -38,6 +38,8 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
+SWIFT has rich documentations for users, please check [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM).
+
 ## 🎉 News
 - 🔥2024.05.13: Support Yi-1.5 series models，use `--model_type yi-1_5-9b-chat` to begin!
 - 2024.05.11: Support for qlora training and quantized inference using [hqq](https://github.com/mobiusml/hqq) and [eetq](https://github.com/NetEase-FuXi/EETQ). For more information, see the [LLM Quantization Documentation](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/LLM-quantization.md).
@@ -380,6 +382,20 @@ swift sft \
     --dataset blossom-math-zh \
     --output_dir output \
     --deepspeed default-zero3 \
+```
+
+##### AliYun-DLC multi-node training
+In DLC product, WORLD_SIZE is the node number, RANK is the node index, this is different from the definition of torchrun.
+
+```shell
+NNODES=$WORLD_SIZE \
+NODE_RANK=$RANK \
+swift sft \
+    --model_id_or_path qwen1half-32b-chat \
+    --sft_type full \
+    --dataset blossom-math-zh \
+    --output_dir output \
+    --deepspeed default-zero3
 ```
 
 

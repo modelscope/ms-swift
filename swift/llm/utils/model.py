@@ -2583,6 +2583,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     if model is not None:
+        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         # fix dtype bug
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
         mlp_cls = model.model.layers[1].mlp.__class__
@@ -2608,13 +2609,15 @@ def fix_internvl_inplace_bug(model) -> None:
 
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-        if hasattr(embedding, '_old_forward'):  # device_map
-            __old_forward = embedding._old_forward
-            embedding._old_forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).requires_grad_(True).clone()
-        else:
-            __old_forward = embedding.forward
-            embedding.forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).requires_grad_(True).clone()
-        embedding.__old_forward = __old_forward
+        old_forward = embedding.forward
+
+        @wraps(old_forward)
+        def _new_forward(*args, **kwargs):
+            device = args[0].device
+            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
+
+        embedding.__old_forward = old_forward
+        embedding.forward = _new_forward
 
 
 @register_model(
@@ -2640,11 +2643,19 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    model_quant_config = getattr(model_config, 'quantization_config', None)
+
+    use_bnb = False
+    if model_quant_config is not None:
+        use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
+    quantization_config = model_kwargs.get('quantization_config', None)
+    if isinstance(quantization_config, BitsAndBytesConfig):
+        use_bnb = True
+
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
@@ -2653,6 +2664,11 @@ def get_model_tokenizer_internvl(model_dir: str,
         model_config=model_config,
         automodel_class=AutoModel,
         **kwargs)
+
+    if use_bnb and kwargs.get('is_training'):
+        # patch: bnb backward shape mismatch bug
+        if model is not None and model.language_model is not None:
+            model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
         _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
@@ -2685,7 +2701,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(extract_feature)
             def _new_extract_feature(pixel_values):
-                return extract_feature(pixel_values).to(pixel_values.device)
+                return extract_feature(pixel_values).to(pixel_values.device).to(pixel_values.dtype)
 
             model.extract_feature = _new_extract_feature
 
