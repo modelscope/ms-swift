@@ -1,3 +1,4 @@
+import os
 from typing import Type
 
 import gradio as gr
@@ -9,6 +10,8 @@ from swift.ui.base import BaseUI
 class Dataset(BaseUI):
 
     group = 'llm_train'
+
+    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     locale_dict = {
         'dataset': {
@@ -67,8 +70,11 @@ class Dataset(BaseUI):
                 'en': 'The sample size from the train dataset'
             },
             'info': {
-                'zh': '从训练集中采样一定行数进行训练',
-                'en': 'Train with the sample size from the dataset'
+                'zh':
+                '从训练集中采样一定行数进行训练' if not is_studio else '为减少训练时间, 采样数量在space/studio条件下不可选',
+                'en':
+                'Train with the sample size from the dataset'
+                if not is_studio else 'Not interactive in space/studio to reduce train time',
             }
         },
         'val_dataset_sample': {
@@ -77,8 +83,11 @@ class Dataset(BaseUI):
                 'en': 'The sample size from the val dataset'
             },
             'info': {
-                'zh': '从验证集中采样一定行数进行训练',
-                'en': 'Validate with the sample size from the dataset'
+                'zh':
+                '从验证集中采样一定行数进行训练' if not is_studio else '为减少训练时间, 采样数量在space/studio条件下不可选',
+                'en':
+                'Validate with the sample size from the dataset'
+                if not is_studio else 'Not interactive in space/studio to reduce train time',
             }
         },
         'truncation_strategy': {
@@ -113,6 +122,10 @@ class Dataset(BaseUI):
         with gr.Row():
             gr.Slider(elem_id='dataset_test_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
             gr.Slider(elem_id='max_length', minimum=32, maximum=8192, step=32, scale=20)
-            gr.Textbox(elem_id='train_dataset_sample', scale=20)
-            gr.Textbox(elem_id='val_dataset_sample', scale=20)
+            if not cls.is_studio:
+                gr.Textbox(elem_id='train_dataset_sample', scale=20)
+                gr.Textbox(elem_id='val_dataset_sample', scale=20)
+            else:
+                gr.Textbox(elem_id='train_dataset_sample', value=500, interactive=False, scale=20)
+                gr.Textbox(elem_id='val_dataset_sample', value=50, interactive=False, scale=20)
             gr.Dropdown(elem_id='truncation_strategy', scale=20)
