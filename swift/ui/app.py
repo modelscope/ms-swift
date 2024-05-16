@@ -19,8 +19,7 @@ locale_dict = {
         '请查看 <a href=\"https://github.com/modelscope/swift/tree/main/docs/source\" target=\"_blank\">'
         'SWIFT 文档</a>来查看更多功能',
         'en':
-        'Please check <a href=\"https://github.com/modelscoddp_find_unused_parameterspe/swift/tree/main/docs/source\" '
-        'target=\"_blank\">'
+        'Please check <a href=\"https://github.com/modelscope/swift/tree/main/docs/source_en\" target=\"_blank\">'
         'SWIFT Documentation</a> for more usages',
     },
     'star_beggar': {
