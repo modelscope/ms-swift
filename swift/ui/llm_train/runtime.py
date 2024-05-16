@@ -214,7 +214,7 @@ class Runtime(BaseUI):
                     cls.log_event = base_tab.element('show_log').click(
                         Runtime.update_log, [], [cls.element('log')] + cls.all_plots).then(
                             Runtime.wait, [base_tab.element('logging_dir'),
-                                        base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
+                                           base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
 
                     base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 

@@ -1,5 +1,6 @@
-from typing import Type
 import os
+from typing import Type
+
 import gradio as gr
 
 from swift.llm import DATASET_MAPPING
@@ -69,8 +70,11 @@ class Dataset(BaseUI):
                 'en': 'The sample size from the train dataset'
             },
             'info': {
-                'zh': '从训练集中采样一定行数进行训练' if not is_studio else '为减少训练时间, 采样数量在space/studio条件下不可选',
-                'en': 'Train with the sample size from the dataset' if not is_studio else 'Not interactive in space/studio to reduce train time',
+                'zh':
+                '从训练集中采样一定行数进行训练' if not is_studio else '为减少训练时间, 采样数量在space/studio条件下不可选',
+                'en':
+                'Train with the sample size from the dataset'
+                if not is_studio else 'Not interactive in space/studio to reduce train time',
             }
         },
         'val_dataset_sample': {
@@ -79,8 +83,11 @@ class Dataset(BaseUI):
                 'en': 'The sample size from the val dataset'
             },
             'info': {
-                'zh': '从验证集中采样一定行数进行训练' if not is_studio else '为减少训练时间, 采样数量在space/studio条件下不可选',
-                'en': 'Validate with the sample size from the dataset' if not is_studio else 'Not interactive in space/studio to reduce train time',
+                'zh':
+                '从验证集中采样一定行数进行训练' if not is_studio else '为减少训练时间, 采样数量在space/studio条件下不可选',
+                'en':
+                'Validate with the sample size from the dataset'
+                if not is_studio else 'Not interactive in space/studio to reduce train time',
             }
         },
         'truncation_strategy': {
