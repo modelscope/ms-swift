@@ -39,6 +39,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 ## 🎉 News
+- 2024.05.16: Supports Llava-Next (Stronger) series models. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/llava-best-practice.md).
 - 🔥2024.05.13: Support Yi-1.5 series models，use `--model_type yi-1_5-9b-chat` to begin!
 - 2024.05.11: Support for qlora training and quantized inference using [hqq](https://github.com/mobiusml/hqq) and [eetq](https://github.com/NetEase-FuXi/EETQ). For more information, see the [LLM Quantization Documentation](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/LLM-quantization.md).
 - 2024.05.10: Support split a sequence to multiple GPUs to reduce memory usage. Use this feature by `pip install .[seq_parallel]`, then add `--sequence_parallel_size n` to your DDP script to begin!
@@ -498,6 +499,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | MiniCPM-V          | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)           | Chinese<br>English    | 3B                                 | chat model         |
 | CogVLM<br>CogAgent | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | English    | 17B-18B                            | chat model         |
 | Llava              | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English | 7B-34B                             | chat model |
+| Llava-Next              | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 8B-110B                             | chat model |
 | mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English | 11B                                | chat model |
 | InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 25.5B<br>including quantized version                              | chat model |
 | Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English | 8B                                 | chat model |
