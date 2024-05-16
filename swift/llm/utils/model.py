@@ -3957,7 +3957,7 @@ def get_model_tokenizer_llava(model_dir: str,
         from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig
         model_config = LlavaMistralConfig.from_pretrained(model_dir)
         automodel_class = LlavaMistralForCausalLM
-    elif llm_model_type == 'llama':  # llama
+    elif 'llama' in llm_model_type:  # llama
         from llava.model import LlavaLlamaForCausalLM, LlavaConfig
         if not hasattr(LlavaLlamaForCausalLM, '__old_forward'):  # Avoid double patching
             forward = LlavaLlamaForCausalLM.forward
