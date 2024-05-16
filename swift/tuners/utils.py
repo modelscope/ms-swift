@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
 
-import atexit
 import hashlib
 import os
 import shutil
