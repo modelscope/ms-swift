@@ -210,30 +210,31 @@ class Runtime(BaseUI):
                         name = k['name']
                         cls.all_plots.append(gr.Plot(elem_id=name, label=name))
 
-                cls.log_event = base_tab.element('show_log').click(
-                    Runtime.update_log, [], [cls.element('log')] + cls.all_plots).then(
-                        Runtime.wait, [base_tab.element('logging_dir'),
-                                       base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
+                if not cls.is_studio:
+                    cls.log_event = base_tab.element('show_log').click(
+                        Runtime.update_log, [], [cls.element('log')] + cls.all_plots).then(
+                            Runtime.wait, [base_tab.element('logging_dir'),
+                                        base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
 
-                base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
+                    base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 
-                base_tab.element('start_tb').click(
-                    Runtime.start_tb,
-                    [base_tab.element('logging_dir')],
-                    [base_tab.element('tb_url')],
-                )
+                    base_tab.element('start_tb').click(
+                        Runtime.start_tb,
+                        [base_tab.element('logging_dir')],
+                        [base_tab.element('tb_url')],
+                    )
 
-                base_tab.element('close_tb').click(
-                    Runtime.close_tb,
-                    [base_tab.element('logging_dir')],
-                    [],
-                )
+                    base_tab.element('close_tb').click(
+                        Runtime.close_tb,
+                        [base_tab.element('logging_dir')],
+                        [],
+                    )
 
-                base_tab.element('refresh_tasks').click(
-                    Runtime.refresh_tasks,
-                    [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')],
-                )
+                    base_tab.element('refresh_tasks').click(
+                        Runtime.refresh_tasks,
+                        [base_tab.element('running_tasks')],
+                        [base_tab.element('running_tasks')],
+                    )
 
     @classmethod
     def update_log(cls):
@@ -432,6 +433,8 @@ class Runtime(BaseUI):
             return [None] * len(Runtime.sft_plot)
         _, all_args = Runtime.parse_info_from_cmdline(task)
         tb_dir = all_args['logging_dir']
+        if not os.path.exists(tb_dir):
+            return [None] * len(Runtime.sft_plot)
         fname = [
             fname for fname in os.listdir(tb_dir)
             if os.path.isfile(os.path.join(tb_dir, fname)) and fname.startswith('events.out')

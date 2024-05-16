@@ -33,7 +33,10 @@ def update_data(fn):
             self.is_list = kwargs.pop('is_list')
 
         if base_builder and base_builder.default(elem_id) is not None:
-            kwargs['value'] = base_builder.default(elem_id)
+            if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio' and kwargs.get('value') is not None:
+                pass
+            else:
+                kwargs['value'] = base_builder.default(elem_id)
 
         if builder is not None:
             if elem_id in builder.locales(lang):
