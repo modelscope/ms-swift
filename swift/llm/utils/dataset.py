@@ -915,7 +915,7 @@ def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
 
 register_dataset(
     DatasetName.synthetic_text_to_sql,
-    'AI-ModelScope/synthetic_text_to_sql', [('default', 'train')], [],
+    'AI-ModelScope/synthetic_text_to_sql', ['default'],
     synthetic_text_to_sql_preprocesser,
     get_dataset_from_repo,
     hf_dataset_id='gretelai/synthetic_text_to_sql',
