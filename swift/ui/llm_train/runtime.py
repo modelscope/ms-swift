@@ -30,6 +30,8 @@ class Runtime(BaseUI):
 
     log_event = None
 
+    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+
     sft_plot = [
         {
             'name': 'train/loss',
@@ -187,18 +189,20 @@ class Runtime(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Textbox(elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
-                    gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
-                    gr.Button(elem_id='show_log', scale=2, variant='primary')
-                    gr.Button(elem_id='stop_show_log', scale=2)
-                    gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
-                    gr.Button(elem_id='start_tb', scale=2, variant='primary')
-                    gr.Button(elem_id='close_tb', scale=2)
+                    if not cls.is_studio:
+                        gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
+                        gr.Button(elem_id='show_log', scale=2, variant='primary')
+                        gr.Button(elem_id='stop_show_log', scale=2)
+                        gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
+                        gr.Button(elem_id='start_tb', scale=2, variant='primary')
+                        gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
-                with gr.Row():
-                    gr.Dropdown(elem_id='running_tasks', scale=10)
-                    gr.Button(elem_id='refresh_tasks', scale=1)
-                    gr.Button(elem_id='kill_task', scale=1)
+                if not cls.is_studio:
+                    with gr.Row():
+                        gr.Dropdown(elem_id='running_tasks', scale=10)
+                        gr.Button(elem_id='refresh_tasks', scale=1)
+                        gr.Button(elem_id='kill_task', scale=1)
 
                 with gr.Row():
                     cls.all_plots = []
@@ -362,11 +366,12 @@ class Runtime(BaseUI):
     @staticmethod
     def parse_info_from_cmdline(task):
         pid = None
-        for i in range(3):
-            slash = task.find('/')
-            if i == 0:
-                pid = task[:slash].split(':')[1]
-            task = task[slash + 1:]
+        if '/cmd:' in task:
+            for i in range(3):
+                slash = task.find('/')
+                if i == 0:
+                    pid = task[:slash].split(':')[1]
+                task = task[slash + 1:]
         args = task.split('swift sft')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}

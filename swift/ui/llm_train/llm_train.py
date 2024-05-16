@@ -35,6 +35,8 @@ class LLMTrain(BaseUI):
 
     group = 'llm_train'
 
+    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+
     sub_ui = [
         Model,
         Dataset,
@@ -224,13 +226,13 @@ class LLMTrain(BaseUI):
                 Quantization.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
-                if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+                if cls.is_studio:
                     submit.click(
                         cls.update_runtime, [],
                         [cls.element('runtime_tab'), cls.element('log')]).then(
                             cls.train_studio,
                             [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                            [cls.element('log')],
+                            [cls.element('log')] + Runtime.all_plots,
                             queue=True)
                 else:
                     submit.click(
@@ -329,7 +331,7 @@ class LLMTrain(BaseUI):
             if ddp_param:
                 ddp_param = f'set {ddp_param} && '
             run_command = f'{cuda_param}{ddp_param}start /b swift sft {params} > {log_file} 2>&1'
-        elif os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+        elif cls.is_studio:
             run_command = f'{cuda_param} {ddp_param} swift sft {params}'
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift sft {params} > {log_file} 2>&1 &'
@@ -339,14 +341,14 @@ class LLMTrain(BaseUI):
     @classmethod
     def train_studio(cls, *args):
         run_command, sft_args, other_kwargs = cls.train(*args)
-        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
+        if cls.is_studio:
             lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
             process = Popen(run_command, shell=True, stdout=PIPE, stderr=STDOUT)
             with process.stdout:
                 for line in iter(process.stdout.readline, b''):
                     line = line.decode('utf-8')
                     lines.append(line)
-                    yield '\n'.join(lines)
+                    yield ['\n'.join(lines)] + Runtime.plot(run_command)
 
     @classmethod
     def train_local(cls, *args):
