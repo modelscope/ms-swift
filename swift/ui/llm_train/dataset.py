@@ -37,8 +37,8 @@ class Dataset(BaseUI):
                 'en': 'Custom train dataset path'
             },
             'info': {
-                'zh': '输入自定义的训练数据集路径，逗号分隔',
-                'en': 'Extra train files, split by comma'
+                'zh': '输入自定义的训练数据集路径，空格分隔',
+                'en': 'Extra train files, split by blank'
             }
         },
         'custom_val_dataset_path': {
