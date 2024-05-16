@@ -1063,7 +1063,7 @@ register_template(
 
 
 class LlamaLlavaNextTemplate(LLavaTemplate):
-    default_system='You are a helpful language and vision assistant. ' \
+    default_system = 'You are a helpful language and vision assistant. ' \
             'You are able to understand the visual content that the user provides, ' \
             'and assist the user with a variety of tasks using natural language.'
     llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
