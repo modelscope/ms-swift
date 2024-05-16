@@ -1066,12 +1066,12 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
     default_system = 'You are a helpful language and vision assistant. ' \
             'You are able to understand the visual content that the user provides, ' \
             'and assist the user with a variety of tasks using natural language.'
-    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
-                                '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
 
     def __init__(self):
-        Template.__init__(self, [], [[-200], self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'],
-                          self.default_system,
+        Template.__init__(self, [], [
+            '<|start_header_id|>user<|end_header_id|>\n\n', [-200],
+            '\n{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
                           ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
 
 
