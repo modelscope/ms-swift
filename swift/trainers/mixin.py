@@ -376,13 +376,17 @@ class SwiftMixin:
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        sft_args = getattr(self, 'sft_args', None)
         # tokenizer
-        if self.tokenizer is not None:
+        from swift import SWIFT_MAPPING
+        addtional_module_tuners = [
+            name.lower() for name, (config, cls) in SWIFT_MAPPING.items() if cls.has_additional_modules()
+        ]
+        if self.tokenizer is not None and sft_args.sft_type not in addtional_module_tuners:
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         # additional files
-        sft_args = getattr(self, 'sft_args', None)
         if sft_args is not None and sft_args.sft_type == 'full':
             additional_files = getattr(self.args, 'additional_saved_files', []) + ['preprocessor_config.json']
             if model_dir is not None:
