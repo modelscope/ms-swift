@@ -1373,7 +1373,7 @@ gemma_template = Template(['<bos>'], ['<start_of_turn>user\n{{QUERY}}<end_of_tur
                           ['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'])
 register_template(TemplateType.gemma, gemma_template)
 
-register_template(TemplateType.telechat, Template([], ['<_user> {{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
+register_template(TemplateType.telechat, Template([], ['<_user>{{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
 
 register_template(TemplateType.telechat_v2, Template([], ['<_user> {{QUERY}}<_bot>'], [], ['</s>']))
 

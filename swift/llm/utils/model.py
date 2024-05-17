@@ -3631,7 +3631,7 @@ def get_model_tokenizer_codellama(model_dir: str,
     LoRATM.telechat,
     TemplateType.telechat_v2,
     support_flash_attn=True,
-    # function_kwargs={'eos_token_id': 2},
+    function_kwargs={'eos_token_id': 2},
     hf_model_id='Tele-AI/TeleChat-12B-v2')
 @register_model(
     ModelType.telechat_52b,
