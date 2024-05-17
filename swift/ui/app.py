@@ -31,10 +31,9 @@ locale_dict = {
     },
 }
 
-
-is_spaces = True if "SPACE_ID" in os.environ else False
+is_spaces = True if 'SPACE_ID' in os.environ else False
 if is_spaces:
-    is_shared_ui = True if "modelscope/swift" in os.environ['SPACE_ID'] else False
+    is_shared_ui = True if 'modelscope/swift' in os.environ['SPACE_ID'] else False
 else:
     is_shared_ui = False
 
@@ -54,8 +53,8 @@ def run_ui():
                 </div>
             ''')
         elif is_spaces and os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            gr.HTML(f'<p><center>You have duplicated the space, remember remove the `MODELSCOPE_ENVIRONMENT` '
-                    f'variable to start an unlimited version</center></p>')
+            gr.HTML('<p><center>You have duplicated the space, remember remove the `MODELSCOPE_ENVIRONMENT` '
+                    'variable to start an unlimited version</center></p>')
         with gr.Tabs():
             LLMTrain.build_ui(LLMTrain)
             LLMInfer.build_ui(LLMInfer)
