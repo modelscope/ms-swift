@@ -3625,6 +3625,17 @@ def get_model_tokenizer_codellama(model_dir: str,
     TemplateType.telechat,
     support_flash_attn=True,
     hf_model_id='Tele-AI/TeleChat-12B')
+def get_model_tokenizer_phi(model_dir: str,
+                            torch_dtype: Dtype,
+                            model_kwargs: Dict[str, Any],
+                            load_model: bool = True,
+                            **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    model_config.flash_attn = use_flash_attn
+    return get_model_tokenizer_from_repo(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
 @register_model(
     ModelType.telechat_12b_v2,
     'TeleAI/TeleChat-12B-v2',
@@ -3639,7 +3650,7 @@ def get_model_tokenizer_codellama(model_dir: str,
     TemplateType.telechat,
     support_flash_attn=True,
     hf_model_id='Tele-AI/TeleChat-52B')
-def get_model_tokenizer_phi(model_dir: str,
+def get_model_tokenizer_telechat_v2(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
                             load_model: bool = True,
@@ -3647,9 +3658,11 @@ def get_model_tokenizer_phi(model_dir: str,
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.flash_attn = use_flash_attn
-    return get_model_tokenizer_from_repo(
+    model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-
+    if model is not None:
+        model.generation_config.eos_token_id = 2 
+    return model, tokenizer
 
 @register_model(
     ModelType.telechat_7b,
