@@ -15,7 +15,6 @@ from transformers.utils import is_torch_npu_available
 
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
-from swift.trainers.callback import ProfCallback
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
