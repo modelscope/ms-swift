@@ -107,17 +107,12 @@ class ExpManager:
             all_gpus.update(gpus)
 
     def run(self, exp: Experiment):
-        if os.path.exists(
-                os.path.join(exp.input_args.save_dir, exp.name + '.json')):
-            with open(
-                    os.path.join(exp.input_args.save_dir, exp.name + '.json'),
-                    'r') as f:
+        if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name + '.json')):
+            with open(os.path.join(exp.input_args.save_dir, exp.name + '.json'), 'r') as f:
                 _json = json.load(f)
                 if exp.eval_dataset and 'eval_result' not in _json['record']:
                     if not exp.do_eval:
-                        logger.info(
-                            f'Experiment {exp.name} need eval, load from file.'
-                        )
+                        logger.info(f'Experiment {exp.name} need eval, load from file.')
                         exp.load(_json)
                         exp.do_eval = True
                 else:
@@ -129,23 +124,17 @@ class ExpManager:
             exp.runtime = runtime
             envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
-            logger.info(
-                f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
-            )
+            logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
             os.makedirs('exp', exist_ok=True)
             log_file = os.path.join('exp', f'{exp.name}.eval.log')
-            exp.handler = subprocess.Popen(
-                runtime['running_cmd'] + f' > {log_file} 2>&1',
-                env=envs,
-                shell=True)
+            exp.handler = subprocess.Popen(runtime['running_cmd'] + f' > {log_file} 2>&1', env=envs, shell=True)
             self.exps.append(exp)
             self.assert_gpu_not_overlap()
             return
 
         if any([exp.name == e.name for e in self.exps]):
             raise ValueError(f'Why exp name duplicate? {exp.name}')
-        elif exp.cmd == 'export' and any(
-            [exp.cmd == 'export' for exp in self.exps]):  # noqa
+        elif exp.cmd == 'export' and any([exp.cmd == 'export' for exp in self.exps]):  # noqa
             raise AssertionError('Cannot run parallel export task.')
         else:
             exp.create_time = time.time()
@@ -153,15 +142,10 @@ class ExpManager:
             exp.runtime = runtime
             envs = deepcopy(runtime.get('env', {}))
             envs.update(os.environ)
-            logger.info(
-                f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}'
-            )
+            logger.info(f'Running cmd: {runtime["running_cmd"]}, env: {runtime.get("env", {})}')
             os.makedirs('exp', exist_ok=True)
             log_file = os.path.join('exp', f'{exp.name}.{exp.cmd}.log')
-            exp.handler = subprocess.Popen(
-                runtime['running_cmd'] + f' > {log_file} 2>&1',
-                env=envs,
-                shell=True)
+            exp.handler = subprocess.Popen(runtime['running_cmd'] + f' > {log_file} 2>&1', env=envs, shell=True)
             self.exps.append(exp)
             self.assert_gpu_not_overlap()
 
@@ -179,10 +163,8 @@ class ExpManager:
         eval_dataset = exp.eval_dataset
         if best_model_checkpoint is not None:
             model_type_kwargs = ''
-            if not os.path.exists(
-                    os.path.join(best_model_checkpoint, 'sft_args.json')):
-                model_type = best_model_checkpoint[best_model_checkpoint.
-                                                   rfind(os.path.sep) + 1:]
+            if not os.path.exists(os.path.join(best_model_checkpoint, 'sft_args.json')):
+                model_type = best_model_checkpoint[best_model_checkpoint.rfind(os.path.sep) + 1:]
                 model_type = '-'.join(model_type.split('-')[:-2])
                 model_type_kwargs = f'--model_type {model_type}'
             cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} ' \
@@ -300,13 +282,10 @@ class ExpManager:
     def _get_metric(exp: Experiment):
         if exp.do_eval:
             if os.path.isfile(os.path.join('exp', f'{exp.name}.eval.log')):
-                with open(os.path.join('exp', f'{exp.name}.eval.log'),
-                          'r') as f:
+                with open(os.path.join('exp', f'{exp.name}.eval.log'), 'r') as f:
                     for line in f.readlines():
                         if 'Final report:' in line:
-                            return json.loads(
-                                line.split('Final report:')[1].replace(
-                                    '\'', '"'))
+                            return json.loads(line.split('Final report:')[1].replace('\'', '"'))
         elif exp.cmd == 'export':
             exp_args = ExportArguments(**exp.args)
             if exp_args.quant_bits > 0:
@@ -314,10 +293,7 @@ class ExpManager:
                     path = f'{exp_args.model_type}-{exp_args.quant_method}-int{exp_args.quant_bits}'
                 else:
                     ckpt_dir, ckpt_name = os.path.split(exp_args.ckpt_dir)
-                    path = os.path.join(
-                        ckpt_dir,
-                        f'{ckpt_name}-{exp_args.quant_method}-int{exp_args.quant_bits}'
-                    )
+                    path = os.path.join(ckpt_dir, f'{ckpt_name}-{exp_args.quant_method}-int{exp_args.quant_bits}')
             else:
                 ckpt_dir, ckpt_name = os.path.split(exp_args.ckpt_dir)
                 path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
@@ -366,25 +342,18 @@ class ExpManager:
                                 self.exp_queue.appendleft(exp)
                             self.write_record(exp)
                         else:
-                            logger.error(
-                                f'Running {exp.name} task, but no result found'
-                            )
+                            logger.error(f'Running {exp.name} task, but no result found')
                     else:
                         all_metric = self._get_metric(exp)
                         exp.record['eval_result'] = all_metric
                         if all_metric:
                             self.write_record(exp)
                         else:
-                            logger.error(
-                                f'Running {exp.name} eval task, but no eval result found'
-                            )
-                logger.info(
-                    f'Running {exp.name} finished with return code: {rt}')
+                            logger.error(f'Running {exp.name} eval task, but no eval result found')
+                logger.info(f'Running {exp.name} finished with return code: {rt}')
 
             if has_finished:
-                self.exps = [
-                    exp for exp in self.exps if exp.handler.poll() is None
-                ]
+                self.exps = [exp for exp in self.exps if exp.handler.poll() is None]
                 break
 
     def begin(self, args: Any):
@@ -402,22 +371,19 @@ class ExpManager:
                     self.run(self.exp_queue[0])
                 except Exception as e:
                     if not isinstance(e, AssertionError):
-                        logger.error(
-                            f'Adding exp {self.exp_queue[0].name} error because of:'
-                        )
+                        logger.error(f'Adding exp {self.exp_queue[0].name} error because of:')
                         logger.error(e)
                         self.exp_queue.popleft()
                     else:
-                        logger.info(
-                            f'Adding exp {self.exp_queue[0].name} error because of no free gpu.'
-                        )
-                    break
+                        logger.info(f'Adding exp {self.exp_queue[0].name} error because of:', str(e))
+                    if 'no free gpu' in str(e).lower():
+                        break
+                    else:
+                        continue
                 else:
                     self.exp_queue.popleft()
             self._poll()
-        logger.info(
-            f'Run task finished because of exp queue: {self.exp_queue} and exps: {self.exps}'
-        )
+        logger.info(f'Run task finished because of exp queue: {self.exp_queue} and exps: {self.exps}')
 
 
 def find_all_config(dir_or_file: str):

@@ -16,8 +16,7 @@ class Singleton(type):
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton,
-                                        cls).__call__(*args, **kwargs)
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
@@ -56,9 +55,7 @@ class GitCommandWrapper(metaclass=Singleton):
             return response
         except subprocess.CalledProcessError as error:
             logger.error('There are error run git command.')
-            raise GitError(
-                'stdout: %s, stderr: %s' %
-                (response.stdout.decode('utf8'), error.stderr.decode('utf8')))
+            raise GitError('stdout: %s, stderr: %s' % (response.stdout.decode('utf8'), error.stderr.decode('utf8')))
 
     def config_auth_token(self, repo_dir, auth_token):
         url = self.get_repo_remote_url(repo_dir)
@@ -98,12 +95,7 @@ class GitCommandWrapper(metaclass=Singleton):
         except GitError:
             return False
 
-    def clone(self,
-              repo_base_dir: str,
-              token: str,
-              url: str,
-              repo_name: str,
-              branch: Optional[str] = None):
+    def clone(self, repo_base_dir: str, token: str, url: str, repo_name: str, branch: Optional[str] = None):
         """ git clone command wrapper.
         For public project, token can None, private repo, there must token.
 
@@ -119,8 +111,7 @@ class GitCommandWrapper(metaclass=Singleton):
         """
         url = self._add_token(token, url)
         if branch:
-            clone_args = '-C %s clone %s %s --branch %s' % (repo_base_dir, url,
-                                                            repo_name, branch)
+            clone_args = '-C %s clone %s %s --branch %s' % (repo_base_dir, url, repo_name, branch)
         else:
             clone_args = '-C %s clone %s' % (repo_base_dir, url)
         logger.debug(clone_args)
@@ -134,20 +125,14 @@ class GitCommandWrapper(metaclass=Singleton):
         user_name, user_email = ModelScopeConfig.get_user_info()
         if user_name and user_email:
             # config user.name and user.email if exist
-            config_user_name_args = '-C %s/%s config user.name %s' % (
-                repo_base_dir, repo_name, user_name)
+            config_user_name_args = '-C %s/%s config user.name %s' % (repo_base_dir, repo_name, user_name)
             response = self._run_git_command(*config_user_name_args.split(' '))
             logger.debug(response.stdout.decode('utf8'))
-            config_user_email_args = '-C %s/%s config user.email %s' % (
-                repo_base_dir, repo_name, user_email)
-            response = self._run_git_command(
-                *config_user_email_args.split(' '))
+            config_user_email_args = '-C %s/%s config user.email %s' % (repo_base_dir, repo_name, user_email)
+            response = self._run_git_command(*config_user_email_args.split(' '))
             logger.debug(response.stdout.decode('utf8'))
 
-    def add(self,
-            repo_dir: str,
-            files: List[str] = list(),
-            all_files: bool = False):
+    def add(self, repo_dir: str, files: List[str] = list(), all_files: bool = False):
         if all_files:
             add_args = '-C %s add -A' % repo_dir
         elif len(files) > 0:
@@ -184,33 +169,20 @@ class GitCommandWrapper(metaclass=Singleton):
     def get_remote_branches(self, repo_dir: str):
         cmds = ['-C', '%s' % repo_dir, 'branch', '-r']
         rsp = self._run_git_command(*cmds)
-        info = [
-            line.strip()
-            for line in rsp.stdout.decode('utf8').strip().split(os.linesep)
-        ]
+        info = [line.strip() for line in rsp.stdout.decode('utf8').strip().split(os.linesep)]
         if len(info) == 1:
             return ['/'.join(info[0].split('/')[1:])]
         else:
             return ['/'.join(line.split('/')[1:]) for line in info[1:]]
 
-    def pull(self,
-             repo_dir: str,
-             remote: str = 'origin',
-             branch: str = 'master'):
+    def pull(self, repo_dir: str, remote: str = 'origin', branch: str = 'master'):
         cmds = ['-C', repo_dir, 'pull', remote, branch]
         return self._run_git_command(*cmds)
 
-    def push(self,
-             repo_dir: str,
-             token: str,
-             url: str,
-             local_branch: str,
-             remote_branch: str,
-             force: bool = False):
+    def push(self, repo_dir: str, token: str, url: str, local_branch: str, remote_branch: str, force: bool = False):
         url = self._add_token(token, url)
 
-        push_args = '-C %s push %s %s:%s' % (repo_dir, url, local_branch,
-                                             remote_branch)
+        push_args = '-C %s push %s %s:%s' % (repo_dir, url, local_branch, remote_branch)
         if force:
             push_args += ' -f'
         push_args = push_args.split(' ')
@@ -236,15 +208,8 @@ class GitCommandWrapper(metaclass=Singleton):
 
         return files
 
-    def tag(self,
-            repo_dir: str,
-            tag_name: str,
-            message: str,
-            ref: str = MASTER_MODEL_BRANCH):
-        cmd_args = [
-            '-C', repo_dir, 'tag', tag_name, '-m',
-            '"%s"' % message, ref
-        ]
+    def tag(self, repo_dir: str, tag_name: str, message: str, ref: str = MASTER_MODEL_BRANCH):
+        cmd_args = ['-C', repo_dir, 'tag', tag_name, '-m', '"%s"' % message, ref]
         rsp = self._run_git_command(*cmd_args)
         logger.debug(rsp.stdout.decode('utf8'))
         return rsp

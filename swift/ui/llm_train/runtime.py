@@ -15,8 +15,7 @@ from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
-from swift.utils import (TB_COLOR, TB_COLOR_SMOOTH, get_logger,
-                         read_tensorboard_file, tensorboard_smoothing)
+from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, get_logger, read_tensorboard_file, tensorboard_smoothing
 
 logger = get_logger()
 
@@ -30,6 +29,8 @@ class Runtime(BaseUI):
     all_plots = None
 
     log_event = None
+
+    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     sft_plot = [
         {
@@ -90,10 +91,8 @@ class Runtime(BaseUI):
         },
         'tb_not_found': {
             'value': {
-                'zh':
-                'tensorboard未安装,使用pip install tensorboard进行安装',
-                'en':
-                'tensorboard not found, install it by pip install tensorboard',
+                'zh': 'tensorboard未安装,使用pip install tensorboard进行安装',
+                'en': 'tensorboard not found, install it by pip install tensorboard',
             }
         },
         'running_cmd': {
@@ -135,8 +134,7 @@ class Runtime(BaseUI):
             },
             'info': {
                 'zh': '如果日志无更新请再次点击"展示日志内容"',
-                'en':
-                'Please press "Show log" if the log content is not updating'
+                'en': 'Please press "Show log" if the log content is not updating'
             }
         },
         'running_tasks': {
@@ -190,30 +188,21 @@ class Runtime(BaseUI):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Textbox(
-                        elem_id='running_cmd',
-                        lines=1,
-                        scale=20,
-                        interactive=False,
-                        max_lines=1)
-                    gr.Textbox(
-                        elem_id='logging_dir', lines=1, scale=20, max_lines=1)
-                    gr.Button(elem_id='show_log', scale=2, variant='primary')
-                    gr.Button(elem_id='stop_show_log', scale=2)
-                    gr.Textbox(
-                        elem_id='tb_url',
-                        lines=1,
-                        scale=10,
-                        interactive=False,
-                        max_lines=1)
-                    gr.Button(elem_id='start_tb', scale=2, variant='primary')
-                    gr.Button(elem_id='close_tb', scale=2)
+                    gr.Textbox(elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
+                    if not cls.is_studio:
+                        gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
+                        gr.Button(elem_id='show_log', scale=2, variant='primary')
+                        gr.Button(elem_id='stop_show_log', scale=2)
+                        gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
+                        gr.Button(elem_id='start_tb', scale=2, variant='primary')
+                        gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
-                with gr.Row():
-                    gr.Dropdown(elem_id='running_tasks', scale=10)
-                    gr.Button(elem_id='refresh_tasks', scale=1)
-                    gr.Button(elem_id='kill_task', scale=1)
+                if not cls.is_studio:
+                    with gr.Row():
+                        gr.Dropdown(elem_id='running_tasks', scale=10)
+                        gr.Button(elem_id='refresh_tasks', scale=1)
+                        gr.Button(elem_id='kill_task', scale=1)
 
                 with gr.Row():
                     cls.all_plots = []
@@ -221,34 +210,31 @@ class Runtime(BaseUI):
                         name = k['name']
                         cls.all_plots.append(gr.Plot(elem_id=name, label=name))
 
-                cls.log_event = base_tab.element('show_log').click(
-                    Runtime.update_log, [],
-                    [cls.element('log')] + cls.all_plots).then(
-                        Runtime.wait, [
-                            base_tab.element('logging_dir'),
-                            base_tab.element('running_tasks')
-                        ], [cls.element('log')] + cls.all_plots)
+                if not cls.is_studio:
+                    cls.log_event = base_tab.element('show_log').click(
+                        Runtime.update_log, [], [cls.element('log')] + cls.all_plots).then(
+                            Runtime.wait, [base_tab.element('logging_dir'),
+                                           base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
 
-                base_tab.element('stop_show_log').click(
-                    lambda: None, cancels=cls.log_event)
+                    base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 
-                base_tab.element('start_tb').click(
-                    Runtime.start_tb,
-                    [base_tab.element('logging_dir')],
-                    [base_tab.element('tb_url')],
-                )
+                    base_tab.element('start_tb').click(
+                        Runtime.start_tb,
+                        [base_tab.element('logging_dir')],
+                        [base_tab.element('tb_url')],
+                    )
 
-                base_tab.element('close_tb').click(
-                    Runtime.close_tb,
-                    [base_tab.element('logging_dir')],
-                    [],
-                )
+                    base_tab.element('close_tb').click(
+                        Runtime.close_tb,
+                        [base_tab.element('logging_dir')],
+                        [],
+                    )
 
-                base_tab.element('refresh_tasks').click(
-                    Runtime.refresh_tasks,
-                    [base_tab.element('running_tasks')],
-                    [base_tab.element('running_tasks')],
-                )
+                    base_tab.element('refresh_tasks').click(
+                        Runtime.refresh_tasks,
+                        [base_tab.element('running_tasks')],
+                        [base_tab.element('running_tasks')],
+                    )
 
     @classmethod
     def update_log(cls):
@@ -261,8 +247,7 @@ class Runtime(BaseUI):
         log_file = os.path.join(logging_dir, 'run.log')
         offset = 0
         latest_data = ''
-        lines = collections.deque(
-            maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
+        lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         try:
             with open(log_file, 'r') as input:
                 input.seek(offset)
@@ -293,8 +278,7 @@ class Runtime(BaseUI):
 
     @classmethod
     def show_log(cls, logging_dir):
-        webbrowser.open(
-            'file://' + os.path.join(logging_dir, 'run.log'), new=2)
+        webbrowser.open('file://' + os.path.join(logging_dir, 'run.log'), new=2)
 
     @classmethod
     def start_tb(cls, logging_dir):
@@ -303,13 +287,11 @@ class Runtime(BaseUI):
             return ''
 
         logging_dir = logging_dir.strip()
-        logging_dir = logging_dir if not logging_dir.endswith(
-            os.sep) else logging_dir[:-1]
+        logging_dir = logging_dir if not logging_dir.endswith(os.sep) else logging_dir[:-1]
         if logging_dir in cls.handlers:
             return cls.handlers[logging_dir][1]
 
-        handler, lines = run_command_in_subprocess(
-            'tensorboard', '--logdir', logging_dir, timeout=2)
+        handler, lines = run_command_in_subprocess('tensorboard', '--logdir', logging_dir, timeout=2)
         localhost_addr = ''
         for line in lines:
             if 'http://localhost:' in line:
@@ -338,15 +320,12 @@ class Runtime(BaseUI):
         for proc in psutil.process_iter():
             try:
                 cmdlines = proc.cmdline()
-            except (psutil.ZombieProcess, psutil.AccessDenied,
-                    psutil.NoSuchProcess):
+            except (psutil.ZombieProcess, psutil.AccessDenied, psutil.NoSuchProcess):
                 cmdlines = []
-            if any([
-                    process_name in cmdline for cmdline in cmdlines
-            ]) and not any([negative_name in cmdline
-                            for cmdline in cmdlines]) and any(  # noqa
-                                [cmd_name == cmdline
-                                 for cmdline in cmdlines]):  # noqa
+            if any([process_name in cmdline
+                    for cmdline in cmdlines]) and not any([negative_name in cmdline
+                                                           for cmdline in cmdlines]) and any(  # noqa
+                                                               [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if output_dir is not None and any(  # noqa
                     [output_dir == cmdline for cmdline in cmdlines]):  # noqa
@@ -363,8 +342,7 @@ class Runtime(BaseUI):
         pid = proc.pid
         ts = time.time()
         create_time = proc.create_time()
-        create_time_formatted = datetime.fromtimestamp(create_time).strftime(
-            '%Y-%m-%d, %H:%M')
+        create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
 
         def format_time(seconds):
             days = int(seconds // (24 * 3600))
@@ -389,11 +367,12 @@ class Runtime(BaseUI):
     @staticmethod
     def parse_info_from_cmdline(task):
         pid = None
-        for i in range(3):
-            slash = task.find('/')
-            if i == 0:
-                pid = task[:slash].split(':')[1]
-            task = task[slash + 1:]
+        if '/cmd:' in task:
+            for i in range(3):
+                slash = task.find('/')
+                if i == 0:
+                    pid = task[:slash].split(':')[1]
+                task = task[slash + 1:]
         args = task.split('swift sft')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
@@ -410,9 +389,7 @@ class Runtime(BaseUI):
                 all_args[key] = _json[key]
                 if isinstance(all_args[key], list):
                     if any([' ' in value for value in all_args[key]]):
-                        all_args[key] = [
-                            f'"{value}"' for value in all_args[key]
-                        ]
+                        all_args[key] = [f'"{value}"' for value in all_args[key]]
                     all_args[key] = ' '.join(all_args[key])
         return pid, all_args
 
@@ -425,8 +402,7 @@ class Runtime(BaseUI):
         else:
             os.system(f'pkill -9 -f {output_dir}')
         time.sleep(1)
-        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (
-            len(Runtime.sft_plot) + 1)
+        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.sft_plot) + 1)
 
     @staticmethod
     def reset():
@@ -438,10 +414,7 @@ class Runtime(BaseUI):
             _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [
-            value for value in base_tab.elements().values()
-            if not isinstance(value, (Tab, Accordion))
-        ]
+        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
         ret = []
         for e in elements:
             if e.elem_id in all_args:
@@ -460,10 +433,11 @@ class Runtime(BaseUI):
             return [None] * len(Runtime.sft_plot)
         _, all_args = Runtime.parse_info_from_cmdline(task)
         tb_dir = all_args['logging_dir']
+        if not os.path.exists(tb_dir):
+            return [None] * len(Runtime.sft_plot)
         fname = [
             fname for fname in os.listdir(tb_dir)
-            if os.path.isfile(os.path.join(tb_dir, fname))
-            and fname.startswith('events.out')
+            if os.path.isfile(os.path.join(tb_dir, fname)) and fname.startswith('events.out')
         ]
         if fname:
             fname = fname[0]

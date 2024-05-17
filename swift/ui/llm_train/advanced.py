@@ -87,11 +87,6 @@ class Advanced(BaseUI):
                     gr.Textbox(elem_id='weight_decay', lines=1, scale=20)
                     gr.Textbox(elem_id='logging_steps', lines=1, scale=20)
                     gr.Textbox(elem_id='lr_scheduler_type', lines=1, scale=20)
-                    gr.Slider(
-                        elem_id='warmup_ratio',
-                        minimum=0.0,
-                        maximum=1.0,
-                        step=0.05,
-                        scale=20)
+                    gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)

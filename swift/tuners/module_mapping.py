@@ -78,8 +78,7 @@ CHATGLM_KEYS = ModelKeys(
         'down_proj': 'transformer.encoder.layers.{}.mlp.dense_4h_to_h',
         'attention': 'transformer.encoder.layers.{}.self_attention',
         'o_proj': 'transformer.encoder.layers.{}.self_attention.dense',
-        'qkv_proj':
-        'transformer.encoder.layers.{}.self_attention.query_key_value',
+        'qkv_proj': 'transformer.encoder.layers.{}.self_attention.query_key_value',
         'embedding': 'transformer.embedding',
         'output': 'transformer.output_layer',
     })

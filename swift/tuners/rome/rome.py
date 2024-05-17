@@ -42,14 +42,11 @@ class RomeConfig(SwiftConfig):
     """
     model_type: str = field(default=None, metadata={'help': 'The model type'})
 
-    tokenizer: Any = field(
-        default=None, metadata={'help': 'The tokenizer matching this model'})
+    tokenizer: Any = field(default=None, metadata={'help': 'The tokenizer matching this model'})
 
-    knowledge: List[Dict] = field(
-        default=False, metadata={'help': 'The knowledge to be used'})
+    knowledge: List[Dict] = field(default=False, metadata={'help': 'The knowledge to be used'})
 
-    batch_first: bool = field(
-        default=True, metadata={'help': 'Batch at the first dimension or not'})
+    batch_first: bool = field(default=True, metadata={'help': 'Batch at the first dimension or not'})
 
     def __post_init__(self):
         from swift.tuners.mapping import SwiftTuners
@@ -77,21 +74,15 @@ class Rome(SwiftAdapter):
                 param.requires_grad = True
 
             hparams = ROMEHyperParams.from_name(config.model_type)
-            modified_keys = apply_rome_to_model(model, config.tokenizer,
-                                                config.knowledge, hparams,
-                                                config.batch_first)
+            modified_keys = apply_rome_to_model(model, config.tokenizer, config.knowledge, hparams, config.batch_first)
 
         def state_dict_callback(state_dict, adapter_name):
-            return {
-                key: value
-                for key, value in state_dict.items() if key in modified_keys
-            }
+            return {key: value for key, value in state_dict.items() if key in modified_keys}
 
         def mark_trainable_callback(model):
             pass
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
     @staticmethod
     def has_additional_modules():
@@ -142,16 +133,13 @@ def execute_rome(
 
     # Update target and print info
     request = deepcopy(knowledge)
-    logger.info(
-        f'Executing ROME algorithm for the update: '
-        f"[{request['prompt'].format(request['subject'])}] -> [{request['target']}]"
-    )
+    logger.info(f'Executing ROME algorithm for the update: '
+                f"[{request['prompt'].format(request['subject'])}] -> [{request['target']}]")
 
     # Retrieve weights that user desires to change
     weights = {
         f'{hparams.rewrite_module_tmp.format(layer)}.weight':
-        get_parameter(model,
-                      f'{hparams.rewrite_module_tmp.format(layer)}.weight')
+        get_parameter(model, f'{hparams.rewrite_module_tmp.format(layer)}.weight')
         for layer in hparams.layers
     }
     # Save old weights for future restoration
@@ -188,8 +176,7 @@ def execute_rome(
             # Determine correct transposition of delta matrix
             weight_name = f'{hparams.rewrite_module_tmp.format(layer)}.weight'
             upd_matrix = left_vector.unsqueeze(1) @ right_vector.unsqueeze(0)
-            upd_matrix = upd_matrix_match_shape(upd_matrix,
-                                                weights[weight_name].shape)
+            upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)
 
             # Update model weights and record desired changes in `delta` variable
             weights[weight_name][...] += upd_matrix
@@ -208,8 +195,7 @@ def execute_rome(
     return deltas
 
 
-def upd_matrix_match_shape(matrix: torch.Tensor,
-                           shape: torch.Size) -> torch.Tensor:
+def upd_matrix_match_shape(matrix: torch.Tensor, shape: torch.Size) -> torch.Tensor:
     """
     GPT-2 and GPT-J have transposed weight representations.
     Returns a matrix that matches the desired shape, else raises a ValueError
@@ -220,6 +206,5 @@ def upd_matrix_match_shape(matrix: torch.Tensor,
     elif matrix.T.shape == shape:
         return matrix.T
     else:
-        raise ValueError(
-            'Update matrix computed by ROME does not match original weight shape. '
-            'Check for bugs in the code?')
+        raise ValueError('Update matrix computed by ROME does not match original weight shape. '
+                         'Check for bugs in the code?')

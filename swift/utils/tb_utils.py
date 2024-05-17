@@ -4,8 +4,7 @@ import os
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
-from tensorboard.backend.event_processing.event_accumulator import \
-    EventAccumulator
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
 Item = Dict[str, float]
 TB_COLOR, TB_COLOR_SMOOTH = '#FFE2D9', '#FF7043'
@@ -27,8 +26,7 @@ def read_tensorboard_file(fpath: str) -> Dict[str, List[Item]]:
     return res
 
 
-def tensorboard_smoothing(values: List[float],
-                          smooth: float = 0.9) -> List[float]:
+def tensorboard_smoothing(values: List[float], smooth: float = 0.9) -> List[float]:
     norm_factor = 1
     x = 0
     res: List[float] = []
@@ -49,10 +47,7 @@ def plot_images(images_dir: str,
                 dpi: int = 100) -> None:
     """Using tensorboard's data content to plot images"""
     os.makedirs(images_dir, exist_ok=True)
-    fname = [
-        fname for fname in os.listdir(tb_dir)
-        if os.path.isfile(os.path.join(tb_dir, fname))
-    ][0]
+    fname = [fname for fname in os.listdir(tb_dir) if os.path.isfile(os.path.join(tb_dir, fname))][0]
     tb_path = os.path.join(tb_dir, fname)
     data = read_tensorboard_file(tb_path)
 
@@ -74,3 +69,4 @@ def plot_images(images_dir: str,
             ax.plot(steps, values, color=TB_COLOR_SMOOTH)
         fpath = os.path.join(images_dir, k.replace('/', '_'))
         plt.savefig(fpath, dpi=dpi, bbox_inches='tight')
+        plt.close()

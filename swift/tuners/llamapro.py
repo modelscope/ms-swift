@@ -44,8 +44,7 @@ class LLaMAProConfig(SwiftConfig):
 class LLaMAPro(SwiftAdapter):
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: LLaMAProConfig,
-                      adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: LLaMAProConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `LLaMAProConfig`"""
         num_hidden_layers = None
         if hasattr(model.config, 'num_hidden_layers'):
@@ -78,30 +77,22 @@ class LLaMAPro(SwiftAdapter):
         LLaMAPro._set_module_list(config, model, new_module_list)
 
         def state_dict_callback(state_dict, adapter_name):
-            model_key_mapping = LLaMAPro._get_model_key_mapping(
-                config.model_type, config)
-            new_module_list = [
-                model_key_mapping.module_list + f'.{i}' for i in new_module_idx
-            ]
+            model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+            new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             return {
                 key: value
-                for key, value in state_dict.items()
-                if any([m_part in key for m_part in new_module_list])
+                for key, value in state_dict.items() if any([m_part in key for m_part in new_module_list])
             }
 
         def mark_trainable_callback(model):
-            model_key_mapping = LLaMAPro._get_model_key_mapping(
-                config.model_type, config)
-            new_module_list = [
-                model_key_mapping.module_list + f'.{i}' for i in new_module_idx
-            ]
+            model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+            new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             for name, parameter in model.named_parameters():
                 parameter: nn.Parameter
                 if any([m_part in name for m_part in new_module_list]):
                     parameter.requires_grad = True
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
     @staticmethod
     def _get_model_key_mapping(model_type, config) -> ModelKeys:
@@ -111,10 +102,8 @@ class LLaMAPro(SwiftAdapter):
             model_key_mapping = config.model_key_mapping
 
         if model_key_mapping is None:
-            raise ValueError(
-                f'{model_type} is not defined in MODEL_KEYS_MAPPING, '
-                f'please consider pass the information through the config.model_key_mapping'
-            )
+            raise ValueError(f'{model_type} is not defined in MODEL_KEYS_MAPPING, '
+                             f'please consider pass the information through the config.model_key_mapping')
 
         if isinstance(model_key_mapping, dict):
             model_key_mapping: ModelKeys = ModelKeys(**model_key_mapping)
@@ -129,9 +118,8 @@ class LLaMAPro(SwiftAdapter):
         model_key_mapping = LLaMAPro._get_model_key_mapping(model_type, config)
         attention = model_key_mapping.attention
         attention = attention.split('{}.')[1]
-        if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma',
-                          'deepseek', 'openbuddy', 'xverse', 'orion', 'bluelm',
-                          'ziya', 'skywork'):
+        if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma', 'deepseek', 'openbuddy', 'xverse', 'orion',
+                          'bluelm', 'ziya', 'skywork'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_idx = idx
         elif model_type in ('chatglm', ):
@@ -142,10 +130,8 @@ class LLaMAPro(SwiftAdapter):
                 getattr(module, attention).block_idx = idx
 
     @staticmethod
-    def _update_module_weight(config: LLaMAProConfig, module_list,
-                              new_module_idx):
-        model_key_mapping = LLaMAPro._get_model_key_mapping(
-            config.model_type, config)
+    def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
+        model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
         o_proj = model_key_mapping.o_proj.split('{}.')[1]
         down_proj = model_key_mapping.o_proj.split('{}.')[1]
 
@@ -162,25 +148,19 @@ class LLaMAPro(SwiftAdapter):
                 _down_proj.bias = torch.zeros_like(_down_proj.bias)
 
     @staticmethod
-    def _set_module_list(config, module: nn.Module,
-                         module_list: nn.ModuleList):
-        model_key_mapping = LLaMAPro._get_model_key_mapping(
-            config.model_type, config)
+    def _set_module_list(config, module: nn.Module, module_list: nn.ModuleList):
+        model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
         idx = model_key_mapping.module_list.rfind('.')
         parent = module.get_submodule(model_key_mapping.module_list[:idx])
         setattr(parent, model_key_mapping.module_list[idx + 1:], module_list)
 
     @staticmethod
     def _find_module_list(config, module: nn.Module) -> nn.ModuleList:
-        model_key_mapping = LLaMAPro._get_model_key_mapping(
-            config.model_type, config)
+        model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
         return module.get_submodule(model_key_mapping.module_list)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module,
-                         adapter_name: str,
-                         activate: bool,
-                         offload: str = None):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         for sub_module in module.modules():
             if isinstance(sub_module, torch.nn.Embedding):
                 sub_module.nef_activated = activate

@@ -24,7 +24,7 @@ Swift DOCUMENTATION
    LLM/Agent-best-practice.md
    LLM/LLM-fine-tuning.md
    LLM/LLM-inference.md
-   LLM/RLHF.md
+   LLM/DPO.md
    LLM/VLLM-inference-acceleration-and-deployment.md
    LLM/Supported-models-datasets.md
    LLM/Customization.md

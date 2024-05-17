@@ -12,9 +12,7 @@ from swift import LoRAConfig, SCETuningConfig, Swift, snapshot_download
 
 # load dataset
 train_dataset = MsDataset.load(
-    'style_custom_dataset',
-    namespace='damo',
-    subset_name='3D',
+    'style_custom_dataset', namespace='damo', subset_name='3D',
     split='train_short').remap_columns({'Image:FILE': 'Target:FILE'})
 
 # load pretrained model
@@ -31,9 +29,7 @@ tuner_type = 'scetuning'  # "lora"
 
 if tuner_type == 'lora':
     work_dir = 'tmp/multimodal_swift_lora_style'
-    tuner_config = LoRAConfig(
-        r=64,
-        target_modules='.*unet.*.(to_q|to_k|to_v|to_out.0|net.0.proj|net.2)$')
+    tuner_config = LoRAConfig(r=64, target_modules='.*unet.*.(to_q|to_k|to_v|to_out.0|net.0.proj|net.2)$')
     model = Swift.prepare_model(model, tuner_config)
 elif tuner_type == 'scetuning':
     work_dir = 'tmp/multimodal_swift_scetuning_style'
@@ -48,11 +44,7 @@ else:
 # training
 def cfg_modify_fn(cfg):
     cfg.preprocessor.resolution = 512
-    cfg.train.lr_scheduler = {
-        'type': 'LambdaLR',
-        'lr_lambda': lambda _: 1,
-        'last_epoch': -1
-    }
+    cfg.train.lr_scheduler = {'type': 'LambdaLR', 'lr_lambda': lambda _: 1, 'last_epoch': -1}
     cfg.train.max_epochs = 100
     cfg.train.optimizer.lr = 1e-4
     cfg.train.dataloader.batch_size_per_gpu = 10
@@ -84,7 +76,5 @@ model = Model.from_pretrained(model_id, cfg_dict=cfg_dict, revision=revision)
 model = Swift.from_pretrained(model, work_dir)
 pipe = pipeline(task='efficient-diffusion-tuning', model=model)
 test_prompt = 'A boy in a camouflage jacket with a scarf'
-img_out = pipe({'prompt': test_prompt},
-               num_inference_steps=50,
-               generator_seed=123)['output_imgs'][0]
+img_out = pipe({'prompt': test_prompt}, num_inference_steps=50, generator_seed=123)['output_imgs'][0]
 cv2.imwrite(os.path.join(work_dir, 'inference.png'), img_out)

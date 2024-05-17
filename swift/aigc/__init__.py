@@ -18,14 +18,11 @@ else:
         'animatediff': ['animatediff_sft', 'animatediff_main'],
         'animatediff_infer': ['animatediff_infer', 'animatediff_infer_main'],
         'diffusers': [
-            'train_text_to_image', 'train_text_to_image_lora',
-            'train_text_to_image_lora_sdxl', 'train_text_to_image_sdxl',
-            'infer_text_to_image', 'infer_text_to_image_lora',
-            'infer_text_to_image_sdxl', 'infer_text_to_image_lora_sdxl',
-            'train_controlnet', 'train_controlnet_sdxl', 'train_dreambooth',
-            'train_dreambooth_lora', 'train_dreambooth_lora_sdxl',
-            'infer_controlnet', 'infer_controlnet_sdxl', 'infer_dreambooth',
-            'infer_dreambooth_lora', 'infer_dreambooth_lora_sdxl'
+            'train_text_to_image', 'train_text_to_image_lora', 'train_text_to_image_lora_sdxl',
+            'train_text_to_image_sdxl', 'infer_text_to_image', 'infer_text_to_image_lora', 'infer_text_to_image_sdxl',
+            'infer_text_to_image_lora_sdxl', 'train_controlnet', 'train_controlnet_sdxl', 'train_dreambooth',
+            'train_dreambooth_lora', 'train_dreambooth_lora_sdxl', 'infer_controlnet', 'infer_controlnet_sdxl',
+            'infer_dreambooth', 'infer_dreambooth_lora', 'infer_dreambooth_lora_sdxl'
         ],
         'utils': ['AnimateDiffArguments', 'AnimateDiffInferArguments'],
     }

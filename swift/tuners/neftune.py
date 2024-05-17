@@ -21,9 +21,7 @@ class NEFTuneConfig(SwiftConfig):
     Args:
         noise_alpha(`float`): The noise alpha value used for the NEFTune, default 5.0
     """
-    noise_alpha: float = field(
-        default=5.0,
-        metadata={'help': 'The noise alpha value used for the NEFTune'})
+    noise_alpha: float = field(default=5.0, metadata={'help': 'The noise alpha value used for the NEFTune'})
 
     def __post_init__(self):
         from .mapping import SwiftTuners
@@ -33,8 +31,7 @@ class NEFTuneConfig(SwiftConfig):
 class NEFTune(SwiftAdapter):
 
     @staticmethod
-    def prepare_model(model: nn.Module, config: NEFTuneConfig,
-                      adapter_name: str) -> SwiftOutput:
+    def prepare_model(model: nn.Module, config: NEFTuneConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `NEFTuneConfig`"""
         for sub_module in model.modules():
             if isinstance(sub_module, torch.nn.Embedding):
@@ -43,13 +40,11 @@ class NEFTune(SwiftAdapter):
                     if module.training and getattr(module, 'nef_activated'):
                         dims = torch.tensor(output.size(-1) * output.size(-2))
                         mag_norm = config.noise_alpha / torch.sqrt(dims)
-                        output = output + torch.zeros_like(output).uniform_(
-                            -mag_norm, mag_norm)
+                        output = output + torch.zeros_like(output).uniform_(-mag_norm, mag_norm)
                     return output
 
                 if hasattr(sub_module, 'nef_activated'):
-                    raise ValueError(
-                        'NEFTune does not support a second tuner.')
+                    raise ValueError('NEFTune does not support a second tuner.')
 
                 sub_module.register_forward_hook(neftune_hook)
                 sub_module.nef_activated = True
@@ -60,14 +55,10 @@ class NEFTune(SwiftAdapter):
         def mark_trainable_callback(model):
             return
 
-        return SwiftOutput(config, state_dict_callback,
-                           mark_trainable_callback)
+        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
     @staticmethod
-    def activate_adapter(module: torch.nn.Module,
-                         adapter_name: str,
-                         activate: bool,
-                         offload: str = None):
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         for sub_module in module.modules():
             if isinstance(sub_module, torch.nn.Embedding):
                 sub_module.nef_activated = activate
