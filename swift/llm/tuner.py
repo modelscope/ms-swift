@@ -50,14 +50,16 @@ def handle_target_modules(model, args: SftArguments) -> None:
 
 def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
     target_modules = config.target_modules
-    modules_dict = {name: module.weight.shape for name, module in
-                    model.named_modules() if isinstance(module, torch.nn.Linear) and
-                    any([t in name for t in target_modules])}  # only Linear for now
+    modules_dict = {
+        name: module.weight.shape
+        for name, module in model.named_modules()
+        if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
+    }  # only Linear for now
     if len(set(modules_dict.values())) > 1:
         v = [t for t in target_modules if 'v' in t]
         if not v:
-            raise ValueError(f'Please manually pass in `vera_target_modules`, do not use `DEFAULT` or `ALL`,'
-                             f'because Vera need all target linears to be the same size.')
+            raise ValueError('Please manually pass in `vera_target_modules`, do not use `DEFAULT` or `ALL`,'
+                             'because Vera need all target linears to be the same size.')
         v = [0]
         shape = [shape for name, shape in modules_dict.items() if v in name][0]
         names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
