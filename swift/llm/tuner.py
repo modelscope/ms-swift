@@ -48,6 +48,23 @@ def handle_target_modules(model, args: SftArguments) -> None:
         logger.info(f'lora_target_modules: {args.lora_target_modules}')
 
 
+def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
+    target_modules = config.target_modules
+    modules_dict = {name: module.weight.shape for name, module in
+                    model.named_modules() if isinstance(module, torch.nn.Linear) and
+                    any([t in name for t in target_modules])}  # only Linear for now
+    if len(set(modules_dict.values())) > 1:
+        v = [t for t in target_modules if 'v' in t]
+        if not v:
+            raise ValueError(f'Please manually pass in `vera_target_modules`, do not use `DEFAULT` or `ALL`,'
+                             f'because Vera need all target linears to be the same size.')
+        v = [0]
+        shape = [shape for name, shape in modules_dict.items() if v in name][0]
+        names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
+        config.target_modules = [t for t in target_modules if any([t in name for name in names])]
+    return config
+
+
 def handle_modules_to_save(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         modules_to_save = args.ia3_modules_to_save
@@ -190,6 +207,7 @@ def prepare_model(model, args: SftArguments):
                     d_initial=args.vera_d_initial,
                     modules_to_save=args.vera_modules_to_save,
                 )
+                vera_config = handle_same_dim_target_modules(model, vera_config)
                 model = Swift.prepare_model(model, vera_config)
                 logger.info(f'vera_config: {vera_config}')
             elif args.sft_type == 'boft':
