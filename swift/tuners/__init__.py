@@ -12,7 +12,8 @@ if TYPE_CHECKING:
     from .neftune import NEFTune, NEFTuneConfig
     from .longlora.longlora import LongLoRAModelType, LongLoRAConfig, LongLoRA
     from .restuning import ResTuning, ResTuningConfig, ResTuningBypassModule
-    from .peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, PeftConfig,
+    from .peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig,
+                       LoraConfig, VeraConfig, BOFTConfig, OFTConfig, PeftConfig,
                        PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
                        PeftModelForTokenClassification, PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig,
                        PromptTuningConfig, get_peft_config, get_peft_model, get_peft_model_state_dict)
@@ -30,7 +31,8 @@ else:
         'neftune': ['NEFTune', 'NEFTuneConfig'],
         'restuning': ['ResTuning', 'ResTuningConfig', 'ResTuningBypassModule'],
         'peft': [
-            'AdaLoraConfig', 'IA3Config', 'LoftQConfig', 'LoHaConfig', 'LoKrConfig', 'LoraConfig', 'OFTConfig',
+            'AdaLoraConfig', 'IA3Config', 'LoftQConfig', 'LoHaConfig', 'LoKrConfig',
+            'LoraConfig', 'VeraConfig', 'BOFTConfig', 'OFTConfig',
             'PeftConfig', 'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
             'PeftModelForSequenceClassification', 'PeftModelForTokenClassification', 'PrefixTuningConfig',
             'PromptEncoderConfig', 'PromptLearningConfig', 'PromptTuningConfig', 'get_peft_config', 'get_peft_model',

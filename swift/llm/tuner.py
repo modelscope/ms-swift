@@ -10,7 +10,7 @@ from packaging import version
 from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, IA3Config, LongLoRAModelType, LoraConfig, LoRAConfig,
-                          NEFTuneConfig, Swift)
+                          NEFTuneConfig, Swift, BOFTConfig, VeraConfig)
 from swift.tuners.llamapro import LLaMAProConfig
 from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
@@ -24,6 +24,10 @@ def handle_target_modules(model, args: SftArguments) -> None:
         target_modules = args.ia3_target_modules
         assert len(args.ia3_feedforward_modules) > 0, ('Setting ia3_target_modules to `ALL` '
                                                        'need to pass MLP linear names to `ia3_feedforward_modules`')
+    elif args.sft_type == 'vera':
+        target_modules = args.vera_target_modules
+    elif args.sft_type == 'boft':
+        target_modules = args.boft_target_modules
     else:
         target_modules = args.lora_target_modules
     if args.lora_use_embedding:
@@ -33,6 +37,12 @@ def handle_target_modules(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         args.ia3_target_modules = target_modules
         logger.info(f'ia3_target_modules: {args.ia3_target_modules}')
+    elif args.sft_type == 'vera':
+        args.vera_target_modules = target_modules
+        logger.info(f'vera_target_modules: {args.ia3_target_modules}')
+    elif args.sft_type == 'boft':
+        args.boft_target_modules = target_modules
+        logger.info(f'boft_target_modules: {args.boft_target_modules}')
     else:
         args.lora_target_modules = target_modules
         logger.info(f'lora_target_modules: {args.lora_target_modules}')
@@ -41,6 +51,10 @@ def handle_target_modules(model, args: SftArguments) -> None:
 def handle_modules_to_save(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         modules_to_save = args.ia3_modules_to_save
+    elif args.sft_type == 'vera':
+        modules_to_save = args.vera_modules_to_save
+    elif args.sft_type == 'boft':
+        modules_to_save = args.boft_modules_to_save
     else:
         modules_to_save = args.lora_modules_to_save
     if args.lora_m2s_use_embedding:
@@ -51,6 +65,12 @@ def handle_modules_to_save(model, args: SftArguments) -> None:
     if args.sft_type == 'ia3':
         args.ia3_modules_to_save = modules_to_save
         logger.info(f'ia3_modules_to_save: {args.ia3_modules_to_save}')
+    elif args.sft_type == 'vera':
+        args.vera_modules_to_save = modules_to_save
+        logger.info(f'vera_modules_to_save: {args.vera_modules_to_save}')
+    elif args.sft_type == 'boft':
+        args.boft_modules_to_save = modules_to_save
+        logger.info(f'boft_modules_to_save: {args.boft_modules_to_save}')
     else:
         args.lora_modules_to_save = modules_to_save
         logger.info(f'lora_modules_to_save: {args.lora_modules_to_save}')
@@ -72,6 +92,7 @@ def prepare_model(model, args: SftArguments):
                 'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
                 'lorap_lr_ratio': args.lora_lr_ratio,
+                'init_lora_weights': args.init_lora_weights,
             }
             if args.sft_type in ('lora', 'longlora'):
                 if args.lora_dtype == 'AUTO':
@@ -158,6 +179,28 @@ def prepare_model(model, args: SftArguments):
                     act_layer=args.adapter_act)
                 model = Swift.prepare_model(model, adapter_config)
                 logger.info(f'adapter_config: {adapter_config}')
+            elif args.sft_type == 'vera':
+                vera_config = VeraConfig(
+                    r=args.vera_rank,
+                    target_modules=args.vera_target_modules,
+                    projection_prng_key=args.vera_projection_prng_key,
+                    vera_dropout=args.vera_dropout,
+                    d_initial=args.vera_d_initial,
+                    modules_to_save=args.vera_modules_to_save,
+                )
+                model = Swift.prepare_model(model, vera_config)
+                logger.info(f'vera_config: {vera_config}')
+            elif args.sft_type == 'boft':
+                boft_config = BOFTConfig(
+                    boft_block_size=args.boft_block_size,
+                    boft_block_num=args.boft_block_num,
+                    boft_n_butterfly_factor=args.boft_n_butterfly_factor,
+                    target_modules=args.boft_target_modules,
+                    boft_dropout=args.boft_dropout,
+                    modules_to_save=args.boft_modules_to_save,
+                )
+                model = Swift.prepare_model(model, boft_config)
+                logger.info(f'boft_config: {boft_config}')
         else:
             if use_torchacc():
                 consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')

@@ -32,7 +32,7 @@ logger = get_logger()
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'}
+    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'}
 
 
 class ArgumentsBase:
@@ -404,7 +404,7 @@ class SftArguments(ArgumentsBase):
         default=None,
         metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
@@ -457,6 +457,23 @@ class SftArguments(ArgumentsBase):
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
+    init_lora_weights: Union[bool, Literal["gaussian", "pissa", "pissa_niter_[number of iters]", "loftq"]] = True
+
+    # BOFT
+    boft_block_size: int = 4
+    boft_block_num: int = 0
+    boft_n_butterfly_factor: int = 1
+    boft_target_modules: Optional[Union[List[str], str]] = field(default_factory=lambda: ['DEFAULT'])
+    boft_dropout: float = 0.0
+    boft_modules_to_save: List[str] = field(default_factory=list)
+
+    # Vera
+    vera_rank: int = 256
+    vera_target_modules: Optional[Union[List[str], str]] = field(default_factory=lambda: ['DEFAULT'])
+    vera_projection_prng_key: int = 0
+    vera_dropout: float = 0.0
+    vera_d_initial: float = 0.1
+    vera_modules_to_save: List[str] = field(default_factory=list)
 
     # adapter
     adapter_act: str = 'gelu'
@@ -684,6 +701,12 @@ class SftArguments(ArgumentsBase):
             self.ia3_feedforward_modules = self._prepare_target_modules(self.ia3_feedforward_modules)
             self.ia3_target_modules = self._prepare_target_modules(self.ia3_target_modules)
             self.ia3_modules_to_save = self._prepare_modules_to_save(self.ia3_modules_to_save)
+        elif self.sft_type == 'vera':
+            self.vera_target_modules = self._prepare_target_modules(self.vera_target_modules)
+            self.vera_modules_to_save = self._prepare_modules_to_save(self.vera_modules_to_save)
+        elif self.sft_type == 'boft':
+            self.boft_target_modules = self._prepare_target_modules(self.boft_target_modules)
+            self.boft_modules_to_save = self._prepare_modules_to_save(self.boft_modules_to_save)
         else:
             self.lora_target_modules = self._prepare_target_modules(self.lora_target_modules)
             self.lora_modules_to_save = self._prepare_modules_to_save(self.lora_modules_to_save)
@@ -926,7 +949,7 @@ class InferArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro'] = 'lora'
+    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'lora'
     template_type: str = field(
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     infer_backend: Literal['AUTO', 'vllm', 'pt'] = 'AUTO'
