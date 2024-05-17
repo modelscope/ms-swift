@@ -4,24 +4,23 @@ import os.path
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
 from typing import Dict, Optional
-from packaging import version
+
 import json
 import peft
 import torch
 import torch.nn
-import peft
-from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, VeraConfig, BOFTConfig,
-                  LoKrConfig, LoraModel, OFTConfig, PeftConfig,
-                  PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
-                  PeftModelForTokenClassification, PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig,
-                  PromptTuningConfig, get_peft_config, get_peft_model, get_peft_model_state_dict)
+from packaging import version
+from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
+                  PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
+                  PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
+                  PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, get_peft_config,
+                  get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Embedding
 from transformers import Trainer
 
 from swift import get_logger
 from swift.hub.snapshot_download import snapshot_download
-
 
 logger = get_logger()
 dispatchers = []
