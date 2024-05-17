@@ -3662,6 +3662,8 @@ def get_model_tokenizer_telechat_v2(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     if model is not None:
         model.generation_config.eos_token_id = 2 
+    if tokenizer is not None:
+        tokenizer.eos_token_id = None
     return model, tokenizer
 
 @register_model(
