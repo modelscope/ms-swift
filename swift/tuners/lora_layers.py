@@ -680,12 +680,10 @@ class LoraModel(_LoraModel):
 
         peft_config = self._prepare_adapter_config(peft_config, model_config)
 
-        if version.parse(peft.__version__) > version.parse('0.8.2'):
-            from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
-            # update peft_config.target_modules if required
-            peft_config = _maybe_include_all_linear_layers(peft_config, model)
-        if version.parse(peft.__version__) >= version.parse('0.10.0'):
-            self._prepare_model(peft_config, model)
+        from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
+        # update peft_config.target_modules if required
+        peft_config = _maybe_include_all_linear_layers(peft_config, model)
+        self._prepare_model(peft_config, model)
 
         for key in key_list:
             # Check for modules_to_save in case
