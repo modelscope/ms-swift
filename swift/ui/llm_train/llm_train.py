@@ -360,8 +360,10 @@ class LLMTrain(BaseUI):
                     lines.append(line)
                     yield ['\n'.join(lines)] + Runtime.plot(run_command) + [run_command]
         else:
-            yield ['Current is dryrun mode, you can only view the training cmd, please '
-                    'duplicate this space to do training.'] + [None] * len(Runtime.sft_plot) + [run_command]
+            yield [
+                'Current is dryrun mode so you can only view the training cmd, please duplicate this space to '
+                'do training or use with inference.'
+            ] + [None] * len(Runtime.sft_plot) + [run_command]
 
     @classmethod
     def train_local(cls, *args):
