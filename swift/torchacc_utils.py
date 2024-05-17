@@ -6,7 +6,6 @@ import types
 from collections import OrderedDict
 from typing import List, Optional, Tuple
 
-import einops
 import safetensors
 import torch
 import torch.nn.functional as F
@@ -296,10 +295,47 @@ def ta_trim_graph():
         ta.mark_step()
 
 
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
+    """Applies Rotary Position Embedding to the query and key tensors.
+
+    Args:
+        q (`torch.Tensor`): The query tensor.
+        k (`torch.Tensor`): The key tensor.
+        cos (`torch.Tensor`): The cosine part of the rotary embedding.
+        sin (`torch.Tensor`): The sine part of the rotary embedding.
+        position_ids (`torch.Tensor`):
+            The position indices of the tokens corresponding to the query and key tensors. For example, this can be
+            used to pass offsetted position ids when working with a KV-cache.
+        unsqueeze_dim (`int`, *optional*, defaults to 1):
+            The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
+            sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
+            that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
+            k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
+            cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
+            the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
+    Returns:
+        `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
+    """
+    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+
+
 def patch_acc_model(model, args):
     if not args.use_flash_attn:
-        return model
-    if args.model_type.startswith('qwen'):
+        logger.warn('Currently use flash attn for torchacc.')
+    if args.model_type.startswith('qwen1half'):
+        model = patch_qwen2_model(model)
+    elif args.model_type.startswith('qwen'):
         import torchacc as ta
         model = ta.patch_qwen_model(model)
     elif args.model_type.startswith('baichuan'):
@@ -314,40 +350,6 @@ def patch_acc_model(model, args):
 
 def patch_llama_model(model):
 
-    def rotate_half(x):
-        """Rotates half the hidden dims of the input."""
-        x1 = x[..., :x.shape[-1] // 2]
-        x2 = x[..., x.shape[-1] // 2:]
-        return torch.cat((-x2, x1), dim=-1)
-
-    def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
-        """Applies Rotary Position Embedding to the query and key tensors.
-
-        Args:
-            q (`torch.Tensor`): The query tensor.
-            k (`torch.Tensor`): The key tensor.
-            cos (`torch.Tensor`): The cosine part of the rotary embedding.
-            sin (`torch.Tensor`): The sine part of the rotary embedding.
-            position_ids (`torch.Tensor`):
-                The position indices of the tokens corresponding to the query and key tensors. For example, this can be
-                used to pass offsetted position ids when working with a KV-cache.
-            unsqueeze_dim (`int`, *optional*, defaults to 1):
-                The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
-                sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k.
-                For example, note that cos[position_ids] and sin[position_ids]
-                have the shape [batch_size, seq_len, head_dim]. Then, if q and
-                k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
-                cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k.
-                Similarly, if q and k have the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
-        Returns:
-            `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
-        """
-        cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-        sin = sin[position_ids].unsqueeze(unsqueeze_dim)
-        q_embed = (q * cos) + (rotate_half(q) * sin)
-        k_embed = (k * cos) + (rotate_half(k) * sin)
-        return q_embed, k_embed
-
     def llama_attn_forward(
         self,
         hidden_states: torch.Tensor,
@@ -359,6 +361,7 @@ def patch_llama_model(model):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor],
                Optional[Tuple[torch.Tensor]]]:
         from torchacc.ops import flash_attn_varlen_xla
+        import einops
 
         bsz, q_len, _ = hidden_states.size()
 
@@ -424,8 +427,8 @@ def patch_llama_model(model):
 
 def patah_chatglm_model(model):
 
-    def apply_rotary_pos_emb(x: torch.Tensor,
-                             rope_cache: torch.Tensor) -> torch.Tensor:
+    def chatglm_apply_rotary_pos_emb(x: torch.Tensor,
+                                     rope_cache: torch.Tensor) -> torch.Tensor:
         # x: [sq, b, np, hn]
         sq, _, np, _ = x.size(0), x.size(1), x.size(2), x.size(3)
         rot_dim = rope_cache.shape[-2] * 2
@@ -497,8 +500,9 @@ def patah_chatglm_model(model):
 
         # apply relative positional encoding (rotary embedding)
         if rotary_pos_emb is not None:
-            query_layer = apply_rotary_pos_emb(query_layer, rotary_pos_emb)
-            key_layer = apply_rotary_pos_emb(key_layer, rotary_pos_emb)
+            query_layer = chatglm_apply_rotary_pos_emb(query_layer,
+                                                       rotary_pos_emb)
+            key_layer = chatglm_apply_rotary_pos_emb(key_layer, rotary_pos_emb)
 
         # adjust key and value for inference
         if kv_cache is not None:
@@ -532,6 +536,8 @@ def patah_chatglm_model(model):
         # ==================================
 
         from torchacc.ops import flash_attn_varlen_qkvpacked_xla
+        import einops
+
         query_layer, key_layer, value_layer = [
             k.permute(1, 2, 0, 3)
             for k in [query_layer, key_layer, value_layer]
@@ -586,6 +592,9 @@ def patch_baichuan_model(model):
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor],
                Optional[Tuple[torch.Tensor]]]:
+
+        import einops
+
         bsz, q_len, _ = hidden_states.size()
 
         proj = self.W_pack(hidden_states)
@@ -645,4 +654,240 @@ def patch_baichuan_model(model):
         layer.self_attn.forward = types.MethodType(baichuan_attn_forward,
                                                    layer.self_attn)
 
+    return model
+
+
+def patch_qwen2_model(model):
+
+    def qwen2_attn_forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        position_ids=None,
+        past_key_value=None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+        **kwargs,
+    ):
+
+        bsz, q_len, _ = hidden_states.size()
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads,
+                                         self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads,
+                                     self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads,
+                                         self.head_dim).transpose(1, 2)
+
+        kv_seq_len = key_states.shape[-2]
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f'The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} '
+                    'for auto-regressive decoding with k/v caching, please make sure to initialize the attention class '
+                    'with a layer index.')
+            kv_seq_len += past_key_value.get_usable_length(
+                kv_seq_len, self.layer_idx)
+
+        # Because the input can be padded, the absolute sequence length depends on the max position id.
+        # rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
+        rotary_seq_len = kv_seq_len + 1
+        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
+
+        query_states, key_states = apply_rotary_pos_emb(
+            query_states, key_states, cos, sin, position_ids)
+
+        dropout_rate = 0.0 if not self.training else self.attention_dropout
+
+        # In PEFT, usually we cast the layer norms in float32 for training stability reasons
+        # therefore the input hidden states gets silently casted in float32. Hence, we need
+        # cast them back in float16 just to be sure everything works as expected.
+        input_dtype = query_states.dtype
+        if input_dtype == torch.float32:
+            if torch.is_autocast_enabled():
+                target_dtype = torch.get_autocast_gpu_dtype()
+            # Handle the case where the model is quantized
+            elif hasattr(self.config, '_pre_quantization_dtype'):
+                target_dtype = self.config._pre_quantization_dtype
+            else:
+                target_dtype = self.q_proj.weight.dtype
+
+            query_states = query_states.to(target_dtype)
+            key_states = key_states.to(target_dtype)
+            value_states = value_states.to(target_dtype)
+
+        # Reashape to the expected shape for Flash Attention
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+
+        from torchacc.ops import flash_attn_varlen_xla
+        import einops
+
+        q, k, v = [
+            einops.rearrange(x, 'b s ... -> (b s) ...')
+            for x in [query_states, key_states, value_states]
+        ]
+        cu_q_lens = torch.arange(
+            0, (bsz + 1) * q_len,
+            step=q_len,
+            dtype=torch.int32,
+            device=q.device)
+
+        attn_output = flash_attn_varlen_xla(
+            q,
+            k,
+            v,
+            cu_q_lens,
+            cu_q_lens,
+            q_len,
+            q_len,
+            dropout_rate,
+            softmax_scale=None,
+            causal=True)
+
+        attn_output = attn_output.reshape(bsz, q_len,
+                                          self.hidden_size).contiguous()
+        attn_output = self.o_proj(attn_output)
+
+        if not output_attentions:
+            attn_weights = None
+
+        return attn_output, attn_weights, past_key_value
+
+    def qwen2_forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ):
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else
+            self.config.output_hidden_states)
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # retrieve input_ids and inputs_embeds
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError(
+                'You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time'
+            )
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape
+        elif inputs_embeds is not None:
+            batch_size, seq_length, _ = inputs_embeds.shape
+        else:
+            raise ValueError(
+                'You have to specify either decoder_input_ids or decoder_inputs_embeds'
+            )
+
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                use_cache = False
+
+        past_key_values_length = 0
+
+        if use_cache:
+            use_legacy_cache = not isinstance(past_key_values, Cache)
+            if use_legacy_cache:
+                past_key_values = DynamicCache.from_legacy_cache(
+                    past_key_values)
+            past_key_values_length = past_key_values.get_usable_length(
+                seq_length)
+
+        if position_ids is None:
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(
+                past_key_values_length,
+                seq_length + past_key_values_length,
+                dtype=torch.long,
+                device=device)
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        hidden_states = inputs_embeds
+
+        # decoder layers
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attns = () if output_attentions else None
+        next_decoder_cache = None
+
+        for decoder_layer in self.layers:
+            if output_hidden_states:
+                all_hidden_states += (hidden_states, )
+
+            if self.gradient_checkpointing and self.training:
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                )
+            else:
+                layer_outputs = decoder_layer(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_value=past_key_values,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                )
+
+            hidden_states = layer_outputs[0]
+
+            if use_cache:
+                next_decoder_cache = layer_outputs[
+                    2 if output_attentions else 1]
+
+            if output_attentions:
+                all_self_attns += (layer_outputs[1], )
+
+        hidden_states = self.norm(hidden_states)
+
+        # add hidden states from the last decoder layer
+        if output_hidden_states:
+            all_hidden_states += (hidden_states, )
+
+        next_cache = None
+        if use_cache:
+            next_cache = next_decoder_cache.to_legacy_cache(
+            ) if use_legacy_cache else next_decoder_cache
+
+        if not return_dict:
+            return tuple(
+                v for v in
+                [hidden_states, next_cache, all_hidden_states, all_self_attns]
+                if v is not None)
+        from transformers.modeling_outputs import BaseModelOutputWithPast
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=next_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attns,
+        )
+
+    for layer in model.model.layers:
+        layer.self_attn.forward = types.MethodType(qwen2_attn_forward,
+                                                   layer.self_attn)
+
+    model.model.forward = types.MethodType(qwen2_forward, model.model)
     return model
