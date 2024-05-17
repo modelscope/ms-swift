@@ -13,7 +13,7 @@ class Quantization(BaseUI):
         'quantization_tab': {
             'label': {
                 'zh': '量化参数',
-                'en': 'Quantization'
+                'en': 'Quantization settings'
             },
         },
         'quant_method': {

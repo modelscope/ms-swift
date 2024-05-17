@@ -178,12 +178,20 @@ class LLMTrain(BaseUI):
                 'zh': 'Tuner backend',
                 'en': 'Tuner backend'
             },
+            'info': {
+                'zh': 'tuner实现框架，建议peft或者unsloth',
+                'en': 'The tuner backend, suggest to use peft or unsloth'
+            }
         },
         'sequence_parallel_size': {
             'label': {
                 'zh': '序列并行分段',
                 'en': 'Sequence parallel size'
             },
+            'info': {
+                'zh': 'DDP条件下的序列并行（减小显存），需要安装ms-swift[seq_parallel]',
+                'en': 'Sequence parallel when ddp, need to install ms-swift[seq_parallel]'
+            }
         },
     }
 
