@@ -60,7 +60,7 @@ def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
         if not v:
             raise ValueError('Please manually pass in `vera_target_modules`, do not use `DEFAULT` or `ALL`,'
                              'because Vera need all target linears to be the same size.')
-        v = [0]
+        v = v[0]
         shape = [shape for name, shape in modules_dict.items() if v in name][0]
         names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
         config.target_modules = [t for t in target_modules if any([t in name for name in names])]
