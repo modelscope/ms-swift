@@ -82,6 +82,8 @@ def prepare_model(model, args: SftArguments):
         if args.resume_from_checkpoint is None:
             handle_target_modules(model, args)
             handle_modules_to_save(model, args)
+            if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
+                args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_modules,
