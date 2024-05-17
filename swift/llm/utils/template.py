@@ -38,6 +38,8 @@ class TemplateType:
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
     llava_llama_instruct = 'llava-llama-instruct'
+    llava_qwen_instruct = 'llava-qwen-instruct'
+    llama_llava_next = 'llama-llava-next'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -1058,6 +1060,40 @@ register_template(
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
+
+
+class LlamaLlavaNextTemplate(LLavaTemplate):
+    default_system = 'You are a helpful language and vision assistant. ' \
+            'You are able to understand the visual content that the user provides, ' \
+            'and assist the user with a variety of tasks using natural language.'
+
+    def __init__(self):
+        Template.__init__(self, [], [
+            '<|start_header_id|>user<|end_header_id|>\n\n', [-200],
+            '\n{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
+
+
+register_template(
+    TemplateType.llama_llava_next,
+    LlamaLlavaNextTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+
+class LLavaQwenTemplate(LLavaTemplate):
+    llavayi_query_template = 'You are a helpful assistant'
+
+    def __init__(self):
+        Template.__init__(self, [], ['<|im_start|>user\n', [-200], '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+                          ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
+                          ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+
+
+register_template(
+    TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:
