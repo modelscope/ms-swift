@@ -122,10 +122,6 @@ class Dataset(BaseUI):
         with gr.Row():
             gr.Slider(elem_id='dataset_test_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
             gr.Slider(elem_id='max_length', minimum=32, maximum=8192, step=32, scale=20)
-            if not cls.is_studio:
-                gr.Textbox(elem_id='train_dataset_sample', scale=20)
-                gr.Textbox(elem_id='val_dataset_sample', scale=20)
-            else:
-                gr.Textbox(elem_id='train_dataset_sample', value=500, interactive=False, scale=20)
-                gr.Textbox(elem_id='val_dataset_sample', value=50, interactive=False, scale=20)
+            gr.Textbox(elem_id='train_dataset_sample', scale=20)
+            gr.Textbox(elem_id='val_dataset_sample', scale=20)
             gr.Dropdown(elem_id='truncation_strategy', scale=20)

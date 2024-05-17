@@ -53,8 +53,12 @@ def run_ui():
             gr.HTML('<p><center>You have duplicated the space, remember remove the `MODELSCOPE_ENVIRONMENT` '
                     'variable to start an unlimited version</center></p>')
         with gr.Tabs():
-            LLMTrain.build_ui(LLMTrain)
-            LLMInfer.build_ui(LLMInfer)
+            if is_shared_ui:
+                LLMInfer.build_ui(LLMInfer)
+                LLMTrain.build_ui(LLMTrain)
+            else:
+                LLMTrain.build_ui(LLMTrain)
+                LLMInfer.build_ui(LLMInfer)
 
     port = os.environ.get('WEBUI_PORT', None)
     concurrent = {}
