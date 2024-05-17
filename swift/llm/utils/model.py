@@ -3660,6 +3660,8 @@ def get_model_tokenizer_telechat_v2(model_dir: str,
     model_config.flash_attn = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    if tokenizer is not None:
+        tokenizer.eos_token_id = 2
     # if model is not None:
     #     model.generation_config.bos_token_id = 1
     #     model.generation_config.eos_token_id = 2
