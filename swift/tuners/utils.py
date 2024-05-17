@@ -5,9 +5,10 @@ import hashlib
 import os
 import shutil
 import threading
+import uuid
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
-from typing import Dict, List, Optional, OrderedDict, Union
+from typing import Dict, Optional, Union
 
 import json
 import numpy as np
@@ -176,11 +177,15 @@ class ActivationMixin:
 
 class OffloadHelper:
 
-    sub_dir = 'offload_cache'
-    cache_dir = os.path.join(get_cache_dir(), sub_dir)
-    shutil.rmtree(cache_dir, ignore_errors=True)
-    os.makedirs(cache_dir, exist_ok=True)
-    index = {}
+    def __init__(self):
+        sub_dir = os.path.join('offload_cache', str(uuid.uuid4().hex))
+        self.cache_dir = os.path.join(get_cache_dir(), sub_dir)
+        shutil.rmtree(self.cache_dir, ignore_errors=True)
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self.index = {}
+
+    def __del__(self):
+        shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     @staticmethod
     def offload_weight(weight, weight_name, offload_folder, index=None):
@@ -221,26 +226,24 @@ class OffloadHelper:
 
         return weight
 
-    @staticmethod
-    def offload_disk(module: torch.nn.Module, adapter_name, module_key):
+    def offload_disk(self, module: torch.nn.Module, adapter_name, module_key):
         key = adapter_name + ':' + module_key
         md5 = hashlib.md5(key.encode('utf-8')).hexdigest()
-        sub_folder = os.path.join(OffloadHelper.cache_dir, md5)
+        sub_folder = os.path.join(self.cache_dir, md5)
         os.makedirs(sub_folder, exist_ok=True)
         state_dict = module.state_dict()
-        OffloadHelper.index[md5] = {}
+        self.index[md5] = {}
         for key, tensor in state_dict.items():
-            OffloadHelper.offload_weight(tensor, key, sub_folder, OffloadHelper.index[md5])
+            OffloadHelper.offload_weight(tensor, key, sub_folder, self.index[md5])
 
-    @staticmethod
-    def load_disk(module: torch.nn.Module, adapter_name, module_key):
+    def load_disk(self, module: torch.nn.Module, adapter_name, module_key):
         key = adapter_name + ':' + module_key
         md5 = hashlib.md5(key.encode('utf-8')).hexdigest()
-        sub_folder = os.path.join(OffloadHelper.cache_dir, md5)
+        sub_folder = os.path.join(self.cache_dir, md5)
         state_dict = {}
-        for key, value in OffloadHelper.index[md5].items():
+        for key, value in self.index[md5].items():
             file = os.path.join(sub_folder, f'{key}.dat')
-            state_dict[key] = OffloadHelper.load_offloaded_weight(file, OffloadHelper.index[md5][key])
+            state_dict[key] = OffloadHelper.load_offloaded_weight(file, self.index[md5][key])
         if version.parse(torch.__version__) >= version.parse('2.1.0'):
             module.load_state_dict(state_dict, assign=True)
         else:
@@ -263,6 +266,8 @@ class OffloadHelper:
 
 
 class SwiftAdapter:
+
+    offload_helper = OffloadHelper()
 
     @staticmethod
     def prepare_model(model: torch.nn.Module, config: SwiftConfig, adapter_name: str) -> SwiftOutput:
@@ -294,7 +299,7 @@ class SwiftAdapter:
                 module.to('cpu')
         elif offload == 'meta':
             if str(device) != 'meta':
-                OffloadHelper.offload_disk(module, adapter_name=adapter_name, module_key=module_key)
+                SwiftAdapter.offload_helper.offload_disk(module, adapter_name=adapter_name, module_key=module_key)
                 module.to('meta')
         else:
             raise NotImplementedError
@@ -309,7 +314,7 @@ class SwiftAdapter:
             module.to(module.origin_device)
             delattr(module, 'origin_device')
         elif str(device) == 'meta':
-            OffloadHelper.load_disk(module, adapter_name=adapter_name, module_key=module_key)
+            SwiftAdapter.offload_helper.load_disk(module, adapter_name=adapter_name, module_key=module_key)
             module.to(module.origin_device)
             delattr(module, 'origin_device')
 
