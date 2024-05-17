@@ -4163,7 +4163,7 @@ def get_torch_dtype(model_dir: str) -> Dtype:
     torch_dtype = model_config.get('torch_dtype', None)
     if isinstance(torch_dtype, str):
         torch_dtype = eval(f'torch.{torch_dtype}')
-    if torch_dtype == torch.float32:
+    if torch_dtype in {torch.float32, None}:
         torch_dtype = torch.float16
     return torch_dtype
 

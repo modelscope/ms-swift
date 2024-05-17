@@ -30,6 +30,12 @@ from swift.utils import get_logger
 
 logger = get_logger()
 
+is_spaces = True if 'SPACE_ID' in os.environ else False
+if is_spaces:
+    is_shared_ui = True if 'modelscope/swift' in os.environ['SPACE_ID'] else False
+else:
+    is_shared_ui = False
+
 
 class LLMTrain(BaseUI):
 
@@ -172,12 +178,20 @@ class LLMTrain(BaseUI):
                 'zh': 'Tuner backend',
                 'en': 'Tuner backend'
             },
+            'info': {
+                'zh': 'tuner实现框架，建议peft或者unsloth',
+                'en': 'The tuner backend, suggest to use peft or unsloth'
+            }
         },
         'sequence_parallel_size': {
             'label': {
                 'zh': '序列并行分段',
                 'en': 'Sequence parallel size'
             },
+            'info': {
+                'zh': 'DDP条件下的序列并行（减小显存），需要安装ms-swift[seq_parallel]',
+                'en': 'Sequence parallel when ddp, need to install ms-swift[seq_parallel]'
+            }
         },
     }
 
@@ -214,7 +228,10 @@ class LLMTrain(BaseUI):
                         value=default_device,
                         scale=8)
                     gr.Textbox(elem_id='gpu_memory_fraction', scale=4)
-                    gr.Checkbox(elem_id='dry_run', value=False, scale=4)
+                    if is_shared_ui:
+                        gr.Checkbox(elem_id='dry_run', value=True, interactive=False, scale=4)
+                    else:
+                        gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 Save.build_ui(base_tab)
@@ -232,7 +249,7 @@ class LLMTrain(BaseUI):
                         [cls.element('runtime_tab'), cls.element('log')]).then(
                             cls.train_studio,
                             [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                            [cls.element('log')] + Runtime.all_plots,
+                            [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
                             queue=True)
                 else:
                     submit.click(
@@ -342,14 +359,19 @@ class LLMTrain(BaseUI):
     @classmethod
     def train_studio(cls, *args):
         run_command, sft_args, other_kwargs = cls.train(*args)
-        if cls.is_studio:
+        if not other_kwargs['dry_run']:
             lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
             process = Popen(run_command, shell=True, stdout=PIPE, stderr=STDOUT)
             with process.stdout:
                 for line in iter(process.stdout.readline, b''):
                     line = line.decode('utf-8')
                     lines.append(line)
-                    yield ['\n'.join(lines)] + Runtime.plot(run_command)
+                    yield ['\n'.join(lines)] + Runtime.plot(run_command) + [run_command]
+        else:
+            yield [
+                'Current is dryrun mode so you can only view the training cmd, please duplicate this space to '
+                'do training or use with inference.'
+            ] + [None] * len(Runtime.sft_plot) + [run_command]
 
     @classmethod
     def train_local(cls, *args):
