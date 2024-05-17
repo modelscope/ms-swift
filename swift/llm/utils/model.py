@@ -422,7 +422,6 @@ class LoRATM(NamedTuple):
         'o_proj',
     ]
 
-
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 
 
@@ -3636,7 +3635,7 @@ def get_model_tokenizer_codellama(model_dir: str,
 @register_model(
     ModelType.telechat_52b,
     'TeleAI/TeleChat-52B',
-    LoRATM.telechat,
+    LoRATM.qwen,
     TemplateType.telechat,
     support_flash_attn=True,
     function_kwargs={'eos_token_id': 2},
