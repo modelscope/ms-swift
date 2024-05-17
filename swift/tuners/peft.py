@@ -9,10 +9,12 @@ import json
 import peft
 import torch
 import torch.nn
-from peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig, PeftConfig,
-                  PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM, PeftModelForSequenceClassification,
-                  PeftModelForTokenClassification, PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig,
-                  PromptTuningConfig, get_peft_config, get_peft_model, get_peft_model_state_dict)
+from packaging import version
+from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
+                  PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
+                  PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
+                  PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, get_peft_config,
+                  get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Embedding
 from transformers import Trainer
@@ -345,6 +347,9 @@ IA3Config = wrap_module(IA3Config)
 LoHaConfig = wrap_module(LoHaConfig)
 LoKrConfig = wrap_module(LoKrConfig)
 LoftQConfig = wrap_module(LoftQConfig)
+OFTConfig = wrap_module(OFTConfig)
+BOFTConfig = wrap_module(BOFTConfig)
+VeraConfig = wrap_module(VeraConfig)
 OFTConfig = wrap_module(OFTConfig)
 get_peft_config = get_peft_config
 get_peft_model_state_dict = get_peft_model_state_dict
