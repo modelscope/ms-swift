@@ -356,6 +356,8 @@ class ModelType:
     # teleAI
     telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
+    telechat_12b_v2 = 'telechat-12b-v2'
+    telechat_52b = 'telechat-52b'
     # grok-1
     grok_1 = 'grok-1'
     # dbrx
@@ -3623,6 +3625,20 @@ def get_model_tokenizer_codellama(model_dir: str,
     TemplateType.telechat,
     support_flash_attn=True,
     hf_model_id='Tele-AI/TeleChat-12B')
+@register_model(
+    ModelType.telechat_12b_v2,
+    'TeleAI/TeleChat-12B-v2',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True,
+    hf_model_id='Tele-AI/TeleChat-12B-v2')
+@register_model(
+    ModelType.telechat_52b,
+    'TeleAI/TeleChat-52B',
+    LoRATM.telechat,
+    TemplateType.telechat,
+    support_flash_attn=True,
+    hf_model_id='Tele-AI/TeleChat-52B')
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
