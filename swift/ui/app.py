@@ -49,12 +49,13 @@ def run_ui():
             gr.HTML(
                 f'<div class="gr-prose" style="max-width: 80%"><p>If the waiting queue is too long, you can either run locally or duplicate the Space and run it on your own profile using a (paid) private A10G-large GPU for training. A A10G-large costs US$3.15/h. &nbsp;&nbsp;<a class="duplicate-button" style="display:inline-block" target="_blank" href="https://huggingface.co/spaces/{os.environ["SPACE_ID"]}?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a></p></div>'  # noqa
             )
-        elif is_spaces and os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            gr.HTML('<p><center>You have duplicated the space, remember remove the `MODELSCOPE_ENVIRONMENT` '
-                    'variable to start an unlimited version</center></p>')
         with gr.Tabs():
-            LLMTrain.build_ui(LLMTrain)
-            LLMInfer.build_ui(LLMInfer)
+            if is_shared_ui:
+                LLMInfer.build_ui(LLMInfer)
+                LLMTrain.build_ui(LLMTrain)
+            else:
+                LLMTrain.build_ui(LLMTrain)
+                LLMInfer.build_ui(LLMInfer)
 
     port = os.environ.get('WEBUI_PORT', None)
     concurrent = {}

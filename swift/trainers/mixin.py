@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
+import peft
 import safetensors
 import torch
 import transformers
@@ -250,6 +251,8 @@ class SwiftMixin:
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs)
+        if not self.label_names:
+            self.label_names = ['labels']
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
 
@@ -381,7 +384,7 @@ class SwiftMixin:
         from swift import SWIFT_MAPPING
         addtional_module_tuners = [
             name.lower() for name, (config, cls) in SWIFT_MAPPING.items() if cls.has_additional_modules()
-        ]
+        ] + list(peft.PEFT_TYPE_TO_CONFIG_MAPPING.keys())
         if self.tokenizer is not None and sft_args.sft_type not in addtional_module_tuners:
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin

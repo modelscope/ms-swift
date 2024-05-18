@@ -30,10 +30,10 @@
 - `--seed`: Global seed, default is `42`. Used to reproduce training results.
 - `--resume_from_checkpoint`: For resuming training from checkpoint, default is `None`. You can set this to the path of a checkpoint, e.g. `'output/qwen-7b-chat/vx-xxx/checkpoint-xxx'`, to resume training.
 - `--dtype`: torch_dtype when loading base model, default is `'AUTO'`, i.e. intelligently select dtype: if machine does not support bf16, use fp16; if `MODEL_MAPPING` specifies torch_dtype for corresponding model, use its dtype; otherwise use bf16. Options include: 'bf16', 'fp16', 'fp32'.
-- `--dataset`: Used to select the training dataset, default is `[]`. You can see the list of available datasets [here](Supported-models-datasets.md#Datasets). If you need to train with multiple datasets, you can use ',' or ' ' to separate them, for example: `--dataset alpaca-en,alpaca-zh` or `--dataset alpaca-en alpaca-zh`. It supports Modelscope Hub/HuggingFace Hub/local paths, subset selection, and dataset sampling. The specified format for each dataset is as follows: `[HF or MS:]{dataset_name} or {dataset_id} or {dataset_path}[:subset1/subset2/...][#dataset_sample]`. The simplest case requires specifying only dataset_name, dataset_id, or dataset_path. Customizing datasets can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset)
-  - Supports MS and HF hub, as well as dataset_sample. For example, 'MS::alpaca-zh#200', 'HF::jd-sentiment-zh#200' (the default hub used is controlled by the `USE_UF` environment variable, default is MS).
+- `--dataset`: Used to select the training dataset, default is `[]`. You can see the list of available datasets [here](Supported-models-datasets.md#Datasets). If you need to train with multiple datasets, you can use ',' or ' ' to separate them, for example: `--dataset alpaca-en,alpaca-zh` or `--dataset alpaca-en alpaca-zh`. It supports Modelscope Hub/HuggingFace Hub/local paths, subset selection, and dataset sampling. The specified format for each dataset is as follows: `[HF or MS::]{dataset_name} or {dataset_id} or {dataset_path}[:subset1/subset2/...][#dataset_sample]`. The simplest case requires specifying only dataset_name, dataset_id, or dataset_path. Customizing datasets can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset)
+  - Supports MS and HF hub, as well as dataset_sample. For example, 'MS::alpaca-zh#2000', 'HF::jd-sentiment-zh#2000' (the default hub used is controlled by the `USE_UF` environment variable, default is MS).
   - More fine-grained control over subsets: It uses the subsets specified during registration by default (if not specified during registration, it uses 'default'). For example, 'sharegpt-gpt4'. If subsets are specified, it uses the corresponding subset of the dataset. For example, 'sharegpt-gpt4:default/V3_format#2000'. Separated by '/'.
-  - Support for dataset_id. For example, 'AI-ModelScope/alpaca-gpt4-data-zh#20', 'HF::llm-wizard/alpaca-gpt4-data-zh#20', hurner/alpaca-gpt4-data-zh#20, HF::shibing624/alpaca-zh#20. If the dataset_id has been registered, it will use the preprocessing function, subsets, split, etc. specified during registration. Otherwise, it will use `SmartPreprocessor`, support 4 dataset formats, and use 'default' subsets, with split set to 'train'. The supported dataset formats can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset).
+  - Support for dataset_id. For example, 'AI-ModelScope/alpaca-gpt4-data-zh#2000', 'HF::llm-wizard/alpaca-gpt4-data-zh#2000', 'hurner/alpaca-gpt4-data-zh#2000', 'HF::shibing624/alpaca-zh#2000'. If the dataset_id has been registered, it will use the preprocessing function, subsets, split, etc. specified during registration. Otherwise, it will use `SmartPreprocessor`, support 4 dataset formats, and use 'default' subsets, with split set to 'train'. The supported dataset formats can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset).
   - Support for dataset_path. For example, '1.jsonl#5000' (if it is a relative path, it is relative to the running directory).
 - `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
 - `--dataset_seed`: Seed for dataset processing, default is `42`. Exists as random_state, does not affect global seed.
@@ -63,6 +63,7 @@
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_dropout_p`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
+- `--init_lora_weights`: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, or `pissa_niter_[number of iters]`. Default value `true`.
 - `--lora_bias_trainable`: Default is `'none'`, options: 'none', 'all'. Set to `'all'` to make all biases trainable.
 - `--lora_modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--lora_modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `lora_modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `lora_modules_to_save`.
 - `--lora_dtype`: Default is `'AUTO'`, specifies dtype for lora modules. If `AUTO`, follow dtype of original module. Options: 'fp16', 'bf16', 'fp32', 'AUTO'.
@@ -134,6 +135,23 @@
 ### Sequence Parallel Parameters
 
 - `--sequence_parallel_size`: Default value `1`, a positive value can be used to split a sequence to multiple GPU to reduce memory usage. The value should divide the GPU count.
+
+### BOFT Parameters
+
+- `--boft_block_size`: BOFT block size, default value is 4.
+- `--boft_block_num`: Number of BOFT blocks, cannot be used simultaneously with `boft_block_size`.
+- `--boft_target_modules`: BOFT target modules. Default is `['DEFAULT']`. If `boft_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `boft_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as BOFT modules.
+- `--boft_dropout`: Dropout value for BOFT, default is 0.0.
+- `--boft_modules_to_save`: Additional modules to be trained and saved, default is `None`.
+
+### Vera Parameters
+
+- `--vera_rank`: Size of Vera Attention, default value is 256.
+- `--vera_projection_prng_key`: Whether to store the Vera projection matrix, default is True.
+- `--vera_target_modules`: Vera target modules. Default is `['DEFAULT']`. If `vera_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `vera_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as Vera modules. Vera modules need to share a same shape.
+- `--vera_dropout`: Dropout value for Vera, default is 0.0.
+- `--vera_d_initial`: Initial value for Vera's d matrix, default is 0.1.
+- `--vera_modules_to_save`: Additional modules to be trained and saved, default is `None`.
 
 ### LoRA+ Fine-tuning Parameters
 
