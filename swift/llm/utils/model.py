@@ -341,7 +341,6 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
-    phi3_mini_128k_instruct = 'phi3-mini-128k-instruct'
     # cogagent
     cogvlm_17b_instruct = 'cogvlm-17b-instruct'
     cogagent_18b_chat = 'cogagent-18b-chat'
@@ -489,8 +488,10 @@ def _check_awq_ext() -> None:
                           '&& cd AutoAWQ_kernels && pip install -e .`') from e
 
 
-def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
+def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> None:
     assert model_kwargs.get('quantization_config') is None
+    if bits == 0:
+        bits = model_config.quantization_config['bits']
     if version.parse(transformers.__version__) >= version.parse('4.35'):
         model_kwargs['quantization_config'] = GPTQConfig(bits=bits, use_exllama=False)
     else:
@@ -785,14 +786,20 @@ def get_model_tokenizer_from_repo(model_dir: str,
                                   automodel_class=AutoModelForCausalLM,
                                   **kwargs):
     """load from an independent repository"""
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     is_awq = kwargs.pop('is_awq', False)
     is_aqlm = kwargs.pop('is_aqlm', False)
     gptq_bits = kwargs.pop('gptq_bits', 0)
+    if gptq_bits > 0:
+        is_gptq = True
+    else:
+        is_gptq = kwargs.pop('is_gptq', False)
     is_training = kwargs.pop('is_training', False)
     if is_awq and is_training:
         _check_awq_ext()
-    if gptq_bits > 0 and is_training:
-        _check_gptq_model(gptq_bits, model_kwargs)
+    if is_gptq and is_training:
+        _check_gptq_model(gptq_bits, model_config, model_kwargs)
     context = kwargs.get('context', None)
     if is_aqlm and is_training:
         require_version('transformers>=4.39')
@@ -800,8 +807,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
         context = aqlm.optimize_for_training()
     if context is None:
         context = nullcontext()
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if torch_dtype is not None:
         model_config.torch_dtype = torch_dtype
     if tokenizer is None:
@@ -830,8 +835,8 @@ def get_model_tokenizer_from_repo(model_dir: str,
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
         if load_model and is_awq:
             model.is_awq = is_awq
-        if load_model and gptq_bits > 0:
-            model.gptq_bits = gptq_bits
+        if load_model and is_gptq > 0:
+            model.is_gptq = is_gptq
     return model, tokenizer
 
 
@@ -1310,16 +1315,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
-    tags=['general'],
-    hf_model_id='microsoft/Phi-3-mini-128k-instruct')
-@register_model(
-    ModelType.phi3_mini_128k_instruct,
-    'LLM-Research/Phi-3-mini-128k-instruct',
-    LoRATM.phi3,
-    TemplateType.phi3,
-    requires=['transformers>=4.36'],
-    support_flash_attn=True,
-    support_vllm=False,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
 @register_model(

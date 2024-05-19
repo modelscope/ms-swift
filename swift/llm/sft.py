@@ -80,7 +80,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         quantization_config = EetqConfig('int8')
         logger.info(f'quantization_config: {quantization_config.__dict__}')
         model_kwargs['quantization_config'] = quantization_config
-    elif args.load_in_8bit or args.load_in_4bit:
+    elif args.load_in_8bit or args.load_in_4bit:  # bnb
         quantization_config = BitsAndBytesConfig(
             args.load_in_8bit,
             args.load_in_4bit,
@@ -99,6 +99,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
+    if args.quant_method == 'awq':
+        kwargs['is_awq'] = True
+    elif args.quant_method == 'aqlm':
+        kwargs['is_aqlm'] = True
+    elif args.quant_method == 'gptq':
+        kwargs['is_gptq'] = True
+
     model, tokenizer = get_model_tokenizer(
         args.model_type,
         args.torch_dtype,
