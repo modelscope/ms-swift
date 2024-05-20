@@ -343,7 +343,8 @@ class ModelType:
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
-    cogvlm2_19b_chat = 'cogvlm2-19b-chat'
+    cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
+    cogvlm2_19b_en_chat = 'cogvlm2-19b-en-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -516,6 +517,14 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
         QuantLinear.forward = _new_forward
 
 
+@register_model(
+    ModelType.cogvlm2_19b_en_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    pad_token='<|reserved_special_token_0|>',
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
 @register_model(
     ModelType.cogvlm2_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
