@@ -344,7 +344,7 @@ class ModelType:
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
-    cogvlm2_19b_en_chat = 'cogvlm2-19b-en-chat'
+    cogvlm2_en_19b_chat = 'cogvlm2-en-19b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -518,7 +518,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
 
 
 @register_model(
-    ModelType.cogvlm2_19b_en_chat,
+    ModelType.cogvlm2_en_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chat-19B',
     LoRATM.cogvlm,
     TemplateType.cogvlm,
