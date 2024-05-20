@@ -42,6 +42,7 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM).
 
 ## 🎉 新闻
+- 🔥2024.05.20: 支持[cogvlm2-llama3-chinese-chat-19B](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)的推理与微调, 可以查看[cogvlm2最佳实践](docs/source/Multi-Modal/cogvlm2最佳实践.md).
 - 🔥2024.05.17: 支持peft=0.11.0. 同时支持了三个新的tuner方法： `BOFT`, `Vera` 和 `Pissa`. 使用 `--sft_type boft/vera` 开启BOFT或者Vera, 使用 `--init_lora_weights pissa` 以及 `--sft_type lora` 来使用 Pissa.
 - 2024.05.16: 支持Llava-Next (Stronger)系列模型，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.05.13: 支持Yi-1.5系列模型，使用`--model_type yi-1_5-9b-chat`等开始体验
@@ -59,6 +60,8 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 - 2024.04.20: 支持**Atom**系列模型的推理, 微调和部署等. 包括: Atom-7B and Atom-7B-Chat. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/atom_7b_chat/lora/sft.sh)来开始训练！
 - 2024.04.19: 支持NPU的单卡、DDP、ZeRO2和ZeRO3的训练与推理, 可以查看[NPU推理与微调最佳实践](docs/source/LLM/NPU推理与微调最佳实践.md).
 - 2024.04.19: 支持**Llama3**系列模型的推理, 微调和部署等. 包括: Llama-3-8B, Llama-3-8B-Instruct, Llama-3-70B, Llama-3-70B-Instruct. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama3_8b_instruct/lora/sft.sh)开始训练叭！
+<details><summary>更多</summary>
+
 - 2024.04.18: 支持模型: wizardlm2-7b-awq, wizardlm2-8x22b, yi-6b-chat-awq, yi-6b-chat-int8, yi-34b-chat-awq, yi-34b-chat-int8. 支持`--deepspeed zero3-offload`, 提供了默认zero3-offload配置文件来使用zero3+cpu offload.
 - 2024.04.18: 支持使用环境变量`USE_HF`兼容HuggingFace生态, 切换成使用HF中的模型和数据集, 可以查看[HuggingFace生态兼容文档](https://github.com/modelscope/swift/tree/main/docs/source/LLM/HuggingFace生态兼容.md).
 - 2024.04.17: 支持OpenAI样式的接口评测, 可以查看[评测参数接口文档](docs/source/LLM/命令行参数.md#eval参数)来查看使用方法.
@@ -79,9 +82,6 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 - 🔥2024.03.29: 支持**Grok-1** 300B MoE模型的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/Grok训练和推理.md).
 - 🔥2024.03.25: 支持TeleChat-7b和TeleChat-12b模型的训练和推理, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/telechat_12b/lora/sft.sh)来开始训练！.
 - 🔥2024.03.20: 支持**llava**系列的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
-
-<details><summary>更多</summary>
-
 - 🔥2024.03.12: 支持**deepseek-vl**系列推理和微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/deepseek-vl最佳实践.md).
 - 🔥2024.03.11: 支持[GaLore](https://arxiv.org/abs/2403.03507), 用于在全参数训练中有效减小显存占用至原来的1/2.
 - 🔥2024.03.10: Qwen1.5-7B-Chat与Qwen1.5-72B-Chat从微调到部署[全流程最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md).
@@ -514,7 +514,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | XComposer2      | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 7B               | chat模型          |
 | DeepSeek-VL     | [幻方系列视觉模型](https://github.com/deepseek-ai)           | 中文<br>英文 | 1.3B-7B          | chat模型          |
 | MiniCPM-V      | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B               | chat模型          |
-| CogVLM<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 英文 | 17B-18B          | chat模型          |
+| CogVLM<br>CogVLM2<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 中文<br>英文 | 17B-19B          | chat模型          |
 | Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B-34B               | chat模型 |
 | Llava-Next      | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                | 中文<br>英文 | 8B-110B       | chat模型 |
 | mPLUG-Owl      | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)         | 英文 | 11B               | chat模型 |
