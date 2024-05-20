@@ -168,6 +168,7 @@ class ArgumentsBase:
         model_type_mapping = {
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
+            'cogvlm-17b-instruct': 'cogvlm-17b-chat'
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',
@@ -270,7 +271,7 @@ class ArgumentsBase:
         # compatibility. (Deprecated)
         idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
         assert len(idx_list) <= 1
-        self.use_self_cognition = idx_list == 1
+        self.use_self_cognition = len(idx_list) == 1
         if self.self_cognition_sample > 0:
             d = f'self-cognition#{self.self_cognition_sample}'
             if len(idx_list) == 1:
@@ -400,9 +401,6 @@ class SftArguments(ArgumentsBase):
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
-    model_layer_cls_name: Optional[str] = field(
-        default=None,
-        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
@@ -596,6 +594,10 @@ class SftArguments(ArgumentsBase):
     fsdp_config: Optional[str] = None
 
     sequence_parallel_size: int = 1
+    # for torchacc
+    model_layer_cls_name: Optional[str] = field(
+        default=None,
+        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
 
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
@@ -770,13 +772,13 @@ class SftArguments(ArgumentsBase):
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
             if self.quantization_bit == 4 or self.quantization_bit == 8:
-                logger.info("Since you have specified quantization_bit as greater than 0\
-                             and have not designated a quant_method, quant_method will be set to 'bnb'.")
+                logger.info('Since you have specified quantization_bit as greater than 0 '
+                            "and have not designated a quant_method, quant_method will be set to 'bnb'.")
                 self.quant_method = 'bnb'
             else:
                 self.quant_method = 'hqq'
-                logger.info("Since you have specified quantization_bit as greater than 0\
-                             and have not designated a quant_method, quant_method will be set to 'hqq'.")
+                logger.info('Since you have specified quantization_bit as greater than 0 '
+                            "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
@@ -958,8 +960,6 @@ class InferArguments(ArgumentsBase):
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
 
-    device_map_config_path: Optional[str] = None
-
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
@@ -1007,6 +1007,7 @@ class InferArguments(ArgumentsBase):
     local_repo_path: Optional[str] = None
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
+    device_map_config_path: Optional[str] = None
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -1066,13 +1067,13 @@ class InferArguments(ArgumentsBase):
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
             if self.quantization_bit == 4 or self.quantization_bit == 8:
-                logger.info("Since you have specified quantization_bit as greater than 0\
-                             and have not designated a quant_method, quant_method will be set to 'bnb'.")
+                logger.info('Since you have specified quantization_bit as greater than 0 '
+                            "and have not designated a quant_method, quant_method will be set to 'bnb'.")
                 self.quant_method = 'bnb'
             else:
                 self.quant_method = 'hqq'
-                logger.info("Since you have specified quantization_bit as greater than 0\
-                             and have not designated a quant_method, quant_method will be set to 'hqq'.")
+                logger.info('Since you have specified quantization_bit as greater than 0 '
+                            "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
@@ -1264,7 +1265,7 @@ class ExportArguments(InferArguments):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
         super().__post_init__()
-        if len(self.dataset) == 0:
+        if len(self.dataset) == 0 and self.quant_bits > 0:
             self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
             logger.info(f'Setting args.dataset: {self.dataset}')
         if self.quant_output_dir is None:

@@ -64,21 +64,21 @@ pip install -r requirements/llm.txt  -U
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen1half-7b-chat \
     --sft_type lora \
-    --dataset, alpaca-zh#5000 \
+    --dataset alpaca-zh#5000 \
     --quant_method hqq \
     --quantization_bit 4 \
 
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen1half-7b-chat \
     --sft_type lora \
-    --dataset, alpaca-zh#5000 \
+    --dataset alpaca-zh#5000 \
     --quant_method eetq \
     --dtype fp16 \
 
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen1half-7b-chat \
     --sft_type lora \
-    --dataset, alpaca-zh#5000 \
+    --dataset alpaca-zh#5000 \
     --quant_method bnb \
     --quantization_bit 4 \
     --dtype fp16 \

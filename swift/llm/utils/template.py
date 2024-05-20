@@ -62,7 +62,7 @@ class TemplateType:
     deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
-    cogvlm_instruct = 'cogvlm-instruct'
+    cogvlm = 'cogvlm'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
@@ -1230,7 +1230,7 @@ class CogTemplate(Template):
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         token_type_ids = inputs2['token_type_ids'].tolist()
-        inputs['input_ids'] = input_ids[:1] + [0] * image_token_len + input_ids[1:]
+        inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
         dtype = model.dtype
@@ -1268,8 +1268,8 @@ register_template(
     lazy_tokenize=True)
 
 register_template(
-    TemplateType.cogvlm_instruct,
-    CogTemplate(['<s>'], ['Question: {{QUERY}} Answer:'], None, ['</s>']),
+    TemplateType.cogvlm,
+    CogTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
