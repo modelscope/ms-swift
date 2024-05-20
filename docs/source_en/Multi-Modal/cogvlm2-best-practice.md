@@ -16,7 +16,7 @@ pip install -e '.[llm]'
 
 Model link:
 - cogvlm2-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)
-
+- cogvlm2-en-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary)
 
 ## Inference
 
