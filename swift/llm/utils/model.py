@@ -3621,10 +3621,10 @@ def _repair_telechat(model):
                 nx = module.weight.size(0)
                 nf = module.weight.size(1)
                 new_module = TfConv1D(nf, nx)
-                new_module.weight.data.copy_(module.weight.data).to(module.weight.device)
+                new_module.weight.data.copy_(module.weight.data)
                 if module.bias is not None:
                     new_module.bias.data.copy_(module.bias.data)
-                new_module.bias.to(module.weight.device)
+                new_module.to(module.weight.device)
                 parent_name = '.'.join(name.split('.')[:-1])
                 child_name = name.split('.')[-1]
                 parent_module = model_modules[parent_name]
