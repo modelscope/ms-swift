@@ -104,11 +104,11 @@ OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method gptq
 
-# AWQ: Use custom quantization dataset (don't use the `--custom_val_dataset_path` parameter)
+# AWQ: Use custom quantization dataset
 # Same for GPTQ
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --custom_train_dataset_path xxx.jsonl \
+    --dataset xxx.jsonl \
     --quant_method awq
 
 # Inference using swift quantized model
