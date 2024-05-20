@@ -63,6 +63,7 @@
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_dropout_p`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
+- `--init_lora_weights`: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, or `pissa_niter_[number of iters]`. Default value `true`.
 - `--lora_bias_trainable`: Default is `'none'`, options: 'none', 'all'. Set to `'all'` to make all biases trainable.
 - `--lora_modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--lora_modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `lora_modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `lora_modules_to_save`.
 - `--lora_dtype`: Default is `'AUTO'`, specifies dtype for lora modules. If `AUTO`, follow dtype of original module. Options: 'fp16', 'bf16', 'fp32', 'AUTO'.
@@ -134,6 +135,23 @@
 ### Sequence Parallel Parameters
 
 - `--sequence_parallel_size`: Default value `1`, a positive value can be used to split a sequence to multiple GPU to reduce memory usage. The value should divide the GPU count.
+
+### BOFT Parameters
+
+- `--boft_block_size`: BOFT block size, default value is 4.
+- `--boft_block_num`: Number of BOFT blocks, cannot be used simultaneously with `boft_block_size`.
+- `--boft_target_modules`: BOFT target modules. Default is `['DEFAULT']`. If `boft_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `boft_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as BOFT modules.
+- `--boft_dropout`: Dropout value for BOFT, default is 0.0.
+- `--boft_modules_to_save`: Additional modules to be trained and saved, default is `None`.
+
+### Vera Parameters
+
+- `--vera_rank`: Size of Vera Attention, default value is 256.
+- `--vera_projection_prng_key`: Whether to store the Vera projection matrix, default is True.
+- `--vera_target_modules`: Vera target modules. Default is `['DEFAULT']`. If `vera_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `vera_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as Vera modules. Vera modules need to share a same shape.
+- `--vera_dropout`: Dropout value for Vera, default is 0.0.
+- `--vera_d_initial`: Initial value for Vera's d matrix, default is 0.1.
+- `--vera_modules_to_save`: Additional modules to be trained and saved, default is `None`.
 
 ### LoRA+ Fine-tuning Parameters
 
