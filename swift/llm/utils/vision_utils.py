@@ -1,9 +1,12 @@
+import base64
+import binascii
+import os
 from io import BytesIO
 
 import requests
 import torch
 import torchvision.transforms as T
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from torchvision.transforms.functional import InterpolationMode
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -77,8 +80,15 @@ def load_image(img_path, input_size=448, max_num=6):
         if img_path.startswith('http'):
             content = requests.get(img_path).content
             image = Image.open(BytesIO(content))
-        else:
+        elif os.path.exists(img_path):
             image = Image.open(img_path)
+        else:
+            try:
+                image_data = base64.b64decode(img_path)
+                image = Image.open(BytesIO(image_data))
+            except (binascii.Error, UnidentifiedImageError) as error:
+                raise ValueError(f'invalid image: {error}')
+
     else:
         image = img_path
     if image.mode != 'RGB':

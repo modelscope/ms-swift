@@ -628,14 +628,24 @@ yi_vl_default_system = (
 
 
 def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
-    from PIL import Image
+    from PIL import Image, UnidentifiedImageError
+    import os
+    import base64
+    import binascii
+
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
             content = requests.get(img_path).content
             image = Image.open(BytesIO(content))
-        else:
+        elif os.path.exists(img_path):
             image = Image.open(img_path)
+        else:  # base64_str
+            try:
+                image_data = base64.b64decode(img_path)
+                image = Image.open(BytesIO(image_data))
+            except (binascii.Error, UnidentifiedImageError) as error:
+                raise ValueError(f'invalid image: {error}')
     else:
         image = img_path
     if image.mode != 'RGB':
