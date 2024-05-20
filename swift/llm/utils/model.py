@@ -3621,14 +3621,16 @@ def _repair_telechat(model):
                 nx = module.weight.size(0)
                 nf = module.weight.size(1)
                 new_module = TfConv1D(nf, nx)
-                new_module.weight.data.copy_(module.weight.data)
-                if module.bias is not None:
-                    new_module.bias.data.copy_(module.bias.data)
-                new_module.to(module.weight.device)
+                with torch.no_grad():
+                    new_module.weight.data.copy_(module.weight.data)
+                    if module.bias is not None:
+                        new_module.bias.data.copy_(module.bias.data)
+                new_module.to(device=module.weight.device,dtype=module.weight.data.dtype)
                 parent_name = '.'.join(name.split('.')[:-1])
                 child_name = name.split('.')[-1]
                 parent_module = model_modules[parent_name]
                 setattr(parent_module, child_name, new_module)
+                del module
         model.conv1d_replaced = True
     if not hasattr(model, '__old_forward'):
         forward = model.forward
