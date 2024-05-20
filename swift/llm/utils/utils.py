@@ -343,13 +343,14 @@ def stat_dataset(llm_dataset: Dataset) -> str:
 
 
 def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
-    def _is_special(c: int) -> bool:
-        if c < 0:
+
+    def _is_special(token: int) -> bool:
+        if token < 0:
             return True
         if tokenizer.eos_token_id != tokenizer.pad_token_id:
-            return c == tokenizer.pad_token_id
+            return token == tokenizer.pad_token_id
         return False
-        
+
     if isinstance(input_ids, torch.Tensor):
         input_ids = input_ids.tolist()
     if len(input_ids) == 0:
