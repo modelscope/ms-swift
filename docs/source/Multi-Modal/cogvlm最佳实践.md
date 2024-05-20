@@ -10,7 +10,9 @@
 
 ## 环境准备
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 ## 推理
@@ -25,14 +27,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-chat
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< Describe this image.
-Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This image showcases a close-up of a young kitten. The kitten has a mix of white and gray fur with distinctive blue eyes. The fur appears soft and fluffy, and the kitten seems to be in a relaxed position, possibly resting. The background is blurred, emphasizing the kitten as the main subject.
---------------------------------------------------
-<<< How many sheep are in the picture?
-There are no sheep in the picture. The image features a kitten.
---------------------------------------------------
-<<< clear
 <<< Describe this image.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 This image showcases a close-up of a young kitten. The kitten has a fluffy coat with a mix of white, gray, and brown colors. Its eyes are strikingly blue, and it appears to be gazing directly at the viewer. The background is blurred, emphasizing the kitten as the main subject.
@@ -88,7 +82,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.cogvlm_17b_instruct
+model_type = ModelType.cogvlm_17b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -144,12 +138,12 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(只支持单轮对话, 且必须包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
 
 
