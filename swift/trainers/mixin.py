@@ -381,11 +381,7 @@ class SwiftMixin:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         sft_args = getattr(self, 'sft_args', None)
         # tokenizer
-        from swift import SWIFT_MAPPING
-        addtional_module_tuners = [
-            name.lower() for name, (config, cls) in SWIFT_MAPPING.items() if cls.has_additional_modules()
-        ] + list(peft.PEFT_TYPE_TO_CONFIG_MAPPING.keys())
-        if self.tokenizer is not None and sft_args.sft_type not in addtional_module_tuners:
+        if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
@@ -548,10 +544,7 @@ class SwiftMixin:
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
-            logs['total_train_time_calculated(min)'] = (
-                (float(self.state.max_steps) / self.state.global_step) * elapse_time) / 60.0
-            logs['total_train_speed(iter/s)'] = self.state.max_steps / (
-                (float(self.state.max_steps) / self.state.global_step) * elapse_time)
+            logs['train_speed(iter/s)'] = self.state.global_step / elapse_time
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
