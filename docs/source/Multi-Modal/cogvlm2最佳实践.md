@@ -1,55 +1,76 @@
-# CogVLM Best Practices
 
-## Table of Contents
-- [Environment Setup](#environment-setup)
-- [Inference](#inference)
-- [Fine-tuning](#fine-tuning)
-- [Inference After Fine-tuning](#inference-after-fine-tuning)
+# CogVLM2 最佳实践
 
-## Environment Setup
+## 目录
+- [环境准备](#环境准备)
+- [推理](#推理)
+- [微调](#微调)
+- [微调后推理](#微调后推理)
+
+
+## 环境准备
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 ```
 
-## Inference
+模型链接:
+- cogvlm2-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)
 
-Inference with [cogvlm-17b-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary):
+
+## 推理
+
+推理cogvlm2-19b-chat:
 ```shell
 # Experimental environment: A100
-# 38GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-chat
+# 43GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm2-19b-chat
 ```
 
-Output: (supports passing local path or URL)
+输出: (支持传入本地路径或URL)
 ```python
 """
-<<< Describe this image.
+<<< 描述这种图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This image showcases a close-up of a young kitten. The kitten has a fluffy coat with a mix of white, gray, and brown colors. Its eyes are strikingly blue, and it appears to be gazing directly at the viewer. The background is blurred, emphasizing the kitten as the main subject.
+这是一张特写照片，展示了一只灰色和白色相间的猫。这只猫的眼睛是灰色的，鼻子是粉色的，嘴巴微微张开。它的毛发看起来柔软而蓬松，背景模糊，突出了猫的面部特征。
 --------------------------------------------------
 <<< clear
-<<< How many sheep are in the picture?
+<<< 图中有几只羊
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
-There are four sheep in the picture.
+图中有四只羊。
 --------------------------------------------------
 <<< clear
-<<< What is the calculation result?
+<<< 计算结果是多少?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is '1452+45304=45456'.
+计算结果是49556。
 --------------------------------------------------
 <<< clear
-<<< Write a poem based on the content of the picture.
+<<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-In a world where night and day intertwine,
-A boat floats gently, reflecting the moon's shine.
-Fireflies dance, their glow a mesmerizing trance,
-As the boat sails through a tranquil, enchanted expanse.
+夜幕低垂，小船悠然，
+在碧波荡漾的湖面上航行。
+船头灯火，照亮前行的道路，
+照亮了周围的黑暗。
+
+湖面上的涟漪，
+仿佛是无数的精灵在跳舞。
+它们随着船的移动而荡漾，
+为这宁静的夜晚增添了生机。
+
+船上的乘客，
+沉浸在这如诗如画的景色中。
+他们欣赏着湖光山色，
+感受着大自然的恩赐。
+
+夜色渐深，小船驶向远方，
+但心中的美好永远留存。
+这段旅程，
+让他们更加珍惜生命中的每一刻。
 """
 ```
 
-Example images are shown below:
+示例图片如下:
 
 cat:
 
@@ -67,7 +88,7 @@ poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
-**Single-sample inference**
+**单样本推理**
 
 ```python
 import os
@@ -80,7 +101,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.cogvlm_17b_chat
+model_type = ModelType.cogvlm2_19b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -91,13 +112,13 @@ template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = 'How far is it from each city?'
+query = '距离各城市多远？'
 response, _ = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
-# Streaming
-query = 'Which city is the farthest?'
+# 流式
+query = '距离最远的城市是哪？'
 images = images
 gen = inference_stream(model, template, query, images=images)
 print_idx = 0
@@ -107,36 +128,37 @@ for response, _ in gen:
     print(delta, end='', flush=True)
     print_idx = len(response)
 print()
+
 """
-query: How far is it from each city?
-response: From Mata, it is 14 km; from Yangjiang, it is 62 km; and from Guangzhou, it is 293 km.
-query: Which city is the farthest?
-response: Guangzhou is the farthest city with a distance of 293 km.
+query: 距离各城市多远？
+response: 距离马踏Mata有14km，距离阳江Yangjiang有62km，距离广州Guangzhou有293km。
+query: 距离最远的城市是哪？
+response: 距离最远的城市是广州Guangzhou。
 """
 ```
 
-Example image is shown below:
+示例图片如下:
 
 road:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png" width="250" style="display: inline-block;">
 
 
-## Fine-tuning
-Fine-tuning multimodal large models usually uses **custom datasets**. Here is a demo that can be run directly:
+## 微调
+多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
-(By default, lora fine-tuning is performed on the qkv of the language and vision models. If you want to fine-tune all linears, you can specify `--lora_target_modules ALL`)
+(默认对语言和视觉模型的qkv进行lora微调. 如果你想对所有linear都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A100
-# 50GB GPU memory
+# 70GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type cogvlm-17b-chat \
+    --model_type cogvlm2-19b-chat \
     --dataset coco-mini-en-2 \
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(Supports multi-turn dialogue, but each conversation can only include one image. Support local file paths or URLs for input)
+(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
@@ -145,21 +167,21 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```
 
 
-## Inference After Fine-tuning
-Direct inference:
+## 微调后推理
+直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/cogvlm2-19b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
-**merge-lora** and inference:
+**merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/cogvlm2-19b-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/cogvlm2-19b-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```
