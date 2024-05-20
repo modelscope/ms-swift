@@ -52,8 +52,7 @@ from swift.llm import (
 model_type = ModelType.qwen_7b_chat
 sft_args = SftArguments(
     model_type=model_type,
-    train_dataset_sample=2000,
-    dataset=[DatasetName.blossom_math_zh],
+    dataset=[f'{DatasetName.blossom_math_zh}#2000'],
     output_dir='output')
 result = sft_main(sft_args)
 best_model_checkpoint = result['best_model_checkpoint']
@@ -62,8 +61,7 @@ torch.cuda.empty_cache()
 
 infer_args = InferArguments(
     ckpt_dir=best_model_checkpoint,
-    load_dataset_config=True,
-    val_dataset_sample=10)
+    load_dataset_config=True)
 # merge_lora(infer_args, device_map='cpu')
 result = infer_main(infer_args)
 torch.cuda.empty_cache()
