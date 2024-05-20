@@ -257,7 +257,8 @@ class ModelType:
     minicpm_moe_8x2b = 'minicpm-moe-8x2b'
     # minicpm-v
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
-    minicpm_v_v2 = 'minicpm-v-v2'
+    minicpm_v_v2_chat = 'minicpm-v-v2-chat'
+    minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
@@ -3877,13 +3878,21 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     support_flash_attn=True,
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
-    ModelType.minicpm_v_v2,
+    ModelType.minicpm_v_v2_chat,
     'OpenBMB/MiniCPM-V-2',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True,
     requires=['timm'],
     hf_model_id='openbmb/MiniCPM-V-2')
+@register_model(
+    ModelType.minicpm_v_v2_5_chat,
+    'OpenBMB/MiniCPM-Llama3-V-2_5',
+    LoRATM.llama2,
+    TemplateType.minicpm_v_v2_5,
+    support_flash_attn=True,
+    requires=['timm'],
+    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
