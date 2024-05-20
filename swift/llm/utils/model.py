@@ -343,7 +343,8 @@ class ModelType:
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
-    cogvlm2_19b_chat = 'cogvlm2-19b-chat'
+    cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
+    cogvlm2_en_19b_chat = 'cogvlm2-en-19b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -514,6 +515,14 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
         QuantLinear.forward = _new_forward
 
 
+@register_model(
+    ModelType.cogvlm2_en_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    pad_token='<|reserved_special_token_0|>',
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
 @register_model(
     ModelType.cogvlm2_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
@@ -2251,6 +2260,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
@@ -2272,6 +2282,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_4b_chat_int4,
@@ -2293,6 +2304,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_7b_chat_int4,
@@ -2314,6 +2326,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_14b_chat_int4,
@@ -2335,6 +2348,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_32b_chat_int4,
@@ -2378,6 +2392,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_moe_a2_7b_chat_int4,
@@ -3455,6 +3470,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat-Int8')
 @register_model(
     ModelType.qwen_1_8b_chat_int4,
@@ -3476,6 +3492,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-72B-Chat-Int8')
 @register_model(
     ModelType.qwen_72b_chat_int4,
@@ -3523,6 +3540,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-14B-Chat-Int8')
 @register_model(
     ModelType.qwen_7b_chat_int8,
@@ -3533,6 +3551,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-7B-Chat-Int8')
 @register_model(
     ModelType.qwen_14b_chat_int4,
